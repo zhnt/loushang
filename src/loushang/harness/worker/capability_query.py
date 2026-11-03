@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -14,11 +15,14 @@ CAPABILITY_WORKER_AUTHORITY_VERSION = 1
 CAPABILITY_WORKER_BINDING_VERSION = 1
 CAPABILITY_WORKER_ADMISSION_VERSION = 1
 CAPABILITY_WORKER_DESCRIPTOR_VERSION = 1
+CAPABILITY_WORKER_FACET_GRANT_VERSION = 1
 MAX_CAPABILITY_WORKER_DESCRIPTORS = 128
 MAX_CAPABILITY_WORKER_FACETS_PER_DESCRIPTOR = 64
 MAX_CAPABILITY_WORKER_IDENTIFIER_LENGTH = 128
+MAX_CAPABILITY_WORKER_FACET_PAYLOAD_BYTES = 16 * 1024
 
 _IDENTIFIER = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?")
+_OPAQUE_SCOPE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._:@+-]*[A-Za-z0-9])?")
 _CAPABILITY_WORKER_ACTIVATION = object()
 
 
@@ -94,10 +98,10 @@ class CapabilityWorkerBindingV1:
             ("Plugin id", self.plugin_id),
             ("contribution id", self.contribution_id),
             ("Product id", self.product_id),
-            ("scope id", self.scope_id),
             ("Capability owner id", self.owner_id),
         ):
             _require_identifier(value, name=name)
+        _require_scope_id(self.scope_id)
         capabilities = tuple(self.allowed_capability_ids)
         if not capabilities:
             raise ValueError("Capability Worker allowlist must not be empty")
@@ -205,6 +209,46 @@ class CapabilityWorkerDescriptorV1:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class CapabilityWorkerFacetGrantV1:
+    """Capability-owner permission for one callable, read-only Worker facet."""
+
+    capability_id: str
+    facet_id: str
+    binding_fingerprint: str
+    authority_fingerprint: str
+    owner_policy_revision: str
+    grant_version: int = CAPABILITY_WORKER_FACET_GRANT_VERSION
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.capability_id, name="Capability id")
+        _require_identifier(self.facet_id, name="Capability facet id")
+        _require_sha256(self.binding_fingerprint, name="Capability binding fingerprint")
+        _require_sha256(
+            self.authority_fingerprint, name="Capability authority fingerprint"
+        )
+        _require_identifier(self.owner_policy_revision, name="owner policy revision")
+        _require_version(
+            self.grant_version,
+            CAPABILITY_WORKER_FACET_GRANT_VERSION,
+            "Capability Worker facet grant",
+        )
+
+    @property
+    def fingerprint(self) -> str:
+        return _digest("loushang.capability-worker-facet-grant/v1", self.to_dict())
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "authorityFingerprint": self.authority_fingerprint,
+            "bindingFingerprint": self.binding_fingerprint,
+            "capabilityId": self.capability_id,
+            "facetId": self.facet_id,
+            "grantVersion": self.grant_version,
+            "ownerPolicyRevision": self.owner_policy_revision,
+        }
+
+
 class CapabilityQueryWorkerAdapter:
     """Query one fixed Capability allowlist; owns no publication or retirement."""
 
@@ -248,10 +292,31 @@ class CapabilityQueryWorkerAdapter:
         self._binding = binding
         self._authority_reader = authority_reader
         self._admission: CapabilityWorkerAdmissionV1 | None = None
+        self._descriptors: tuple[CapabilityWorkerDescriptorV1, ...] | None = None
 
     @property
     def admission(self) -> CapabilityWorkerAdmissionV1 | None:
         return self._admission
+
+    @property
+    def descriptors(self) -> tuple[CapabilityWorkerDescriptorV1, ...] | None:
+        """Return only descriptors verified for this admitted attempt."""
+
+        return self._descriptors
+
+    @property
+    def binding(self) -> CapabilityWorkerBindingV1:
+        return self._binding
+
+    def assert_admitted_current(self, admission: CapabilityWorkerAdmissionV1) -> None:
+        """Verify the exact attempt, supervisor, and owner before publication."""
+
+        self._validate_admission(admission)
+
+    async def fence(self, *, code: str) -> None:
+        """Stop this exact supervised attempt after an owner-side refusal."""
+
+        await self._supervisor.fence(code=code)
 
     def admit(self) -> CapabilityWorkerAdmissionV1:
         self._validate_current()
@@ -310,7 +375,75 @@ class CapabilityQueryWorkerAdapter:
         except CapabilityWorkerAdapterError as exc:
             await self._supervisor.fence(code=exc.code)
             raise
+        self._descriptors = descriptors
         return descriptors
+
+    async def invoke_read_only_facet(
+        self,
+        *,
+        grant: CapabilityWorkerFacetGrantV1,
+        request: Mapping[str, object],
+        decode_result: Callable[[object], object],
+    ) -> object:
+        """Call one described facet under a separate owner grant and codec."""
+
+        admission = self._admission
+        descriptors = self._descriptors
+        if admission is None or descriptors is None:
+            raise CapabilityWorkerAdapterError(
+                "Capability Worker facet has not passed domain admission",
+                code="worker_capability_not_admitted",
+            )
+        if (
+            not isinstance(grant, CapabilityWorkerFacetGrantV1)
+            or grant.binding_fingerprint != self._binding.fingerprint
+            or grant.authority_fingerprint != self._binding.authority.fingerprint
+            or grant.owner_policy_revision
+            != self._binding.authority.owner_policy_revision
+            or grant.capability_id not in self._binding.allowed_capability_ids
+            or not any(
+                item.capability_id == grant.capability_id
+                and grant.facet_id in item.facet_ids
+                for item in descriptors
+            )
+            or not callable(decode_result)
+        ):
+            raise CapabilityWorkerAdapterError(
+                "Capability Worker facet grant is invalid",
+                code="worker_capability_facet_grant_invalid",
+            )
+        try:
+            payload = _bounded_facet_payload(request)
+            self._validate_admission(admission)
+        except CapabilityWorkerAdapterError as exc:
+            await self._supervisor.fence(code=exc.code)
+            raise
+        response = await self._supervisor.query(
+            {
+                "admissionFingerprint": admission.fingerprint,
+                "capabilityId": grant.capability_id,
+                "facetGrantFingerprint": grant.fingerprint,
+                "facetId": grant.facet_id,
+                "operation": "invokeReadOnlyFacet",
+                "queryVersion": 1,
+                "request": payload,
+            }
+        )
+        try:
+            value = _bounded_facet_result(response)
+            decoded = decode_result(value)
+        except Exception as exc:
+            await self._supervisor.fence(code="worker_capability_facet_result_invalid")
+            raise CapabilityWorkerAdapterError(
+                "Capability Worker facet result is invalid",
+                code="worker_capability_facet_result_invalid",
+            ) from exc
+        try:
+            self._validate_admission(admission)
+        except CapabilityWorkerAdapterError as exc:
+            await self._supervisor.fence(code=exc.code)
+            raise
+        return decoded
 
     def _validate_admission(self, admission: CapabilityWorkerAdmissionV1) -> None:
         identity = self._supervisor.identity
@@ -414,6 +547,94 @@ def _decode_descriptors(
     return tuple(descriptors)
 
 
+def _bounded_facet_payload(value: Mapping[str, object]) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise CapabilityWorkerAdapterError(
+            "Capability Worker facet request is invalid",
+            code="worker_capability_facet_request_invalid",
+        )
+    try:
+        _check_facet_json_budget(value)
+        body = json.dumps(
+            dict(value),
+            ensure_ascii=True,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    except (TypeError, ValueError, RecursionError, OverflowError) as exc:
+        raise CapabilityWorkerAdapterError(
+            "Capability Worker facet request is invalid",
+            code="worker_capability_facet_request_invalid",
+        ) from exc
+    if len(body) > MAX_CAPABILITY_WORKER_FACET_PAYLOAD_BYTES:
+        raise CapabilityWorkerAdapterError(
+            "Capability Worker facet request exceeds its bound",
+            code="worker_capability_facet_request_invalid",
+        )
+    return json.loads(body)
+
+
+def _bounded_facet_result(response: Mapping[str, object]) -> object:
+    if (
+        not isinstance(response, Mapping)
+        or set(response) != {"responseVersion", "value"}
+        or type(response["responseVersion"]) is not int
+        or response["responseVersion"] != 1
+    ):
+        raise ValueError("Capability Worker facet response fields are invalid")
+    _check_facet_json_budget(response)
+    body = json.dumps(
+        dict(response),
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    if len(body) > MAX_CAPABILITY_WORKER_FACET_PAYLOAD_BYTES:
+        raise ValueError("Capability Worker facet response exceeds its bound")
+    return response["value"]
+
+
+def _check_facet_json_budget(value: object) -> None:
+    """Bound nested JSON work before the encoder allocates its output."""
+
+    stack = [(value, 0)]
+    nodes = 0
+    characters = 0
+    while stack:
+        item, depth = stack.pop()
+        nodes += 1
+        if nodes > 1024 or depth > 16:
+            raise ValueError("Capability Worker facet JSON exceeds its bound")
+        if isinstance(item, Mapping):
+            if len(item) > 1024:
+                raise ValueError("Capability Worker facet JSON exceeds its bound")
+            for key, member in item.items():
+                if type(key) is not str:
+                    raise ValueError("Capability Worker facet JSON key is invalid")
+                characters += len(key)
+                stack.append((member, depth + 1))
+        elif isinstance(item, (list, tuple)):
+            if len(item) > 1024:
+                raise ValueError("Capability Worker facet JSON exceeds its bound")
+            stack.extend((member, depth + 1) for member in item)
+        elif isinstance(item, str):
+            characters += len(item)
+        elif item is None or isinstance(item, bool):
+            pass
+        elif type(item) is int:
+            if item.bit_length() > 4096:
+                raise ValueError("Capability Worker facet integer exceeds its bound")
+        elif type(item) is float:
+            if not math.isfinite(item):
+                raise ValueError("Capability Worker facet number is invalid")
+        else:
+            raise ValueError("Capability Worker facet JSON value is invalid")
+        if characters > MAX_CAPABILITY_WORKER_FACET_PAYLOAD_BYTES:
+            raise ValueError("Capability Worker facet JSON exceeds its bound")
+
+
 def _digest(domain: str, value: object) -> str:
     return sha256(
         json.dumps(
@@ -437,6 +658,16 @@ def _require_identifier(value: object, *, name: str) -> str:
         result
     ) > MAX_CAPABILITY_WORKER_IDENTIFIER_LENGTH or not _IDENTIFIER.fullmatch(result):
         raise ValueError(f"{name} is invalid")
+    return result
+
+
+def _require_scope_id(value: object) -> str:
+    result = _require_string(value, name="scope id")
+    if (
+        len(result) > MAX_CAPABILITY_WORKER_IDENTIFIER_LENGTH
+        or not _OPAQUE_SCOPE.fullmatch(result)
+    ):
+        raise ValueError("scope id is invalid")
     return result
 
 
@@ -483,7 +714,9 @@ __all__ = [
     "CAPABILITY_WORKER_AUTHORITY_VERSION",
     "CAPABILITY_WORKER_BINDING_VERSION",
     "CAPABILITY_WORKER_DESCRIPTOR_VERSION",
+    "CAPABILITY_WORKER_FACET_GRANT_VERSION",
     "MAX_CAPABILITY_WORKER_DESCRIPTORS",
+    "MAX_CAPABILITY_WORKER_FACET_PAYLOAD_BYTES",
     "MAX_CAPABILITY_WORKER_FACETS_PER_DESCRIPTOR",
     "MAX_CAPABILITY_WORKER_IDENTIFIER_LENGTH",
     "CapabilityQueryWorkerAdapter",
@@ -492,5 +725,6 @@ __all__ = [
     "CapabilityWorkerAuthorityV1",
     "CapabilityWorkerBindingV1",
     "CapabilityWorkerDescriptorV1",
+    "CapabilityWorkerFacetGrantV1",
     "bind_capability_query_worker_adapter",
 ]

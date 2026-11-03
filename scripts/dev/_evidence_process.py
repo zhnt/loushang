@@ -13,6 +13,7 @@ import json
 import os
 import runpy
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,54 @@ def _send(process, message):
         process.stdin.flush()
         return True
     return False
+
+
+def _write_thread_diagnostic(result, unknown):
+    """Failure-only metadata from the decision's snapshot, never a new verdict."""
+    frames = sys._current_frames()
+    value = {"threads": [], "truncated": len(unknown) > 8}
+    for thread in unknown[:8]:
+        frame = frames.get(thread.ident)
+        item = dict(name=thread.name[:128], ident=thread.ident,
+                    native_id=thread.native_id, daemon=thread.daemon,
+                    frame_missing=frame is None, stack=[])
+        for _ in range(8):
+            if frame is None:
+                break
+            # Do not read locals, source lines, reprs or wait on a thread.
+            item["stack"].append(dict(file=frame.f_code.co_filename[-256:],
+                                      function=frame.f_code.co_name[:80], line=frame.f_lineno))
+            frame = frame.f_back
+        item["stack_truncated"] = frame is not None
+        value["threads"].append(item)
+    text = json.dumps(value)
+    while len(text.encode("utf-8")) > 65536:
+        value["threads"].pop()
+        value["truncated"] = True
+        text = json.dumps(value)
+    staged = result.with_suffix(".threads.pending")
+    staged.write_text(text, encoding="utf-8")
+    staged.replace(result.with_suffix(".threads"))
+
+
+def _attach_thread_diagnostic(error, result):
+    """Best effort, only after physical cleanup, before private-root removal."""
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(result.with_suffix(".threads"), flags)
+        with os.fdopen(descriptor, "rb") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                return
+            raw = stream.read(65537)
+        if len(raw) > 65536:
+            return
+        value = json.loads(raw)
+        if (type(value) is dict and set(value) == {"threads", "truncated"}
+                and type(value["threads"]) is list and type(value["truncated"]) is bool):
+            error.evidence_threads = value
+    except Exception:
+        # Diagnostic I/O cannot replace the original failure or delay release.
+        pass
 
 
 def _await_result(process, result, deadline, interrupted=None):
@@ -233,6 +282,7 @@ def _run_controller(argv, arguments, mode, *, cwd, environment, timeout, cleanup
                 while not interrupted.wait(0.1):
                     pass
         if failure is not None:
+            _attach_thread_diagnostic(failure, result)
             raise failure
         if status or leftovers:
             with suppress(OSError, ValueError):
@@ -241,7 +291,9 @@ def _run_controller(argv, arguments, mode, *, cwd, environment, timeout, cleanup
                     f"force_cleanup={forced}, job_active={state.get('active_before_cleanup')}",
                     file=sys.stderr, flush=True,
                 )
-            raise subprocess.CalledProcessError(status or 1, argv)
+            error = subprocess.CalledProcessError(status or 1, argv)
+            _attach_thread_diagnostic(error, result)
+            raise error
     finally:
         signal.signal(signal.SIGINT, previous)
 
@@ -336,10 +388,13 @@ def _child(result, arguments, *, python=False):
             with suppress(OSError, ValueError):
                 sys.stdout.flush()
                 sys.stderr.flush()
-            unsafe = any(thread not in {threading.current_thread(), reader}
-                         for thread in threading.enumerate())
+            unknown = [thread for thread in threading.enumerate()
+                       if thread not in {threading.current_thread(), reader}]
+            unsafe = bool(unknown)
             if unsafe:
                 code = code or 1
+                with suppress(Exception):
+                    _write_thread_diagnostic(result, unknown)
             staged = result.with_suffix(".pending")
             staged.write_text(json.dumps({"code": code, "force_cleanup": unsafe}))
             staged.replace(result)

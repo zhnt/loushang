@@ -239,6 +239,9 @@ def prepare_turn_aware_compaction(
         previous_summary=_previous_summary(entries, plan.previous_compaction_id),
         details={"compactionPlan": compaction_plan_to_json(plan)},
         plan=plan,
+        previous_provider_window=_previous_provider_window(
+            entries, plan.previous_compaction_id
+        ),
     )
 
 
@@ -336,6 +339,19 @@ def _previous_summary(
             entry.payload, ContextCompactionCheckpoint
         ):
             return entry.payload.summary
+    return None
+
+
+def _previous_provider_window(
+    entries: Sequence[AgentTranscriptRecord], previous_compaction_id: str | None
+):
+    if previous_compaction_id is None:
+        return None
+    for entry in entries:
+        if entry.record_id == previous_compaction_id and isinstance(
+            entry.payload, ContextCompactionCheckpoint
+        ):
+            return entry.payload.provider_window
     return None
 
 

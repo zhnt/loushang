@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
+from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 
@@ -23,6 +26,7 @@ from tests.coding.tui_support.runner import (
     run_playback_cli,
     run_playback_scenarios,
 )
+from tests.coding.tui_support.scenarios import multiagent as multiagent_scenarios
 from tests.coding.tui_support.scenarios.command import COMMAND_ROUTING_SCENARIOS
 from tests.coding.tui_support.scenarios.composer import COMPOSER_SCENARIOS
 from tests.coding.tui_support.scenarios.lifecycle import LIFECYCLE_SCENARIOS
@@ -200,7 +204,9 @@ def test_screen_tui_playback_runs_multiagent_topology_matrix(tmp_path) -> None:
         artifacts_dir=tmp_path,
     )
 
-    assert [result.ok for result in results] == [True] * len(names)
+    assert [result.ok for result in results] == [True] * len(names), [
+        (result.name, result.error) for result in results if not result.ok
+    ]
     for name in names:
         rows = [
             json.loads(line)
@@ -209,6 +215,46 @@ def test_screen_tui_playback_runs_multiagent_topology_matrix(tmp_path) -> None:
             .splitlines()
         ]
         assert any(row["layer"] == "topology" for row in rows)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "multiagent-shared-workspace",
+        "multiagent-isolated-artifact",
+        "multiagent-shared-parallel-writers",
+        "multiagent-child-approval",
+        "multiagent-concurrent-child-approval",
+    ],
+)
+def test_multiagent_playback_respects_configured_temp_root(
+    tmp_path, monkeypatch, name
+) -> None:
+    private_temp = tmp_path / "configured-temp"
+    private_temp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(private_temp))
+    original = multiagent_scenarios.TemporaryDirectory
+    created: list[Path] = []
+
+    @contextmanager
+    def record_temporary_directory(*args, **kwargs):
+        with original(*args, **kwargs) as directory:
+            path = Path(directory)
+            created.append(path)
+            assert path.parent == private_temp
+            yield directory
+
+    monkeypatch.setattr(
+        multiagent_scenarios, "TemporaryDirectory", record_temporary_directory
+    )
+
+    results = run_playback_scenarios([name])
+
+    assert [result.ok for result in results] == [True], [
+        result.error for result in results
+    ]
+    assert len(created) == 1
+    assert all(not path.exists() for path in created)
 
 
 def test_screen_tui_playback_runner_writes_layered_multiagent_diagnostics(
@@ -752,7 +798,7 @@ def test_screen_tui_playback_runner_writes_artifacts_for_all_default_scenarios(
     exit_code = run_playback_cli(["--artifacts", str(tmp_path), "--include-frames"])
 
     captured = capsys.readouterr()
-    assert exit_code == 0
+    assert exit_code == 0, (captured.out, captured.err)
     assert "PASS completion-tab" in captured.out
     assert "PASS escape-pending-steer" in captured.out
     assert "PASS running-follow-up-queued" in captured.out

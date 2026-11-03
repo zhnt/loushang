@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Collection, Mapping, Sequence
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from math import isfinite
 from pathlib import Path
 from typing import Any, Literal
 
@@ -16,6 +18,7 @@ from loushang.harness.resources._catalog_input_receipt import (
     CatalogPluginPackageInput,
     ResourceCatalogInputReceipt,
 )
+from loushang.harness.resources._catalog_preview_tasks import CatalogPreviewTaskScope
 from loushang.harness.resources._catalog_projection import ResourceCatalogProjection
 from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
@@ -27,6 +30,7 @@ from loushang.harness.resources.layout import (
 )
 from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.packages.source import PackageSourceConfig
+from loushang.harness.resources.plugins.revisions import VerifiedRevisionHandle
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
     PackageResourceSummary,
@@ -112,9 +116,15 @@ def _package_mounts_from_legacy_roots(
     )
 
 
-def _verify_package_mounts(mounts: Sequence[PackageResourceMount]) -> None:
+def _verify_package_mounts(
+    mounts: Sequence[PackageResourceMount], *, work_probe: Callable[[], None] | None = None,
+) -> None:
     for mount in mounts:
-        mount.verify()
+        if work_probe is not None:
+            work_probe()
+            mount.verify(work_probe=work_probe)
+        else:
+            mount.verify()
 
 
 @dataclass(frozen=True)
@@ -142,6 +152,29 @@ class ResourceLoaderProfile:
                 "user_resource_roots",
                 tuple(self.user_resource_roots),
             )
+
+
+@dataclass(frozen=True, slots=True)
+class _CatalogInputState:
+    package_mounts: tuple[PackageResourceMount, ...]
+    catalog_plugin_package_inputs: tuple[CatalogPluginPackageInput, ...]
+    user_resource_roots: tuple[Path, ...]
+    explicit_user_resource_roots: frozenset[Path]
+    additional_extension_paths: tuple[Path, ...]
+    additional_skill_paths: tuple[Path, ...]
+    additional_prompt_template_paths: tuple[Path, ...]
+    additional_theme_paths: tuple[Path, ...]
+    no_extensions: bool
+    no_skills: bool
+    no_prompt_templates: bool
+    no_themes: bool
+    no_context_files: bool
+    built_in_resource_packages: tuple[str, ...]
+    context_file_names: tuple[str, ...]
+    workspace_root: Path | None
+    project_resource_mode: Literal["standard", "legacy"]
+    system_prompt_source: str | None
+    append_system_prompt_sources: tuple[str, ...]
 
 
 class ResourceLoader:
@@ -180,6 +213,7 @@ class ResourceLoader:
             ResourceCatalogInputReceipt | None
         ) = None
         self._catalog_plugin_package_inputs: tuple[CatalogPluginPackageInput, ...] = ()
+        self._catalog_preview_tasks: CatalogPreviewTaskScope | None = None
         self._package_mounts = _package_mounts_from_legacy_roots(
             package_roots,
             package_source_filters,
@@ -366,35 +400,9 @@ class ResourceLoader:
         self._catalog_authority_selected = True
         self._catalog_inputs_pending = True
         self._initial_resource_catalog_input_receipt = None
-        _verify_package_mounts(self._package_mounts)
+        input_state = self._catalog_input_state()
+        receipt = self._compute_catalog_input_receipt(cwd)
         target = Path(cwd)
-        project_resource_root = (
-            resolve_workspace_resource_root(self._workspace_root or target)
-            if self._project_resource_mode == "standard"
-            else None
-        )
-        receipt = prepare_resource_catalog_input_receipt(
-            cwd=target,
-            project_resource_root=project_resource_root,
-            package_mounts=self._package_mounts,
-            catalog_plugin_package_inputs=self._catalog_plugin_package_inputs,
-            user_resource_roots=self._user_resource_roots,
-            explicit_user_resource_roots=self._explicit_user_resource_roots,
-            additional_extension_paths=self._additional_extension_paths,
-            additional_skill_paths=self._additional_skill_paths,
-            additional_prompt_template_paths=(
-                self._additional_prompt_template_paths
-            ),
-            additional_theme_paths=self._additional_theme_paths,
-            no_extensions=self._no_extensions,
-            no_skills=self._no_skills,
-            no_prompt_templates=self._no_prompt_templates,
-            no_themes=self._no_themes,
-            no_context_files=self._no_context_files,
-            built_in_resource_packages=self._built_in_resource_packages,
-            context_file_names=self._context_file_names,
-        )
-        _verify_package_mounts(self._package_mounts)
         self._resolved_system_prompt = _resolve_prompt_input(
             self._system_prompt_source,
             cwd=target,
@@ -404,6 +412,235 @@ class ResourceLoader:
             for source in self._append_system_prompt_sources
             if (resolved := _resolve_prompt_input(source, cwd=target)) is not None
         )
+        if self._catalog_input_state() != input_state:
+            raise ResourceLoaderCompatibilityError("catalog_preview_stale")
+        return receipt
+
+    def preview_catalog_input_receipt(
+        self, cwd: str | Path, *, work_probe: Callable[[], None] | None = None,
+    ) -> ResourceCatalogInputReceipt:
+        """Compute the ordinary Catalog source facts without choosing authority.
+
+        The caller may discard this result. It can contain borrowed Package
+        handles, so it must not be serialized into an activation Plan or used
+        as current authority. Formal preparation calls the same computation
+        and still owns any retained handles.
+
+        A work probe can enforce a caller's cooperative budget by raising a
+        non-OSError exception. Checkpoints cover phase boundaries, context
+        candidates, package and revision directory entries, Skill recursion,
+        and 64 KiB context, package-text, and revision-digest reads. Package
+        text capture is limited to 8 MiB total across mounts. These limits do
+        not supply a shared scheduler, task priority, or Session close settlement.
+        """
+
+        if self._legacy_authority_selected:
+            raise ResourceLoaderCompatibilityError(
+                "legacy_loader_cannot_preview_catalog_inputs"
+            )
+        if work_probe is not None and not callable(work_probe):
+            raise TypeError("Catalog preview work probe must be callable")
+        return self._compute_catalog_input_receipt(
+            cwd, work_probe=work_probe, package_text_byte_budget=8 * 1024 * 1024,
+        )
+
+    async def preview_catalog_input_fingerprint(
+        self, cwd: Path, *, subject_digest: str, policy_digest: str,
+        max_work_units: int, time_budget_seconds: float,
+        priority: Literal["foreground", "background"] = "background",
+    ) -> str:
+        """Share bounded native pure computation inside this Resource owner.
+
+        A waiter owns only its reference. The owner retains temporary read pins
+        through actual native completion. No receipt or live handle is returned.
+        Separate subject/policy domains never share a job. Foreground references
+        promote queued shared work. Distinct ResourceLoader instances on the same
+        loop share running work only when all captured input dependencies match.
+        """
+
+        if not isinstance(cwd, Path) or not cwd.is_absolute():
+            raise ValueError("Catalog background preview requires an absolute workspace")
+        for digest in (subject_digest, policy_digest):
+            if type(digest) is not str or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+                raise ValueError("Catalog background preview isolation digest is invalid")
+        if type(max_work_units) is not int or not 1 <= max_work_units <= 65536:
+            raise ValueError("Catalog background preview work budget is invalid")
+        if priority not in ("foreground", "background"):
+            raise ValueError("Catalog background preview priority is invalid")
+        if (
+            type(time_budget_seconds) not in (int, float)
+            or not isfinite(time_budget_seconds) or not 0 < time_budget_seconds <= 60
+        ):
+            raise ValueError("Catalog background preview time budget is invalid")
+        if self._legacy_authority_selected:
+            raise ResourceLoaderCompatibilityError("legacy_loader_cannot_preview_catalog_inputs")
+        if self._catalog_preview_tasks is None:
+            self._catalog_preview_tasks = CatalogPreviewTaskScope()
+        state = self._catalog_input_state()
+
+        def prepare() -> tuple[Callable[[Callable[[], None]], str], Callable[[], None]]:
+            captured, pins = self._capture_catalog_preview_state(state)
+
+            def compute(probe: Callable[[], None]) -> str:
+                probe()
+                receipt = ResourceLoader._compute_catalog_input_receipt_from_state(
+                    captured, cwd, work_probe=probe,
+                    package_text_byte_budget=8 * 1024 * 1024,
+                )
+                return receipt.input_fingerprint
+
+            return compute, lambda: self._release_catalog_preview_pins(pins)
+
+        fingerprint = await self._catalog_preview_tasks.run(
+            (cwd, subject_digest, policy_digest, state, max_work_units, time_budget_seconds),
+            prepare, max_work_units=max_work_units, time_budget_seconds=time_budget_seconds,
+            priority=priority,
+        )
+        if self._catalog_input_state() != state or self._legacy_authority_selected:
+            raise ResourceLoaderCompatibilityError("catalog_preview_stale")
+        return fingerprint
+
+    @staticmethod
+    def _release_catalog_preview_pins(pins: Sequence[VerifiedRevisionHandle]) -> None:
+        failure: BaseException | None = None
+        for pin in reversed(pins):
+            try:
+                pin.close()
+            except BaseException as error:
+                if failure is None:
+                    failure = error
+                else:
+                    failure.add_note(f"additional preview pin close failed: {type(error).__name__}")
+        if failure is not None:
+            raise failure
+
+    @staticmethod
+    def _capture_catalog_preview_state(
+        state: _CatalogInputState,
+    ) -> tuple[_CatalogInputState, list[VerifiedRevisionHandle]]:
+        if len(state.package_mounts) > 64:
+            raise ResourceLoaderCompatibilityError("catalog_preview_pin_capacity_exceeded")
+        pins: dict[int, VerifiedRevisionHandle] = {}
+        try:
+            mounts = []
+            for mount in state.package_mounts:
+                handle = mount.revision_handle
+                if handle is None:
+                    mounts.append(mount)
+                    continue
+                if id(handle) not in pins:
+                    pins[id(handle)] = handle.acquire_readonly_capture()
+                mounts.append(replace(mount, revision_handle=pins[id(handle)]))
+            packages = tuple(
+                replace(item, package=replace(
+                    item.package, revision_handle=pins[id(item.package.revision_handle)],
+                ))
+                for item in state.catalog_plugin_package_inputs
+            )
+            return replace(state, package_mounts=tuple(mounts), catalog_plugin_package_inputs=packages), list(pins.values())
+        except BaseException:
+            ResourceLoader._release_catalog_preview_pins(list(pins.values()))
+            raise
+
+    async def close_catalog_preview_tasks(self) -> None:
+        """Fence and join native computation before the existing owner closes."""
+
+        if self._catalog_preview_tasks is not None:
+            await self._catalog_preview_tasks.close()
+
+    async def aclose(self) -> None:
+        try:
+            await self.close_catalog_preview_tasks()
+        finally:
+            self.close()
+
+    def _catalog_input_state(self) -> _CatalogInputState:
+        return _CatalogInputState(
+            package_mounts=self._package_mounts,
+            catalog_plugin_package_inputs=self._catalog_plugin_package_inputs,
+            user_resource_roots=self._user_resource_roots,
+            explicit_user_resource_roots=frozenset(
+                self._explicit_user_resource_roots
+            ),
+            additional_extension_paths=self._additional_extension_paths,
+            additional_skill_paths=self._additional_skill_paths,
+            additional_prompt_template_paths=self._additional_prompt_template_paths,
+            additional_theme_paths=self._additional_theme_paths,
+            no_extensions=self._no_extensions,
+            no_skills=self._no_skills,
+            no_prompt_templates=self._no_prompt_templates,
+            no_themes=self._no_themes,
+            no_context_files=self._no_context_files,
+            built_in_resource_packages=self._built_in_resource_packages,
+            context_file_names=self._context_file_names,
+            workspace_root=self._workspace_root,
+            project_resource_mode=self._project_resource_mode,
+            system_prompt_source=self._system_prompt_source,
+            append_system_prompt_sources=self._append_system_prompt_sources,
+        )
+
+    def _compute_catalog_input_receipt(
+        self, cwd: str | Path, *, work_probe: Callable[[], None] | None = None,
+        package_text_byte_budget: int | None = None,
+    ) -> ResourceCatalogInputReceipt:
+        state = self._catalog_input_state()
+        receipt = self._compute_catalog_input_receipt_from_state(
+            state, cwd, work_probe=work_probe,
+            package_text_byte_budget=package_text_byte_budget,
+        )
+        if self._catalog_input_state() != state:
+            raise ResourceLoaderCompatibilityError("catalog_preview_stale")
+        return receipt
+
+    @staticmethod
+    def _compute_catalog_input_receipt_from_state(
+        state: _CatalogInputState, cwd: str | Path, *,
+        work_probe: Callable[[], None] | None = None,
+        package_text_byte_budget: int | None = None,
+    ) -> ResourceCatalogInputReceipt:
+        """Use the same source computation on a captured input state."""
+
+        if work_probe is not None:
+            work_probe()
+        if work_probe is None:
+            _verify_package_mounts(state.package_mounts)
+        else:
+            _verify_package_mounts(state.package_mounts, work_probe=work_probe)
+        target = Path(cwd)
+        project_resource_root = (
+            resolve_workspace_resource_root(state.workspace_root or target)
+            if state.project_resource_mode == "standard"
+            else None
+        )
+        receipt = prepare_resource_catalog_input_receipt(
+            cwd=target,
+            project_resource_root=project_resource_root,
+            package_mounts=state.package_mounts,
+            catalog_plugin_package_inputs=state.catalog_plugin_package_inputs,
+            user_resource_roots=state.user_resource_roots,
+            explicit_user_resource_roots=state.explicit_user_resource_roots,
+            additional_extension_paths=state.additional_extension_paths,
+            additional_skill_paths=state.additional_skill_paths,
+            additional_prompt_template_paths=(
+                state.additional_prompt_template_paths
+            ),
+            additional_theme_paths=state.additional_theme_paths,
+            no_extensions=state.no_extensions,
+            no_skills=state.no_skills,
+            no_prompt_templates=state.no_prompt_templates,
+            no_themes=state.no_themes,
+            no_context_files=state.no_context_files,
+            built_in_resource_packages=state.built_in_resource_packages,
+            context_file_names=state.context_file_names,
+            work_probe=work_probe,
+            package_text_byte_budget=package_text_byte_budget,
+        )
+        if work_probe is not None:
+            work_probe()
+        if work_probe is None:
+            _verify_package_mounts(state.package_mounts)
+        else:
+            _verify_package_mounts(state.package_mounts, work_probe=work_probe)
         return receipt
 
     def create_catalog_session_view(self) -> CatalogSessionResourceLoaderView:
@@ -510,6 +747,8 @@ class ResourceLoader:
         self._catalog_inputs_pending = projection is None
 
     def close(self) -> None:
+        if self._catalog_preview_tasks is not None and not self._catalog_preview_tasks.fence():
+            raise ResourceLoaderCompatibilityError("catalog_preview_settlement_pending")
         self._initial_resource_catalog_input_receipt = None
         closed: set[int] = set()
         for mount in self._package_mounts:
@@ -705,6 +944,8 @@ class CatalogSessionResourceLoaderView(ResourceLoader):
         self._catalog_inputs_pending = True
         self._catalog_authority_selected = True
         self._legacy_authority_selected = False
+        self._catalog_preview_waiters: set[asyncio.Task[str]] = set()
+        self._catalog_preview_closed = False
 
     @property
     def input_loader(self) -> ResourceLoader:
@@ -786,10 +1027,65 @@ class CatalogSessionResourceLoaderView(ResourceLoader):
     ) -> ResourceCatalogInputReceipt:
         return self._source_loader.prepare_catalog_input_receipt(cwd)
 
+    def preview_catalog_input_receipt(
+        self, cwd: str | Path, *, work_probe: Callable[[], None] | None = None,
+    ) -> ResourceCatalogInputReceipt:
+        return self._source_loader.preview_catalog_input_receipt(cwd, work_probe=work_probe)
+
     def _take_initial_resource_catalog_input_receipt(
         self,
     ) -> ResourceCatalogInputReceipt:
         return self._source_loader._take_initial_resource_catalog_input_receipt()
+
+    async def preview_catalog_input_fingerprint(
+        self, cwd: Path, *, subject_digest: str, policy_digest: str,
+        max_work_units: int, time_budget_seconds: float,
+        priority: Literal["foreground", "background"] = "background",
+    ) -> str:
+        """Own one cancellable reference to the shared source computation."""
+
+        if self._catalog_preview_closed:
+            raise ResourceLoaderCompatibilityError("catalog_preview_view_closed")
+        if len(self._catalog_preview_waiters) >= 64:
+            raise ResourceLoaderCompatibilityError("catalog_preview_view_capacity_exceeded")
+        waiter = asyncio.create_task(self._source_loader.preview_catalog_input_fingerprint(
+            cwd, subject_digest=subject_digest, policy_digest=policy_digest,
+            max_work_units=max_work_units, time_budget_seconds=time_budget_seconds,
+            priority=priority,
+        ))
+        self._catalog_preview_waiters.add(waiter)
+        try:
+            result = await waiter
+            if self._catalog_preview_closed:
+                raise ResourceLoaderCompatibilityError("catalog_preview_view_closed")
+            return result
+        finally:
+            self._catalog_preview_waiters.discard(waiter)
+
+    async def close_catalog_preview_tasks(self) -> None:
+        """Release local references; the shared owner settles native work."""
+
+        self._catalog_preview_closed = True
+        waiters = tuple(self._catalog_preview_waiters)
+        for waiter in waiters:
+            waiter.cancel()
+        cancellation: asyncio.CancelledError | None = None
+        settlement = asyncio.gather(*waiters, return_exceptions=True)
+        while not settlement.done():
+            try:
+                await asyncio.shield(settlement)
+            except asyncio.CancelledError as error:
+                cancellation = error
+        if cancellation is not None:
+            raise cancellation
+
+    async def aclose(self) -> None:
+        """Close the local projection without fencing the shared source owner."""
+
+        try:
+            await self.close_catalog_preview_tasks()
+        finally:
+            self.close()
 
     @property
     def _package_roots(self) -> tuple[Path, ...]:
@@ -811,6 +1107,9 @@ class CatalogSessionResourceLoaderView(ResourceLoader):
     def close(self) -> None:
         """Release only this view; the shared input loader owns source leases."""
 
+        self._catalog_preview_closed = True
+        for waiter in tuple(self._catalog_preview_waiters):
+            waiter.cancel()
         self._catalog_projection = None
         self._catalog_inputs_pending = True
 

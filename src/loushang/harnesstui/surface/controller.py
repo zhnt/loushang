@@ -26,6 +26,7 @@ ApprovalOutcome = Literal[
 ]
 SurfaceEventSource = Literal[
     "model",
+    "reasoning",
     "command",
     "settings",
     "session",
@@ -312,6 +313,12 @@ def normalize_surface_intent(
         return SurfaceEvent(
             kind="surface_submit",
             source="model",
+            payload=intent.text,
+        )
+    if surface.purpose == "reasoning" and intent.kind in {"command", "select"}:
+        return SurfaceEvent(
+            kind="surface_submit",
+            source="reasoning",
             payload=intent.text,
         )
     if surface.purpose == "command" and intent.kind in {"command", "select"}:

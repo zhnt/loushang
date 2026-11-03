@@ -6,10 +6,13 @@ import pytest
 
 import loushang.ai.provider.runtime as runtime_module
 from loushang.ai.context import NormalizedContext
-from loushang.ai.errors import AIProviderProtocolError, AITimeoutError
+from loushang.ai.errors import AICancelledError, AIProviderProtocolError, AITimeoutError
 from loushang.ai.model import Auth, Model
 from loushang.ai.options import CallOptions, RetryOptions
-from loushang.ai.prepared_request import PreparedModelCallAttemptUsage
+from loushang.ai.prepared_request import (
+    PreparedModelCallAttemptUsage,
+    PreparedModelCallOutcome,
+)
 from loushang.ai.protocols.anthropic_messages import AnthropicMessagesAdapter
 from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
 from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
@@ -63,6 +66,28 @@ class _AttemptUsageRecorder:
     ) -> bool:
         self.observations.append(usage)
         return True
+
+
+class _BlockingOutcomeRecorder:
+    def __init__(self) -> None:
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+        self.cancelled = False
+        self.outcomes: list[PreparedModelCallOutcome] = []
+
+    async def commit_prepared_request(self, request: object) -> None:
+        del request
+
+    async def record_model_call_outcome(
+        self, outcome: PreparedModelCallOutcome
+    ) -> None:
+        self.entered.set()
+        try:
+            await self.release.wait()
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        self.outcomes.append(outcome)
 
 
 @pytest.mark.parametrize(
@@ -135,6 +160,55 @@ def test_provider_runtime_records_only_observed_terminal_attempt_usage() -> None
     assert observed[0].usage.total_tokens == 15
     assert observed[0].terminal is True
     assert absent == []
+
+
+def test_provider_runtime_uses_one_terminal_recording_call_when_supported() -> None:
+    class CombinedRecorder:
+        def __init__(self) -> None:
+            self.calls: list[tuple[PreparedModelCallOutcome, bool]] = []
+
+        async def commit_prepared_request(self, request: object) -> None:
+            del request
+
+        async def record_terminal_model_call(
+            self, outcome: PreparedModelCallOutcome, *, usage_observed: bool
+        ) -> None:
+            self.calls.append((outcome, usage_observed))
+
+        async def record_prepared_model_call_attempt_usage(
+            self, usage: PreparedModelCallAttemptUsage
+        ) -> bool:
+            raise AssertionError("terminal usage must be part of the combined call")
+
+        async def record_model_call_outcome(
+            self, outcome: PreparedModelCallOutcome
+        ) -> None:
+            raise AssertionError("outcome must be part of the combined call")
+
+    async def scenario(include_usage: bool) -> CombinedRecorder:
+        recorder = CombinedRecorder()
+
+        async def parts():
+            yield {"type": "response_start", "response_id": "combined-response"}
+            if include_usage:
+                yield {"type": "usage_delta", "input": 10, "output": 2}
+            yield {"type": "response_done"}
+
+        stream = start_provider_runtime(
+            parts,
+            options=CallOptions(prepared_request_committer=recorder),
+            request=_request(),
+            invocation_id="combined-invocation",
+        )
+        await stream.result()
+        return recorder
+
+    with_usage = asyncio.run(scenario(True))
+    without_usage = asyncio.run(scenario(False))
+    assert len(with_usage.calls) == len(without_usage.calls) == 1
+    assert with_usage.calls[0][1] is True
+    assert without_usage.calls[0][1] is False
+    assert with_usage.calls[0][0].invocation_id == "combined-invocation"
 
 
 def test_provider_runtime_rejects_source_without_terminal_part() -> None:
@@ -219,8 +293,8 @@ def test_provider_runtime_converts_adapter_exceptions_to_error_events() -> None:
     events = asyncio.run(_run())
 
     assert [event["type"] for event in events] == ["error"]
-    assert events[0]["error"].error_message == "Provider request failed."
-    assert events[0]["error_info"]["message"] == "Provider request failed."
+    assert events[0]["error"].error_message == "Provider request failed (RuntimeError)."
+    assert events[0]["error_info"]["message"] == "Provider request failed (RuntimeError)."
     assert events[0]["error_info"]["provider"] == "provider-a"
     assert events[0]["error_info"]["endpoint"] == "openai-responses"
     assert events[0]["error_info"]["model"] == "model-a"
@@ -507,8 +581,7 @@ def test_provider_runtime_emits_error_trace_for_terminal_error() -> None:
         "requestId": "req_401",
         "exceptionType": "_HTTPError",
         "providerResponseSummary": (
-            '{"error":{"type":"authentication_error",'
-            '"message":"bad token=[REDACTED]"}}'
+            '{"error":{"type":"authentication_error","message":"bad token=[REDACTED]"}}'
         ),
     }
     assert "provider_response_summary" not in events[0]
@@ -808,6 +881,131 @@ def test_provider_runtime_cancellation_signal_aborts_and_closes_source() -> None
         "model": "model-a",
         "reason": "cancelled",
     }
+
+
+@pytest.mark.parametrize("combined", [False, True])
+def test_terminal_outcome_recording_survives_consumer_cancellation(
+    combined: bool,
+) -> None:
+    class CombinedBlockingRecorder(_BlockingOutcomeRecorder):
+        async def record_terminal_model_call(
+            self, outcome: PreparedModelCallOutcome, *, usage_observed: bool
+        ) -> None:
+            assert usage_observed is False
+            await self.record_model_call_outcome(outcome)
+
+    source = _BlockingRawSource()
+    recorder = CombinedBlockingRecorder() if combined else _BlockingOutcomeRecorder()
+
+    async def _run() -> None:
+        signal = asyncio.Event()
+        stream = start_provider_runtime(
+            lambda: source,
+            options=CallOptions(
+                cancellation=signal,
+                prepared_request_committer=recorder,
+            ),
+            request=_request(),
+            invocation_id="cancelled-invocation",
+        )
+        result = asyncio.create_task(stream.result())
+        await asyncio.wait_for(source.next_started.wait(), timeout=1)
+        signal.set()
+        await asyncio.wait_for(recorder.entered.wait(), timeout=1)
+        result.cancel()
+        await asyncio.sleep(0)
+        assert not recorder.cancelled
+        recorder.release.set()
+        with pytest.raises(AICancelledError):
+            await result
+        await asyncio.wait_for(source.closed.wait(), timeout=1)
+
+    asyncio.run(_run())
+
+    assert recorder.cancelled is False
+    assert len(recorder.outcomes) == 1
+    assert recorder.outcomes[0].invocation_id == "cancelled-invocation"
+    assert recorder.outcomes[0].disposition == "cancelled"
+
+
+def test_cancellation_settlement_survives_consumer_cancel_during_flush(
+    monkeypatch,
+) -> None:
+    source = _BlockingRawSource()
+    recorder = _BlockingOutcomeRecorder()
+    flush_entered = asyncio.Event()
+    flush_release = asyncio.Event()
+    original_flush = runtime_module._flush_pending
+
+    async def held_flush(assembler, pending) -> None:
+        flush_entered.set()
+        await flush_release.wait()
+        await original_flush(assembler, pending)
+
+    monkeypatch.setattr(runtime_module, "_flush_pending", held_flush)
+
+    async def _run() -> None:
+        signal = asyncio.Event()
+        recorder.release.set()
+        stream = start_provider_runtime(
+            lambda: source,
+            options=CallOptions(
+                cancellation=signal,
+                prepared_request_committer=recorder,
+            ),
+            request=_request(),
+            invocation_id="flush-cancelled-invocation",
+        )
+        result = asyncio.create_task(stream.result())
+        await asyncio.wait_for(source.next_started.wait(), timeout=1)
+        signal.set()
+        await asyncio.wait_for(flush_entered.wait(), timeout=1)
+        result.cancel()
+        await asyncio.sleep(0)
+        assert not result.done()
+        flush_release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await result
+        await asyncio.wait_for(source.closed.wait(), timeout=1)
+
+    asyncio.run(_run())
+
+    assert recorder.cancelled is False
+    assert len(recorder.outcomes) == 1
+    assert recorder.outcomes[0].invocation_id == "flush-cancelled-invocation"
+    assert recorder.outcomes[0].disposition == "cancelled"
+
+
+def test_direct_consumer_cancellation_records_terminal_outcome_before_propagation() -> (
+    None
+):
+    source = _BlockingRawSource()
+    recorder = _BlockingOutcomeRecorder()
+
+    async def _run() -> None:
+        stream = start_provider_runtime(
+            lambda: source,
+            options=CallOptions(prepared_request_committer=recorder),
+            request=_request(),
+            invocation_id="direct-cancelled-invocation",
+        )
+        result = asyncio.create_task(stream.result())
+        await asyncio.wait_for(source.next_started.wait(), timeout=1)
+        result.cancel()
+        await asyncio.wait_for(recorder.entered.wait(), timeout=1)
+        assert not result.done()
+        assert not recorder.cancelled
+        recorder.release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await result
+        await asyncio.wait_for(source.closed.wait(), timeout=1)
+
+    asyncio.run(_run())
+
+    assert recorder.cancelled is False
+    assert len(recorder.outcomes) == 1
+    assert recorder.outcomes[0].invocation_id == "direct-cancelled-invocation"
+    assert recorder.outcomes[0].disposition == "cancelled"
 
 
 def test_provider_runtime_consumer_close_closes_source_without_leaking_task() -> None:

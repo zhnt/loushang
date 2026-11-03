@@ -17,6 +17,58 @@
   route opts into G16 client scopes, without changing default or G14 behavior
 - Owner: Loushang AppService architecture
 
+Accepted amendment: [ARD-020](../decisions/accepted/ARD-020-hosted-goal-budget-and-observation.md)
+and the [Coding budget/observation design](../coding/key-designs/hosted-goal-budget-observation.md)
+add an optional scoped progress view while retaining full query/wait semantics.
+R1 was accepted on 2026-11-02; original scope, owner and revocation checks remain
+authoritative. Local implementation evidence is linked from the Coding design.
+
+## Accepted Resume Contract
+
+AppService retains attachment, controller, and execution ownership and consumes a narrow Product readiness and durable-input lookup port. It does not own a second preparation queue.
+
+The project owner accepted the cross-scope #696 boundaries on 2026-10-12:
+[ARD-004](../decisions/accepted/ARD-004-resume-history-and-current-authority.md),
+[ARD-005](../decisions/accepted/ARD-005-resume-continuation-commit.md), and
+[ARD-006](../decisions/accepted/ARD-006-hosted-resume-readiness-and-admission.md).
+The [Delta ledger](../current-target-gap-ledger.md) records remaining work;
+acceptance does not establish writable release or performance readiness.
+
+The original scoped client can observe a Resume subject with
+`resume_subject_digest` and revalidate it synchronously with
+`require_current_resume_subject`. These entries check the owning client scope,
+live attachment/controller generation, canonical member and Session, and the
+original Session's accepting state. The bounded fingerprint includes the native
+execution application's service instance and exact target scope. An absent
+execution instance is unavailable. Observation does not select an execution
+port, bind an execution, invoke Product code or reserve accepted work.
+
+This dependency observation is not a Product permission, Approval fact or
+effect-settlement receipt. A Product borrower must supply its exact target
+Session and recheck the same native owner at mutation boundaries. Coding can
+bind this owner selection into its original exact Approval request; controller
+takeover or dropping the selected owner cannot reuse that fact. Default Hosted
+Resume activation and the remaining admission/effect producers still require
+integration under ARD-006.
+
+The selected scoped execution submit and registry-backed legacy turn routes
+carry the original scope, control request and observed fingerprint into the
+task created by the existing execution registry. Stable submit also carries
+its original submission ID; legacy Ack has no stable ID. The caller resets
+this task-local borrow after admission or settlement. Product access rechecks
+the original live owner, so takeover invalidates Resume borrowing while the
+registry continues to own and settle previously accepted ordinary work.
+The optional functions bind to the same scope instance; they keep no separate
+controller table, execution ledger or permission state. Coding consumes the
+borrow at its existing optional Hosted execution bridge.
+
+`SessionSnapshotV1.submission_mode` selects the client delivery contract for
+that exact binding. Ordinary Sessions default to `legacy` and serialize with
+the original snapshot fields. Resume bindings under the explicit execution
+profile serialize the optional `submissionMode: execution` field, allowing
+reattached clients to use the stable submission ledger without probing the
+wait-until-complete legacy operation.
+
 ## Purpose
 
 AppService is the transport-neutral hosted application boundary over injected

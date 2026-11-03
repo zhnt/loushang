@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from secrets import token_hex
 from typing import Protocol, cast
 
@@ -55,11 +55,14 @@ from loushang.appservice.discovery_ports import (
     require_discovery_context,
 )
 from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
+from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.appservice.ports import (
     HostedSessionResolutionErrorV1,
     HostedSessionResolutionFailureV1,
 )
 
+from ._hosted_goal_config import HostedGoalSetup
+from ._hosted_method_config import CodingHostedMethodV1
 from .appservice_adapter import (
     CodingHostedEventProjectionV1,
     CodingHostedSessionBindingV1,
@@ -69,6 +72,7 @@ from .appservice_adapter import (
 from .product_plan import CODING_PRODUCT_ID
 
 CODING_HOSTED_APPLICATION_PROFILE_ID = "coding.hosted-mux"
+CODING_MANAGED_APPLICATION_PROFILE_ID = "coding.managed-mux"
 CODING_HOSTED_APPLICATION_PROFILE_VERSION = "1"
 CODING_HOSTED_APPLICATION_MAX_CANDIDATES = 256
 
@@ -85,6 +89,14 @@ class CodingForegroundSessionFactoryV1(Protocol):
         binding_key: SessionBindingKeyV1,
         opaque_session_binding: object,
     ) -> CodingHostedSessionBindingV1: ...
+
+
+class CodingHostedSessionOwnerV1(Protocol):
+    """Product-selected catalog resources, separate from delivered Sessions."""
+
+    def fence(self) -> None: ...
+
+    async def close(self) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,8 +125,36 @@ class CodingForegroundHostedApplicationRequestV1:
     discovery: HostedSessionDiscoveryBindingV1 | None = field(default=None, repr=False)
     admitted_scopes: tuple[HostedSessionDiscoveryScopeV1, ...] | None = None
     execution: HostedExecutionServiceBindingV1 | None = field(default=None, repr=False)
+    method: CodingHostedMethodV1 | None = field(default=None, repr=False, kw_only=True)
+    goal: HostedGoalSetup | None = field(default=None, repr=False, kw_only=True)
+    session_owner: CodingHostedSessionOwnerV1 | None = field(default=None, repr=False)
+    managed_selection: bool = False
+    managed_mux: ManagedMuxServiceBindingV1 | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
+        if self.method is not None and (type(self.method) is not CodingHostedMethodV1
+                or self.execution is None or self.execution.select_work_port is None):
+            raise ValueError("hosted Method requires its explicit execution capability")
+        if self.method is None and self.execution is not None and self.execution.select_work_port is not None:
+            raise ValueError("Work capability requires a fixed hosted Method")
+        if self.goal is not None and (type(self.goal) is not HostedGoalSetup or self.method is not None
+                or self.execution is None or self.execution.select_goal_port is None):
+            raise ValueError("hosted Goal requires its exclusive execution capability")
+        if self.goal is None and self.execution is not None and self.execution.select_goal_port is not None:
+            raise ValueError("Goal capability requires fixed hosted Goal configuration")
+        _require_managed_selection(self.managed_selection, self.sessions, self.profile_id, self.admitted_scopes)
+        if self.managed_selection and self.session_owner is not self.sessions:
+            raise ValueError("managed Session catalog must retain its shutdown owner")
+        if self.managed_selection and self.execution is not None:
+            raise ValueError("managed selection execution adapter is not admitted")
+        if self.managed_mux is not None and (type(self.managed_mux) is not ManagedMuxServiceBindingV1
+                                            or not self.managed_selection):
+            raise ValueError("managed Mux requires managed Coding selection")
+        if self.session_owner is not None:
+            _require_async_method(self.session_owner, "close")
+            fence = inspect.getattr_static(type(self.session_owner), "fence", None)
+            if not callable(fence) or inspect.iscoroutinefunction(fence):
+                raise TypeError("invalid Coding Session owner fence")
         require_discovery_context(self.discovery, CODING_PRODUCT_ID, self.generation_id)
         if self.execution is not None and type(self.execution) is not HostedExecutionServiceBindingV1:
             raise TypeError("invalid Coding execution activation")
@@ -237,13 +277,15 @@ class _ForegroundProductRuntime:
 class CodingForegroundProductFactoryV1:
     """Create foreground Product Sessions without a Hosting/Worker owner."""
 
-    __slots__ = ("_active", "_create_session", "_debt")
+    __slots__ = ("_active", "_create_session", "_debt", "_session_factory", "_session_owner")
 
-    def __init__(self, factory: CodingForegroundSessionFactoryV1) -> None:
+    def __init__(self, factory: CodingForegroundSessionFactoryV1, *, session_owner: CodingHostedSessionOwnerV1 | None = None) -> None:
         _require_async_method(factory, "create_session")
         self._create_session = factory.create_session
+        self._session_factory = factory
         self._active: set[_ForegroundSessionOwner] = set()
         self._debt: set[_ForegroundSessionOwner] = set()
+        self._session_owner = session_owner
 
     async def create_runtime(
         self,
@@ -288,7 +330,29 @@ class CodingForegroundProductFactoryV1:
             raise RuntimeError("coding_foreground_cleanup_incomplete")
 
     async def close(self) -> None:
-        await self.settle_pending_cleanup()
+        failures: list[Exception] = []
+        if self._session_owner is not None:
+            try:
+                self._session_owner.fence()
+            except Exception as error:
+                failures.append(error)
+        try:
+            await self.settle_pending_cleanup()
+        except Exception as error:
+            failures.append(error)
+        if self._session_owner is not None:
+            try:
+                await self._session_owner.close()
+            except Exception as error:
+                failures.append(error)
+        close_factory = getattr(self._session_factory, "close", None)
+        if inspect.iscoroutinefunction(close_factory):
+            try:
+                await close_factory()
+            except Exception as error:
+                failures.append(error)
+        if failures:
+            raise failures[0]
 
     async def _settle_unpublished(self, owner: _ForegroundSessionOwner) -> None:
         try:
@@ -344,6 +408,10 @@ class CodingHostedProfileFactoryV1:
         if type(key) is not SessionBindingKeyV1:
             raise RuntimeError("coding_hosted_profile_invalid")
         _validate_hosted_binding(binding, key)
+        from .hosted_session import CodingRealHostedSessionV1
+
+        if type(binding) is CodingRealHostedSessionV1 and binding.execution_claimed:
+            raise RuntimeError("Coding Session already has an execution owner")
         return _HostedProfileLease(
             self._profile_id,
             cast(CodingHostedSessionBindingV1, binding),
@@ -361,6 +429,7 @@ class _LeasedCodingHostedBinding:
         "_lease_closed",
         "_runtime",
         "_runtime_closed",
+        "_identity",
     )
 
     def __init__(
@@ -369,10 +438,12 @@ class _LeasedCodingHostedBinding:
         runtime: AppHostRuntimeV1,
         lease: AppHostSessionLeaseV1,
         binding: CodingHostedSessionBindingV1,
+        identity: SessionIdentityV1 | None = None,
     ) -> None:
         self._runtime = runtime
         self._lease = lease
         self._binding = binding
+        self._identity = identity
         self._lease_closed = False
         self._runtime_closed = False
         self._close_lock = asyncio.Lock()
@@ -380,7 +451,7 @@ class _LeasedCodingHostedBinding:
 
     @property
     def identity(self) -> SessionIdentityV1:
-        return self._binding.identity
+        return self._binding.identity if self._identity is None else self._identity
 
     @property
     def control(self):  # type: ignore[no-untyped-def]
@@ -418,7 +489,7 @@ class _LeasedCodingHostedBinding:
 class CodingAppHostHostedSessionResolverV1:
     """Resolve G11 Session requests exclusively through canonical AppHost routes."""
 
-    __slots__ = ("_operation_id", "_profile_id", "_runtime", "_sessions", "_scopes", "_execution")
+    __slots__ = ("_operation_id", "_profile_id", "_runtime", "_sessions", "_scopes", "_execution", "_managed_selection", "_method", "_method_used", "_goal")
 
     def __init__(
         self,
@@ -429,14 +500,26 @@ class CodingAppHostHostedSessionResolverV1:
         operation_id_factory: Callable[[], str],
         admitted_scopes: tuple[HostedSessionDiscoveryScopeV1, ...] | None = None,
         execution: bool = False,
+        method: CodingHostedMethodV1 | None = None,
+        goal: HostedGoalSetup | None = None,
+        managed_selection: bool = False,
     ) -> None:
         if type(runtime) is not AppHostRuntimeV1:
             raise TypeError("Coding hosted resolver AppHost Runtime is invalid")
         if not callable(operation_id_factory):
             raise TypeError("Coding hosted resolver operation factory is invalid")
         require_admitted_scopes(admitted_scopes, CODING_PRODUCT_ID)
+        _require_managed_selection(managed_selection, sessions, profile_id, admitted_scopes)
+        self._managed_selection = managed_selection
         if type(execution) is not bool:
             raise TypeError("invalid Coding execution activation")
+        if managed_selection and execution:
+            raise ValueError("managed selection execution adapter is not admitted")
+        if method is not None and (type(method) is not CodingHostedMethodV1 or not execution):
+            raise ValueError("invalid hosted Method resolver configuration")
+        self._goal = goal
+        self._method = method
+        self._method_used = False
         self._execution = execution
         self._runtime = runtime
         self._sessions = sessions
@@ -453,22 +536,60 @@ class CodingAppHostHostedSessionResolverV1:
             request.product_id, request.scope, request.scope_fingerprint,
         ) not in self._scopes:
             raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.UNAVAILABLE)
-        lease = (
-            await self._attach_create(request)
-            if request.session_id is None
-            else await self._attach_resume(request)
-        )
+        if self._method is not None or self._goal is not None:
+            if request.session_id is not None or self._method_used:
+                raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.UNAVAILABLE)
+            self._method_used = True
+        try:
+            lease = (
+                await self._attach_create(request)
+                if request.session_id is None
+                else await self._attach_resume(request)
+            )
+        except BaseException:
+            self._method_used = False
+            raise
+        from .hosted_session import CodingRealHostedSessionV1
+
+        existing = lease.profile_binding
+        if type(existing) is CodingRealHostedSessionV1 and existing.execution_claimed:
+            # Detach only this rejected lease; never close the original owner.
+            await lease.close()
+            raise ValueError("Coding Session already has an execution owner")
         wrapper: _LeasedCodingHostedBinding | None = None
         try:
             binding = lease.profile_binding
             _validate_hosted_binding(binding, lease.binding_key)
+            identity = cast(CodingHostedSessionBindingV1, binding).identity
+            if self._managed_selection:
+                if (identity.product_id != request.product_id
+                        or identity.continuity_id != request.continuity_id
+                        or (request.session_id is not None and identity.session_id != request.session_id)):
+                    raise ValueError("managed canonical identity mismatch")
+                # Only the lease's wire view changes. Catalog admission already
+                # validated selection scope; Product/runtime/writer identities
+                # and the original header remain canonical.
+                identity = replace(identity, scope=request.scope, scope_fingerprint=request.scope_fingerprint)
             wrapper = _LeasedCodingHostedBinding(
                 runtime=self._runtime,
                 lease=lease,
                 binding=cast(CodingHostedSessionBindingV1, binding),
+                identity=identity if self._managed_selection else None,
             )
             if not _identity_matches_open(request, wrapper.identity):
                 raise ValueError("Coding hosted binding identity mismatch")
+            if self._goal is not None:
+                from .hosted_goal import CodingHostedGoalSessionV1
+
+                if type(binding) is not CodingRealHostedSessionV1:
+                    raise TypeError("hosted Goal requires a fresh Coding Session")
+                return CodingHostedGoalSessionV1(binding, self._goal, owner=wrapper)
+            if self._method is not None:
+                from .hosted_method import CodingHostedMethodSessionV1
+
+                if type(binding) is not CodingRealHostedSessionV1:
+                    raise TypeError("hosted Method requires a fresh Coding Session")
+                return CodingHostedMethodSessionV1(binding, self._method, owner=wrapper)
             if self._execution:
                 from .hosted_execution import create_leased_coding_execution_session
 
@@ -479,6 +600,7 @@ class CodingAppHostHostedSessionResolverV1:
                 await wrapper.close()
             else:
                 await _close_rejected_lease(self._runtime, lease)
+            self._method_used = False
             raise
 
     async def _attach_create(
@@ -543,7 +665,9 @@ async def create_coding_foreground_hosted_application(
 
     if type(request) is not CodingForegroundHostedApplicationRequestV1:
         raise TypeError("Coding foreground hosted application request is invalid")
-    product_factory = CodingForegroundProductFactoryV1(request.session_factory)
+    if request.managed_mux is not None:
+        raise ValueError("managed Mux requires Coding application continuity")
+    product_factory = CodingForegroundProductFactoryV1(request.session_factory, session_owner=request.session_owner)
     catalog: AppHostCatalogV1 | None = None
     runtime: AppHostRuntimeV1 | None = None
     try:
@@ -563,6 +687,9 @@ async def create_coding_foreground_hosted_application(
             operation_id_factory=request.operation_id_factory,
             admitted_scopes=request.admitted_scopes,
             execution=request.execution is not None,
+            method=request.method,
+            goal=request.goal,
+            managed_selection=request.managed_selection,
         )
         return create_hosted_application_runtime(
             _coding_hosted_application_request(
@@ -633,6 +760,7 @@ def _coding_hosted_application_request(
         service_id_factory=request.service_id_factory,
         discovery=request.discovery,
         execution=request.execution,
+        managed_mux=request.managed_mux,
     )
 
 
@@ -706,6 +834,8 @@ def _validate_hosted_binding(
     for name in ("respond_interaction", "close"):
         if not inspect.iscoroutinefunction(_method_descriptor(binding, name)):
             raise TypeError("Coding hosted Session binding is invalid")
+    if control is None:
+        return
     for name in (
         "subscribe_runtime_events",
         "prompt",
@@ -716,6 +846,22 @@ def _validate_hosted_binding(
     ):
         if not callable(getattr(control, name, None)):
             raise TypeError("Coding hosted Session control is invalid")
+
+
+def _require_managed_selection(
+    enabled: bool, sessions: object, profile_id: str,
+    scopes: tuple[HostedSessionDiscoveryScopeV1, ...] | None,
+) -> None:
+    if type(enabled) is not bool or (profile_id == CODING_MANAGED_APPLICATION_PROFILE_ID) != enabled:
+        raise ValueError("invalid managed selection activation")
+    if not enabled:
+        return
+    from .managed_catalog import CodingManagedSessionCatalogV1
+
+    if type(sessions) is not CodingManagedSessionCatalogV1 or scopes != tuple(
+        HostedSessionDiscoveryScopeV1("coding", scope.scope, scope.fingerprint) for scope in sessions.scopes
+    ):
+        raise ValueError("managed selection requires the exact owned canonical catalog and scopes")
 
 
 def _identity_matches_open(
@@ -788,13 +934,13 @@ def _void_task_needs_retry(task: asyncio.Task[None]) -> bool:
 
 
 __all__ = [
+    "CodingHostedSessionOwnerV1",
     "CODING_HOSTED_APPLICATION_MAX_CANDIDATES",
-    "CODING_HOSTED_APPLICATION_PROFILE_ID",
-    "CODING_HOSTED_APPLICATION_PROFILE_VERSION",
+    "CODING_HOSTED_APPLICATION_PROFILE_ID", "CODING_HOSTED_APPLICATION_PROFILE_VERSION",
+    "CODING_MANAGED_APPLICATION_PROFILE_ID",
     "CodingAppHostHostedSessionResolverV1",
     "CodingForegroundHostedApplicationRequestV1",
-    "CodingForegroundProductFactoryV1",
-    "CodingForegroundSessionFactoryV1",
+    "CodingForegroundProductFactoryV1", "CodingForegroundSessionFactoryV1",
     "CodingHostedProfileFactoryV1",
     "create_coding_foreground_hosted_application",
 ]

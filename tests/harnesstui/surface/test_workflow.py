@@ -304,6 +304,44 @@ def _workflow(
     return workflow, state
 
 
+def test_model_selection_can_continue_into_reasoning_choice() -> None:
+    workflow, state = _workflow()
+    selected: list[str] = []
+
+    async def set_reasoning(value: str) -> str:
+        selected.append(value)
+        return f"Reasoning: {value}"
+
+    workflow.ports = replace(
+        workflow.ports,
+        build_reasoning_selector=lambda: _surface("Choose reasoning", "reasoning"),
+        select_reasoning_level=set_reasoning,
+    )
+    asyncio.run(workflow.handle_text("/model provider:model"))
+
+    assert state.model_values == ["provider:model"]
+    assert isinstance(workflow.current, ScreenSurfaceView)
+    assert workflow.current.purpose == "reasoning"
+    asyncio.run(workflow.handle_surface_intent(InputIntent(kind="select", text="high")))
+    assert selected == ["high"]
+    assert workflow.current is None
+    assert state.statuses[-1] == "Reasoning: high"
+
+
+def test_cancel_reasoning_choice_keeps_selected_model() -> None:
+    workflow, state = _workflow()
+    workflow.ports = replace(
+        workflow.ports,
+        build_reasoning_selector=lambda: _surface("Choose reasoning", "reasoning"),
+    )
+
+    asyncio.run(workflow.handle_text("/model provider:model"))
+    asyncio.run(workflow.handle_surface_intent(InputIntent(kind="surface_close")))
+
+    assert workflow.current is None
+    assert state.model_values == ["provider:model"]
+
+
 def test_surface_workflow_confirms_before_deleting_a_continuity_item() -> None:
     workflow, state = _workflow()
 
@@ -683,6 +721,18 @@ def test_surface_workflow_opens_and_applies_session_permissions() -> None:
 
     assert state.permission_actions == ["revoke:grant-1"]
     assert state.statuses[-1] == "Session permission revoked."
+
+
+def test_profile_selection_keeps_session_and_saved_default_feedback_on_the_page():
+    workflow, state = _workflow()
+    asyncio.run(workflow.handle_text("/permissions"))
+    asyncio.run(workflow.handle_intent(InputIntent(
+        kind="permission_profile_action", text="set-profile:user:full_access",
+    )))
+    assert state.permission_actions == ["set-profile:user:full_access"]
+    assert workflow.current.feedback == (
+        "Permissions updated to Full Access for this session. Saved as the user default."
+    )
 
 
 def test_surface_workflow_cancels_in_flight_continuity_activation() -> None:

@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol, TypeAlias, cast
 
-from loushang.foundation.json import JSONValue, validate_json_value
+from loushang.foundation.json import JSONValue
 from loushang.harness.transcript.model_input_types import (
     canonical_model_input_json,
     freeze_model_input_json,
@@ -89,16 +89,20 @@ class ModelInputJsonValueNode:
                 raise ValueError("Model Input inline JSON byte count changed")
             try:
                 decoded = json.loads(self.inline_json)
-                validate_json_value(
+                # The parser produces only builtin JSON containers/primitives.
+                # Native encoding rejects non-finite values, and encoding the
+                # complete result to UTF-8 rejects surrogates in values/keys.
+                # This also computes the canonical bytes for the checks below.
+                canonical = json.dumps(
                     decoded,
-                    name="Model Input inline JSON",
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
                 )
+                canonical.encode("utf-8")
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 raise ValueError("Model Input inline JSON is invalid") from exc
-            canonical = canonical_model_input_json(
-                decoded,
-                name="Model Input inline JSON",
-            )
             if canonical != self.inline_json:
                 raise ValueError("Model Input inline JSON is not canonical")
             if _hash_canonical_json(canonical) != self.value_hash:
@@ -536,6 +540,38 @@ def create_model_input_json_value(
     )
 
 
+def _create_model_input_json_value_from_canonical(
+    canonical: str,
+    *,
+    value_hash: str,
+    decoded_bytes: int,
+    chunk_refs: Sequence[ModelInputNodeReference] = (),
+) -> ModelInputJsonValueNode:
+    """Build from a writer plan whose strict JSON was already canonicalized."""
+
+    encoded = canonical.encode("utf-8")
+    if len(encoded) != decoded_bytes or (
+        "sha256:" + hashlib.sha256(encoded).hexdigest() != value_hash
+    ):
+        raise ValueError("planned Model Input JSON value changed")
+    refs = tuple(chunk_refs)
+    inline_json = None if refs else canonical
+    return ModelInputJsonValueNode(
+        content_hash=_hash_node_basis(
+            _json_value_hash_basis(
+                value_hash=value_hash,
+                decoded_bytes=decoded_bytes,
+                inline_json=inline_json,
+                chunk_refs=refs,
+            )
+        ),
+        value_hash=value_hash,
+        decoded_bytes=decoded_bytes,
+        inline_json=inline_json,
+        chunk_refs=refs,
+    )
+
+
 def create_model_input_sequence_tail(
     *,
     previous_tail: ModelInputNodeReference | None,
@@ -678,25 +714,19 @@ def split_model_input_canonical_json(canonical: str) -> tuple[str, ...]:
 def _canonical_json_string_ranges(canonical: str) -> tuple[tuple[int, int], ...]:
     ranges: list[tuple[int, int]] = []
     index = 0
-    while index < len(canonical):
-        if canonical[index] != '"':
-            index += 1
-            continue
-        start = index
-        index += 1
-        escaped = False
-        while index < len(canonical):
-            character = canonical[index]
-            index += 1
-            if escaped:
-                escaped = False
-            elif character == "\\":
-                escaped = True
-            elif character == '"':
-                ranges.append((start, index))
-                break
-        else:
-            raise ValueError("Model Input canonical JSON contains an open string")
+    while (start := canonical.find('"', index)) >= 0:
+        index = start + 1
+        while True:
+            quote = canonical.find('"', index)
+            if quote < 0:
+                raise ValueError("Model Input canonical JSON contains an open string")
+            escape = canonical.find("\\", index)
+            if 0 <= escape < quote:
+                index = escape + 2
+                continue
+            ranges.append((start, quote + 1))
+            index = quote + 1
+            break
     return tuple(ranges)
 
 

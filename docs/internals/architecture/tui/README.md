@@ -60,6 +60,15 @@ Clipboard-image acquisition resolves the host once into an ordered backend
 plan behind a common protocol. On macOS, the system `NSPasteboard` adapter is
 preferred, with `pngpaste` retained only as a compatibility fallback.
 
+## Transferable Terminal Input
+
+`terminal_backends.NativeTerminalInputReader` owns exclusive cancellable reads
+and non-consuming input-boundary inspection. Native adapters preserve partial
+decoding/key state across a joined loop/thread handoff: Linux and macOS share
+the POSIX UTF-8 reader; Windows polls available console units and retains UTF-16,
+extended-key and VT-burst state. HarnessTUI owns when to transfer and arm
+submission. See [ARD-009](../decisions/accepted/ARD-009-unified-loading-input-and-terminal-adapters.md).
+
 ## Coding UI Residual Boundary
 
 `loushang.coding.ui` is intentionally bounded to product UI composition and

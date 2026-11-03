@@ -101,18 +101,6 @@ class PluginResolver:
         resolved_package = self.resolve_package(plugin_source)
         return self.project_package(resolved_package)
 
-    def resolve_resources(self, plugin: InstalledPlugin) -> PluginResolvedResources:
-        """Compatibility entrypoint that cannot admit runtime resources."""
-
-        if not plugin.enabled:
-            return PluginResolvedResources(plugin=plugin, package_roots=())
-        raise PluginManifestError(
-            "Runtime Plugin resources must be resolved by "
-            "PluginResolutionAuthority.",
-            code="plugin_runtime_authority_required",
-            path=plugin.manifest.root,
-        )
-
     def _resolve_published_resources(
         self,
         plugin: InstalledPlugin,

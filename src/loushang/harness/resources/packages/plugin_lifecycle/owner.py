@@ -15,6 +15,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleFailureV1,
     PackageLifecycleIngressRequestV1,
     PackageLifecyclePhase,
+    PackageLifecycleRebindRequestV1,
     PackageLifecycleRequestV1,
     PackageLifecycleRetryRequestV1,
     PackageLifecycleStatusV1,
@@ -224,6 +225,19 @@ class PackageLifecycleOwner:
             if exc.code != "package_attempt_stale":
                 raise
             return self._stale_attempt_status(request.operation_id)
+
+    def resume_rebind(
+        self,
+        decision: PackageLifecycleRebindRequestV1,
+        *,
+        expected_rebind_record_revision: int,
+    ) -> PackageLifecycleStatusV1:
+        """Resume only the Product-reviewed durable A2 decision."""
+
+        return self._journal.resume_rebind(
+            decision,
+            expected_rebind_record_revision=expected_rebind_record_revision,
+        )
 
     def cancel(
         self,

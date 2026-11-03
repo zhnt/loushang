@@ -18,6 +18,12 @@
 - Activation status: explicit library, `loushang-hosted` foreground command or `loushang-mux` local route; no default-route change
 - Owner: Loushang AppServer architecture
 
+Accepted amendment: [ARD-020](../decisions/accepted/ARD-020-hosted-goal-budget-and-observation.md)
+and the [Coding budget/observation design](../coding/key-designs/hosted-goal-budget-observation.md)
+define an optional application-local progress capability using existing Goal
+value types. R1 was accepted on 2026-11-02; the local implementation is recorded
+with the Coding design. This does not activate a remote wire contract.
+
 The implemented
 [G11 In-Process Hosted Application](hosted-application-g11.md) adds a strict
 protocol kernel and transport-neutral AppClient contract here, plus a separate
@@ -49,6 +55,17 @@ the AppService instance and states its retention guarantee. AppService owns
 submission registration and cleanup; this transport still owns only request
 delivery and borrowed scoped capabilities. Existing v1 frames and default
 profiles are unchanged. Native GUI acceptance follows the documented handoff.
+
+## Accepted Resume Contract
+
+AppServer retains client framing and transport. Product readiness projections preserve old Ack completion timing and negotiate supported continuation behavior.
+
+The project owner accepted the cross-scope #696 boundaries on 2026-10-12:
+[ARD-004](../decisions/accepted/ARD-004-resume-history-and-current-authority.md),
+[ARD-005](../decisions/accepted/ARD-005-resume-continuation-commit.md), and
+[ARD-006](../decisions/accepted/ARD-006-hosted-resume-readiness-and-admission.md).
+The [Delta ledger](../current-target-gap-ledger.md) records remaining work;
+acceptance does not establish writable release or performance readiness.
 
 ## Purpose
 

@@ -11,14 +11,15 @@ from __future__ import annotations
 _DYNAMIC_OR_CONTROL_CHARACTERS = frozenset("`$@;&|<>(){}[],#")
 
 
-def parse_simple_powershell_command(script: str) -> tuple[str, ...] | None:
+def parse_simple_powershell_command(
+    script: str,
+    *,
+    allow_quoted_command: bool = False,
+) -> tuple[str, ...] | None:
     """Return literal tokens for one simple command, otherwise ``None``."""
 
     if not isinstance(script, str) or not script.strip():
         return None
-    if "\n" in script or "\r" in script:
-        return None
-
     tokens: list[str] = []
     current: list[str] = []
     quote: str | None = None
@@ -28,7 +29,7 @@ def parse_simple_powershell_command(script: str) -> tuple[str, ...] | None:
     while index < len(script):
         character = script[index]
         if quote is not None:
-            if character == "`" or (quote == '"' and character == "$"):
+            if quote == '"' and character in "`$":
                 return None
             if character == quote:
                 if (
@@ -45,6 +46,8 @@ def parse_simple_powershell_command(script: str) -> tuple[str, ...] | None:
             index += 1
             continue
 
+        if character in "\r\n":
+            return None
         if character.isspace():
             if token_started:
                 tokens.append("".join(current))
@@ -69,7 +72,7 @@ def parse_simple_powershell_command(script: str) -> tuple[str, ...] | None:
         return None
     if token_started:
         tokens.append("".join(current))
-    if not tokens or not tokens[0] or command_was_quoted:
+    if not tokens or not tokens[0] or (command_was_quoted and not allow_quoted_command):
         return None
     return tuple(tokens)
 

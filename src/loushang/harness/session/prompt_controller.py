@@ -226,6 +226,20 @@ class PromptController:
             source=turn_input.source,
         )
 
+    async def prepare_user_message(
+        self, turn_input: TurnInput[list[ImagePart]], *, evidence_owner: object,
+    ) -> UserMessage:
+        """Prepare input and native evidence without queueing or running a turn.
+
+        The caller owns admission, command routing and the evidence lifetime.
+        Resource preflight keeps extension command execution disabled.
+        """
+
+        prepared = await self._preflight(turn_input)
+        if prepared is None:
+            raise ValueError("prepared user input was consumed by preflight")
+        return self._build_message(prepared, evidence_owner)
+
     async def _preflight(
         self,
         turn_input: TurnInput[list[ImagePart]],

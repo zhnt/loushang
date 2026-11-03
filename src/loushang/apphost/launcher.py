@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TypeVar
 
 from loushang.appserver.client import AppClientV1, SessionDiscoveryClientV1
+from loushang.appserver.execution.client import ExecutionClientV1
 from loushang.appserver.framing import (
     AppConnectionClosedError,
     AppFramedStreamV1,
@@ -149,7 +150,9 @@ class HostedForegroundClientV1:
             or profile
             not in {
                 AppConnectionProfileV1.STDIO,
+                AppConnectionProfileV1.STDIO_EXECUTION,
                 AppConnectionProfileV1.STDIO_DISCOVERY,
+                AppConnectionProfileV1.STDIO_DISCOVERY_EXECUTION,
             }
         ):
             raise ValueError("invalid foreground launch contract")
@@ -185,6 +188,14 @@ class HostedForegroundClientV1:
     def discovery_client(self) -> SessionDiscoveryClientV1 | None:
         return (
             self._client.discovery_client
+            if self._ready and not self._closing and self._client
+            else None
+        )
+
+    @property
+    def execution_client(self) -> ExecutionClientV1 | None:
+        return (
+            self._client.execution_client
             if self._ready and not self._closing and self._client
             else None
         )

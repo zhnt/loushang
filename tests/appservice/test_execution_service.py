@@ -20,8 +20,11 @@ from loushang.appserver.protocol import (
     TurnInterruptV1,
     TurnTextV1,
 )
-from loushang.appservice.client_scope import ScopedAppServiceV1
-from loushang.appservice.execution_contract import ExecutionContentEventV1
+from loushang.appservice.client_scope import AppClientScopeV1, ScopedAppServiceV1
+from loushang.appservice.execution_contract import (
+    ExecutionContentEventV1,
+    ExecutionOutcomeV1,
+)
 from loushang.appservice.execution_contract import ExecutionStatusV1 as Status
 from loushang.appservice.execution_registry import ExecutionServiceErrorV1
 from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
@@ -100,6 +103,68 @@ async def fixture(*, supported=True):
         attachment.attachment_id, attachment.controller_generation, mux.members[0].member_id
     )
     return service, owner, first, second, selector, control, resolver.sessions[0]
+
+
+@pytest.mark.parametrize("route", ["stable", "legacy"])
+def test_accepted_execution_borrows_original_resume_controller(route):
+    async def run_scenario():
+        service, owner, first, second, selector, request, product = await fixture()
+        borrowed = []
+        legacy = None
+
+        async def run(control):
+            product.entered.set()
+            borrowed.append(AppClientScopeV1.current_resume_subject())
+            assert AppClientScopeV1.current_resume_submission_id() == (
+                "resume-submission" if route == "stable" else None
+            )
+            await product.release.wait()
+            with pytest.raises(AppServiceError):
+                AppClientScopeV1.current_resume_subject()
+            return ExecutionOutcomeV1(Status.SUCCEEDED)
+
+        product.run = run
+        try:
+            with pytest.raises(AppServiceError) as absent:
+                AppClientScopeV1.current_resume_subject()
+            assert absent.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+            expected = first.resume_subject_digest(request)
+            if route == "stable":
+                client = first.execution_client
+                accepted = await client.submit_execution(request, "instance", "resume-submission", "resume once")
+                assert (await client.submit_execution(request, "instance", "resume-submission", "resume once")) == accepted
+            else:
+                legacy = asyncio.create_task(first.start_turn(TurnTextV1(
+                    request.attachment_id, request.controller_generation, request.member_id, "resume once",
+                )))
+            await product.entered.wait()
+            assert borrowed == [(first, request, expected)]
+            with pytest.raises(AppServiceError):
+                AppClientScopeV1.current_resume_subject()
+            assert owner.pending_counts == (0, 0)
+            await first.close()
+            replacement = await second.attach_mux(MuxAttachV1(selector))
+            current = replace(request, attachment_id=replacement.attachment_id,
+                              controller_generation=replacement.controller_generation)
+            assert second.resume_subject_digest(current) != expected
+            if route == "stable":
+                assert (await second.execution_client.find_execution_by_submission(
+                    current, "instance", "resume-submission",
+                )).state.execution_id == accepted.state.execution_id
+            product.release.set()
+            if legacy is not None:
+                await legacy
+            else:
+                binding = service._sessions[product.identity.session_id]._execution
+                await service._execution_registry.wait(binding, accepted)
+            assert len(borrowed) == 1
+        finally:
+            product.release.set()
+            if legacy is not None:
+                await asyncio.gather(legacy, return_exceptions=True)
+            await service.close()
+
+    asyncio.run(run_scenario())
 
 
 @scenario

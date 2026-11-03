@@ -9,12 +9,8 @@ from typing import Literal, TypeAlias
 
 from loushang.harness.cli.types import CliInvocation, CliProfileError
 
-CliOperationHandler: TypeAlias = Callable[
-    [CliInvocation], object | Awaitable[object]
-]
-CliExitOperationHandler: TypeAlias = Callable[
-    [], int | None | Awaitable[int | None]
-]
+CliOperationHandler: TypeAlias = Callable[[CliInvocation], object | Awaitable[object]]
+CliExitOperationHandler: TypeAlias = Callable[[], int | None | Awaitable[int | None]]
 
 
 class CliOperationUnavailableError(LookupError):
@@ -140,7 +136,7 @@ def compose_cli_operation_stages(
 
 
 class CliOperationSequence:
-    """Run ordered CLI operations until one handles the invocation.
+    """Run ordered CLI operations, optionally continuing after selected successes.
 
     Products own the stage list and therefore command availability and
     precedence. Harness owns the reusable synchronous/asynchronous dispatch
@@ -157,14 +153,18 @@ class CliOperationSequence:
             seen.add(stage.operation_id)
         self._stages = tuple(stages)
 
-    async def run(self) -> int | None:
+    async def run(self, *, continue_after: frozenset[str] = frozenset()) -> int | None:
+        handled = False
         for stage in self._stages:
             result = stage.handler()
             if inspect.isawaitable(result):
                 result = await result
             if result is not None:
+                if result == 0 and stage.operation_id in continue_after:
+                    handled = True
+                    continue
                 return result
-        return None
+        return 0 if handled else None
 
 
 __all__ = [

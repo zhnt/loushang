@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Sequence, Set
 from typing import Literal
 
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.session.model_resolution import split_model_thinking_pattern
 
 NoToolsMode = Literal["all", "builtin"]
@@ -83,11 +84,15 @@ def resolve_base_system_prompt(
 def resolve_initial_active_tool_names(
     *,
     active_tool_names: list[str] | None,
-    allowed_tool_names: set[str] | None,
+    allowed_tool_names: Set[str] | ToolSelection | None,
     no_tools_mode: NoToolsMode | None,
     tool_registry: object | None,
 ) -> list[str] | None:
     if no_tools_mode == "all":
+        return []
+    if allowed_tool_names is None or (
+        allowed_tool_names is not ToolSelection.ALL and not allowed_tool_names
+    ):
         return []
     if active_tool_names is not None:
         names = list(active_tool_names)
@@ -95,7 +100,7 @@ def resolve_initial_active_tool_names(
         names = non_builtin_tool_names(tool_registry)
     else:
         return None
-    if allowed_tool_names is not None:
+    if allowed_tool_names is not ToolSelection.ALL:
         return [name for name in names if name in allowed_tool_names]
     return names
 

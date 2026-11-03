@@ -25,6 +25,7 @@ from loushang.ai.prepared_request import (
     PreparedModelCallAttemptUsageRecorder,
     PreparedModelCallOutcome,
     PreparedModelCallOutcomeRecorder,
+    PreparedModelCallTerminalRecorder,
 )
 from loushang.ai.provider.cancellation import is_signal_cancelled, wait_signal_cancelled
 from loushang.ai.provider.errors import (
@@ -110,12 +111,9 @@ def start_provider_runtime(
         signals = _cancellation_signals(options)
         cancellation_task = _create_cancellation_task(signals)
         if _signals_cancelled(signals):
-            _emit_runtime_cancel_trace(
-                options, request=request, model=model, call_id=call_id
-            )
-            await _emit_terminal_part_and_record_outcome(
+            await _settle_runtime_cancellation(
                 assembler,
-                cast(RawPart, {"type": "aborted"}),
+                deque(),
                 options=options,
                 request=request,
                 model=model,
@@ -275,13 +273,10 @@ def start_provider_runtime(
                     )
                     return
                 except _RuntimeCancelled:
-                    await _flush_pending(assembler, pending)
-                    _emit_runtime_cancel_trace(
-                        options, request=request, model=model, call_id=call_id
-                    )
-                    await _emit_terminal_part_and_record_outcome(
+                    deadline.cancel()
+                    await _settle_runtime_cancellation(
                         assembler,
-                        cast(RawPart, {"type": "aborted"}),
+                        pending,
                         options=options,
                         request=request,
                         model=model,
@@ -291,6 +286,18 @@ def start_provider_runtime(
                 except (Exception, asyncio.CancelledError) as caught:
                     if isinstance(caught, asyncio.CancelledError):
                         if not deadline.expired:
+                            committer = getattr(
+                                options, "prepared_request_committer", None
+                            )
+                            if isinstance(committer, PreparedModelCallOutcomeRecorder):
+                                await _settle_runtime_cancellation(
+                                    assembler,
+                                    pending,
+                                    options=options,
+                                    request=request,
+                                    model=model,
+                                    call_id=call_id,
+                                )
                             raise
                         error: Exception = AITimeoutError(
                             "Provider request timed out.",
@@ -302,16 +309,10 @@ def start_provider_runtime(
                     else:
                         error = caught
                     if _signals_cancelled(signals):
-                        await _flush_pending(assembler, pending)
-                        _emit_runtime_cancel_trace(
-                            options,
-                            request=request,
-                            model=model,
-                            call_id=call_id,
-                        )
-                        await _emit_terminal_part_and_record_outcome(
+                        deadline.cancel()
+                        await _settle_runtime_cancellation(
                             assembler,
-                            cast(RawPart, {"type": "aborted"}),
+                            pending,
                             options=options,
                             request=request,
                             model=model,
@@ -382,6 +383,64 @@ def start_provider_runtime(
     return stream
 
 
+async def _settle_runtime_cancellation(
+    assembler: RawAssembler,
+    pending: deque[RawPart],
+    *,
+    options: object | None,
+    request: ProviderRequest,
+    model: object,
+    call_id: str,
+) -> None:
+    """Finish the terminal cancellation fact despite caller cancellation."""
+
+    settlement = asyncio.create_task(
+        _record_runtime_cancellation(
+            assembler,
+            pending,
+            options=options,
+            request=request,
+            model=model,
+            call_id=call_id,
+        )
+    )
+    cancellation: asyncio.CancelledError | None = None
+    while not settlement.done():
+        try:
+            await asyncio.shield(settlement)
+        except asyncio.CancelledError as error:
+            cancellation = error
+    settlement.result()
+    if cancellation is not None:
+        raise cancellation
+
+
+async def _record_runtime_cancellation(
+    assembler: RawAssembler,
+    pending: deque[RawPart],
+    *,
+    options: object | None,
+    request: ProviderRequest,
+    model: object,
+    call_id: str,
+) -> None:
+    await _flush_pending(assembler, pending)
+    _emit_runtime_cancel_trace(
+        options,
+        request=request,
+        model=model,
+        call_id=call_id,
+    )
+    await _emit_terminal_part_and_record_outcome(
+        assembler,
+        cast(RawPart, {"type": "aborted"}),
+        options=options,
+        request=request,
+        model=model,
+        call_id=call_id,
+    )
+
+
 async def _emit_terminal_part_and_record_outcome(
     assembler: RawAssembler,
     part: RawPart,
@@ -397,9 +456,78 @@ async def _emit_terminal_part_and_record_outcome(
         call_id,
         assembler.result_nowait(),
     )
-    if assembler.usage_observed and isinstance(
-        committer, PreparedModelCallAttemptUsageRecorder
+    if not (
+        (
+            assembler.usage_observed
+            and isinstance(committer, PreparedModelCallAttemptUsageRecorder)
+        )
+        or isinstance(committer, PreparedModelCallOutcomeRecorder)
+        or isinstance(committer, PreparedModelCallTerminalRecorder)
     ):
+        return
+    # Once a terminal provider fact is visible, its durable observation must
+    # finish before caller cancellation is propagated. Otherwise the Agent's
+    # bounded force-cancel can turn an observed abort into an unknown outcome.
+    recording = asyncio.create_task(
+        _record_terminal_observations(
+            outcome,
+            usage_observed=assembler.usage_observed,
+            committer=committer,
+            options=options,
+            request=request,
+            model=model,
+            call_id=call_id,
+        )
+    )
+    cancellation: asyncio.CancelledError | None = None
+    caller = asyncio.current_task()
+    while not recording.done():
+        try:
+            await asyncio.shield(recording)
+        except asyncio.CancelledError as error:
+            if caller is None or caller.cancelling() == 0:
+                recording.result()
+                return
+            cancellation = error
+    recording.result()
+    if cancellation is not None:
+        raise cancellation
+
+
+async def _record_terminal_observations(
+    outcome: PreparedModelCallOutcome,
+    *,
+    usage_observed: bool,
+    committer: object,
+    options: object | None,
+    request: ProviderRequest,
+    model: object,
+    call_id: str,
+) -> None:
+    if isinstance(committer, PreparedModelCallTerminalRecorder):
+        try:
+            await committer.record_terminal_model_call(
+                outcome,
+                usage_observed=usage_observed,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            emit_trace(
+                options,
+                {
+                    "type": "runtime:outcome",
+                    **_runtime_trace_base(
+                        request=request,
+                        model=model,
+                        call_id=call_id,
+                    ),
+                    "reason": "record_failed",
+                    "exceptionType": error.__class__.__name__,
+                },
+            )
+        return
+    if usage_observed and isinstance(committer, PreparedModelCallAttemptUsageRecorder):
         await _record_attempt_usage(
             outcome.usage,
             committer=committer,
@@ -427,7 +555,7 @@ async def _emit_terminal_part_and_record_outcome(
                 "reason": "record_failed",
                 "exceptionType": error.__class__.__name__,
             },
-            )
+        )
 
 
 async def _record_pending_attempt_usage(
@@ -682,9 +810,7 @@ def _emit_runtime_error_trace(
     exception_type = details.get("exceptionType")
     if isinstance(exception_type, str) and exception_type:
         event["exceptionType"] = exception_type
-    response_summary = cast(Mapping[str, object], part).get(
-        "provider_response_summary"
-    )
+    response_summary = cast(Mapping[str, object], part).get("provider_response_summary")
     if isinstance(response_summary, str) and response_summary:
         event["providerResponseSummary"] = response_summary
     emit_trace(options, event)

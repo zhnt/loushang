@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from threading import Event
 
 import pytest
 
@@ -20,7 +21,6 @@ from loushang.harness.transcript import (
     AgentTranscriptRuntimeBinding,
     ModelSelectionSnapshot,
     create_agent_transcript_file_store,
-    delete_agent_transcript_jsonl,
     write_agent_transcript_export,
 )
 
@@ -116,6 +116,73 @@ def test_lifecycle_creates_restores_and_disposes_native_session(tmp_path: Path) 
         await restored.dispose()
 
         assert disposed == ["created", "restored"]
+
+    asyncio.run(scenario())
+
+
+def test_lifecycle_drains_background_head_before_store_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        disposed = False
+
+        async def bind_runtime(context, binding):
+            nonlocal disposed
+            del binding
+            layout = AgentTranscriptFileLayout(context.session_dir)
+            key = layout.key(context.header.conversation_id)
+            layout.bind_create_path(key, context.session_file)
+
+            async def dispose() -> None:
+                nonlocal disposed
+                disposed = True
+
+            return AgentTranscriptRuntimeBinding(
+                store=create_agent_transcript_file_store(layout),
+                key=key,
+                profile=AgentTranscriptProfile.default(),
+                product_binding=None,
+                dispose=dispose,
+            )
+
+        lifecycle = AgentTranscriptLifecycle(bind_runtime=bind_runtime)
+        header = _header()
+        context = lifecycle.new_context(
+            session_dir=tmp_path,
+            cwd="/workspace",
+            persist=True,
+            header=header,
+            session_file=lifecycle.default_jsonl_session_file(tmp_path, header),
+        )
+        session = await lifecycle.create(context, None)
+        await session.transcript.append_agent_message(
+            UserMessage(role="user", content="materialize", timestamp=1.0)
+        )
+        store = session.runtime_binding.store
+        entered = Event()
+        release = Event()
+        original = store._write_head_if_current
+
+        def held_update(*args, **kwargs):
+            entered.set()
+            assert release.wait(5)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(store, "_write_head_if_current", held_update)
+        await session.transcript.append_agent_message(
+            UserMessage(role="user", content="second", timestamp=2.0)
+        )
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            closing = asyncio.create_task(session.dispose())
+            await asyncio.sleep(0)
+            assert not closing.done()
+            assert not disposed
+        finally:
+            release.set()
+        await closing
+        assert disposed
 
     asyncio.run(scenario())
 
@@ -345,14 +412,15 @@ def test_lifecycle_releases_binding_after_create_failure_and_protects_active_fil
         assert disposed == ["failed"]
 
         source = tmp_path / "deletable.jsonl"
+        from ._maintenance import delete_with_maintenance
         write_agent_transcript_export(source, _header(), [_record("record-1")])
         with pytest.raises(ValueError, match="currently active"):
-            await delete_agent_transcript_jsonl(
+            await delete_with_maintenance(
                 source,
                 current_session_file=source,
             )
-        assert await delete_agent_transcript_jsonl(source)
+        assert await delete_with_maintenance(source)
         assert not source.exists()
-        assert not await delete_agent_transcript_jsonl(source)
+        assert not await delete_with_maintenance(source)
 
     asyncio.run(scenario())

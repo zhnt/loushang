@@ -118,23 +118,29 @@ def _record_digest(payload: bytes, algorithm: str = "sha256") -> str:
 
 def _wheel_bytes(
     *,
+    project: str = "acme-plugin",
+    version: str = "1.0",
     extra_files: dict[str, bytes] | None = None,
     record_rows: list[tuple[str, str, str]] | None = None,
     wheel_metadata: bytes | None = None,
     package_metadata: bytes | None = None,
     symlink_name: str | None = None,
 ) -> bytes:
+    normalized = project.replace("-", "_")
+    dist_info = f"{normalized}-{version}.dist-info"
     files = {
-        "acme_plugin/__init__.py": b"VALUE = 1\n",
-        f"{DIST_INFO}/WHEEL": wheel_metadata
+        f"{normalized}/__init__.py": b"VALUE = 1\n",
+        f"{dist_info}/WHEEL": wheel_metadata
         or (
             b"Wheel-Version: 1.0\n"
             b"Generator: plc9b-test\n"
             b"Root-Is-Purelib: true\n"
             b"Tag: py3-none-any\n\n"
         ),
-        f"{DIST_INFO}/METADATA": package_metadata
-        or b"Metadata-Version: 2.1\nName: acme-plugin\nVersion: 1.0\n\n",
+        f"{dist_info}/METADATA": package_metadata
+        or (
+            f"Metadata-Version: 2.1\nName: {project}\nVersion: {version}\n\n"
+        ).encode(),
     }
     files.update(extra_files or {})
     if record_rows is None:
@@ -142,11 +148,11 @@ def _wheel_bytes(
             (name, _record_digest(payload), str(len(payload)))
             for name, payload in files.items()
         ]
-        record_rows.append((f"{DIST_INFO}/RECORD", "", ""))
+        record_rows.append((f"{dist_info}/RECORD", "", ""))
     output = io.StringIO(newline="")
     writer = csv.writer(output, lineterminator="\n")
     writer.writerows(record_rows)
-    files[f"{DIST_INFO}/RECORD"] = output.getvalue().encode()
+    files[f"{dist_info}/RECORD"] = output.getvalue().encode()
 
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as wheel:
@@ -218,6 +224,41 @@ def test_valid_wheel_is_fully_verified_before_controlled_extraction(
         == verified.evidence
     )
     assert len(store.attempt_names()) == 1
+    verified.cleanup()
+    assert store.attempt_names() == ()
+
+
+def test_checked_in_coding_base_files_can_enter_verified_wheel_tree(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding._base_plugin import coding_base_plugin_root
+
+    root = coding_base_plugin_root()
+    source_files = {
+        f"coding_base/{path.relative_to(root).as_posix()}": path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file()
+        and "__pycache__" not in path.parts
+        and path.suffix != ".pyc"
+    }
+    assert "coding_base/plugin.json" in source_files
+    assert "coding_base/declarations/plugin.json" in source_files
+    payload = _wheel_bytes(
+        project="coding-base",
+        version="1",
+        extra_files=source_files,
+    )
+
+    verified, store = _verify(
+        tmp_path, payload, wheel_filename="coding_base-1-py3-none-any.whl"
+    )
+
+    assert verified.evidence.distribution == "coding-base"
+    assert verified.evidence.version == "1"
+    assert verified.evidence.record_verified
+    assert {entry.logical_path for entry in verified.transfer_manifest.entries} >= set(
+        source_files
+    )
     verified.cleanup()
     assert store.attempt_names() == ()
 

@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from loushang.harness.resource_catalog.inputs import AdmittedPackageResource
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
+    ProductSelectedResourceSource,
+    product_snapshot_source_policy_fingerprint,
+)
 from loushang.harness.resources._catalog_embedded_source import (
     EmbeddedOemResourceSource,
     EmbeddedResourceCollectionHandle,
@@ -36,6 +41,7 @@ from loushang.harness.resources._catalog_records import (
     ResourceCatalogSnapshot,
     ResourceComponentProducer,
     ResourceIdentity,
+    ResourceSourceGenerationRef,
     ResourceSourceSnapshot,
     build_activation_policy_snapshot,
     fingerprint_catalog_value,
@@ -48,6 +54,14 @@ from loushang.harness.resources.types import ResourceBundle, SkillDescriptor
 _PREFLIGHT_GENERATION = 1
 
 
+@dataclass(frozen=True, slots=True)
+class ResourceCatalogBootstrapResult:
+    """Disposable projection paired with its exact Catalog selection receipt."""
+
+    bundle: ResourceBundle
+    catalog: ResourceCatalogSnapshot
+
+
 def prepare_resource_catalog_bootstrap_projection(
     *,
     product_id: str,
@@ -56,10 +70,38 @@ def prepare_resource_catalog_bootstrap_projection(
     cwd: Path,
     root_handles: tuple[NativeResourceRootHandle, ...],
     package_resources: tuple[AdmittedPackageResource, ...] = (),
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] = (),
     embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = (),
     context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES,
     disabled_skill_selectors: Sequence[str] = (),
 ) -> ResourceBundle:
+    return prepare_resource_catalog_bootstrap_result(
+        product_id=product_id,
+        runtime_id=runtime_id,
+        product_policy_revision=product_policy_revision,
+        cwd=cwd,
+        root_handles=root_handles,
+        package_resources=package_resources,
+        product_snapshot_resources=product_snapshot_resources,
+        embedded_collections=embedded_collections,
+        context_file_names=context_file_names,
+        disabled_skill_selectors=disabled_skill_selectors,
+    ).bundle
+
+
+def prepare_resource_catalog_bootstrap_result(
+    *,
+    product_id: str,
+    runtime_id: str,
+    product_policy_revision: str,
+    cwd: Path,
+    root_handles: tuple[NativeResourceRootHandle, ...],
+    package_resources: tuple[AdmittedPackageResource, ...] = (),
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] = (),
+    embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = (),
+    context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES,
+    disabled_skill_selectors: Sequence[str] = (),
+) -> ResourceCatalogBootstrapResult:
     """Build a disposable Catalog projection for synchronous Session bootstrap.
 
     This projection exists only to seed Extension activation and initial prompt
@@ -68,11 +110,17 @@ def prepare_resource_catalog_bootstrap_projection(
     before returning the immutable compatibility copy.
     """
 
+    if any(item.admission.product_id != product_id for item in product_snapshot_resources):
+        raise ValueError("Product snapshot Resources must match Product")
+    if package_resources and product_snapshot_resources:
+        raise ValueError("Legacy package and Product snapshot routes cannot mix")
+
     source_snapshots: list[ResourceSourceSnapshot] = []
     descriptor_bindings: list[ResourceProjectionDescriptorBinding] = []
     sources: list[
         NativeFilesystemResourceSource
         | AdmittedPackageResourceSource
+        | ProductSelectedResourceSource
         | EmbeddedOemResourceSource
     ] = []
     unclaimed_packages = list(package_resources)
@@ -146,6 +194,41 @@ def prepare_resource_catalog_bootstrap_projection(
                 )
             )
             descriptor_bindings.extend(package_source.projection_bindings)
+
+        if product_snapshot_resources:
+            binding = _preflight_binding_fingerprint(
+                product_id=product_id,
+                runtime_id=runtime_id,
+                source_id="harness.resources.source.product_snapshot",
+            )
+            source_ref = ResourceSourceGenerationRef(
+                source_id="harness.resources.source.product_snapshot",
+                product_id=product_id,
+                generation=f"{runtime_id}:{_PREFLIGHT_GENERATION}",
+                source_policy_fingerprint=product_snapshot_source_policy_fingerprint(
+                    product_id=product_id,
+                    resources=product_snapshot_resources,
+                ),
+                producer=_preflight_producer(binding, "product_snapshot"),
+            )
+            product_source = ProductSelectedResourceSource(
+                source_generation_ref=source_ref,
+                resources=product_snapshot_resources,
+            )
+            sources.append(product_source)
+            source_snapshots.append(
+                product_source.discover_initial(
+                    build_package_resource_discovery_request(
+                        product_id=product_id,
+                        source_generation_ref=source_ref,
+                        admission_fingerprints=tuple(
+                            item.admission.fingerprint
+                            for item in product_snapshot_resources
+                        ),
+                    )
+                )
+            )
+            descriptor_bindings.extend(product_source.projection_bindings)
 
         if embedded_collections:
             binding = _preflight_binding_fingerprint(
@@ -229,7 +312,7 @@ def prepare_resource_catalog_bootstrap_projection(
             )
             if (descriptor.id or descriptor.name) not in selected_skill_ids
         )
-        return bundle
+        return ResourceCatalogBootstrapResult(bundle=bundle, catalog=snapshot)
     finally:
         for source in reversed(sources):
             source.dispose()

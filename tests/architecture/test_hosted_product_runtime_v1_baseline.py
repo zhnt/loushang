@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import re
+from functools import cache
 from pathlib import Path
 
 from loushang.foundation.platform_paths import PlatformPaths
@@ -40,6 +41,10 @@ CURRENT_SOURCE_SEAMS = (
     HOSTING_SOURCE / "_posix_launch_preparation.py",
     HOSTING_SOURCE / "_windows_launch_preparation.py",
     HOSTING_SOURCE / "_posix_process.py",
+    HOSTING_SOURCE / "service.py",
+    HOSTING_SOURCE / "service_handoff.py",
+    HOSTING_SOURCE / "machine_identity.py",
+    HOSTING_SOURCE / "service_process.py",
     HOSTING_SOURCE / "_windows_process.py",
     HOSTING_SOURCE / "_win32_process.py",
     HOSTING_SOURCE / "_endpoint_host.py",
@@ -72,7 +77,56 @@ CURRENT_SOURCE_SEAMS = (
     APPHOST_SOURCE / "runtime.py",
     APPHOST_SOURCE / "hosted.py",
     APPHOST_SOURCE / "application.py",
+    APPHOST_SOURCE / "managed/__init__.py",
+    APPHOST_SOURCE / "managed/contracts.py",
+    APPHOST_SOURCE / "managed/paths.py",
+    APPHOST_SOURCE / "managed/_files.py",
+    APPHOST_SOURCE / "managed/_database.py",
+    APPHOST_SOURCE / "managed/registry.py",
+    APPHOST_SOURCE / "managed/storage_budget.py",
+    APPHOST_SOURCE / "managed/event_log.py",
+    APPHOST_SOURCE / "managed/_capture_native.py",
+    APPHOST_SOURCE / "managed/output_capture.py",
+    APPHOST_SOURCE / "managed/trace_buffer.py",
+    APPHOST_SOURCE / "managed/trace_log.py",
+    APPHOST_SOURCE / "managed/lifecycle.py",
+    APPHOST_SOURCE / "managed/handoff.py",
+    APPHOST_SOURCE / "managed/child.py",
+    APPHOST_SOURCE / "managed/bootstrap.py",
+    APPHOST_SOURCE / "managed/_lifetime.py",
+    APPHOST_SOURCE / "managed/_process.py",
+    APPHOST_SOURCE / "managed/invocation.py",
+    APPHOST_SOURCE / "managed/defaults.py",
+    APPHOST_SOURCE / "managed/layout.py",
+    APPHOST_SOURCE / "managed/starter.py",
+    APPHOST_SOURCE / "managed/stopper.py",
+    HOSTING_SOURCE / "service_group.py",
+    APPHOST_SOURCE / "managed/connection.py",
+    APPHOST_SOURCE / "managed/discovery.py",
+    APPHOST_SOURCE / "managed/coordinator.py",
+    APPHOST_SOURCE / "managed/admission_record.py",
+    APPHOST_SOURCE / "managed/namespace_admission.py",
+    APPHOST_SOURCE / "managed/service_admission.py",
+    APPHOST_SOURCE / "managed/mux_management.py",
     APPSERVER_SOURCE / "ports.py",
+    APPSERVER_SOURCE / "managed_mux.py",
+    APPSERVER_SOURCE / "managed_mux_close.py",
+    APPHOST_SOURCE / "managed/mux_creation.py",
+    APPHOST_SOURCE / "managed/mux_probe.py",
+    APPSERVER_SOURCE / "managed_mux_wire.py",
+    APPSERVER_SOURCE / "connection.py",
+    APPSERVER_SOURCE / "remote_client.py",
+    APPSERVER_SOURCE / "protocol/connection_profile.py",
+    APPSERVER_SOURCE / "_local_peer.py",
+    APPSERVER_SOURCE / "local.py",
+    APPSERVER_SOURCE / "local_record.py",
+    APPSERVER_SOURCE / "_local_record_values.py",
+    APPSERVICE_SOURCE / "managed_mux.py",
+    APPSERVICE_SOURCE / "managed_mux_close.py",
+    APPSERVICE_SOURCE / "continuity.py",
+    APPSERVICE_SOURCE / "continuity_runtime.py",
+    APPSERVICE_SOURCE / "runtime.py",
+    APPSERVICE_SOURCE / "client_scope.py",
     HARNESS_SOURCE / "machine_resources/control_plane.py",
     Path("src/loushang/coding/cli/__main__.py"),
     Path("src/loushang/coding/_product_worker_canary.py"),
@@ -80,6 +134,27 @@ CURRENT_SOURCE_SEAMS = (
     Path("src/loushang/coding/apphost_composition.py"),
     Path("src/loushang/coding/apphost_product.py"),
     Path("src/loushang/coding/hosted_application.py"),
+    Path("src/loushang/coding/managed_bootstrap.py"),
+    Path("src/loushang/coding/hosted_catalog.py"),
+    Path("src/loushang/coding/managed_catalog.py"),
+    Path("src/loushang/coding/managed_local.py"),
+    Path("src/loushang/coding/managed_process.py"),
+    Path("src/loushang/coding/cli/lmux.py"),
+    Path("src/loushang/coding/cli/lmux_command.py"),
+    Path("src/loushang/coding/cli/lmux_stop_all.py"),
+    Path("src/loushang/coding/runtime/agent_session_runtime.py"),
+    HARNESS_SOURCE / "artifacts/_blob_io.py",
+    HARNESS_SOURCE / "artifacts/_writer_lease.py",
+    HARNESS_SOURCE / "conversation/stores/file.py",
+    HARNESS_SOURCE / "journal/_directory_lease.py",
+    HARNESS_SOURCE / "journal/_rooted_io.py",
+    HARNESS_SOURCE / "session/output_artifacts.py",
+    HARNESS_SOURCE / "session/transcript_lifecycle.py",
+    HARNESS_SOURCE / "transcript/product_session.py",
+    HARNESS_SOURCE / "transcript/session_factory.py",
+    HARNESS_SOURCE / "transcript/writer_lease.py",
+    HARNESS_SOURCE / "transcript/writer_lifecycle.py",
+    HARNESS_SOURCE / "transcript/store_admission.py",
 )
 
 
@@ -114,13 +189,19 @@ def _status_fields(path: Path) -> dict[str, str]:
 
 
 def _imports(path: Path) -> set[str]:
+    source = _read(path)
+    return set(_import_facts(str(path), source))
+
+
+@cache
+def _import_facts(filename: str, source: str) -> tuple[str, ...]:
     imports: set[str] = set()
-    for node in ast.walk(ast.parse(_read(path), filename=str(path))):
+    for node in ast.walk(ast.parse(source, filename=filename)):
         if isinstance(node, ast.Import):
             imports.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module is not None:
             imports.add(node.module)
-    return imports
+    return tuple(sorted(imports))
 
 
 def _table_first_column(text: str) -> tuple[str, ...]:
@@ -435,6 +516,38 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "foreground.py",
         "launcher.py",
         "local.py",
+        "managed/__init__.py",
+        "managed/contracts.py",
+        "managed/paths.py",
+        "managed/_files.py",
+        "managed/_database.py",
+        "managed/registry.py",
+        "managed/storage_budget.py",
+        "managed/event_log.py",
+        "managed/_capture_native.py",
+        "managed/output_capture.py",
+        "managed/trace_buffer.py",
+        "managed/trace_log.py",
+        "managed/lifecycle.py",
+        "managed/handoff.py",
+        "managed/child.py",
+        "managed/bootstrap.py",
+        "managed/_lifetime.py",
+        "managed/_process.py",
+        "managed/invocation.py",
+        "managed/defaults.py",
+        "managed/layout.py",
+        "managed/starter.py",
+        "managed/stopper.py",
+        "managed/connection.py",
+        "managed/discovery.py",
+        "managed/coordinator.py",
+        "managed/admission_record.py",
+        "managed/namespace_admission.py",
+        "managed/service_admission.py",
+        "managed/mux_management.py",
+        "managed/mux_creation.py",
+        "managed/mux_probe.py",
     }
     assert {
         path.relative_to(APPSERVER_SOURCE).as_posix()
@@ -459,6 +572,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "_local_record_values.py",
         "_posix_local_record.py",
         "_windows_local_record.py",
+        # Optional negotiated observation; no execution or retry grant.
+        "resume_model.py",
         "remote_client.py",
         "stdio.py",
         "protocol/stdio_profile.py",
@@ -470,6 +585,12 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "execution/dispatch.py",
         "execution/remote.py",
         "execution/recovery.py",
+        "managed_mux.py",
+        "managed_mux_wire.py",
+        # Application-local typed Method observations, no wire activation.
+        "method_work.py",
+        "goal.py",  # COD-KD-HG-001: local SDK data/bridge, no wire activation.
+        "managed_mux_close.py",
     }
     assert {
         path.relative_to(APPSERVICE_SOURCE).as_posix()
@@ -491,8 +612,14 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "execution_notifications.py",
         "execution_registry.py",
         "execution_service.py",
+        "method_work.py",
+        "goal.py",  # COD-KD-HG-001: local SDK data/bridge, no wire activation.
+        "managed_mux.py",
         "session_discovery.py",
+        "managed_mux_close.py",
         "ports.py",
+        # Optional data lookup and borrow of the existing controller scope.
+        "resume_ports.py",
         "runtime.py",
     }
 
@@ -531,6 +658,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         path
         for path in Path("src/loushang").rglob("*.py")
         if not path.is_relative_to(APPHOST_SOURCE)
+        if "loushang.apphost" in _read(path)
         if any(imported.startswith("loushang.apphost") for imported in _imports(path))
     }
     assert reverse_apphost_consumers == {
@@ -539,6 +667,10 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path("src/loushang/coding/apphost_product.py"),
         Path("src/loushang/coding/appservice_adapter.py"),
         Path("src/loushang/coding/hosted_application.py"),
+        # COD-KD-HMW-001: explicitly selected Method application composition.
+        Path("src/loushang/coding/hosted_method_application.py"),
+        # COD-KD-HG-001: opt-in Goal application on the same AppHost owner.
+        Path("src/loushang/coding/hosted_goal_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
         Path("src/loushang/coding/hosted_catalog.py"),
         Path("src/loushang/coding/hosted_session.py"),
@@ -546,6 +678,13 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path("src/loushang/coding/cli/hosted_client.py"),
         Path("src/loushang/coding/hosted_bootstrap.py"),
         Path("src/loushang/coding/hosted_local.py"),
+        Path("src/loushang/coding/managed_bootstrap.py"),
+        Path("src/loushang/coding/managed_catalog.py"),
+        Path("src/loushang/coding/managed_local.py"),
+        Path("src/loushang/coding/managed_process.py"),
+        Path("src/loushang/coding/cli/lmux.py"),
+        Path("src/loushang/coding/cli/lmux_command.py"),
+        Path("src/loushang/coding/cli/lmux_stop_all.py"),
     }
     retained_fences = " ".join(_section(inventory, "Retained Fences").split())
     for statement in (
@@ -664,7 +803,7 @@ def test_delivery_plan_has_parallel_streams_and_one_activation_join() -> None:
     assert "never retry the other owner within one launch attempt" in normalized
 
 
-def test_current_worker_route_has_one_exact_composition_and_no_fallback() -> None:
+def test_current_worker_route_keeps_explicit_query_separate_and_no_fallback() -> None:
     activation_names = {
         "HostingManagedWorkerSessionAdapter",
         "WorkerHostingActivationV1",
@@ -676,7 +815,17 @@ def test_current_worker_route_has_one_exact_composition_and_no_fallback() -> Non
         if not path.is_relative_to(WORKER_SOURCE)
         and any(name in _read(path) for name in activation_names)
     }
-    assert consumers == {Path("src/loushang/coding/_product_worker_canary.py")}
+    assert consumers == {
+        Path("src/loushang/coding/_product_worker_canary.py"),
+        Path("src/loushang/coding/package_product_worker_operator_query.py"),
+        Path("src/loushang/coding/package_product_worker_pending_host.py"),
+        Path("src/loushang/coding/package_product_worker_windows_pending_host.py"),
+    }
+    explicit_query = _read(
+        Path("src/loushang/coding/package_product_worker_operator_query.py")
+    )
+    assert "async def query_coding_product_worker(" in explicit_query
+    assert "WorkerSessionOwnerRouter" not in explicit_query
 
     selection = _read(WORKER_SOURCE / "owner_selection.py")
     assert 'owner: WorkerSessionOwner = "current"' in selection

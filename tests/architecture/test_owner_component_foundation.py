@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import ast
 from pathlib import Path
+
+from tests.architecture._source_imports import imported_modules
 
 CAPABILITY_ROOT = Path("src/loushang/harness/capabilities")
 FOUNDATION_MODULES = {
@@ -22,25 +23,14 @@ INTENTIONAL_FOUNDATION_CONSUMERS = {
 }
 
 
-def _imported_modules(path: Path) -> set[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    return {
-        node.module
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module is not None
-    } | {
-        alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    }
-
-
 def _imports_foundation(path: Path) -> bool:
+    source = path.read_text(encoding="utf-8")
+    if "loushang.harness.capabilities.component_" not in source:
+        return False
     return any(
         module.startswith("loushang.harness.capabilities.component_")
         and module not in {"loushang.harness.capabilities.component_host"}
-        for module in _imported_modules(path)
+        for module in imported_modules(path, source)
     )
 
 
@@ -69,7 +59,7 @@ def test_owner_component_foundation_does_not_create_another_graph_or_registry() 
     assert not {
         (path, module)
         for path in FOUNDATION_MODULES
-        for module in _imported_modules(path)
+        for module in imported_modules(path)
         if module in forbidden
     }
 

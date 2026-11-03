@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "tokens": {
+    "welcome.title": {"color": "red"},
+    "transcript.error": {"color": "bright_yellow"}
+  }
+}

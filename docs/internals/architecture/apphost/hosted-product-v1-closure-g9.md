@@ -207,6 +207,11 @@ are build artifacts rather than committed generated output.
   remains the native lifecycle and containment proof rather than being copied
   into G9.
 
+Later inventory maintenance adds the standalone POSIX offline Package Product
+cutover command in version 8 and the offline root GC command in version 9.
+Neither enters Hosted composition or revises the G9 acceptance evidence and
+`RETAIN` decision.
+
 ## Current Owner Retention Or Deletion Gate
 
 G9.3 produces the separate accepted

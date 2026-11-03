@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCapabilityConsumerRequirementPreview,
@@ -38,7 +38,11 @@ from loushang.harness.plugin_authoring.contribution_admission import (
 from loushang.harness.plugin_authoring.provider_admission import (
     prepare_capability_provider_candidate,
 )
+from loushang.harness.resources.plugins.contribution_types import (
+    PLUGIN_OWNER_CONTRIBUTION_KINDS,
+)
 from loushang.harness.resources.plugins.selection import (
+    PluginContributionRef,
     PluginSelection,
     PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
@@ -61,7 +65,6 @@ ProductCapabilityProviderSelector = Callable[
     [tuple[CapabilityProviderAdmissionRecord, ...]],
     tuple[ProductCapabilityProviderChoice, ...],
 ]
-_EXTERNAL_CONTRIBUTION_KINDS = frozenset({"resource_item", "tool_pack", "command_pack"})
 
 
 class ProductCompositionAssemblyError(RuntimeError):
@@ -130,6 +133,11 @@ class ProductCompositionAssemblyRequest:
         repr=False,
         compare=False,
     )
+    owner_candidates: tuple[OwnerContributionCandidateEnvelope, ...] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.selection, PluginSelection):
@@ -149,6 +157,14 @@ class ProductCompositionAssemblyRequest:
             raise TypeError("Product composition Definitions are invalid")
         if not callable(self.select_optional_requirements):
             raise TypeError("Product optional requirement selector must be callable")
+        if self.owner_candidates is not None:
+            candidates = tuple(self.owner_candidates)
+            if any(
+                not isinstance(item, OwnerContributionCandidateEnvelope)
+                for item in candidates
+            ):
+                raise TypeError("Product projected owner candidates are invalid")
+            object.__setattr__(self, "owner_candidates", candidates)
         object.__setattr__(self, "owner_bindings", bindings)
         object.__setattr__(self, "mandatory_roots", mandatory_roots)
         object.__setattr__(self, "definitions", definitions)
@@ -240,9 +256,7 @@ def _validate_product_plugin_seed_evidence(
             or binding.dependency_lock != package.dependency_lock
         ):
             raise ValueError("Product Plugin seed binding lineage is invalid")
-    if any(
-        not isinstance(item, ProductContributionOwnerBinding) for item in owners
-    ):
+    if any(not isinstance(item, ProductContributionOwnerBinding) for item in owners):
         raise TypeError("Product Plugin seed contribution owners are invalid")
     owner_keys = tuple(item.owner_key for item in owners)
     if len(owner_keys) != len(set(owner_keys)):
@@ -580,9 +594,90 @@ def assemble_product_composition(
     candidates = tuple(
         prepare_owner_contribution_candidate(selection, item)
         for item in selection.candidates
-        if item.declaration.kind in _EXTERNAL_CONTRIBUTION_KINDS
+        if item.declaration.kind in PLUGIN_OWNER_CONTRIBUTION_KINDS
     )
-    bindings_by_key = {item.owner_key: item for item in request.owner_bindings}
+    if request.owner_candidates is not None:
+        projected = request.owner_candidates
+        if len(projected) != len(candidates) or any(
+            actual
+            != replace(
+                expected,
+                dependency_lock_digest=actual.dependency_lock_digest,
+            )
+            for expected, actual in zip(candidates, projected, strict=True)
+        ):
+            raise ProductCompositionAssemblyError(
+                "Product owner projection changed Plugin selection facts.",
+                code="product_contribution_candidate_projection_mismatch",
+            )
+        candidates = projected
+    return _assemble_product_contribution_candidates(
+        plan=selection.plan,
+        candidates=candidates,
+        owner_bindings=request.owner_bindings,
+        mandatory_roots=request.mandatory_roots,
+        definitions=request.definitions,
+        select_optional_requirements=request.select_optional_requirements,
+        evaluated_at=evaluated_at,
+    )
+
+
+def _assemble_product_contribution_candidates(
+    *,
+    plan: PluginSelectionPlanV2,
+    candidates: tuple[OwnerContributionCandidateEnvelope, ...],
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...],
+    mandatory_roots: tuple[str, ...],
+    definitions: tuple[CapabilityDefinition, ...],
+    select_optional_requirements: ProductOptionalRequirementSelector,
+    evaluated_at: int,
+) -> ProductCompositionCompilation:
+    """Compile exact owner candidates without requiring a legacy package handle."""
+
+    if not isinstance(plan, PluginSelectionPlanV2):
+        raise TypeError("Product contribution plan is invalid")
+    if any(
+        not isinstance(item, OwnerContributionCandidateEnvelope) for item in candidates
+    ):
+        raise TypeError("Product contribution candidates are invalid")
+    if any(
+        not isinstance(item, ProductContributionOwnerBinding) for item in owner_bindings
+    ):
+        raise TypeError("Product contribution owner bindings are invalid")
+    if not callable(select_optional_requirements):
+        raise TypeError("Product optional requirement selector must be callable")
+    if isinstance(evaluated_at, bool) or not isinstance(evaluated_at, int):
+        raise TypeError("Product composition evaluation time must be an integer")
+    if evaluated_at < 0:
+        raise ValueError("Product composition evaluation time cannot be negative")
+    context = plan.context
+    selected_refs = set(plan.selected_contributions)
+    candidate_refs = tuple(
+        PluginContributionRef(item.plugin_id, item.contribution_id)
+        for item in candidates
+    )
+    trust_by_id = {item.plugin_id: item for item in plan.source_trust_snapshots}
+    instance_by_id = {item.plugin_id: item for item in context.instance_revision_refs}
+    if len(candidate_refs) != len(set(candidate_refs)) or any(
+        ref not in selected_refs
+        or candidate.product_id != context.product_id
+        or candidate.scope_id != context.scope_id
+        or candidate.product_policy_revision != context.policy_revision
+        or candidate.instance_revision_ref != instance_by_id.get(candidate.plugin_id)
+        or (trust := trust_by_id.get(candidate.plugin_id)) is None
+        or candidate.package_source_identity != trust.package_source_identity
+        or candidate.source_trust_class != trust.source_trust_class
+        or candidate.source_trust_policy_revision != trust.source_trust_policy_revision
+        or candidate.source_trusted != trust.trusted
+        for ref, candidate in zip(candidate_refs, candidates, strict=True)
+    ):
+        raise ProductCompositionAssemblyError(
+            "Product contribution candidates changed their selection provenance.",
+            code="product_contribution_candidate_mismatch",
+        )
+    bindings_by_key = {item.owner_key: item for item in owner_bindings}
+    if len(bindings_by_key) != len(owner_bindings):
+        raise ValueError("Product contribution owner bindings must be unique")
     required_keys = {
         (item.owner_id, item.contribution_kind, item.product_id) for item in candidates
     }
@@ -606,31 +701,28 @@ def assemble_product_composition(
         ].admit(candidate, evaluated_at=evaluated_at)
         for candidate in candidates
     )
-    owner_snapshots = tuple(
-        item.authority.snapshot() for item in request.owner_bindings
-    )
-    context = selection.plan.context
+    owner_snapshots = tuple(item.authority.snapshot() for item in owner_bindings)
     authority_context = ProductCompositionAuthorityContext(
         product_id=context.product_id,
         scope_id=context.scope_id,
         product_policy_revision=context.policy_revision,
         evaluated_at=evaluated_at,
         owner_snapshots=owner_snapshots,
-        trust_snapshots=selection.plan.source_trust_snapshots,
+        trust_snapshots=plan.source_trust_snapshots,
     )
     compiler = ProductCompositionCompiler()
     preview = compiler.preview_optional_choices(
         authority_context=authority_context,
-        mandatory_roots=request.mandatory_roots,
+        mandatory_roots=mandatory_roots,
         admissions=admissions,
-        definitions=request.definitions,
+        definitions=definitions,
     )
-    optional_choices = tuple(request.select_optional_requirements(preview))
+    optional_choices = tuple(select_optional_requirements(preview))
     return compiler.compile(
         authority_context=authority_context,
-        mandatory_roots=request.mandatory_roots,
+        mandatory_roots=mandatory_roots,
         admissions=admissions,
-        definitions=request.definitions,
+        definitions=definitions,
         optional_choices=optional_choices,
     )
 

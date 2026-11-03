@@ -8,17 +8,31 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import runpy
 import signal
 import subprocess
 import sys
 import time
-from contextlib import suppress
 from pathlib import Path
 
 
 class ReceiptIOError(OSError):
     """Retryable fixture-file IO, never a native observation error."""
+
+
+def _failure_receipt(error, phase):
+    trace = error.__traceback__
+    while trace is not None and trace.tb_next is not None:
+        trace = trace.tb_next
+    site = (f"{Path(trace.tb_frame.f_code.co_filename).name}:{trace.tb_lineno}"
+            if trace is not None else "unknown.py:1")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}:[1-9][0-9]{0,5}", site):
+        site = "unknown.py:1"
+    name = type(error).__name__
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", name):
+        name = "BaseException"
+    return {"type": name, "phase": phase, "site": site}
 
 
 def _exists(root, name):
@@ -122,17 +136,26 @@ def witness(root, arguments, *, api, spawn=subprocess.Popen):
     # disposition. The witness and CLI share the PTY; only the CLI reads it.
     signal.signal(signal.SIGINT, lambda *_: None)
     retained = RetainedWitness(root, arguments, api=api, spawn=spawn)
+    failure = None
+    failure_published = False
     while True:
-        try:
-            if retained.step():
-                return 0
-        except ReceiptIOError:
-            # Publication/read failures retain the same object and child.
-            pass
-        except BaseException as error:
-            retained.failed = True
-            with suppress(OSError):
-                publish(root, "failed", {"type": type(error).__name__})
+        if failure is None:
+            try:
+                if retained.step():
+                    return 0
+            except ReceiptIOError:
+                # Publication/read failures retain the same object and child.
+                pass
+            except BaseException as error:
+                retained.failed = True
+                failure = _failure_receipt(error, retained.phase)
+        if failure is not None and not failure_published:
+            try:
+                publish(root, "failed", failure)
+            except ReceiptIOError:
+                pass
+            else:
+                failure_published = True
         time.sleep(0.01)
 
 

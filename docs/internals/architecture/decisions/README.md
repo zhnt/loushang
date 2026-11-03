@@ -58,9 +58,7 @@ created only when occupied. Migrate existing records with `git mv` as part of
 the scope's documented adoption: update document status, this index, incoming
 references and relative links inside the moved record together. Directory,
 document and index disagreement is a defect to repair, not a source of inferred
-acceptance. Follow the
-[Architecture Decision Method](../../architecture-method/architecture-decisions.md)
-and [local adoption policy](../governance-profile.md#architecture-decision-adoption).
+acceptance. Follow the [local decision adoption policy](../governance-profile.md#architecture-decision-adoption).
 
 ## Decisions
 
@@ -73,6 +71,26 @@ draft/proposed and superseded groups only when they contain records.
 | [ARD-001: Agent Loop Ownership And Extension Shape](ARD-001-agent-loop-ownership-and-extension-shape.md) | Accepted | Agent, Harness and Product adapters | Agent owns the fixed loop skeleton; Harness and Products extend it through explicit injected ports rather than replacing the loop. |
 | [ARD-002: Hosting Top-Level Placement And Scope](ARD-002-hosting-top-level-placement.md) | Accepted | Hosting, Harness and trusted host composition | Hosting owns Product-neutral local process, inherited peer endpoint, and atomic child-session mechanisms; caller scopes retain admission, security, protocol, and domain authority. |
 | [ARD-003: AppHost Top-Level Placement And Contract Boundary](ARD-003-apphost-top-level-placement.md) | Accepted | AppHost, Product packages, Harness, and optional hosted/launcher siblings | AppHost owns explicit cross-Product routing and scoped Product Runtime bindings; core remains independent of concrete Products, AppServer, Hosting, and UI frameworks. |
+
+### Accepted In State Directories
+
+| Record | Status | Boundary | Decision summary |
+| --- | --- | --- | --- |
+| [ARD-004: Separate Resume History From Current Execution Authority](accepted/ARD-004-resume-history-and-current-authority.md) | Accepted | Coding, Harness, AppHost, AppService, HarnessTUI | Decode readable history independently of current environment snapshots; admit new execution only under current authority and a separate activation contract. |
+| [ARD-005: Commit Resume Binding With The First User Message](accepted/ARD-005-resume-continuation-commit.md) | Accepted | Coding and Harness transcript/session | Co-commit bounded RuntimeBinding and resource evidence with one `agent.message`; reconcile fixed input identity and define reader versus writer rollback boundaries. |
+| [ARD-006: Keep Hosted Resume Readiness Inside One Product Binding](accepted/ARD-006-hosted-resume-readiness-and-admission.md) | Accepted | Coding, AppHost, AppService, AppServer, HarnessTUI | Keep preparing inside AppHost's one live Product binding; preserve Ack timing and use durable input lookup for hosted retry. |
+
+| [ARD-007: Correlate Resume Effects In Their Original Journals](accepted/ARD-007-resume-native-effect-correlation.md) | Accepted | Coding, Harness Approval and native Worker owners | Co-register parent context in original native journals; require frozen participation, fenced sealed enumeration, original-owner reconciliation and versioned writer boundaries before writable Resume. |
+| [ARD-008: Preserve Workspace Compatibility Across Upgrades](accepted/ARD-008-workspace-upgrade-compatibility.md) | Accepted | Product startup, Plugin storage and Session recovery | Retain compatible storage owners for existing workspaces; future storage changes preserve ordinary startup and data without user resets. |
+| [ARD-009: Unified Loading Input And Terminal Adapters](accepted/ARD-009-unified-loading-input-and-terminal-adapters.md) | Accepted | Coding, HarnessTUI and TUI | Share loading ownership and adapt transferable native input; native macOS/Windows validation pending. |
+| [ARD-019: Work Facts And Transcript Sharing](accepted/ARD-019-work-facts-and-transcript-sharing.md) | Accepted | HarnessWork, Harness Session/Transcript, Product composition and Goal consumption | HarnessWork supplies default recording and reading mechanisms; Product configures policies and resources. R3.1 semantics accepted 2026-10-29; opt-in full-fact recording/confirmation slice implemented locally; source-binding and migration obligations retained. |
+| [ARD-020: Hosted Goal Budget And Observation](accepted/ARD-020-hosted-goal-budget-and-observation.md) | Accepted | Coding, AppService/AppServer, HarnessWork | Product configures effective budgets; original owners enforce them; optional progress preserves full query/wait and completion validation. |
+
+### Draft
+
+| Record | Status | Boundary | Decision question |
+| --- | --- | --- | --- |
+| [ARD-011: Stage The Immutable Prefix Of A Tool Continuation](draft/ARD-011-stage-tool-continuation-prefix.md) | Draft | Agent, AI, Harness and Coding | Can a proven append-only prefix move historical request and Model Input work into the tool interval while retaining the final durability barrier? |
 
 ## Reading And Change Rule
 
@@ -88,5 +106,4 @@ For a cross-scope change:
    ownership rules.
 
 This catalog is not a substitute for the
-[Architecture Design And Governance Method](../../architecture-method/README.md)
-or the [Loushang Architecture Governance Profile](../governance-profile.md).
+[Loushang Architecture Governance Profile](../governance-profile.md).

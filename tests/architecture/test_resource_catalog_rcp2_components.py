@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 from loushang.harness.resource_catalog.components import (
@@ -9,6 +8,7 @@ from loushang.harness.resource_catalog.components import (
     RESOURCE_SOURCE_COMPONENT_KIND,
     RESOURCE_SOURCE_DEFINITION,
 )
+from tests.architecture._source_imports import imported_modules as _imported_modules
 
 RESOURCE_ROOT = Path("src/loushang/harness/resources")
 ORCHESTRATION_ROOT = Path("src/loushang/harness/resource_catalog")
@@ -28,25 +28,20 @@ EXTENSION_RESOURCE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_extension_source.py"
 EXTENSION_RESOURCE_RUNTIME_PATH = Path("src/loushang/harness/extensions/resources.py")
 CODING_SHADOW_ADAPTER_PATH = Path("src/loushang/coding/_resource_catalog_shadow.py")
 CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
+CODING_BASE_PRODUCT_COMPOSITION_PATH = Path(
+    "src/loushang/coding/_base_product_composition.py"
+)
+CODING_EXTERNAL_DATA_PRODUCT_COMPOSITION_PATH = Path(
+    "src/loushang/coding/_external_data_product_composition.py"
+)
+CODING_PRODUCT_CAPABILITY_COMPOSITION_PATH = Path(
+    "src/loushang/coding/_product_capability_plugin_composition.py"
+)
 CODING_BASE_PLUGIN_PATH = Path("src/loushang/coding/_base_plugin.py")
 CODING_CAPABILITY_PLUGIN_COMPOSITION_PATH = Path(
     "src/loushang/coding/_capability_plugin_composition.py"
 )
 CODING_LSP_PLUGIN_OPT_IN_PATH = Path("src/loushang/coding/lsp/_plugin_opt_in.py")
-
-
-def _imported_modules(path: Path) -> set[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    return {
-        node.module
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module is not None
-    } | {
-        alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    }
 
 
 def test_rcp2_first_party_definitions_are_owned_narrow_component_seams() -> None:
@@ -143,6 +138,13 @@ def test_rcp2_shadow_runner_is_private_and_has_no_production_importer() -> None:
             allowed.add("loushang.harness.resource_catalog.session_bootstrap")
         if path == CODING_SHADOW_ADAPTER_PATH:
             allowed.add("loushang.harness.resource_catalog.product_inputs")
+        if path in {
+            CODING_BASE_PRODUCT_COMPOSITION_PATH,
+            CODING_EXTERNAL_DATA_PRODUCT_COMPOSITION_PATH,
+            CODING_SHADOW_ADAPTER_PATH,
+            CODING_BOOTSTRAP_PATH,
+        }:
+            allowed.add("loushang.harness.resource_catalog.product_snapshot_source")
         restricted = {
             imported
             for imported in _imported_modules(path)
@@ -296,6 +298,9 @@ def test_rcp4_plc5_product_composition_assembly_is_one_private_product_root() ->
         CODING_BOOTSTRAP_PATH,
         CODING_BASE_PLUGIN_PATH,
         CODING_CAPABILITY_PLUGIN_COMPOSITION_PATH,
+        CODING_BASE_PRODUCT_COMPOSITION_PATH,
+        CODING_EXTERNAL_DATA_PRODUCT_COMPOSITION_PATH,
+        CODING_PRODUCT_CAPABILITY_COMPOSITION_PATH,
         CODING_LSP_PLUGIN_OPT_IN_PATH,
         CODING_SHADOW_ADAPTER_PATH,
     }

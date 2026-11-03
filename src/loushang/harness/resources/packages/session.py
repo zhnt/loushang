@@ -19,7 +19,6 @@ from loushang.harness.resources.packages.catalog_diagnostics import (
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.operations import (
-    PackageMutationRequiresAsyncError,
     PackageOperationRecord,
     PackageOperationsRuntime,
     PackageResourceRefreshOutcome,
@@ -243,15 +242,12 @@ class SessionPackageController:
     def uninstall_package(
         self, source: str, *, scope: str = "project"
     ) -> dict[str, object]:
-        if not self.supports_synchronous_refresh():
-            raise PackageMutationRequiresAsyncError(
-                "Catalog-backed package uninstall requires uninstall_package_async()"
-            )
         return serialize_package_operation_record(
             self._operations.uninstall_sync(
                 source,
                 scope=scope,
                 entrypoint="session",
+                legacy_refresh_available=self.supports_synchronous_refresh,
             )
         )
 
@@ -397,6 +393,10 @@ class SessionPackageController:
         return self.refresh_resources()
 
     async def prepare_configured_remote_package_records(self) -> None:
+        if self.product_lifecycle_mode == "enforced":
+            raise RuntimeError(
+                "Package Product preparation has no accepted non-Plugin owner"
+            )
         settings_manager = self.get_settings_manager()
         materializer = self.get_package_materializer()
         if settings_manager is None or materializer is None:

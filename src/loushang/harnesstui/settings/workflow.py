@@ -299,6 +299,7 @@ class SettingsPageView(SettingsDashboard):
             branch=snapshot.branch,
             session_label=snapshot.session_label,
             running=snapshot.running,
+            session_id=getattr(snapshot, "session_id", None),
         )
 
 

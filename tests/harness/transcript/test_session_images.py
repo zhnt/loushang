@@ -357,3 +357,80 @@ def test_screenshot_and_generated_images_use_the_same_session_boundary(
     assert isinstance(image, SessionImagePart)
     assert image.blob.source == source
     assert store.read_bytes(image.blob) == b"hello"
+
+
+def test_blob_collection_skips_metadata_and_rechecks_mutable_message_references(
+    monkeypatch, tmp_path
+):
+    from loushang.harness.conversation import CommandExecutionRecord
+    from loushang.harness.transcript import AgentTranscriptRecordFactory, ExtensionData
+    from loushang.harness.transcript import session_artifacts as module
+
+    store = SessionBlobStore(tmp_path / "data", "owner")
+    image = store.put_bytes(
+        b"image", logical_name="image.png", kind="image", media_type="image/png"
+    )
+    stdout = store.put_bytes(
+        b"stdout", logical_name="stdout.txt", kind="output", media_type="text/plain"
+    )
+    stderr = store.put_bytes(
+        b"stderr", logical_name="stderr.txt", kind="output", media_type="text/plain"
+    )
+    foreign = replace(image, session_id="foreign")
+    factory = AgentTranscriptRecordFactory()
+    metadata = tuple(
+        factory.create("metadata", ExtensionData("probe", {}), parent_id=None)
+        for _ in range(2000)
+    )
+
+    class CustomUser(UserMessage):
+        pass
+
+    user = CustomUser(
+        role="user", content=[SessionImagePart(type="image", blob=image)], timestamp=0.0
+    )
+    tool = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="new",
+        tool_name="probe",
+        content=[],
+        is_error=False,
+        timestamp=0.0,
+        details={
+            "stdout_blob": stdout.manifest_entry(),
+            "stderr_blob": stderr.manifest_entry(),
+        },
+    )
+    command = CommandExecutionRecord(
+        command="probe", output="", exit_code=0, stdout_blob=stdout, stderr_blob=stderr
+    )
+    payloads = (user, command, tool)
+    records = (
+        *metadata,
+        *(factory.create("message", payload, parent_id=None) for payload in payloads),
+    )
+    visited = []
+    original = module._payload_session_blobs
+
+    def visit(payload):
+        visited.append(payload)
+        return original(payload)
+
+    monkeypatch.setattr(module, "_payload_session_blobs", visit)
+    assert module.collect_agent_transcript_session_blobs(
+        records, expected_session_id="owner"
+    ) == (image, stdout, stderr)
+    assert len(visited) == len(payloads), (
+        "blob extraction visited unrelated historical metadata"
+    )
+    tool.details["stdout_blob"] = foreign.manifest_entry()
+    with pytest.raises(module.SessionBlobOwnershipError):
+        module.collect_agent_transcript_session_blobs(
+            records, expected_session_id="owner"
+        )
+    tool.details["stdout_blob"] = stdout.manifest_entry()
+    user.content.append(SessionImagePart(type="image", blob=foreign))
+    with pytest.raises(module.SessionBlobOwnershipError):
+        module.collect_agent_transcript_session_blobs(
+            records, expected_session_id="owner"
+        )

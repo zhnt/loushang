@@ -5,7 +5,13 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import cast
 
-from ..protocol import InvalidAppMessageError, SessionSnapshotRequestV1
+from ..protocol import (
+    AppErrorCodeV1,
+    AppServiceError,
+    InvalidAppMessageError,
+    SessionSnapshotRequestV1,
+)
+from ..resume_model import ResumeInputLookupQueryV1, ResumeInputLookupResultV1
 from .model import (
     ExecutionCallV1,
     ExecutionContentEventV1,
@@ -21,8 +27,34 @@ _Send = Callable[[Callable[[str], ExecutionCallV1], type[object], bool, bool], A
 
 
 class RemoteExecutionClientV1:
-    def __init__(self, service_instance_id: str, send: _Send) -> None:
+    def __init__(
+        self, service_instance_id: str, send: _Send, *, resume_input_lookup: bool = False,
+    ) -> None:
         self.service_instance_id, self._send = service_instance_id, send
+        if type(resume_input_lookup) is not bool:
+            raise TypeError("invalid Resume lookup capability")
+        self.resume_input_lookup_available = resume_input_lookup
+
+    async def lookup_resume_input(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+        query: ResumeInputLookupQueryV1,
+    ) -> ResumeInputLookupResultV1:
+        if not self.resume_input_lookup_available:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        ExecutionCallV1(
+            "validation", ExecutionOperationV1.RESUME_INPUT_LOOKUP, control,
+            expected_instance_id, resume_query=query,
+        )
+        result = await self._send(
+            lambda request_id: ExecutionCallV1(
+                request_id, ExecutionOperationV1.RESUME_INPUT_LOOKUP, control,
+                expected_instance_id, resume_query=query,
+            ),
+            ResumeInputLookupResultV1, True, False,
+        )
+        if type(result) is not ResumeInputLookupResultV1 or result.input_id != query.input_id:
+            raise InvalidAppMessageError()
+        return result
 
     async def _call(
         self, operation: ExecutionOperationV1, control: SessionSnapshotRequestV1,

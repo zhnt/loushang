@@ -7,6 +7,7 @@ import os
 import shutil
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -80,12 +81,14 @@ async def _wait_for_diagnostic_state(
     )
 
 
-async def _wait_for_definition(
+async def _wait_for_symbol_query(
     runtime: CodingLspRuntime,
     *,
     path: str,
     line: int,
     character: int,
+    query: Literal["definition", "references"],
+    minimum_count: int,
     timeout_seconds: float = 20,
 ) -> CodeQueryResult:
     loop = asyncio.get_running_loop()
@@ -98,13 +101,14 @@ async def _wait_for_definition(
             path=path,
             line=line,
             character=character,
-            correlation_id=f"rust-analyzer-live-definition-{attempt}",
+            query=query,
+            correlation_id=f"rust-analyzer-live-{query}-{attempt}",
         )
-        if last_result.count >= 1:
+        if last_result.count >= minimum_count:
             return last_result
         await asyncio.sleep(0.05)
     raise AssertionError(
-        f"rust-analyzer definition did not become ready; last result: {last_result!r}"
+        f"rust-analyzer {query} did not become ready; last result: {last_result!r}"
     )
 
 
@@ -179,18 +183,21 @@ def test_product_rust_analyzer_preset_semantics_diagnostics_and_shutdown(
                 path="src/lib.rs",
                 correlation_id="rust-analyzer-live-outline",
             )
-            definition_result = await _wait_for_definition(
+            definition_result = await _wait_for_symbol_query(
                 runtime,
                 path="src/main.rs",
                 line=4,
                 character=target_character,
+                query="definition",
+                minimum_count=1,
             )
-            references = await runtime.inspect_symbol(
+            references = await _wait_for_symbol_query(
+                runtime,
                 path="src/main.rs",
                 line=4,
                 character=target_character,
                 query="references",
-                correlation_id="rust-analyzer-live-references",
+                minimum_count=2,
             )
             hover = await runtime.inspect_symbol(
                 path="src/main.rs",

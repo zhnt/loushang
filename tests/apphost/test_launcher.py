@@ -152,16 +152,26 @@ def test_G17_LAUNCH_ready_borrows_clients_and_graceful_close_releases_one_host(
     asyncio.run(scenario())
 
 
-def test_G17_LAUNCH_cold_hello_uses_owner_budget_not_default_connection_phase(tmp_path):
+def test_G17_LAUNCH_cold_hello_uses_owner_budget_not_default_connection_phase(
+    tmp_path,
+    monkeypatch,
+):
     async def scenario():
+        loop = asyncio.get_running_loop()
+        native_time = loop.time
+        elapsed = 0.0
+
         class ColdLease(_Lease):
             async def read_stdout(self, size):
+                nonlocal elapsed
                 if not self.read_sizes:
                     # Exercise the actual default 10-second connection timer;
                     # the explicit owner has admitted a 15-second startup.
-                    await asyncio.sleep(10.1)
+                    elapsed = 10.1
+                    await asyncio.sleep(0)
                 return await super().read_stdout(size)
 
+        monkeypatch.setattr(loop, "time", lambda: native_time() + elapsed)
         owner, lease, host = _owner(tmp_path, ColdLease(), startup_timeout=15)
         try:
             await owner.start()
@@ -688,9 +698,12 @@ def test_G17_LAUNCH_expired_budget_cannot_publish_new_ordinary_phases(tmp_path):
             with pytest.raises(AppServiceError):
                 await owner.close()
             assert entered.is_set() and "drain" not in owner._phases
-            deadline = owner._deadline
             release.set()
             await asyncio.wait_for(owner._phases["client"], 1)
+            # Force the clock fence after the held phase settles. On Windows,
+            # its completion can race the tiny real-time foreground budget.
+            owner._deadline = asyncio.get_running_loop().time() - 1
+            deadline = owner._deadline
             with pytest.raises(AppServiceError) as error:
                 await owner.close()
             assert error.value.code is AppErrorCodeV1.CLEANUP_INCOMPLETE

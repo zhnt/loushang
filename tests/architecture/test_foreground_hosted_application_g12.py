@@ -150,6 +150,7 @@ def test_G12_EXPLICIT_ACTIVATION_preserves_installed_omission_routes() -> None:
         Path("src/loushang/coding/__init__.py"),
         Path("src/loushang/coding/bootstrap.py"),
         Path("src/loushang/coding/cli/__main__.py"),
+        Path("src/loushang/coding/cli/application.py"),
         Path("src/loushang/coding/ui/cli.py"),
         Path("src/loushang/harnesstui/__init__.py"),
         Path("src/loushang/harnesstui/conversation/application_host.py"),
@@ -191,8 +192,15 @@ def test_g12_new_owners_remain_independently_reviewable() -> None:
     limits = {
         # G16 adds public client-mode selection/fencing to this same application
         # boundary. Its native deployment owner has a separate 300-line gate.
-        APPHOST_APPLICATION: 550,
-        CODING_APPLICATION: 800,
+        # lmux vs a3dbec60 adds 16 lines for explicit managed binding, borrowed
+        # getters and rejection without continuity; retain the original margin.
+        APPHOST_APPLICATION: 550 + 16,
+        # PLC9B Product Session ownership closes the injected factory (+7).
+        # Keep this exact owner under its own review gate.
+        # COD-KD-HMW-001: fixed Method selection and exclusive execution
+        # claim add 39 lines; retain this exact complete owner in the check.
+        # COD-KD-HG-001: mutually exclusive Goal selection (+16), full owner counted.
+        CODING_APPLICATION: 800 + 84 + 7 + 39 + 16,
     }
     for path, limit in limits.items():
         lines = len(_read(path).splitlines())

@@ -11,6 +11,7 @@ import errno
 import os
 import re
 import stat
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from hashlib import sha256
@@ -901,6 +902,96 @@ class PackageEpochCutoverSnapshotPort(Protocol):
 class PackagePosixEpochCutoverOwner:
     """Configured POSIX capability owner; public records remain pathless."""
 
+    @staticmethod
+    def reopen_fenced(
+        authority_root: Path,
+        *,
+        store_id: str,
+        epoch_journal: PackageEpochFenceJournal,
+        epochs_root_name: str,
+    ) -> PackagePosixEpochCutoverResultV1:
+        """Rebuild current admission evidence without the pre-B Source owner."""
+
+        if os.name != "posix" or not _supports_posix_rooted_io():
+            raise PackagePosixEpochCutoverError(
+                "POSIX Package epoch reopen is unavailable",
+                code="package_epoch_cutover_unavailable",
+            )
+        if (
+            not isinstance(authority_root, Path)
+            or not authority_root.is_absolute()
+            or ".." in authority_root.parts
+            or authority_root == Path(authority_root.anchor)
+            or not isinstance(epoch_journal, PackageEpochFenceJournal)
+        ):
+            raise ValueError("Package epoch reopen authority is invalid")
+        _require_safe_id(store_id, name="Package store identity")
+        _require_component(epochs_root_name, name="Package epochs root name")
+        records = epoch_journal.records()
+        if not records or records[-1].receipt.store_id != store_id:
+            raise PackagePosixEpochCutoverError(
+                "Package epoch fence is unavailable",
+                code="package_epoch_fence_stale",
+            )
+        current = records[-1].receipt
+        prior = records[-2].receipt if len(records) > 1 else None
+        source = current.request
+        request = PackagePosixEpochCutoverRequestV1.create(
+            store_id=store_id,
+            prior_fence=prior,
+            expected_legacy_root_identity=source.legacy_root_identity,
+            namespace_id=source.namespace_id,
+            minimum_runtime_version=source.minimum_runtime_version,
+            minimum_runtime_protocol_epoch=source.minimum_runtime_protocol_epoch,
+        )
+        switch = PackagePosixEpochRootSwitchReceiptV1.create(
+            request,
+            fenced_root_identity=source.fenced_root_identity,
+            quiescence_receipt_id=source.quiescence_receipt_id,
+            snapshot_receipt_id=source.snapshot_receipt_id,
+        )
+        if switch.switch_receipt_id != source.root_switch_receipt_id:
+            raise _identity_changed()
+        try:
+            pinned = _PinnedPosixAuthority.open(authority_root)
+            try:
+                epochs_fd = pinned.open_authority_child(epochs_root_name)
+                try:
+                    epoch_identity = _directory_native_identity(epochs_fd)
+                    selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
+                    try:
+                        if _directory_identity(selected_fd) != source.fenced_root_identity:
+                            raise _identity_changed()
+                    finally:
+                        os.close(selected_fd)
+                finally:
+                    os.close(epochs_fd)
+                pinned.assert_visible()
+                epochs_fd = pinned.open_authority_child(
+                    epochs_root_name, expected_identity=epoch_identity
+                )
+                try:
+                    selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
+                    try:
+                        if _directory_identity(selected_fd) != source.fenced_root_identity:
+                            raise _identity_changed()
+                    finally:
+                        os.close(selected_fd)
+                finally:
+                    os.close(epochs_fd)
+            finally:
+                pinned.close()
+        except Exception as exc:
+            raise _native_error(exc) from exc
+        if epoch_journal.current(store_id) != current:
+            raise PackagePosixEpochCutoverError(
+                "Package epoch changed during reopen",
+                code="package_epoch_fence_stale",
+            )
+        return PackagePosixEpochCutoverResultV1.fenced(
+            request, fence=current, switch_receipt=switch
+        )
+
     def __init__(
         self,
         authority_root: str | Path,
@@ -911,6 +1002,8 @@ class PackagePosixEpochCutoverOwner:
         snapshots: PackageEpochCutoverSnapshotPort,
         legacy_root_name: str = "legacy",
         epochs_root_name: str = "epochs",
+        snapshot_admission: Callable[[PackageEpochCutoverSnapshotReceiptV1], None]
+        | None = None,
         before_fence_probe=None,
     ) -> None:
         if os.name != "posix" or not _supports_posix_rooted_io():
@@ -943,6 +1036,8 @@ class PackagePosixEpochCutoverOwner:
             raise TypeError("Package epoch snapshot owner is required")
         if before_fence_probe is not None and not callable(before_fence_probe):
             raise TypeError("Package epoch pre-fence probe must be callable")
+        if snapshot_admission is not None and not callable(snapshot_admission):
+            raise TypeError("Package snapshot admission must be callable")
         self._root = raw_root
         self._store_id = store_id
         self._journal = epoch_journal
@@ -951,6 +1046,7 @@ class PackagePosixEpochCutoverOwner:
         self._legacy_name = legacy_root_name
         self._epochs_name = epochs_root_name
         self._before_fence_probe = before_fence_probe
+        self._snapshot_admission = snapshot_admission
         pinned = _PinnedPosixAuthority.open(self._root)
         try:
             legacy_fd = pinned.open_authority_child(self._legacy_name)
@@ -1095,6 +1191,8 @@ class PackagePosixEpochCutoverOwner:
                 quiescence_receipt_id=quiescence.receipt_id,
             )
             _validate_snapshot(snapshot, request, quiescence)
+            if self._snapshot_admission is not None:
+                self._snapshot_admission(snapshot)
             try:
                 os.mkdir(request.namespace_id, mode=0o700, dir_fd=epochs_fd)
                 created = True

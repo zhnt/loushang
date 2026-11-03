@@ -19,6 +19,7 @@ from loushang.tui.markdown.renderer import (
     MarkdownRenderer,
     MarkdownSegmentedRenderResult,
 )
+from loushang.tui.terminal_image import is_terminal_image_line
 from loushang.tui.theme import TerminalCapabilities, ThemeResolver
 
 ToolState = Literal["running", "completed", "failed", "cancelled", "truncated"]
@@ -120,6 +121,8 @@ class ToolExecutionRecord:
         default=None,
         repr=False,
     )
+    detail_expanded: bool = False
+    activity_id: str | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,7 +168,9 @@ DisplayRecord: TypeAlias = (
 @dataclass(slots=True)
 class TranscriptBuffer:
     _records: list[DisplayRecord] = field(default_factory=list)
-    _assistant_draft_buffer: StreamingTextBuffer | None = field(default=None, init=False, repr=False)
+    _assistant_draft_buffer: StreamingTextBuffer | None = field(
+        default=None, init=False, repr=False
+    )
 
     @property
     def records(self) -> tuple[DisplayRecord, ...]:
@@ -175,7 +180,9 @@ class TranscriptBuffer:
     def assistant_draft(self) -> AssistantMessageRecord | None:
         if self._assistant_draft_buffer is None:
             return None
-        return AssistantMessageRecord(text=self._assistant_draft_buffer.text, stable=False)
+        return AssistantMessageRecord(
+            text=self._assistant_draft_buffer.text, stable=False
+        )
 
     @assistant_draft.setter
     def assistant_draft(self, value: AssistantMessageRecord | None) -> None:
@@ -197,7 +204,9 @@ class TranscriptBuffer:
     def commit_assistant(self) -> None:
         if self._assistant_draft_buffer is None:
             return
-        self._records.append(AssistantMessageRecord(text=self._assistant_draft_buffer.text, stable=True))
+        self._records.append(
+            AssistantMessageRecord(text=self._assistant_draft_buffer.text, stable=True)
+        )
         self._assistant_draft_buffer = None
 
 
@@ -216,8 +225,12 @@ class TranscriptView:
         init=False,
         repr=False,
     )
-    _render_cache_lines: tuple[str, ...] | None = field(default=None, init=False, repr=False)
-    _record_line_cache: dict[tuple[DisplayRecord, bool, int, tuple[object, ...]], tuple[str, ...]] = field(
+    _render_cache_lines: tuple[str, ...] | None = field(
+        default=None, init=False, repr=False
+    )
+    _record_line_cache: dict[
+        tuple[DisplayRecord, bool, int, tuple[object, ...]], tuple[str, ...]
+    ] = field(
         default_factory=dict,
         init=False,
         repr=False,
@@ -225,7 +238,9 @@ class TranscriptView:
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         records = tuple(self.records)
-        style_signature = _transcript_style_signature(self.theme, self.capabilities, self.code_highlighter)
+        style_signature = _transcript_style_signature(
+            self.theme, self.capabilities, self.code_highlighter
+        )
         cache_key = (
             records,
             self.draft,
@@ -242,13 +257,19 @@ class TranscriptView:
 
         lines: list[str] = []
         for record in [*records, *([self.draft] if self.draft is not None else [])]:
-            lines.extend(self._render_record(record, width=constraints.width, style_signature=style_signature))
+            lines.extend(
+                self._render_record(
+                    record, width=constraints.width, style_signature=style_signature
+                )
+            )
             if len(lines) >= constraints.max_height:
                 break
         lines = lines[: constraints.max_height]
         self._render_cache_key = cache_key
         self._render_cache_lines = tuple(lines)
-        return RenderResult.from_lines([RenderLine(line) for line in lines], constraints=constraints)
+        return RenderResult.from_lines(
+            [RenderLine(line) for line in lines], constraints=constraints
+        )
 
     def _render_record(
         self,
@@ -338,19 +359,20 @@ def _render_record(
         return _prefixed_block("> ", record.text, width=target_width)
     if isinstance(record, AssistantMessageRecord):
         if theme is not None:
-            return _prefixed_rendered_lines(
-                "* ",
-                "  ",
-                _render_markdown_content(
-                    record.text,
-                    width=target_width - visible_width("* "),
-                    theme=theme,
-                    capabilities=capabilities,
-                    code_highlighter=code_highlighter,
-                    markdown_cache=markdown_cache,
-                    markdown_streaming_key=markdown_streaming_key,
-                ),
-                width=target_width,
+            return list(
+                _prefix_streaming_assistant_segment(
+                    _render_markdown_content(
+                        record.text,
+                        width=target_width - visible_width("* "),
+                        theme=theme,
+                        capabilities=capabilities,
+                        code_highlighter=code_highlighter,
+                        markdown_cache=markdown_cache,
+                        markdown_streaming_key=markdown_streaming_key,
+                    ),
+                    width=width,
+                    use_first_prefix=True,
+                )
             )
         return _prefixed_block("* ", record.text, width=target_width)
     if isinstance(record, ToolExecutionRecord):
@@ -372,11 +394,15 @@ def _render_record(
             lines.extend(_prefixed_block("  ", record.diagnostics, width=target_width))
         return lines
     if isinstance(record, ContextCompactionRecord):
-        return [truncate_to_width(_context_compaction_line(record), max_width=target_width)]
+        return [
+            truncate_to_width(_context_compaction_line(record), max_width=target_width)
+        ]
     if isinstance(record, WorkedDividerRecord):
         prefix = f"- Worked for {_format_elapsed(record.elapsed_seconds)} "
         filler_width = max(0, target_width - visible_width(prefix))
-        return [truncate_to_width(prefix + ("-" * filler_width), max_width=target_width)]
+        return [
+            truncate_to_width(prefix + ("-" * filler_width), max_width=target_width)
+        ]
     return []
 
 
@@ -422,7 +448,9 @@ def _render_tool(
     if record.stderr:
         lines.extend(_prefixed_block("  stderr: ", record.stderr, width=width))
     if record.exit_code is not None:
-        lines.append(truncate_to_width(f"  exit code: {record.exit_code}", max_width=width))
+        lines.append(
+            truncate_to_width(f"  exit code: {record.exit_code}", max_width=width)
+        )
     return lines
 
 
@@ -521,9 +549,7 @@ def _render_streaming_assistant_markdown_segments(
         code_highlighter=code_highlighter,
         render_cache=markdown_cache,
         streaming_key=markdown_streaming_key,
-    ).render_streaming_segments(
-        _inner_constraints(target_width - visible_width("* "))
-    )
+    ).render_streaming_segments(_inner_constraints(target_width - visible_width("* ")))
 
 
 def _prefix_streaming_assistant_segment(
@@ -533,6 +559,18 @@ def _prefix_streaming_assistant_segment(
     use_first_prefix: bool,
 ) -> tuple[str, ...]:
     target_width = autowrap_safe_width(width)
+    if target_width >= 3 and not any(is_terminal_image_line(line) for line in lines):
+        # The Markdown segment already passed _result at target_width - 2.
+        # Its two-cell assistant prefix fits without another width scan.
+        prefixed: list[str] = []
+        used_first = False
+        for line in lines:
+            if not line:
+                prefixed.append("")
+                continue
+            prefixed.append(("* " if use_first_prefix and not used_first else "  ") + line)
+            used_first = True
+        return tuple(prefixed)
     return tuple(
         _prefixed_rendered_lines(
             "* " if use_first_prefix else "  ",
@@ -577,7 +615,11 @@ def _transcript_style_signature(
     capabilities_signature: tuple[bool, bool] | None = None
     if capabilities is not None:
         capabilities_signature = (capabilities.truecolor, capabilities.hyperlinks)
-    return (theme_signature, capabilities_signature, id(code_highlighter) if code_highlighter is not None else None)
+    return (
+        theme_signature,
+        capabilities_signature,
+        id(code_highlighter) if code_highlighter is not None else None,
+    )
 
 
 def _render_thinking(record: ThinkingRecord, *, width: int) -> list[str]:
@@ -608,9 +650,18 @@ def _prefixed_block(
     continuation_available = max(1, width - visible_width(continuation))
     lines: list[str] = []
     for logical_index, logical_line in enumerate(text.split("\n")):
-        wrapped = wrap_cells(logical_line, width=available if logical_index == 0 and not lines else continuation_available)
+        wrapped = wrap_cells(
+            logical_line,
+            width=available
+            if logical_index == 0 and not lines
+            else continuation_available,
+        )
         for wrap_index, chunk in enumerate(wrapped):
-            line_prefix = prefix if not lines and logical_index == 0 and wrap_index == 0 else continuation
+            line_prefix = (
+                prefix
+                if not lines and logical_index == 0 and wrap_index == 0
+                else continuation
+            )
             lines.append(truncate_to_width(line_prefix + chunk, max_width=width))
     return lines or [truncate_to_width(prefix, max_width=width)]
 

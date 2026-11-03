@@ -27,6 +27,7 @@ from loushang.harness.machine_resources.control_plane import (
     inspect_machine_resources,
     migrate_machine_resources,
     plan_machine_resource_migration,
+    prepare_private_directory_chain,
     resolve_machine_resource_layout,
 )
 
@@ -55,6 +56,7 @@ __all__ = [
     "MACHINE_RESOURCE_SCHEMA_VERSION",
     "clean_machine_resources",
     "inspect_machine_resources",
+    "prepare_private_directory_chain",
     "migrate_machine_resources",
     "plan_machine_resource_migration",
     "resolve_machine_resource_layout",

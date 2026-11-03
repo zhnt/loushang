@@ -40,6 +40,7 @@ from loushang.harness.conversation import (
     StoreDataError,
     load_conversation_deletion_receipt,
 )
+from loushang.harness.private_directory import create_private_directory_chain
 from loushang.harness.transcript.jsonl_file import (
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
@@ -802,6 +803,25 @@ def _inspect_resource_path(
         truncated=truncated,
         errors=tuple(errors[:20]),
     )
+
+
+def prepare_private_directory_chain(path: str | Path) -> Path:
+    """Create ``path`` and every missing ancestor as a private directory.
+
+    Thin Product-facing wrapper over :func:`create_private_directory_chain`,
+    which owns the creation rule and the symlink and race-handling contract. This
+    wrapper only fixes the entry contract -- an absolute, ``expanduser``-resolved
+    target -- and returns it.
+
+    Creating the chain is not an admission guarantee: an existing level is never
+    rewritten or validated here. Callers that own a specific leaf remain
+    responsible for tightening and validating that leaf.
+    """
+
+    target = Path(path).expanduser()
+    if not target.is_absolute():
+        raise ValueError("private directory target must be absolute")
+    return create_private_directory_chain(target)
 
 
 def _authority_path(path: Path) -> Path:

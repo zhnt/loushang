@@ -948,12 +948,53 @@ def test_common_resume_aligns_metadata_and_expands_titles_on_wide_screens(
 
     assert len(wide_rows) == 2
     assert [visible_width(row.split("·", 1)[0]) for row in wide_rows] == [76, 76]
-    assert [visible_width(row.rsplit("·", 1)[0]) for row in wide_rows] == [98, 98]
+    assert [visible_width(row.rsplit("·", 1)[0]) for row in wide_rows] == [110, 110]
     assert "A" * 60 not in narrow_rows[0]
     assert "A" * 60 in wide_rows[0]
     assert all(visible_width(line.text) <= 80 for line in narrow.lines)
     assert all(visible_width(line.text) <= 120 for line in wide.lines)
     surface.close()
+
+
+def test_resume_short_ids_extend_collisions_and_keep_full_selection_identity():
+    class Hub(_Hub):
+        async def query(self, request):
+            page = await super().query(request)
+            return replace(
+                page,
+                items=tuple(
+                    replace(
+                        self.summary,
+                        target=replace(self.summary.target, opaque_id=identity),
+                    )
+                    for identity in (
+                        "d8525f5e12aaa00000000000000000000",
+                        "d8525f5e12bbb00000000000000000000",
+                    )
+                ),
+            )
+
+    async def scenario():
+        hub = Hub()
+        surface = ContinuitySurface(
+            reference=_reference(hub), request_render=lambda _: None
+        )
+        await surface.start()
+        rendered = "\n".join(
+            strip_control_sequences(line.text)
+            for line in surface.render(
+                RenderConstraints(width=120, max_height=12)
+            ).lines
+        )
+        assert "d8525f5e12a" in rendered
+        assert "d8525f5e12b" in rendered
+        assert "d8525f5e12aaa00000000000000000000" not in rendered
+        assert surface.selected_target.opaque_id == "d8525f5e12aaa00000000000000000000"
+        surface.handle_input(InputEvent(kind="key", key="down"))
+        assert surface.selected_target.opaque_id == "d8525f5e12bbb00000000000000000000"
+        surface.close()
+
+    asyncio.run(scenario())
 
 
 def test_common_resume_surface_searches_provider_and_routes_typed_target() -> None:

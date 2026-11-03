@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from copy import copy
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Generic, Literal, TypeVar
 
 from loushang.harness.conversation.diagnostics import ConversationDiagnostic
@@ -23,6 +25,15 @@ class ForkPlan(Generic[R]):
     records: tuple[R, ...]
 
 
+@dataclass(frozen=True)
+class PreparedBranchAppend(Generic[R]):
+    source: BranchGraph[R]
+    source_count: int
+    records: tuple[R, ...]
+    added: Mapping[str, R]
+    parents: Mapping[str, str | None]
+
+
 class BranchGraph(Generic[R]):
     def __init__(
         self,
@@ -42,6 +53,9 @@ class BranchGraph(Generic[R]):
         self._build_lookup()
         self._parents = self._normalize_parents()
         self._children = self._build_children()
+        # One immutable path per graph bounds retention. Strict extensions may
+        # reuse this prefix; compatible repairs construct a fresh graph.
+        self._path_cache: tuple[str, tuple[R, ...]] | None = None
 
     @property
     def diagnostics(self) -> tuple[ConversationDiagnostic, ...]:
@@ -53,6 +67,127 @@ class BranchGraph(Generic[R]):
 
     def get(self, record_id: str) -> R | None:
         return self._by_id.get(record_id)
+
+    def with_appended(self, record: R) -> BranchGraph[R]:
+        """Prepare a detached append over stable record identities."""
+
+        return self.with_appended_records((record,))
+
+    def with_appended_records(self, records: Sequence[R]) -> BranchGraph[R]:
+        """Extend validated strict links without rebuilding the historical tree.
+
+        Existing nodes cannot point into a new strict suffix. Only new links
+        need validation and cycle detection. Copy lookup maps and each changed
+        child list once, keeping older graph snapshots detached.
+        Compatible graphs must normalize old repairs again: the new record
+        may supply a previously missing parent or replace a duplicate.
+        """
+
+        appended = tuple(records)
+        if self._mode != "strict":
+            return type(self)(
+                (*self._records, *appended),
+                record_id=self._record_id,
+                parent_id=self._parent_id,
+                mode=self._mode,
+            )
+        plan = self.prepare_strict_append(appended)
+        added, parents = plan.added, plan.parents
+        candidate = copy(self)
+        candidate._records = (*self._records, *appended)
+        candidate._source_order = [*self._source_order, *added]
+        candidate._by_id = {**self._by_id, **added}
+        candidate._parents = {**self._parents, **parents}
+        candidate._children = {
+            **self._children,
+            **{record_id: [] for record_id in added},
+        }
+        changed_parents: set[str] = set()
+        for record_id, parent in parents.items():
+            if parent is not None:
+                if parent not in added and parent not in changed_parents:
+                    candidate._children[parent] = list(self._children[parent])
+                    changed_parents.add(parent)
+                candidate._children[parent].append(record_id)
+        candidate._diagnostics = list(self._diagnostics)
+        return candidate
+
+    def prepare_strict_append(self, records: Sequence[R]) -> PreparedBranchAppend[R]:
+        """Validate only the new strict links before a durable append."""
+
+        if self._mode != "strict":
+            raise ValueError("incremental append requires a strict branch graph")
+        appended = tuple(records)
+        added: dict[str, R] = {}
+        for record in appended:
+            record_id = self._record_id(record)
+            if not isinstance(record_id, str) or not record_id:
+                self._problem(
+                    "invalid_branch_record_id",
+                    "Branch record id must be a non-empty string.",
+                    record_id=str(record_id),
+                )
+            if record_id in self._by_id or record_id in added:
+                self._problem(
+                    "duplicate_branch_record_id",
+                    f"Duplicate branch record id: {record_id}",
+                    record_id=record_id,
+                )
+            added[record_id] = record
+        parents: dict[str, str | None] = {}
+        for record_id, record in added.items():
+            parent = self._parent_id(record)
+            if parent == record_id:
+                self._problem(
+                    "self_parent_branch_record",
+                    f"Branch record {record_id} refers to itself as parent.",
+                    record_id=record_id,
+                )
+            if parent is not None and parent not in self._by_id and parent not in added:
+                self._problem(
+                    "dangling_branch_parent",
+                    f"Branch record {record_id} refers to missing parent {parent}.",
+                    record_id=record_id,
+                )
+            parents[record_id] = parent
+        cycle = _find_cycle(
+            tuple(added),
+            {
+                record_id: parent if parent in added else None
+                for record_id, parent in parents.items()
+            },
+        )
+        if cycle is not None:
+            cut_id = cycle[0]
+            self._problem(
+                "branch_parent_cycle",
+                f"Branch parent cycle detected at {cut_id}.",
+                record_id=cut_id,
+            )
+        return PreparedBranchAppend(
+            self,
+            len(self._records),
+            appended,
+            MappingProxyType(added),
+            MappingProxyType(parents),
+        )
+
+    def publish_strict_append(self, plan: PreparedBranchAppend[R]) -> None:
+        """Advance one owned graph after its Store receipt has been checked."""
+
+        if plan.source is not self or len(self._records) != plan.source_count:
+            raise RuntimeError("branch append source changed before publication")
+        self._records = (*self._records, *plan.records)
+        self._source_order.extend(plan.added)
+        self._by_id.update(plan.added)
+        self._parents.update(plan.parents)
+        for record_id in plan.added:
+            self._children[record_id] = []
+        for record_id, parent in plan.parents.items():
+            if parent is not None:
+                # Detached graph candidates may still share old child lists.
+                # Replace each changed list rather than mutating one in place.
+                self._children[parent] = [*self._children[parent], record_id]
 
     def roots(self) -> tuple[R, ...]:
         return tuple(
@@ -74,15 +209,24 @@ class BranchGraph(Generic[R]):
 
     def path(self, record_id: str) -> tuple[R, ...]:
         self._require_record(record_id)
+        cached = self._path_cache
+        if cached is not None and cached[0] == record_id:
+            return cached[1]
         ids: list[str] = []
         seen: set[str] = set()
         current_id: str | None = record_id
+        prefix: tuple[R, ...] = ()
         while current_id is not None and current_id not in seen:
+            if cached is not None and current_id == cached[0]:
+                prefix = cached[1]
+                break
             seen.add(current_id)
             ids.append(current_id)
             current_id = self._parents[current_id]
         ids.reverse()
-        return tuple(self._by_id[item_id] for item_id in ids)
+        result = (*prefix, *(self._by_id[item_id] for item_id in ids))
+        self._path_cache = (record_id, result)
+        return result
 
     def ancestors(self, record_id: str) -> tuple[R, ...]:
         path = self.path(record_id)

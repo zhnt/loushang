@@ -6,13 +6,13 @@ import asyncio
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import TypeVar, cast
+from typing import Literal, TypeVar, cast
 
 from .client import SessionDiscoveryClientV1
 from .execution.codec import (
+    EXECUTION_PROTOCOL_VERSION,
     decode_execution_hello,
     encode_call,
-    is_execution_frame,
 )
 from .execution.codec import decode_response as decode_execution_response
 from .execution.model import (
@@ -27,6 +27,26 @@ from .framing import (
     AppMessageStreamV1,
     require_timeout,
 )
+from .managed_mux import (
+    ManagedMuxCreatedV1,
+    ManagedMuxCreateV1,
+    ManagedMuxCreationClientV1,
+)
+from .managed_mux_close import (
+    ManagedMuxCloseClientV1,
+    ManagedMuxCloseStateV1,
+    ManagedMuxCloseV1,
+)
+from .managed_mux_wire import (
+    MANAGED_MUX_CLOSE_PROTOCOL_VERSION,
+    MANAGED_MUX_PROTOCOL_VERSION,
+    ManagedMuxCallV1,
+    ManagedMuxCloseCallV1,
+    decode_close_response,
+    encode_close_call,
+)
+from .managed_mux_wire import decode_response as decode_managed_response
+from .managed_mux_wire import encode_call as encode_managed_call
 from .protocol import (
     AckV1,
     AppErrorCodeV1,
@@ -63,11 +83,15 @@ from .protocol import (
     decode_response,
     encode_request,
 )
+from .protocol.codec import _loads
 from .protocol.connection_profile import (
     AppConnectionProfileV1,
     connection_hello,
     require_profile_operation,
     supports_execution,
+    supports_managed_mux,
+    supports_managed_mux_close,
+    supports_resume_input_lookup,
     supports_session_discovery,
 )
 from .protocol.stdio_profile import (
@@ -75,8 +99,10 @@ from .protocol.stdio_profile import (
     MAX_CONTROL_REQUESTS,
     MAX_ORDINARY_REQUESTS,
 )
+from .resume_model import ResumeInputLookupClientV1
 
 _Result = TypeVar("_Result", bound=AppResultPayloadV1)
+_Family = Literal["app", "execution", "managed_mux", "managed_mux_close"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,8 +110,9 @@ class _Pending:
     future: asyncio.Future[object]
     result_type: type[object]
     control: bool
-    execution: bool = False
+    family: _Family = "app"
     allow_missing: bool = False
+    managed_intent: tuple[str, ...] | None = None
 
 
 class RemoteAppClientV1:
@@ -117,6 +144,53 @@ class RemoteAppClientV1:
         return self._execution_client if self._ready and not self._closed else None
 
     @property
+    def resume_input_lookup_client(self) -> ResumeInputLookupClientV1 | None:
+        """Borrow only after this exact optional read profile is negotiated."""
+
+        client = self.execution_client
+        return client if client is not None and client.resume_input_lookup_available else None
+
+    @property
+    def managed_mux_client(self) -> ManagedMuxCreationClientV1 | None:
+        if self._ready and not self._closed and supports_managed_mux(self._profile):
+            return self
+        return None
+
+    async def create_managed_mux(self, request: ManagedMuxCreateV1) -> ManagedMuxCreatedV1:
+        if self.managed_mux_client is None:
+            raise AppConnectionClosedError()
+        if type(request) is not ManagedMuxCreateV1:
+            raise InvalidAppMessageError()
+        return cast(ManagedMuxCreatedV1, await self._send_encoded(
+            lambda request_id: encode_managed_call(ManagedMuxCallV1(request_id, request)),
+            ManagedMuxCreatedV1, control=False, family="managed_mux",
+            managed_intent=(request.operation_id, request.name),
+        ))
+
+    @property
+    def managed_mux_close_client(self) -> ManagedMuxCloseClientV1 | None:
+        if self._ready and not self._closed and supports_managed_mux_close(self._profile):
+            return self
+        return None
+
+    async def close_managed_mux(self, request: ManagedMuxCloseV1) -> ManagedMuxCloseStateV1:
+        return cast(ManagedMuxCloseStateV1, await self._managed_close(request, read=False))
+
+    async def read_managed_mux_close(self, request: ManagedMuxCloseV1) -> ManagedMuxCloseStateV1 | None:
+        return await self._managed_close(request, read=True)
+
+    async def _managed_close(self, request: ManagedMuxCloseV1, *, read: bool) -> ManagedMuxCloseStateV1 | None:
+        if self.managed_mux_close_client is None:
+            raise AppConnectionClosedError()
+        if type(request) is not ManagedMuxCloseV1:
+            raise InvalidAppMessageError()
+        return cast(ManagedMuxCloseStateV1 | None, await self._send_encoded(
+            lambda request_id: encode_close_call(ManagedMuxCloseCallV1(request_id, request, read_result=read)),
+            ManagedMuxCloseStateV1, control=read, family="managed_mux_close", allow_missing=read,
+            managed_intent=(request.operation_id, request.creation_operation_id, request.name, request.mux_space_id),
+        ))
+
+    @property
     def discovery_client(self) -> SessionDiscoveryClientV1 | None:
         """Borrow only the explicitly selected, ready discovery capability."""
         if self._ready and not self._closed and supports_session_discovery(self._profile):
@@ -140,7 +214,10 @@ class RemoteAppClientV1:
                 if supports_execution(self._profile):
                     instance = decode_execution_hello(hello, self._profile.value)
                     self._hello = hello
-                    self._execution_client = RemoteExecutionClientV1(instance, self._send_execution)
+                    self._execution_client = RemoteExecutionClientV1(
+                        instance, self._send_execution,
+                        resume_input_lookup=supports_resume_input_lookup(self._profile),
+                    )
                 elif hello != self._hello:
                     raise InvalidAppMessageError()
                 await self._stream.send(self._hello)
@@ -171,12 +248,13 @@ class RemoteAppClientV1:
             raise AppConnectionClosedError()
         return await self._send_encoded(
             lambda request_id: encode_call(build(request_id)), result_type,
-            control=control, execution=True, allow_missing=allow_missing,
+            control=control, family="execution", allow_missing=allow_missing,
         )
 
     async def _send_encoded(
         self, encode: Callable[[str], bytes], result_type: type[object], *,
-        control: bool, execution: bool = False, allow_missing: bool = False,
+        control: bool, family: _Family = "app", allow_missing: bool = False,
+        managed_intent: tuple[str, ...] | None = None,
     ) -> object:
         if not self._ready or self._closed:
             raise AppConnectionClosedError()
@@ -201,7 +279,7 @@ class RemoteAppClientV1:
                     # A cancelled local caller still owns a bounded remote slot.
                     future.add_done_callback(_observe_future)
                     self._pending[request_id] = _Pending(
-                        future, result_type, control, execution, allow_missing
+                        future, result_type, control, family, allow_missing, managed_intent
                     )
                     registered = True
                     try:
@@ -220,16 +298,40 @@ class RemoteAppClientV1:
         try:
             while not self._closed:
                 payload = await self._stream.receive()
-                execution = self._execution_client is not None and is_execution_frame(payload)
-                response = decode_execution_response(payload) if execution else decode_response(payload)
+                version = _loads(payload).get("protocolVersion") if (
+                    self._execution_client is not None or supports_managed_mux(self._profile)
+                ) else None
+                family: _Family = (
+                    "managed_mux_close" if supports_managed_mux_close(self._profile) and version == MANAGED_MUX_CLOSE_PROTOCOL_VERSION
+                    else
+                    "managed_mux" if supports_managed_mux(self._profile) and version == MANAGED_MUX_PROTOCOL_VERSION
+                    else "execution" if self._execution_client is not None and version == EXECUTION_PROTOCOL_VERSION
+                    else "app"
+                )
+                response = (
+                    decode_close_response(payload) if family == "managed_mux_close" else
+                    decode_managed_response(payload) if family == "managed_mux"
+                    else decode_execution_response(payload) if family == "execution"
+                    else decode_response(payload)
+                )
                 pending = self._pending.get(response.request_id)
-                if pending is None or pending.execution != execution:
+                if pending is None or pending.family != family:
                     raise InvalidAppMessageError()
                 result = response.result
                 if (
                     type(result) not in (AppFailureV1, ExecutionFailureV1)
                     and type(result) is not pending.result_type
                     and not (pending.allow_missing and result is None)
+                ):
+                    raise InvalidAppMessageError()
+                # A cancelled delivery waiter still owns its pending request.
+                # Validate here, before releasing its slot or publishing a value.
+                if type(result) is ManagedMuxCreatedV1 and (
+                    pending.managed_intent != (result.operation_id, result.name)
+                ):
+                    raise InvalidAppMessageError()
+                if type(result) is ManagedMuxCloseStateV1 and pending.managed_intent != (
+                    result.operation_id, result.creation_operation_id, result.name, result.mux_space_id,
                 ):
                     raise InvalidAppMessageError()
                 del self._pending[response.request_id]

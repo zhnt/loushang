@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
+from functools import partial
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -32,9 +33,10 @@ from loushang.ai.types import (
 )
 from tests.protocols._runtime import (
     bound_test_model,
+    invoke_raw_parts_for_test,
     make_provider_request,
-    provider_request_for_test,
-    start_test_provider_stream,
+    normalized_context_for_test,
+    stream_for_test,
 )
 
 FINE_GRAINED_TOOLS = "fineGrainedTools"
@@ -55,57 +57,9 @@ def _registry_with_endpoint(provider_id: str, endpoint: Endpoint) -> ModelRegist
     )
 
 
-def _normalized_context(model, context, options=None):
-    if not isinstance(model, Model) or not model.api:
-        model = bound_test_model(
-            model,
-            api="anthropic-messages",
-            options=options,
-        )
-    pairing_mode = (
-        "strict" if getattr(options, "pairing_mode", "strict") == "strict" else "repair"
-    )
-    return normalize_context(context, model=model, pairing_mode=pairing_mode)
-
-
-def _invoke_raw_parts(
-    provider,
-    model,
-    context,
-    options=None,
-    request=None,
-    *,
-    mode: str = "stream",
-):
-    normalized_context = _normalized_context(
-        request.model if request is not None else model,
-        context,
-        options,
-    )
-    provider_request = provider_request_for_test(
-        provider,
-        model,
-        normalized_context,
-        options=options,
-        request=request,
-    )
-    if mode != "stream":
-        provider_request = replace(provider_request, mode=mode)
-    return provider.invoke_raw(provider_request)
-
-
-async def _stream(provider, model, context, options=None, request=None):
-    return start_test_provider_stream(
-        provider,
-        model,
-        _normalized_context(
-            request.model if request is not None else model,
-            context,
-            options,
-        ),
-        options,
-        request=request,
-    )
+_normalized_context = partial(normalized_context_for_test, "anthropic-messages")
+_invoke_raw_parts = partial(invoke_raw_parts_for_test, "anthropic-messages")
+_stream = partial(stream_for_test, "anthropic-messages")
 
 
 def test_stop_reason_mapping_tool_use():
@@ -1541,7 +1495,7 @@ def test_anthropic_forwards_authoritative_auth_headers(
 
     headers = _last_anthropic_request_headers()
     assert _FakeAsyncAnthropic.last_init_kwargs["api_key"] == ""
-    assert _FakeAsyncAnthropic.last_init_kwargs["auth_token"] == ""
+    assert "auth_token" not in _FakeAsyncAnthropic.last_init_kwargs
     if not expected_headers:
         assert isinstance(headers["Authorization"], _FakeOmit)
         assert isinstance(headers["X-Api-Key"], _FakeOmit)

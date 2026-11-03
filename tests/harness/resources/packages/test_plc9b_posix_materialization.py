@@ -1,36 +1,86 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import loushang.harness.resources.packages.plugin_lifecycle.posix_materialization as posix_materialization
+import loushang.harness.resources.packages.plugin_lifecycle.windows_materialization as windows_materialization
+from loushang.harness.journal import journal_file_lock
+from loushang.harness.plugin_management.package_gc_binding import (
+    PluginPackageGcBindingV1,
+    PluginPackageGcClaimV1,
+    _binding_id,
+)
+from loushang.harness.plugin_management.package_gc_dependencies import (
+    PackageDependencyGcInspectionV1,
+    PackageDependencyGcTargetError,
+    project_package_dependency_retention,
+    resolve_package_dependency_gc_target,
+)
+from loushang.harness.plugin_management.package_gc_dependency_journal import (
+    PackageDependencyGcJournal,
+    PackageDependencyGcJournalError,
+)
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcDeletionStartV2,
+)
+from loushang.harness.plugin_management.package_gc_results import (
+    PluginPackageGcResultError,
+    PluginPackageGcResultJournal,
+)
+from loushang.harness.plugin_management.package_gc_target import (
+    PluginPackageGcTargetError,
+    resolve_plugin_package_gc_root_target,
+)
+from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     NormalizedPackageRequirementV1,
     ResolvedPackageRequirementV1,
     VerifiedClosurePlanNodeV2,
     VerifiedClosurePlanV2,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.commit_admission import (
+    package_operation_fingerprint,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
+    DependencyClosureLockV2,
     PluginRevisionRefV1,
     VerifiedArtifactRefV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
+    PackageCommittedSetJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     PackagePhysicalStagingError,
     PosixPackageDependencyMaterializationStore,
+    PosixPackageDependencyReadOnlyStore,
     PosixPackagePluginRootMaterializationStore,
+    PosixPackagePluginRootReadOnlyStore,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
+    PackageDesiredStateCommitRequestV1,
+    _desired_request_identity,
+    _fingerprint,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackageArtifactStagingRequestV1,
     PackagePluginRootTargetV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.store_gc import (
+    PackageStoreGcResultV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PACKAGE_STORE_SETTLEMENT_JOURNAL_CODEC,
     PackageStoreSettlementJournal,
+    PackageStoreSettlementJournalError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.transaction_pins import (
     PackageTransactionPinReceiptV1,
@@ -53,6 +103,847 @@ OPERATION_ID = "operation-posix-materialization"
 REQUEST_FINGERPRINT = "9" * 64
 CLASSIFICATION_FINGERPRINT = "8" * 64
 ENVIRONMENT_FINGERPRINT = "7" * 64
+
+
+def test_gc_root_target_requires_exact_handoff_set_and_physical_settlement(
+    tmp_path: Path,
+) -> None:
+    dependency_request, dependency_candidate, request, candidate, _, _ = (
+        _requests_and_candidates()
+    )
+    dependency_root = tmp_path / "dependency-store"
+    root = tmp_path / "root-store"
+    dependency_root.mkdir(mode=0o700)
+    root.mkdir(mode=0o700)
+    dependency_settlement_journal = PackageStoreSettlementJournal(
+        tmp_path / "dependency-settlements.jsonl"
+    )
+    dependency_store = PosixPackageDependencyMaterializationStore(
+        dependency_root,
+        store_identity="dependency-store",
+        settlement_journal=dependency_settlement_journal,
+    )
+    root_settlements = PackageStoreSettlementJournal(
+        tmp_path / "root-settlements.jsonl"
+    )
+    root_store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=root_settlements,
+    )
+    dependency_ref = dependency_store.stage_dependency(
+        dependency_request, dependency_candidate
+    ).stable_ref
+    root_ref = root_store.stage_root(request, candidate).stable_ref
+    assert isinstance(dependency_ref, VerifiedArtifactRefV1)
+    assert isinstance(root_ref, PluginRevisionRefV1)
+    plan = VerifiedClosurePlanV2.create(
+        operation_id=request.operation_id,
+        attempt_epoch=request.attempt_epoch,
+        root_node_id=request.node_id,
+        resolution_environment_fingerprint=ENVIRONMENT_FINGERPRINT,
+        nodes=(request.plan_node, dependency_request.plan_node),
+        max_depth=1,
+    )
+    assert plan.fingerprint == request.verified_plan_fingerprint
+    closure = DependencyClosureLockV2.create(
+        plan,
+        stable_refs={
+            request.node_id: root_ref,
+            dependency_request.node_id: dependency_ref,
+        },
+    )
+    committed_sets = PackageCommittedSetJournal(tmp_path / "committed-sets.jsonl")
+    committed = committed_sets.publish(
+        closure,
+        request_fingerprint=REQUEST_FINGERPRINT,
+        product_id="coding",
+        scope_id="workspace:test",
+        installation_id="installation-test",
+        plugin_id="plugin-test",
+        classification_fingerprint=CLASSIFICATION_FINGERPRINT,
+    )
+    command_id = "gc-target-install"
+    command_fingerprint = sha256(command_id.encode()).hexdigest()
+    operation_fingerprint = package_operation_fingerprint(
+        request.operation_id, REQUEST_FINGERPRINT
+    )
+    identity = _desired_request_identity(
+        command_id=command_id,
+        command_fingerprint=command_fingerprint,
+        expected_inventory_revision=0,
+        operation_id=request.operation_id,
+        operation_fingerprint=operation_fingerprint,
+        request_fingerprint=REQUEST_FINGERPRINT,
+        attempt_epoch=request.attempt_epoch,
+        product_id="coding",
+        scope_id="workspace:test",
+        installation_id="installation-test",
+        plugin_id="plugin-test",
+        committed_set_id=committed.set_id,
+        root_ref=root_ref,
+        request_version=1,
+    )
+    desired_request = PackageDesiredStateCommitRequestV1(
+        desired_request_id=_fingerprint(identity),
+        command_id=command_id,
+        command_fingerprint=command_fingerprint,
+        expected_inventory_revision=0,
+        operation_id=request.operation_id,
+        operation_fingerprint=operation_fingerprint,
+        request_fingerprint=REQUEST_FINGERPRINT,
+        attempt_epoch=request.attempt_epoch,
+        product_id="coding",
+        scope_id="workspace:test",
+        installation_id="installation-test",
+        plugin_id="plugin-test",
+        committed_set_id=committed.set_id,
+        root_ref=root_ref,
+    )
+    package_revision = PluginPackageRevisionRefV1(
+        plugin_id="plugin-test",
+        plugin_version=root_ref.version,
+        package_content_digest=root_ref.artifact_digest,
+        dependency_lock_digest=closure.lock_digest,
+        package_source_identity=request.plan_node.canonical_source_identity,
+    )
+    binding = PluginPackageGcBindingV1(
+        record_revision=1,
+        binding_id=_binding_id(desired_request, package_revision, 1),
+        request=desired_request,
+        package_revision=package_revision,
+        desired_transition_revision=1,
+    )
+    claim = PluginPackageGcClaimV1.create(
+        record_revision=1,
+        request=desired_request,
+        package_revision=package_revision,
+    )
+    sets = committed_sets.records()
+    settlements = root_settlements.records()
+    target = resolve_plugin_package_gc_root_target(
+        package_revision,
+        bindings=(binding,),
+        claims=(claim,),
+        committed_sets=sets,
+        settlements=settlements,
+    )
+    assert target.settlement_id == settlements[0].settlement_id
+    assert target.claim == claim
+
+    retained = project_package_dependency_retention(
+        sets, successfully_deleted_root_ref_ids=frozenset()
+    )[0]
+    with pytest.raises(PackageDependencyGcTargetError) as live_dependency:
+        resolve_package_dependency_gc_target(
+            retained,
+            committed_sets=sets,
+            settlements=dependency_settlement_journal.records(),
+        )
+    assert live_dependency.value.code == "plugin_package_gc_dependency_retained"
+    orphan = project_package_dependency_retention(
+        sets, successfully_deleted_root_ref_ids=frozenset({root_ref.ref_id})
+    )[0]
+    dependency_settlements = dependency_settlement_journal.records()
+    resolved_dependency = resolve_package_dependency_gc_target(
+        orphan,
+        committed_sets=sets,
+        settlements=dependency_settlements,
+    )
+    assert resolved_dependency.settlement_id == dependency_settlements[0].settlement_id
+    assert resolved_dependency.publisher_set_id == committed.set_id
+    assert (
+        PackageDependencyGcInspectionV1(orphan, target=resolved_dependency).to_dict()[
+            "targetStatus"
+        ]
+        == "exact_target"
+    )
+    dependency_gc_path = tmp_path / "dependency-gc.jsonl"
+    dependency_gc = PackageDependencyGcJournal(dependency_gc_path)
+    started = dependency_gc.begin(resolved_dependency, store_id="product-store")
+    assert (
+        dependency_gc.preflight(
+            started,
+            operation_id="operator:dep-delete",
+            idempotency_key="operator:dep-delete",
+        )
+        is None
+    )
+    assert (
+        PackageDependencyGcJournal(dependency_gc_path).begin(
+            resolved_dependency, store_id="product-store"
+        )
+        == started
+    )
+    with pytest.raises(PackageDependencyGcJournalError) as changed_start:
+        dependency_gc.begin(
+            replace(resolved_dependency, publisher_set_id="different-publisher"),
+            store_id="product-store",
+        )
+    assert changed_start.value.code == "plugin_package_gc_dependency_start_conflict"
+    # The lower-level Store/journal contract simulates a crash after exact
+    # physical deletion but before the Product result append.
+    root_store.delete_settlement(target.settlement)
+    removed_dependency = dependency_store.delete_settlement(dependency_settlements[0])
+    assert removed_dependency.disposition == "deleted"
+    assert (
+        PackageDependencyGcJournal(dependency_gc_path).preflight(
+            started,
+            operation_id="operator:dep-delete",
+            idempotency_key="operator:dep-delete",
+        )
+        is None
+    )
+    store_result = dependency_store.delete_settlement(dependency_settlements[0])
+    assert store_result.disposition == "already_absent"
+    attempt = dependency_gc.record(
+        started,
+        settlement=dependency_settlements[0],
+        operation_id="operator:dep-delete",
+        idempotency_key="operator:dep-delete",
+        store_result=store_result,
+    )
+    assert (
+        dependency_gc.preflight(
+            started,
+            operation_id="operator:dep-delete",
+            idempotency_key="operator:dep-delete",
+        )
+        == attempt
+    )
+    assert PackageDependencyGcJournal(dependency_gc_path).events()[-1] == attempt
+    with pytest.raises(PackageDependencyGcTargetError) as missing_holders:
+        resolve_package_dependency_gc_target(
+            orphan,
+            committed_sets=(),
+            settlements=dependency_settlements,
+        )
+    assert missing_holders.value.code == "plugin_package_gc_dependency_holders_changed"
+    for changed, code in (
+        ((), "plugin_package_gc_dependency_settlement_unavailable"),
+        (
+            dependency_settlements * 2,
+            "plugin_package_gc_dependency_settlement_unavailable",
+        ),
+    ):
+        with pytest.raises(PackageDependencyGcTargetError) as refused:
+            resolve_package_dependency_gc_target(
+                orphan,
+                committed_sets=sets,
+                settlements=changed,
+            )
+        assert refused.value.code == code
+
+    for evidence, expected_code in (
+        ({"bindings": ()}, "plugin_package_gc_binding_unavailable"),
+        ({"claims": ()}, "plugin_package_gc_claim_unavailable"),
+        ({"committed_sets": ()}, "plugin_package_gc_set_unavailable"),
+        ({"settlements": ()}, "plugin_package_gc_settlement_unavailable"),
+        (
+            {"settlements": (settlements[0], settlements[0])},
+            "plugin_package_gc_settlement_unavailable",
+        ),
+    ):
+        with pytest.raises(PluginPackageGcTargetError) as caught:
+            resolve_plugin_package_gc_root_target(
+                package_revision,
+                bindings=evidence.get("bindings", (binding,)),
+                claims=evidence.get("claims", (claim,)),
+                committed_sets=evidence.get("committed_sets", sets),
+                settlements=evidence.get("settlements", settlements),
+            )
+        assert caught.value.code == expected_code
+
+    mismatched = replace(package_revision, package_source_identity="other-source")
+    alias = PluginPackageGcBindingV1(
+        record_revision=2,
+        binding_id=_binding_id(desired_request, mismatched, 1),
+        request=desired_request,
+        package_revision=mismatched,
+        desired_transition_revision=1,
+    )
+    with pytest.raises(PluginPackageGcTargetError) as aliased:
+        resolve_plugin_package_gc_root_target(
+            package_revision,
+            bindings=(binding, alias),
+            claims=(claim,),
+            committed_sets=sets,
+            settlements=settlements,
+        )
+    assert aliased.value.code == "plugin_package_gc_root_aliased"
+    alias_command_id = "gc-target-pending-alias"
+    alias_fingerprint = sha256(alias_command_id.encode()).hexdigest()
+    alias_identity = _desired_request_identity(
+        command_id=alias_command_id,
+        command_fingerprint=alias_fingerprint,
+        expected_inventory_revision=1,
+        operation_id=request.operation_id,
+        operation_fingerprint=operation_fingerprint,
+        request_fingerprint=REQUEST_FINGERPRINT,
+        attempt_epoch=request.attempt_epoch,
+        product_id="coding",
+        scope_id="workspace:test",
+        installation_id="installation-test",
+        plugin_id="plugin-test",
+        committed_set_id=committed.set_id,
+        root_ref=root_ref,
+        request_version=1,
+    )
+    pending_request = replace(
+        desired_request,
+        desired_request_id=_fingerprint(alias_identity),
+        command_id=alias_command_id,
+        command_fingerprint=alias_fingerprint,
+        expected_inventory_revision=1,
+    )
+    pending_claim = PluginPackageGcClaimV1.create(
+        record_revision=2,
+        request=pending_request,
+        package_revision=mismatched,
+    )
+    with pytest.raises(PluginPackageGcTargetError) as pending_alias:
+        resolve_plugin_package_gc_root_target(
+            package_revision,
+            bindings=(binding,),
+            claims=(claim, pending_claim),
+            committed_sets=sets,
+            settlements=settlements,
+        )
+    assert pending_alias.value.code == "plugin_package_gc_root_aliased"
+    with pytest.raises(PluginPackageGcTargetError) as source_changed:
+        resolve_plugin_package_gc_root_target(
+            mismatched,
+            bindings=(alias,),
+            claims=(
+                PluginPackageGcClaimV1.create(
+                    record_revision=1,
+                    request=desired_request,
+                    package_revision=mismatched,
+                ),
+            ),
+            committed_sets=sets,
+            settlements=settlements,
+        )
+    assert source_changed.value.code == "plugin_package_gc_set_mismatch"
+
+
+def test_posix_store_gc_deletes_only_recorded_root_and_replays_absence(
+    tmp_path: Path,
+) -> None:
+    dependency_request, dependency_candidate, request, candidate, _, _ = (
+        _requests_and_candidates()
+    )
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    receipt = store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    assert settlement.receipt == receipt
+
+    result = store._store.delete_settlement(settlement)
+    assert result.disposition == "deleted"
+    assert result.stable_ref_id == receipt.stable_ref.ref_id
+    assert not (root / settlement.final_name).exists()
+    with pytest.raises(PackagePhysicalStagingError):
+        store.read_root_file(settlement, "root_plugin/__init__.py", max_bytes=4096)
+    replay = store._store.delete_settlement(settlement)
+    assert replay.disposition == "already_absent"
+    assert settlements.is_tombstoned(receipt.stable_ref.ref_id)
+    marker = json.loads(settlements.path.read_text(encoding="utf-8").splitlines()[-1])
+    with pytest.raises(ValueError):
+        PACKAGE_STORE_SETTLEMENT_JOURNAL_CODEC.decode_record(marker)
+    with pytest.raises(PackagePhysicalStagingError):
+        store.stage_root(request, candidate)
+    restarted = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=PackageStoreSettlementJournal(settlements.path),
+    )
+    with pytest.raises(PackagePhysicalStagingError):
+        restarted.stage_root(request, candidate)
+
+    dependency_root = tmp_path / "dependency-store"
+    dependency_root.mkdir(mode=0o700)
+    other_store = PosixPackageDependencyMaterializationStore(
+        dependency_root,
+        store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(settlements.path),
+    )
+    other_store.stage_dependency(dependency_request, dependency_candidate)
+    assert len(settlements.records()) == 2
+    dependency_settlement = settlements.records()[1]
+    with pytest.raises(PackagePhysicalStagingError):
+        other_store.delete_settlement(settlement)
+    dependency_result = other_store.delete_settlement(dependency_settlement)
+    assert dependency_result.disposition == "deleted"
+    assert not (dependency_root / dependency_settlement.final_name).exists()
+    assert other_store.delete_settlement(dependency_settlement).disposition == (
+        "already_absent"
+    )
+    assert settlements.is_tombstoned(dependency_settlement.receipt.stable_ref.ref_id)
+
+
+def test_posix_root_store_reads_only_live_exact_settlement_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, _, request, candidate, _, root_payloads = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    logical_path = "root_plugin/__init__.py"
+
+    assert (
+        store.read_root_file(settlement, logical_path, max_bytes=4096)
+        == root_payloads[logical_path]
+    )
+    reopened_journal = PackageStoreSettlementJournal(settlements.path)
+    reopened = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=reopened_journal,
+    )
+    assert (
+        reopened.read_root_file(settlement, logical_path, max_bytes=4096)
+        == root_payloads[logical_path]
+    )
+    members = tuple((path, len(payload)) for path, payload in root_payloads.items())
+    original_events = reopened_journal.capture_events
+    replay_count = 0
+
+    def counted_events():
+        nonlocal replay_count
+        replay_count += 1
+        return original_events()
+
+    monkeypatch.setattr(reopened_journal, "capture_events", counted_events)
+    assert reopened.read_root_files(settlement, members) == tuple(
+        root_payloads[path] for path, _ in members
+    )
+    assert replay_count == 1
+    with pytest.raises(PackagePhysicalStagingError):
+        reopened.read_root_files(settlement, (members[0], members[0]))
+    with pytest.raises(PackagePhysicalStagingError):
+        reopened.read_root_file(settlement, "../outside", max_bytes=4096)
+    with pytest.raises(PackagePhysicalStagingError):
+        reopened.read_root_file(settlement, logical_path, max_bytes=4)
+
+    published = root / settlement.final_name / logical_path
+    published.chmod(0o600)
+    published.write_bytes(b"tampered")
+    with pytest.raises(PackagePhysicalStagingError):
+        reopened.read_root_file(settlement, logical_path, max_bytes=4096)
+    with pytest.raises(PackagePhysicalStagingError):
+        reopened.read_root_files(settlement, members)
+
+
+def test_store_settlement_read_events_is_non_repairing(tmp_path: Path) -> None:
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    lock = journal.path.with_name(f"{journal.path.name}.lock")
+    assert journal.read_events() == ()
+    assert not journal.path.exists()
+    assert not lock.exists()
+
+    journal.path.write_bytes(b'{"partial":')
+    with journal_file_lock(journal.path, "exclusive"):
+        pass
+    original = journal.path.read_bytes()
+    with pytest.raises(PackageStoreSettlementJournalError) as invalid:
+        journal.read_events()
+    assert invalid.value.code == "package_store_settlement_journal_corrupt"
+    assert journal.path.read_bytes() == original
+    assert journal.capture_events() == ()
+    assert journal.path.read_bytes() == b""
+
+
+def test_posix_root_batch_read_refuses_tombstoned_settlement(tmp_path: Path) -> None:
+    _, _, request, candidate, _, root_payloads = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root, store_identity="plugin-revision-store", settlement_journal=journal
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = journal.records()
+    members = tuple((path, len(payload)) for path, payload in root_payloads.items())
+    assert store.read_root_files(settlement, members) == tuple(root_payloads.values())
+
+    journal.tombstone(settlement)
+    with pytest.raises(PackagePhysicalStagingError) as refused:
+        store.read_root_files(settlement, members)
+    assert refused.value.code == "package_publication_collision"
+
+
+def test_store_settlement_read_owner_lock_requires_existing_lock(
+    tmp_path: Path,
+) -> None:
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    with pytest.raises(FileNotFoundError), journal.read_owner_lock():
+        pass
+    assert not journal.path.with_name(f"{journal.path.name}.owner.lock").exists()
+
+
+def test_posix_root_read_only_store_preserves_owner_files(tmp_path: Path) -> None:
+    _, _, request, candidate, _, root_payloads = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    writer = PosixPackagePluginRootMaterializationStore(
+        root, store_identity="plugin-revision-store", settlement_journal=journal
+    )
+    writer.stage_root(request, candidate)
+    (settlement,) = journal.records()
+    files_before = tuple(
+        sorted(
+            (str(path.relative_to(tmp_path)), path.read_bytes())
+            for path in tmp_path.rglob("*")
+            if path.is_file()
+        )
+    )
+    reader = PosixPackagePluginRootReadOnlyStore(
+        root, store_identity="plugin-revision-store", settlement_journal=journal
+    )
+    logical_path = "root_plugin/__init__.py"
+    assert (
+        reader.read_root_file(settlement, logical_path, max_bytes=4096)
+        == root_payloads[logical_path]
+    )
+    members = tuple((path, len(payload)) for path, payload in root_payloads.items())
+    assert reader.read_root_files(settlement, members) == tuple(
+        root_payloads[path] for path, _ in members
+    )
+    assert files_before == tuple(
+        sorted(
+            (str(path.relative_to(tmp_path)), path.read_bytes())
+            for path in tmp_path.rglob("*")
+            if path.is_file()
+        )
+    )
+
+
+def test_posix_dependency_read_only_store_binds_exact_settlement_and_bytes(
+    tmp_path: Path,
+) -> None:
+    dependency_request, dependency_candidate, _, _, dependency_payloads, _ = (
+        _requests_and_candidates()
+    )
+    root = tmp_path / "dependency-store"
+    root.mkdir(mode=0o700)
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    writer = PosixPackageDependencyMaterializationStore(
+        root, store_identity="dependency-store", settlement_journal=journal
+    )
+    writer.stage_dependency(dependency_request, dependency_candidate)
+    (settlement,) = journal.records()
+    before = tuple(
+        sorted(
+            (str(path.relative_to(tmp_path)), path.read_bytes())
+            for path in tmp_path.rglob("*")
+            if path.is_file()
+        )
+    )
+    reader = PosixPackageDependencyReadOnlyStore(
+        root, store_identity="dependency-store", settlement_journal=journal
+    )
+    members = tuple((path, len(body)) for path, body in dependency_payloads.items())
+    assert reader.read_dependency_files(settlement, members) == tuple(
+        dependency_payloads[path] for path, _ in members
+    )
+    assert before == tuple(
+        sorted(
+            (str(path.relative_to(tmp_path)), path.read_bytes())
+            for path in tmp_path.rglob("*")
+            if path.is_file()
+        )
+    )
+    with pytest.raises(PackagePhysicalStagingError):
+        reader.read_dependency_files(settlement, (members[0], members[0]))
+    with pytest.raises(PackagePhysicalStagingError):
+        reader.read_dependency_file(settlement, members[0][0], max_bytes=1)
+
+    published = root / settlement.final_name / members[0][0]
+    published.chmod(0o600)
+    published.write_bytes(b"changed")
+    with pytest.raises(PackagePhysicalStagingError):
+        reader.read_dependency_files(settlement, members)
+
+
+def test_posix_root_store_read_refuses_replaced_store_root(tmp_path: Path) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    root.rename(tmp_path / "moved-store")
+    root.mkdir(mode=0o700)
+
+    with pytest.raises(PackagePhysicalStagingError) as refused:
+        store.read_root_file(settlement, "root_plugin/__init__.py", max_bytes=4096)
+    assert refused.value.code == "package_publication_root_untrusted"
+
+
+def test_posix_root_store_read_refuses_file_swap_after_tree_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"outside-secret")
+    published = root / settlement.final_name / "root_plugin" / "__init__.py"
+    original = posix_materialization._validate_existing_tree
+
+    def swap_after_validation(*args: object, **kwargs: object):
+        result = original(*args, **kwargs)
+        published.parent.chmod(0o700)
+        published.unlink()
+        published.symlink_to(outside)
+        return result
+
+    monkeypatch.setattr(
+        posix_materialization, "_validate_existing_tree", swap_after_validation
+    )
+    with pytest.raises(PackagePhysicalStagingError) as refused:
+        store.read_root_file(settlement, "root_plugin/__init__.py", max_bytes=4096)
+    assert refused.value.code == "package_publication_collision"
+    assert outside.read_bytes() == b"outside-secret"
+
+
+def test_store_gc_result_debt_replays_and_success_is_terminal(tmp_path: Path) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    start = PluginPackageGcDeletionStartV2(
+        journal_revision=1,
+        reservation_id="a" * 64,
+        operation_id="gc-delete-start",
+        idempotency_key="gc-delete-start-request",
+        target_settlement_ids=(settlement.settlement_id,),
+    )
+    journal = PluginPackageGcResultJournal(tmp_path / "gc-results.jsonl")
+    failed = journal.record(
+        start,
+        settlement=settlement,
+        operation_id="gc-attempt-1",
+        idempotency_key="gc-attempt-1-request",
+        error_code="store.transient_failure",
+    )
+    assert failed.disposition == "retryable_failure"
+    reopened = PluginPackageGcResultJournal(journal.path)
+    assert reopened.attempts(start) == (failed,)
+    with pytest.raises(PluginPackageGcResultError) as wrong_start:
+        reopened.attempts(replace(start, operation_id="different-deletion-start"))
+    assert wrong_start.value.code == "plugin_package_gc_result_conflict"
+    with pytest.raises(PluginPackageGcResultError) as reused_key:
+        reopened.record(
+            start,
+            settlement=settlement,
+            operation_id="gc-attempt-conflicting",
+            idempotency_key="gc-attempt-1-request",
+            error_code="store.other_failure",
+        )
+    assert reused_key.value.code == "plugin_package_gc_result_conflict"
+
+    store._store.delete_settlement(settlement)
+    result = store._store.delete_settlement(settlement)
+    assert result.disposition == "already_absent"
+    succeeded = reopened.record(
+        start,
+        settlement=settlement,
+        operation_id="gc-attempt-2",
+        idempotency_key="gc-attempt-2-request",
+        store_result=result,
+    )
+    assert succeeded.disposition == "succeeded"
+    assert PluginPackageGcResultJournal(journal.path).attempts(start) == (
+        failed,
+        succeeded,
+    )
+    assert (
+        reopened.record(
+            start,
+            settlement=settlement,
+            operation_id="gc-attempt-2",
+            idempotency_key="gc-attempt-2-request",
+            store_result=result,
+        )
+        == succeeded
+    )
+    with pytest.raises(PluginPackageGcResultError) as terminal:
+        reopened.record(
+            start,
+            settlement=settlement,
+            operation_id="gc-attempt-3",
+            idempotency_key="gc-attempt-3-request",
+            error_code="store.retry_after_success",
+        )
+    assert terminal.value.code == "plugin_package_gc_result_terminal"
+
+
+def test_store_gc_result_refuses_a_different_store_identity(tmp_path: Path) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    start = PluginPackageGcDeletionStartV2(
+        journal_revision=1,
+        reservation_id="a" * 64,
+        operation_id="gc-delete-start",
+        idempotency_key="gc-delete-start-request",
+        target_settlement_ids=(settlement.settlement_id,),
+    )
+    other_store_result = PackageStoreGcResultV1.create(
+        SimpleNamespace(
+            settlement_id=settlement.settlement_id,
+            store_identity="other-store",
+            receipt=settlement.receipt,
+            tree_identity=settlement.tree_identity,
+        ),
+        disposition="deleted",
+    )
+    journal = PluginPackageGcResultJournal(tmp_path / "gc-results.jsonl")
+    with pytest.raises(PluginPackageGcResultError) as mismatch:
+        journal.record(
+            start,
+            settlement=settlement,
+            operation_id="gc-attempt-1",
+            idempotency_key="gc-attempt-1-request",
+            store_result=other_store_result,
+        )
+    assert mismatch.value.code == "plugin_package_gc_result_mismatch"
+    assert journal.attempts(start) == ()
+
+
+def test_posix_store_gc_refuses_replaced_tree_without_touching_outside(
+    tmp_path: Path,
+) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    published = root / settlement.final_name
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"preserve")
+    published.chmod(0o700)
+    victim = published / settlement.file_identities[0].logical_path
+    victim.unlink()
+    victim.symlink_to(outside)
+
+    with pytest.raises(PackagePhysicalStagingError) as collision:
+        store._store.delete_settlement(settlement)
+    assert collision.value.retryable is False
+    assert outside.read_bytes() == b"preserve"
+    assert published.is_dir()
+    start = PluginPackageGcDeletionStartV2(
+        journal_revision=1,
+        reservation_id="a" * 64,
+        operation_id="gc-delete-start",
+        idempotency_key="gc-delete-start-request",
+        target_settlement_ids=(settlement.settlement_id,),
+    )
+    journal = PluginPackageGcResultJournal(tmp_path / "gc-results.jsonl")
+    debt = journal.record(
+        start,
+        settlement=settlement,
+        operation_id="gc-attempt-1",
+        idempotency_key="gc-attempt-1-request",
+        error_code=collision.value.code,
+        terminal=True,
+    )
+    assert debt.disposition == "terminal_failure"
+    assert PluginPackageGcResultJournal(journal.path).attempts(start) == (debt,)
+    with pytest.raises(PluginPackageGcResultError) as blocked:
+        journal.record(
+            start,
+            settlement=settlement,
+            operation_id="gc-attempt-2",
+            idempotency_key="gc-attempt-2-request",
+            error_code="store.retry_without_repair",
+        )
+    assert blocked.value.code == "plugin_package_gc_result_terminal"
+
+
+def test_posix_store_gc_retries_after_partial_file_removal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    unlink = posix_materialization.os.unlink
+    failed = False
+
+    def fail_after_one_unlink(path: str, *, dir_fd: int) -> None:
+        nonlocal failed
+        unlink(path, dir_fd=dir_fd)
+        if not failed:
+            failed = True
+            raise OSError("injected partial deletion")
+
+    monkeypatch.setattr(posix_materialization.os, "unlink", fail_after_one_unlink)
+    with pytest.raises(PackagePhysicalStagingError):
+        store._store.delete_settlement(settlement)
+    monkeypatch.setattr(posix_materialization.os, "unlink", unlink)
+    assert failed
+    assert store._store.delete_settlement(settlement).disposition == "deleted"
+    assert not (root / settlement.final_name).exists()
 
 
 @dataclass
@@ -92,10 +983,11 @@ def _evidence(
     version: str,
     payloads: dict[str, bytes],
     artifact_digest: str,
+    operation_id: str = OPERATION_ID,
 ) -> VerifiedWheelArtifactV1:
     entries = _entries(payloads)
     return VerifiedWheelArtifactV1(
-        operation_id=OPERATION_ID,
+        operation_id=operation_id,
         attempt_epoch=1,
         node_id=node_id,
         distribution=distribution,
@@ -131,7 +1023,9 @@ def _candidate(
     )
 
 
-def _requests_and_candidates() -> tuple[
+def _requests_and_candidates(
+    operation_id: str = OPERATION_ID,
+) -> tuple[
     PackageArtifactStagingRequestV1,
     VerifiedWheelCandidate,
     PackageArtifactStagingRequestV1,
@@ -153,6 +1047,7 @@ def _requests_and_candidates() -> tuple[
         version="2.0",
         payloads=dependency_payloads,
         artifact_digest="4" * 64,
+        operation_id=operation_id,
     )
     root_evidence = _evidence(
         node_id="root",
@@ -160,6 +1055,7 @@ def _requests_and_candidates() -> tuple[
         version="1.0",
         payloads=root_payloads,
         artifact_digest="6" * 64,
+        operation_id=operation_id,
     )
     dependency_node = VerifiedClosurePlanNodeV2(
         node_id=dependency_evidence.node_id,
@@ -199,7 +1095,7 @@ def _requests_and_candidates() -> tuple[
         selected_edges=(dependency_node.node_id,),
     )
     plan = VerifiedClosurePlanV2.create(
-        operation_id=OPERATION_ID,
+        operation_id=operation_id,
         attempt_epoch=1,
         root_node_id=root_node.node_id,
         resolution_environment_fingerprint=ENVIRONMENT_FINGERPRINT,
@@ -221,7 +1117,7 @@ def _requests_and_candidates() -> tuple[
         lease_revision=1,
     )
     target = PackagePluginRootTargetV1.create(
-        operation_id=OPERATION_ID,
+        operation_id=operation_id,
         request_fingerprint=REQUEST_FINGERPRINT,
         product_id="coding",
         scope_id="workspace:test",
@@ -263,6 +1159,76 @@ def _assert_tree(root: Path, final_name: str, payloads: dict[str, bytes]) -> Non
         for path in published.rglob("*")
         if path.is_file()
     } == payloads
+
+
+def test_dependency_store_reuses_one_content_tree_across_operations(
+    tmp_path: Path,
+) -> None:
+    first_request, first_candidate, *_ = _requests_and_candidates(
+        "operation:shared-dependency-first"
+    )
+    second_request, second_candidate, *_ = _requests_and_candidates(
+        "operation:shared-dependency-second"
+    )
+    root = tmp_path / "dependency-store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(
+        tmp_path / "dependency-settlements.jsonl"
+    )
+    store = PosixPackageDependencyMaterializationStore(
+        root, store_identity="dependency-store", settlement_journal=settlements
+    )
+    first = store.stage_dependency(first_request, first_candidate)
+    second = store.stage_dependency(second_request, second_candidate)
+    assert first.stable_ref == second.stable_ref
+    assert first.stable_ref == windows_materialization._stable_ref(
+        "dependency",
+        store_identity="dependency-store",
+        request=first_request,
+        manifest=first_candidate.transfer_manifest,
+    )
+    assert first != second
+    (first_settlement, second_settlement) = settlements.records()
+    assert first_settlement.receipt == first
+    assert second_settlement.receipt == second
+    assert first_settlement.tree_identity == second_settlement.tree_identity
+    assert first_settlement.final_name == second_settlement.final_name
+    assert len(tuple(root.glob("artifact-*"))) == 1
+    deleted = store.delete_settlement(first_settlement)
+    assert deleted.disposition == "deleted"
+    assert settlements.is_tombstoned(first.stable_ref.ref_id)
+    assert store.delete_settlement(first_settlement).disposition == "already_absent"
+    assert store.delete_settlement(second_settlement).disposition == "already_absent"
+    assert len(settlements.read_events()) == 3
+    with pytest.raises(PackagePhysicalStagingError):
+        store.stage_dependency(second_request, second_candidate)
+
+
+def test_dependency_store_refuses_reuse_after_physical_tree_changes(
+    tmp_path: Path,
+) -> None:
+    first_request, first_candidate, *_ = _requests_and_candidates(
+        "operation:shared-tamper-first"
+    )
+    second_request, second_candidate, *_ = _requests_and_candidates(
+        "operation:shared-tamper-second"
+    )
+    root = tmp_path / "dependency-store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(
+        tmp_path / "dependency-settlements.jsonl"
+    )
+    store = PosixPackageDependencyMaterializationStore(
+        root, store_identity="dependency-store", settlement_journal=settlements
+    )
+    first = store.stage_dependency(first_request, first_candidate)
+    (settlement,) = settlements.records()
+    tree = root / settlement.final_name
+    (tree / "dependency" / "__init__.py").write_bytes(b"TAMPERED\n")
+    with pytest.raises(PackagePhysicalStagingError):
+        store.stage_dependency(second_request, second_candidate)
+    assert settlements.records() == (settlement,)
+    assert first.stable_ref.ref_id in settlement.final_name
 
 
 def test_posix_role_stores_publish_exact_trees_and_reuse_same_receipts(
@@ -472,6 +1438,55 @@ def test_posix_store_reuses_exact_tree_after_owner_restart_without_journal_appen
 
     assert reused == receipt
     assert len(journal.records()) == 1
+
+
+@pytest.mark.parametrize("role", ["dependency", "root"])
+def test_posix_read_validation_keeps_partial_settlement_tail_unchanged(
+    tmp_path: Path,
+    role: str,
+) -> None:
+    dependency_request, dependency_candidate, root_request, root_candidate, *_ = (
+        _requests_and_candidates()
+    )
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    if role == "dependency":
+        owner = PosixPackageDependencyMaterializationStore(
+            root, store_identity="dependency-store", settlement_journal=journal
+        )
+        receipt = owner.stage_dependency(dependency_request, dependency_candidate)
+        validate = owner.read_validate_dependency_receipt
+    else:
+        root_owner = PosixPackagePluginRootMaterializationStore(
+            root, store_identity="plugin-revision-store", settlement_journal=journal
+        )
+        receipt = root_owner.stage_root(root_request, root_candidate)
+        validate = root_owner.read_validate_root_receipt
+    before = journal.path.read_bytes()
+    assert validate(receipt) == receipt
+    assert journal.path.read_bytes() == before
+
+    [settlement] = journal.records()
+    file_path = next(
+        path for path in (root / settlement.final_name).rglob("*") if path.is_file()
+    )
+    original_bytes = file_path.read_bytes()
+    file_path.write_bytes(b"changed physical Store bytes")
+    with pytest.raises(PackagePhysicalStagingError) as changed:
+        validate(receipt)
+    assert changed.value.code == "package_publication_collision"
+    assert journal.path.read_bytes() == before
+    file_path.write_bytes(original_bytes)
+    assert validate(receipt) == receipt
+
+    with journal.path.open("ab") as output:
+        output.write(b'{"partial":')
+    incomplete = journal.path.read_bytes()
+    with pytest.raises(PackagePhysicalStagingError) as raised:
+        validate(receipt)
+    assert raised.value.code == "package_publication_root_untrusted"
+    assert journal.path.read_bytes() == incomplete
 
 
 def test_posix_store_recovers_renamed_tree_when_receipt_delivery_is_lost(

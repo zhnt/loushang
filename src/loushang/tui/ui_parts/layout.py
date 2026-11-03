@@ -9,7 +9,6 @@ from loushang.tui.core import (
     RenderConstraints,
     RenderLine,
     RenderLineSegment,
-    RenderLineSegmentLike,
     RenderResult,
     SegmentedRenderLines,
 )
@@ -69,7 +68,7 @@ class ScreenRegionStack:
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         regions = tuple(self.regions)
-        segments: list[RenderLineSegmentLike] = []
+        parts: list[SegmentedRenderLines] = []
         line_count = 0
         cursor: CursorDeclaration | None = None
         remaining = constraints.max_height
@@ -84,8 +83,10 @@ class ScreenRegionStack:
                 region.reserved_height,
             )
             if before_gap:
-                segments.append(
-                    _ephemeral_segment(tuple(RenderLine("") for _ in range(before_gap)))
+                parts.append(
+                    SegmentedRenderLines.from_segments(
+                        (_ephemeral_segment(tuple(RenderLine("") for _ in range(before_gap))),)
+                    )
                 )
                 line_count += before_gap
                 remaining -= before_gap
@@ -113,7 +114,7 @@ class ScreenRegionStack:
                 cursor = CursorDeclaration(
                     row=line_count + result.cursor.row, column=result.cursor.column
                 )
-            _extend_segments(segments, result.lines)
+            parts.append(_as_segmented_lines(result.lines))
             line_count += rendered_count
             remaining -= rendered_count
             future_required_height = _reserved_height(regions[index + 1 :])
@@ -121,13 +122,17 @@ class ScreenRegionStack:
                 region.gap_after, remaining, future_required_height, 0
             )
             if after_gap:
-                segments.append(
-                    _ephemeral_segment(tuple(RenderLine("") for _ in range(after_gap)))
+                parts.append(
+                    SegmentedRenderLines.from_segments(
+                        (_ephemeral_segment(tuple(RenderLine("") for _ in range(after_gap))),)
+                    )
                 )
                 line_count += after_gap
                 remaining -= after_gap
 
-        lines = SegmentedRenderLines.from_segments(tuple(segments))
+        lines = SegmentedRenderLines()
+        for part in parts:
+            lines = SegmentedRenderLines.concat(lines, part)
         if len(lines) > constraints.max_height:
             lines = lines.tail(constraints.max_height)
             cursor = None
@@ -243,13 +248,10 @@ def _allowed_gap(
     return min(requested, spare)
 
 
-def _extend_segments(
-    segments: list[RenderLineSegmentLike], lines: Sequence[RenderLine]
-) -> None:
+def _as_segmented_lines(lines: Sequence[RenderLine]) -> SegmentedRenderLines:
     if isinstance(lines, SegmentedRenderLines):
-        segments.extend(lines.segments)
-        return
-    segments.append(_ephemeral_segment(tuple(lines)))
+        return lines
+    return SegmentedRenderLines.from_segments((_ephemeral_segment(tuple(lines)),))
 
 
 def _ephemeral_segment(lines: tuple[RenderLine, ...]) -> RenderLineSegment:

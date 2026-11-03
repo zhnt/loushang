@@ -136,7 +136,10 @@ async def _invoke_source_operation(
     outputs: Sequence[dict[str, object]],
 ) -> object:
     try:
+        product_route_required = _product_route_required(session)
         executor = getattr(session, "execute_package_lifecycle", None)
+        if product_route_required and not callable(executor):
+            raise PackageLifecycleError("Package Product lifecycle executor is unavailable")
         if callable(executor):
             action = _lifecycle_action(command)
             canonicalize_package_product_scope(scope)
@@ -186,6 +189,18 @@ def _lifecycle_action(command: str) -> PackageProductLifecycleAction:
         ) from exc
 
 
+def _product_route_required(session: object) -> bool:
+    mode = getattr(session, "package_product_lifecycle_mode", "legacy")
+    binding = getattr(session, "package_product_binding_id", None)
+    if (
+        mode not in {"legacy", "dark", "enforced"}
+        or (binding is not None and (not isinstance(binding, str) or not binding))
+        or (mode == "enforced" and binding is None)
+    ):
+        raise PackageLifecycleError("Package Product lifecycle executor is unavailable")
+    return binding is not None
+
+
 async def _invoke_operation(
     session: object,
     *,
@@ -194,7 +209,10 @@ async def _invoke_operation(
     outputs: Sequence[dict[str, object]],
 ) -> object:
     try:
+        product_route_required = _product_route_required(session)
         collection = getattr(session, "execute_package_lifecycle_collection", None)
+        if product_route_required and not callable(collection):
+            raise PackageLifecycleError("Package Product collection executor is unavailable")
         if command in {"update_packages", "check_package_updates"} and callable(
             collection
         ):

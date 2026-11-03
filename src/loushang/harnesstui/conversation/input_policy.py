@@ -14,6 +14,71 @@ from loushang.tui.keybindings import (
 
 RunningSubmitMode: TypeAlias = Literal["steer", "follow_up"]
 
+ConversationOperation: TypeAlias = Literal[
+    "transcript", "submit", "steer", "follow_up", "interrupt",
+    "approval_details", "approve", "deny", "image_paste", "product_commands",
+]
+_OPERATIONS = frozenset({
+    "transcript", "submit", "steer", "follow_up", "interrupt",
+    "approval_details", "approve", "deny", "image_paste", "product_commands",
+})
+CapabilityAvailability: TypeAlias = Literal["available", "read_only", "unavailable"]
+CapabilityReason: TypeAlias = Literal[
+    "supported", "read_only", "no_member", "snapshot_required", "closing",
+    "membership_pending", "no_interaction", "presentation_required",
+    "protocol_unavailable", "binding_changed", "not_projected", "not_supported",
+]
+_REASONS = frozenset({
+    "supported", "read_only", "no_member", "snapshot_required", "closing",
+    "membership_pending", "no_interaction", "presentation_required",
+    "protocol_unavailable", "binding_changed", "not_projected", "not_supported",
+})
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationCapability:
+    """Presentation only: never a permission, receipt, or execution promise."""
+
+    operation: ConversationOperation
+    availability: CapabilityAvailability
+    reason: CapabilityReason
+
+    def __post_init__(self) -> None:
+        if (type(self.operation) is not str or self.operation not in _OPERATIONS
+                or type(self.availability) is not str
+                or self.availability not in {"available", "read_only", "unavailable"}
+                or type(self.reason) is not str or self.reason not in _REASONS):
+            raise ValueError("invalid conversation capability")
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationCapabilities:
+    """Immutable complete observation, scoped to an opaque view binding.
+
+    Consumers must obtain a fresh projection for current eligibility. Binding
+    equality is necessary but not sufficient for reusing an old observation.
+    """
+
+    binding_key: tuple[str, ...]
+    entries: tuple[ConversationCapability, ...]
+
+    def __post_init__(self) -> None:
+        if (type(self.binding_key) is not tuple or not self.binding_key
+                or any(type(value) is not str for value in self.binding_key)
+                or type(self.entries) is not tuple
+                or any(type(entry) is not ConversationCapability for entry in self.entries)
+                or len(self.entries) != len(_OPERATIONS)
+                or {entry.operation for entry in self.entries} != _OPERATIONS):
+            raise ValueError("invalid conversation capability snapshot")
+
+    def get(self, operation: ConversationOperation, *, binding_key: tuple[str, ...]) -> ConversationCapability:
+        if binding_key != self.binding_key:
+            return ConversationCapability(operation, "unavailable", "binding_changed")
+        for entry in self.entries:
+            if entry.operation == operation:
+                return entry
+        raise ValueError("invalid conversation operation")
+
 CONVERSATION_FOLLOW_UP_ACTION = "conversation.input.followUp"
 CONVERSATION_PASTE_IMAGE_ACTION = "conversation.input.pasteImage"
 CONVERSATION_QUEUE_EDIT_LAST_ACTION = "tui.queue.editLast"
@@ -91,6 +156,8 @@ __all__ = [
     "CONVERSATION_KEYBINDING_DEFINITIONS",
     "CONVERSATION_PASTE_IMAGE_ACTION",
     "CONVERSATION_QUEUE_EDIT_LAST_ACTION",
+    "ConversationCapabilities",
+    "ConversationCapability",
     "ConversationInputCapabilities",
     "ConversationInputPolicy",
     "DEFAULT_CONVERSATION_INPUT_POLICY",

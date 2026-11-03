@@ -50,6 +50,7 @@ from .model import (
     SessionScopeV1,
     SessionSnapshotRequestV1,
     SessionSnapshotV1,
+    SessionSubmissionModeV1,
     TranscriptRecordKindV1,
     TranscriptRecordV1,
     TurnInterruptV1,
@@ -727,7 +728,7 @@ def _decode_mux(raw: object) -> MuxSpaceV1:
 
 
 def _encode_snapshot(value: SessionSnapshotV1) -> _Object:
-    return {
+    encoded: _Object = {
         "cursor": value.cursor,
         "identity": _encode_identity(value.identity),
         "records": [
@@ -737,15 +738,30 @@ def _encode_snapshot(value: SessionSnapshotV1) -> _Object:
         "running": value.running,
         "title": value.title,
     }
+    # Preserve the original v1 shape for ordinary Sessions. The optional
+    # execution profile emits the added field only when legacy submission is
+    # unsafe for this exact binding.
+    if value.submission_mode is SessionSubmissionModeV1.EXECUTION:
+        encoded["submissionMode"] = value.submission_mode.value
+    return encoded
 
 
 def _decode_snapshot(raw: object) -> SessionSnapshotV1:
-    value = _object(
-        raw,
-        {"cursor", "identity", "records", "revision", "running", "title"},
-    )
+    fields = {"cursor", "identity", "records", "revision", "running", "title"}
+    if type(raw) is dict and "submissionMode" in raw:
+        fields.add("submissionMode")
+    value = _object(raw, fields)
     records = value["records"]
     if type(records) is not list:
+        raise InvalidAppMessageError()
+    submission_mode = (
+        _enum(SessionSubmissionModeV1, value["submissionMode"])
+        if "submissionMode" in value
+        else SessionSubmissionModeV1.LEGACY
+    )
+    if "submissionMode" in value and submission_mode is not (
+        SessionSubmissionModeV1.EXECUTION
+    ):
         raise InvalidAppMessageError()
     decoded_records: list[TranscriptRecordV1] = []
     for raw_record in records:
@@ -765,6 +781,7 @@ def _decode_snapshot(raw: object) -> SessionSnapshotV1:
         revision=_integer(value["revision"]),
         running=_boolean(value["running"]),
         records=tuple(decoded_records),
+        submission_mode=submission_mode,
     )
 
 

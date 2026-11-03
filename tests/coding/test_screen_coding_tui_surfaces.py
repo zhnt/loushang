@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from contextlib import suppress
 from types import SimpleNamespace
 
 from loushang.ai import Model
 from loushang.ai.errors import UnsupportedCapabilityError
-from loushang.ai.model import ModelSelection
+from loushang.ai.model import Capabilities, ModelSelection, OpenAICompletionsConfig
 from loushang.coding.continuity import (
     bind_coding_continuity,
     shutdown_coding_continuity,
@@ -28,6 +29,7 @@ from loushang.harnesstui.multiagent import AgentTreeSurface
 from loushang.harnesstui.selection.model import (
     ModelSelectorSurface as SharedModelSelectorSurface,
 )
+from loushang.harnesstui.status.line import StatusLineSettings, status_line_fields
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.tui import (
@@ -126,7 +128,8 @@ def test_screen_app_uses_active_surface_preferred_height_for_bottom_frame() -> N
 def test_screen_surface_manager_opens_model_surface_and_selects_model() -> None:
     session = _Session()
     app = _app()
-    manager = _manager(app, session)
+    changed: list[ModelSelection] = []
+    manager = _manager(app, session, on_model_changed=lambda: changed.append(session.current_model))
 
     asyncio.run(manager.handle_text("/model"))
 
@@ -165,6 +168,7 @@ def test_screen_surface_manager_opens_model_surface_and_selects_model() -> None:
     assert app.active_surface is None
     assert app.state.status_message == "Model set: openai:test-endpoint:gpt-5.4"
     assert app.state.model_label == "openai:test-endpoint:gpt-5.4"
+    assert changed and changed[-1] == session.current_model
 
 
 def test_screen_surface_model_selector_displays_endpoint_and_selects_full_identity() -> (
@@ -330,7 +334,7 @@ def test_screen_surface_model_selection_error_stays_in_tui() -> None:
 
     assert isinstance(app.active_surface, ScreenSurfaceView)
     expected_error = (
-        "Error: Cannot switch to 'deepseek-v4-flash': this conversation contains "
+        "Error: Cannot switch to 'deepseek-v4-pro': this conversation contains "
         "images, but the model does not support image input"
     )
     assert app.state.status_message == expected_error
@@ -816,7 +820,8 @@ def test_screen_surface_manager_settings_page_model_submit_uses_model_selection(
 ):
     session = _Session()
     app = _app()
-    manager = _manager(app, session)
+    changed: list[ModelSelection] = []
+    manager = _manager(app, session, on_model_changed=lambda: changed.append(session.current_model))
 
     asyncio.run(manager.handle_text("/settings"))
     asyncio.run(
@@ -832,6 +837,7 @@ def test_screen_surface_manager_settings_page_model_submit_uses_model_selection(
     assert isinstance(app.active_surface, ScreenSurfaceView)
     assert session.set_model_calls
     assert app.state.model_label == "openai:test-endpoint:gpt-5.4"
+    assert changed and changed[-1] == session.current_model
 
 
 def test_screen_surface_manager_runtime_overlay_escape_and_close_are_idempotent() -> (
@@ -1350,7 +1356,7 @@ def test_screen_surface_manager_applies_settings_page_statusline_change() -> Non
         for line in app.render(RenderConstraints(width=100, max_height=12)).lines
     )
     assert not any(
-        "moonshot:test-endpoint:kimi-for-coding | repo | main | abcd | idle" in line
+        "kimi-for-coding | repo | main | abcd | idle" in line
         for line in rendered
     )
 
@@ -1578,11 +1584,87 @@ class _Session:
 class _FailingModelSession(_Session):
     async def set_model(self, selection: object) -> None:
         raise UnsupportedCapabilityError(
-            "Cannot switch to 'deepseek-v4-flash': this conversation contains images, "
+            "Cannot switch to 'deepseek-v4-pro': this conversation contains images, "
             "but the model does not support image input",
-            model="deepseek-v4-flash",
+            model="deepseek-v4-pro",
             details={"capability": "image_input"},
         )
+
+
+class _ReasoningSession(_Session):
+    def __init__(self) -> None:
+        super().__init__()
+        self.model = Model(
+            id="k3.1-pro",
+            provider="kimi-code",
+            endpoint="openai-completions",
+            capabilities=Capabilities(
+                reasoning=True,
+                reasoning_required=True,
+                reasoning_efforts=("low", "high", "max"),
+            ),
+            adapter=OpenAICompletionsConfig(
+                reasoning_effort_map={
+                    "low": "low",
+                    "high": "high",
+                    "xhigh": "max",
+                }
+            ),
+        )
+        self.thinking_level = "high"
+        self.thinking_changes: list[str] = []
+
+    def get_available_thinking_levels(self) -> list[str]:
+        return ["low", "high", "xhigh"]
+
+    async def set_thinking_level(self, level: str) -> None:
+        if level not in self.get_available_thinking_levels():
+            raise ValueError("unsupported reasoning level")
+        self.thinking_changes.append(level)
+        self.thinking_level = level
+
+
+def test_model_surface_selects_reasoning_and_updates_statusline() -> None:
+    session = _ReasoningSession()
+    app = _app()
+    manager = _manager(app, session)
+
+    asyncio.run(manager.handle_text("/model openai:test-endpoint:gpt-5.4"))
+
+    surface = app.active_surface
+    assert isinstance(surface, ScreenSurfaceView)
+    assert surface.purpose == "reasoning"
+    assert surface.title == "Select Reasoning"
+    assert "off" not in [item.value for item in surface.content.items]
+    assert surface.content.selected_item().value == "high"
+    assert app.statusline_preview_snapshot().reasoning_label == "high"
+
+    asyncio.run(manager.handle_surface_intent(InputIntent(kind="select", text="xhigh")))
+
+    assert session.thinking_changes == ["xhigh"]
+    assert app.active_surface is None
+    assert app.state.status_message == "Reasoning: max"
+    snapshot = app.statusline_preview_snapshot()
+    assert snapshot.reasoning_label == "max"
+    assert status_line_fields(snapshot, StatusLineSettings())[0].text.endswith(
+        "gpt-5.4 max"
+    )
+    rendered = app.render(RenderConstraints(width=160, max_height=30))
+    assert "gpt-5.4 max |" in "\n".join(
+        strip_control_sequences(line.text) for line in rendered.lines
+    )
+
+
+def test_initial_screen_frame_shows_current_reasoning_level() -> None:
+    session = _ReasoningSession()
+    app = _app()
+    app.state.model_label = "kimi-code:openai-completions:k3.1-pro"
+    _manager(app, session)
+
+    rendered = app.render(RenderConstraints(width=160, max_height=30))
+    assert "k3.1-pro high |" in "\n".join(
+        strip_control_sequences(line.text) for line in rendered.lines
+    )
 
 
 def _app() -> ScreenCodingTuiApp:
@@ -1600,11 +1682,13 @@ def _manager(
     session: _Session,
     *,
     settings_manager: object | None = None,
+    on_model_changed: Callable[[], None] | None = None,
 ) -> ScreenSurfaceManager:
     return ScreenSurfaceManager(
         app=app,
         session=session,
         status_provider=_status_provider(app, settings_manager=settings_manager),
+        on_model_changed=on_model_changed,
     )
 
 

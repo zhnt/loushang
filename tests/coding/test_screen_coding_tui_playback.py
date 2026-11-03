@@ -61,7 +61,7 @@ def test_screen_tui_playback_applies_model_argument_completion() -> None:
     lines = _plain_lines(steps[-1].diagnostics)
     assert "› /model openai:test-endpoint:gpt-5.4" in lines
     assert (
-        "moonshot:test-endpoint:kimi-for-coding | repo | main | abcd | idle"
+        "kimi-for-coding | repo | main | abcd | idle"
         in lines[-1]
     )
 
@@ -353,7 +353,7 @@ def test_screen_tui_playback_smokes_surfaces_editor_and_image_fallback(
     assert not any(line.strip() == "Terminal" for line in final_lines)
     assert "› abc!" in final_lines
     assert (
-        "moonshot:test-endpoint:kimi-for-coding | repo | main | abcd | idle | perm=standard"
+        "kimi-for-coding | repo | main | abcd | idle | standard"
         in final_lines
     )
 
@@ -429,7 +429,7 @@ def test_screen_tui_playback_settings_page_toggles_statusline_and_exits() -> Non
     assert "Settings" not in lines
     assert not any("Status line: off" in line for line in lines)
     assert not any(
-        "moonshot:test-endpoint:kimi-for-coding | repo | main | abcd | idle" in line
+        "kimi-for-coding | repo | main | abcd | idle" in line
         for line in lines
     )
     for step in steps:
@@ -582,7 +582,7 @@ def test_screen_tui_playback_settings_escape_restores_single_prompt_with_status_
     status_rows = [
         index
         for index, line in enumerate(lines)
-        if "moonshot:test-endpoint:kimi-for-coding | repo | main | abcd | idle" in line
+        if "kimi-for-coding | repo | main | abcd | idle" in line
     ]
     assert prompt_rows == [status_rows[0] - 2]
     assert lines[prompt_rows[0] + 1] == ""

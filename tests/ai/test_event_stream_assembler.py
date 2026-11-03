@@ -142,6 +142,62 @@ def test_raw_assembler_groups_interleaved_tool_calls_by_id_and_index() -> None:
     assert done.content[1].arguments == {"x": 2}
 
 
+def test_raw_assembler_uses_complete_final_arguments_for_parallel_calls() -> None:
+    stream = AssistantMessageEventStream()
+    assembler = RawAssembler(
+        stream=stream,
+        api="openai-responses",
+        provider="openai",
+        endpoint="test-endpoint",
+        model="gpt-test",
+    )
+    assembler.feed({"type": "response_start", "response_id": "resp_1"})
+    for index, name in enumerate(("bash", "read", "spawn_agent")):
+        assembler.feed(
+            {
+                "type": "tool_call_start",
+                "id": f"call_{index}",
+                "name": name,
+                "index": index,
+            }
+        )
+    assembler.feed({"type": "tool_call_args_delta", "index": 1, "delta": '{"path":'})
+    for index, arguments in (
+        (2, '{"task":"inspect"}'),
+        (1, '{"path":"a"}'),
+        (0, '{"cmd":"pwd"}'),
+    ):
+        assembler.feed(
+            {"type": "tool_call_args_final", "index": index, "arguments": arguments}
+        )
+        assembler.feed({"type": "tool_call_done", "index": index})
+    assembler.feed({"type": "response_done"})
+
+    events = asyncio.run(_collect_events(stream))
+    assert [part.arguments for part in events[-1]["message"].content] == [
+        {"cmd": "pwd"},
+        {"path": "a"},
+        {"task": "inspect"},
+    ]
+
+
+def test_raw_assembler_rejects_conflicting_complete_arguments() -> None:
+    stream = AssistantMessageEventStream()
+    assembler = RawAssembler(
+        stream=stream,
+        api="openai-responses",
+        provider="openai",
+        endpoint="test-endpoint",
+        model="gpt-test",
+    )
+    assembler.feed({"type": "tool_call_start", "id": "call_1", "name": "bash"})
+    assembler.feed({"type": "tool_call_args_final", "arguments": '{"cmd":"pwd"}'})
+    with pytest.raises(RuntimeError, match="conflicting final tool-call arguments"):
+        assembler.feed(
+            {"type": "tool_call_args_final", "arguments": '{"cmd":"rm -rf ."}'}
+        )
+
+
 def test_raw_assembler_preserves_content_order_across_block_types() -> None:
     stream = AssistantMessageEventStream()
     assembler = RawAssembler(
@@ -341,6 +397,69 @@ def test_event_stream_result_waits_for_producer_cleanup_after_terminal() -> None
         cleanup_can_finish.set()
         assert await asyncio.wait_for(result_task, timeout=1) is message
         assert cleanup_done.is_set()
+
+    asyncio.run(scenario())
+
+
+def test_event_stream_close_waits_for_terminal_producer_cleanup() -> None:
+    async def scenario() -> None:
+        stream = AssistantMessageEventStream()
+        message = _empty_message()
+        cleanup_started = asyncio.Event()
+        cleanup_can_finish = asyncio.Event()
+        cleanup_done = asyncio.Event()
+
+        async def producer() -> None:
+            await stream.emit({"type": "done", "reason": "stop", "message": message})
+            cleanup_started.set()
+            await cleanup_can_finish.wait()
+            cleanup_done.set()
+
+        stream.attach_task(asyncio.create_task(producer()))
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1)
+        close = asyncio.create_task(stream.aclose())
+        await asyncio.sleep(0)
+        assert not close.done()
+
+        cleanup_can_finish.set()
+        await asyncio.wait_for(close, timeout=1)
+        assert cleanup_done.is_set()
+
+    asyncio.run(scenario())
+
+
+def test_event_stream_terminal_cleanup_survives_close_cancellation() -> None:
+    async def scenario() -> None:
+        stream = AssistantMessageEventStream()
+        message = _empty_message()
+        cleanup_started = asyncio.Event()
+        cleanup_can_finish = asyncio.Event()
+        cleanup_cancelled = False
+
+        async def producer() -> None:
+            nonlocal cleanup_cancelled
+            await stream.emit({"type": "done", "reason": "stop", "message": message})
+            cleanup_started.set()
+            try:
+                await cleanup_can_finish.wait()
+            except asyncio.CancelledError:
+                cleanup_cancelled = True
+                raise
+
+        producer_task = asyncio.create_task(producer())
+        stream.attach_task(producer_task)
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1)
+        close = asyncio.create_task(stream.aclose())
+        await asyncio.sleep(0)
+        close.cancel()
+        await asyncio.sleep(0)
+        assert not close.done()
+        assert not cleanup_cancelled
+
+        cleanup_can_finish.set()
+        await close
+        assert producer_task.done()
+        assert not cleanup_cancelled
 
     asyncio.run(scenario())
 

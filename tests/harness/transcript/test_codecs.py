@@ -4,7 +4,13 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.ai.types import ImagePart, TextPart, Usage, UserMessage
+from loushang.ai.types import (
+    ImagePart,
+    ProviderCompactionWindow,
+    TextPart,
+    Usage,
+    UserMessage,
+)
 from loushang.harness.artifacts import SessionBlobRef
 from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.journal import JournalCodecError
@@ -53,6 +59,32 @@ from loushang.harness.transcript.model_input_v2_types import (
     ModelInputNodeReference,
     ModelInputSnapshotV2,
 )
+
+
+def test_provider_compaction_checkpoint_codec_keeps_opaque_window() -> None:
+    window = ProviderCompactionWindow.from_items(
+        provider="openai",
+        endpoint="responses",
+        model="gpt-6",
+        items=[{"type": "compaction", "encrypted_content": "opaque-state"}],
+    )
+    checkpoint = ContextCompactionCheckpoint(
+        summary="[Provider compaction state]",
+        first_kept_record_id="kept",
+        tokens_before=100,
+        provider_window=window,
+    )
+    registry = create_agent_transcript_payload_registry()
+    raw = registry.encode(
+        CONTEXT_COMPACTION_CHECKPOINT_KIND, STANDARD_PAYLOAD_VERSION, checkpoint
+    )
+    assert raw["providerWindow"] == window.to_raw()
+    assert (
+        registry.decode(
+            CONTEXT_COMPACTION_CHECKPOINT_KIND, STANDARD_PAYLOAD_VERSION, raw
+        )
+        == checkpoint
+    )
 
 
 def _payloads():
@@ -351,11 +383,14 @@ def test_model_call_failure_codec_round_trips_only_safe_typed_fields() -> None:
         outcome,
     )
 
-    assert registry.decode(
-        MODEL_CALL_OUTCOME_KIND,
-        STANDARD_PAYLOAD_VERSION,
-        encoded,
-    ) == outcome
+    assert (
+        registry.decode(
+            MODEL_CALL_OUTCOME_KIND,
+            STANDARD_PAYLOAD_VERSION,
+            encoded,
+        )
+        == outcome
+    )
     assert encoded["failure"]["details"] == {
         "exceptionType": "ProviderHTTPError",
         "providerErrorType": "invalid_request_error",

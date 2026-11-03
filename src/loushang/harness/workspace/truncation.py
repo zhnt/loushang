@@ -157,12 +157,22 @@ def _truncate_utf8_suffix(content: str, *, max_bytes: int) -> tuple[str, bool]:
 
     start = len(encoded) - max_bytes
     clipped = encoded[start:]
-    while clipped:
-        try:
-            return clipped.decode("utf-8", errors="surrogateescape"), True
-        except UnicodeDecodeError:
-            clipped = clipped[1:]
-    return "", True
+    try:
+        return clipped.decode("utf-8"), True
+    except UnicodeDecodeError:
+        # Clip at a character boundary in the original text. surrogateescape
+        # decoding the byte slice can invent lone surrogates when it starts
+        # inside valid UTF-8, making the preview impossible to persist as JSON.
+        # Original surrogateescaped bytes still retain their exact meaning.
+        left = max(0, len(content) - max_bytes)
+        right = len(content)
+        while left < right:
+            middle = (left + right) // 2
+            if _count_bytes(content[middle:]) > max_bytes:
+                left = middle + 1
+            else:
+                right = middle
+        return content[left:], True
 
 
 def _make_result(

@@ -315,6 +315,10 @@ class CodingOwnerGenerationEvidenceLedger:
                     raise self._conflict(
                         "Coding owner retirement has no prepared generation"
                     )
+                if event_kind == "published":
+                    raise self._conflict(
+                        "Coding owner publication requires prepared generation"
+                    )
                 occupied = {
                     _receipt_identity(receipt): item.family_id
                     for item in families.values()

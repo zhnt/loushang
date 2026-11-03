@@ -9,13 +9,16 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Coroutine
 
+from loushang.appserver.client import AppClientV1, SessionDiscoveryClientV1
 from loushang.appserver.connection import AppServerConnectionV1
+from loushang.appserver.execution.client import ExecutionClientV1
 from loushang.appserver.framing import (
     AppByteTransportV1,
     AppFramedStreamV1,
     require_timeout,
 )
 from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
+from loushang.appservice.client_scope import AppClientScopeV1
 
 from .application import HostedApplicationError
 from .continuity import HostedApplicationContinuityRuntimeV1
@@ -37,25 +40,50 @@ class HostedForegroundRuntimeV1:
         connection_timeout: float = 10.0,
         settlement_timeout: float = 60.0,
         session_discovery: bool = False,
+        session_execution: bool = False,
     ) -> None:
         if type(session_discovery) is not bool:
             raise TypeError("invalid discovery activation")
+        if type(session_execution) is not bool:
+            raise TypeError("invalid execution activation")
         require_timeout(connection_timeout)
         require_timeout(settlement_timeout)
-        discovery = application.discovery_client if session_discovery else None
+        if session_execution and not application.execution_enabled:
+            raise HostedApplicationError("hosted_execution_unavailable")
+        self._scope: AppClientScopeV1 | None = None
+        client: AppClientV1
+        discovery: SessionDiscoveryClientV1 | None
+        execution: ExecutionClientV1 | None
+        if session_execution:
+            application.enable_client_scopes()
+            self._scope = application.open_client_scope()
+            client = self._scope
+            discovery = self._scope.discovery_client if session_discovery else None
+            execution = self._scope.execution_client
+            if execution is None:
+                raise HostedApplicationError("hosted_execution_unavailable")
+        else:
+            client = application.client
+            discovery = application.discovery_client if session_discovery else None
+            execution = None
         if session_discovery and discovery is None:
             raise HostedApplicationError("hosted_discovery_unavailable")
         self._application = application
         self._connection = AppServerConnectionV1(
-            application.client,
+            client,
             AppFramedStreamV1(transport, io_timeout=connection_timeout),
             phase_timeout=connection_timeout,
             profile=(
-                AppConnectionProfileV1.STDIO_DISCOVERY
+                AppConnectionProfileV1.STDIO_DISCOVERY_EXECUTION
+                if session_discovery and session_execution
+                else AppConnectionProfileV1.STDIO_EXECUTION
+                if session_execution
+                else AppConnectionProfileV1.STDIO_DISCOVERY
                 if session_discovery
                 else AppConnectionProfileV1.STDIO
             ),
             discovery=discovery,
+            execution=execution,
         )
         self._timeout = settlement_timeout
         self._serving: asyncio.Task[None] | None = None
@@ -110,6 +138,8 @@ class HostedForegroundRuntimeV1:
             if not done:
                 raise HostedApplicationError("hosted_foreground_cleanup_incomplete")
             _observe(serving)  # run(), not close(), reports the connection outcome.
+        if self._scope is not None:
+            await self._phase("scope", self._scope.close)
         # G13 owns service/AppHost/Product settlement and releases its lease last.
         await self._phase("application", self._application.close)
         self._settled = True

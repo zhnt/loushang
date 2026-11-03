@@ -37,6 +37,9 @@ from loushang.harness.resource_catalog.product_inputs import (
     ProductEmbeddedResourceCollectionSpec,
     ProductNativeResourceRootSpec,
 )
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
+)
 from loushang.harness.resources._catalog_embedded_source import (
     capture_built_in_resource_package_files,
 )
@@ -45,6 +48,9 @@ from loushang.harness.resources._catalog_input_receipt import (
 )
 from loushang.harness.resources.builtin import BuiltInResourcePackage
 from loushang.harness.resources.packages.mounts import PackageResourceMount
+from loushang.harness.resources.plugins.contribution_types import (
+    PLUGIN_OWNER_CONTRIBUTION_KINDS,
+)
 from loushang.harness.resources.plugins.locators import (
     canonical_plugin_relative_path,
 )
@@ -109,6 +115,15 @@ CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY = CodingResourceCatalogSourcePoli
     include_package_resources=True,
     include_embedded_resources=True,
 )
+CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY = (
+    CodingResourceCatalogSourcePolicy(
+        policy_id="coding.product.base-disabled",
+        product_policy_revision=_CODING_RESOURCE_CATALOG_POLICY_REVISION,
+        include_native_resources=True,
+        include_package_resources=False,
+        include_embedded_resources=True,
+    )
+)
 CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY = (
     CodingResourceCatalogSourcePolicy(
         policy_id="coding.agent.read-only-v1",
@@ -122,6 +137,7 @@ _CODING_RESOURCE_CATALOG_SOURCE_POLICIES = {
     item.policy_id: item
     for item in (
         CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
+        CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
         CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
     )
 }
@@ -199,6 +215,7 @@ def build_coding_initial_resource_catalog_adapter(
     product_scope_id: str | None = None,
     disabled_skills: Sequence[str] = (),
     product_composition: ProductCompositionCompilation | None = None,
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] | None = None,
     product_selection: PluginSelection | None = None,
     package_admission_now: int | None = None,
     clock: Callable[[], int] | None = None,
@@ -236,6 +253,14 @@ def build_coding_initial_resource_catalog_adapter(
     if product_composition is not None and product_selection is not None:
         raise ValueError(
             "Coding Resource Catalog cannot receive both a composition and selection"
+        )
+    if product_snapshot_resources is not None and product_selection is not None:
+        raise ValueError(
+            "Coding Resource Catalog cannot mix Product snapshot and legacy selection"
+        )
+    if product_snapshot_resources is not None and product_composition is None:
+        raise ValueError(
+            "Coding Resource Catalog Product snapshot requires a composition"
         )
     if (
         product_selection is not None
@@ -288,6 +313,15 @@ def build_coding_initial_resource_catalog_adapter(
         rejection_reasons.append("resource_kind_switches")
     if admissions and not resolved_source_policy.include_package_resources:
         rejection_reasons.append("source_policy_package_admission_mismatch")
+    if product_snapshot_resources is not None and any(
+        (
+            receipt.package_mounts,
+            receipt.package_resource_candidates,
+            receipt.package_diagnostic_codes,
+            receipt.catalog_plugin_package_inputs,
+        )
+    ):
+        rejection_reasons.append("legacy_package_inputs_with_product_snapshot")
     package_resources = (
         _prepare_package_resources(
             receipt,
@@ -297,7 +331,10 @@ def build_coding_initial_resource_catalog_adapter(
             admission_now=resolved_admission_now,
             rejection_reasons=rejection_reasons,
         )
-        if resolved_source_policy.include_package_resources
+        if (
+            resolved_source_policy.include_package_resources
+            and product_snapshot_resources is None
+        )
         else ()
     )
 
@@ -373,6 +410,7 @@ def build_coding_initial_resource_catalog_adapter(
             product_composition=product_composition,
             native_roots=tuple(native_roots),
             package_resources=package_resources,
+            product_snapshot_resources=tuple(product_snapshot_resources or ()),
             embedded_collections=embedded,
             source_disposition=(
                 "intentionally_empty"
@@ -883,7 +921,7 @@ def complete_coding_package_plugin_selection_seed(
     candidates = tuple(
         prepare_owner_contribution_candidate(selection, item)
         for item in selection.candidates
-        if item.declaration.kind in {"resource_item", "tool_pack", "command_pack"}
+        if item.declaration.kind in PLUGIN_OWNER_CONTRIBUTION_KINDS
     )
     owner_collections: dict[tuple[str, OwnerContributionKind], set[str]] = {}
     owner_trust_classes: dict[tuple[str, OwnerContributionKind], set[str]] = {}
@@ -906,11 +944,7 @@ def complete_coding_package_plugin_selection_seed(
     ] = {}
     for binding in seed.owner_bindings:
         owner_id, raw_contribution_kind, _ = binding.owner_key
-        if raw_contribution_kind not in {
-            "resource_item",
-            "tool_pack",
-            "command_pack",
-        }:
+        if raw_contribution_kind not in PLUGIN_OWNER_CONTRIBUTION_KINDS:
             raise CodingResourceCatalogAdmissionError(
                 ("invalid_product_owner_binding_kind",)
             )
@@ -1099,6 +1133,7 @@ prepare_coding_initial_resource_catalog_shadow_adapter = (
 __all__ = [
     "CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY",
     "CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY",
+    "CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY",
     "CodingResourceCatalogSourcePolicy",
     "CodingResourceCatalogAdmissionError",
     "InitialResourceCatalogProductAdapter",

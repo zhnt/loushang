@@ -178,6 +178,28 @@ def test_staging_requests_and_receipts_are_exact_role_safe_round_trips() -> None
     assert isinstance(root.stable_ref, PluginRevisionRefV1)
 
 
+def test_staging_operation_read_is_strict_and_does_not_repair(
+    tmp_path: Path,
+) -> None:
+    journal = PackageArtifactStagingJournal(tmp_path / "staging.jsonl")
+    lock = journal.path.with_name(f"{journal.path.name}.lock")
+    assert journal.read_operation_receipts(OPERATION_ID) == ()
+    assert not journal.path.exists()
+    assert not lock.exists()
+
+    receipt = _receipt("root")
+    journal.append(receipt)
+    assert journal.read_operation_receipts(OPERATION_ID) == (receipt,)
+    assert journal.read_operation_receipts("other-operation") == ()
+    with journal.path.open("ab") as output:
+        output.write(b'{"partial":')
+    before = journal.path.read_bytes()
+    with pytest.raises(PackageArtifactStagingJournalError) as corrupt:
+        journal.read_operation_receipts(OPERATION_ID)
+    assert corrupt.value.code == "package_artifact_staging_journal_corrupt"
+    assert journal.path.read_bytes() == before
+
+
 def test_staging_request_requires_exact_acquired_graph_wide_pin() -> None:
     plan = _plan()
     released = PackageTransactionPinReceiptV1.transition(

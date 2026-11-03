@@ -4,8 +4,8 @@
 
 Legacy / historical.
 
-This directory preserves older position papers, boundary protocols, and design
-notes that are still useful for context. They are not current implementation
+This directory preserves older boundary protocols and design notes that are
+still useful for context. They are not current implementation
 contracts.
 
 ## Reading Rule

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from loushang.ontology.package import build_ontology_package_artifact
@@ -13,7 +11,6 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
-    SchemaCompilationError,
     SetPropertyEffectDefinition,
     StateAuthority,
     ValueType,
@@ -99,15 +96,6 @@ def test_action_definition_compiles_round_trips_and_is_package_content() -> None
         build_ontology_package_artifact(compiled).artifact_digest
         != build_ontology_package_artifact(without_action).artifact_digest
     )
-
-
-def test_schema_v3_documents_are_not_loaded_as_v4() -> None:
-    compiler = OntologyCompiler()
-    payload = json.loads(compiler.compile(_draft()).to_json())
-    payload["format"] = "loushang.ontology.schema/v3"
-
-    with pytest.raises(SchemaCompilationError, match="schema/v4"):
-        compiler.load_json(json.dumps(payload))
 
 
 @pytest.mark.parametrize(

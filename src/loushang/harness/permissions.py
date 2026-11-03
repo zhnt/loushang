@@ -10,22 +10,26 @@ terminology conventions in policy-approval-redesign.md section 7.0.
 
 from __future__ import annotations
 
+import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 
+from loushang.foundation.json import dump_json_value
 from loushang.harness.policy import (
     PolicyDecision,
     PolicyEvaluator,
     PolicySubject,
     evaluate_policy,
 )
+from loushang.harness.policy.engine import PolicyEngine
 
 PermissionProfileId = Literal["cautious", "standard", "full_access"]
 PermissionProfileScope = Literal["session", "project", "user"]
 ApprovalBehavior = Literal["cautious", "policy", "allow_optional"]
 WorkspaceAccess = Literal["managed_workspace", "managed_ceiling"]
 NetworkAccess = Literal["policy", "managed_ceiling"]
-SandboxPreference = Literal["configured"]
+SandboxPreference = Literal["configured", "managed_ceiling"]
 
 _PROFILE_ORDER: tuple[PermissionProfileId, ...] = (
     "cautious",
@@ -36,7 +40,7 @@ _PROFILE_ORDER: tuple[PermissionProfileId, ...] = (
 
 @dataclass(frozen=True, slots=True)
 class PermissionProfile:
-    """One user-facing mode without weakening managed Policy or execution limits."""
+    """One user-facing mode within managed and delegated execution ceilings."""
 
     profile_id: PermissionProfileId
     label: str
@@ -79,7 +83,7 @@ BUILTIN_PERMISSION_PROFILES: tuple[PermissionProfile, ...] = (
         profile_id="standard",
         label="Standard",
         description=(
-            "Run normal workspace work without interruption; ask for deletion, "
+            "Run workspace and recoverable Git work without interruption; ask for content loss, "
             "publishing, privilege, secrets, and external side effects."
         ),
         approval_behavior="policy",
@@ -101,12 +105,13 @@ BUILTIN_PERMISSION_PROFILES: tuple[PermissionProfile, ...] = (
         profile_id="full_access",
         label="Full Access",
         description=(
-            "Skip discretionary approval prompts; managed denies, delegated "
-            "ceilings, and configured sandbox limits still apply."
+            "Use the full available execution scope without discretionary prompts; "
+            "managed denies, delegated limits, and required sandboxing still apply."
         ),
         approval_behavior="allow_optional",
         workspace_access="managed_ceiling",
         network_access="managed_ceiling",
+        sandbox_preference="managed_ceiling",
     ),
 )
 _PROFILES_BY_ID = {
@@ -176,9 +181,34 @@ class PermissionProfilePolicyEvaluator:
     policy: PolicyEvaluator
     profile_provider: PermissionProfileProvider
     ceiling_provider: PermissionCeilingProvider = PermissionProfileCeiling
+    policy_provider: Callable[[], PolicyEvaluator] | None = None
+
+    def configuration_fingerprint(self) -> str:
+        """Read live profile/ceiling inputs plus the selected native rules.
+
+        This dependency fingerprint is neither an Approval fact nor a Policy
+        decision. Custom evaluators require their own owner observation entry.
+        """
+
+        policy = self.policy_provider() if self.policy_provider is not None else self.policy
+        if type(self) is not PermissionProfilePolicyEvaluator or type(policy) is not PolicyEngine:
+            raise TypeError("Policy configuration requires native profile and rule owners")
+        requested = self.profile_provider()
+        ceiling = self.ceiling_provider()
+        if type(ceiling) is not PermissionProfileCeiling:
+            raise TypeError("Policy configuration requires a native permission ceiling")
+        effective = resolve_permission_profile(requested, ceiling)
+        encoded = dump_json_value({
+            "policyConfigurationFingerprint": cast(PolicyEngine, policy).configuration_fingerprint(),
+            "requestedProfile": requested,
+            "effectiveProfile": effective.profile_id,
+            "maximumProfile": ceiling.maximum_profile,
+        }, name="Permission Policy configuration", ensure_ascii=True, sort_keys=True).encode("utf-8")
+        return hashlib.sha256(b"loushang.permission-policy-configuration/v1\0" + encoded).hexdigest()
 
     async def evaluate(self, subject: PolicySubject, /) -> PolicyDecision:
-        decision = await evaluate_policy(self.policy, subject)
+        policy = self.policy_provider() if self.policy_provider is not None else self.policy
+        decision = await evaluate_policy(policy, subject)
         managed = decision or PolicyDecision.allow()
         if managed.disposition == "deny":
             return managed

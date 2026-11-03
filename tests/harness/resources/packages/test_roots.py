@@ -60,6 +60,58 @@ class _SettingsManager:
         return {"resource_roots": ["resources"]}
 
 
+@pytest.mark.parametrize(
+    ("package_roots", "plugin_sources", "package_sources"),
+    (
+        (("/configured/package",), (), ()),
+        ((), ("/configured/plugin",), ()),
+        ((), (), (PackageSourceConfig(source="https://example.invalid/plugin.git"),)),
+    ),
+)
+def test_materializer_free_product_roots_refuse_legacy_package_inputs(
+    package_roots: tuple[str, ...],
+    plugin_sources: tuple[str, ...],
+    package_sources: tuple[PackageSourceConfig, ...],
+) -> None:
+    with pytest.raises(RuntimeError, match="admitted Product mount owner"):
+        resolve_package_resource_roots(
+            package_roots=package_roots,
+            plugin_sources=plugin_sources,
+            package_sources=package_sources,
+            materializer=None,
+        )
+
+
+def test_product_bootstrap_does_not_mount_configured_source_path(tmp_path: Path) -> None:
+    source = tmp_path / "configured-plugin"
+    source.mkdir()
+    loader = _Loader()
+    settings = _SettingsManager(
+        _Settings(
+            package_roots=(),
+            package_sources=(PackageSourceConfig(source=str(source)),),
+        ),
+        tmp_path / "global",
+    )
+
+    resolved = configure_resource_loader_roots(
+        resource_loader=loader,
+        settings_manager=settings,
+        materializer=None,
+        include_configured_package_sources=False,
+    )
+
+    assert resolved.mounts == ()
+    assert loader.mounts == ()
+    with pytest.raises(ValueError, match="Product-only Package mounts"):
+        configure_resource_loader_roots(
+            resource_loader=loader,
+            settings_manager=settings,
+            materializer=PackageMaterializer(install_root=tmp_path / "installed"),
+            include_configured_package_sources=False,
+        )
+
+
 class _Loader:
     def __init__(self) -> None:
         self.mounts: tuple[PackageResourceMount, ...] = ()

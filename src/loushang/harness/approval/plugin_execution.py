@@ -7,6 +7,8 @@ Definition, or publish a live contribution.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import secrets
 import string
 from collections.abc import Callable, Iterable, Mapping
@@ -42,6 +44,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginExecutionDecisionRecord,
     PluginInstanceRevisionRef,
 )
+from loushang.harness.resume_effects import ResumeEffectParentContextV1
 
 PLUGIN_APPROVAL_AUTHORIZATION_VERSION = 1
 PLUGIN_APPROVAL_DECISION_RECORD_VERSION = 1
@@ -74,6 +77,8 @@ PluginExecutionJournalEventKind = Literal[
     "execution_consumed",
     "execution_use_transitioned",
     "execution_uses_recovered",
+    "resume_parent_enrolled",
+    "resume_parent_sealed",
 ]
 
 _ALLOWED_EXECUTION_USE_TRANSITIONS = frozenset(
@@ -678,6 +683,7 @@ class _ExecutionConsumedV1:
     expected_decision_revision: int
     reservation: PluginExecutionUseReservationV1
     consumed_at_unix_ms: int
+    parent_context: ResumeEffectParentContextV1 | None = None
 
     def __post_init__(self) -> None:
         _require_positive_integer(
@@ -690,12 +696,15 @@ class _ExecutionConsumedV1:
         )
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        document: dict[str, object] = {
             "consumedAtUnixMs": self.consumed_at_unix_ms,
             "decision": self.decision.to_dict(),
             "expectedDecisionRevision": self.expected_decision_revision,
             "reservation": self.reservation.to_dict(),
         }
+        if self.parent_context is not None:
+            document["parentContext"] = self.parent_context.to_dict()
+        return document
 
 
 @dataclass(frozen=True, slots=True)
@@ -760,12 +769,59 @@ class _ExecutionUsesRecoveredV1:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class _ResumeParentEnrolledV1:
+    parent_context: ResumeEffectParentContextV1
+
+    def to_dict(self) -> dict[str, object]:
+        return {"parentContext": self.parent_context.to_dict()}
+
+
+@dataclass(frozen=True, slots=True)
+class _ResumeParentSealedV1:
+    parent_context: ResumeEffectParentContextV1
+    native_use_ids: tuple[str, ...]
+    membership_digest: str
+
+    def __post_init__(self) -> None:
+        if type(self.native_use_ids) is not tuple or self.native_use_ids != tuple(
+            sorted(set(self.native_use_ids))
+        ):
+            raise ValueError("Resume native membership must be sorted and unique")
+        for use_id in self.native_use_ids:
+            _require_hex(use_id, length=48, name="native execution use id")
+        if self.membership_digest != _resume_membership_digest(
+            self.parent_context, self.native_use_ids
+        ):
+            raise ValueError("Resume native membership digest does not match")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "parentContext": self.parent_context.to_dict(),
+            "nativeUseIds": list(self.native_use_ids),
+            "membershipDigest": self.membership_digest,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class PluginExecutionResumeParentSnapshotV1:
+    """Original-owner membership facts; these do not settle external effects."""
+
+    parent_context: ResumeEffectParentContextV1
+    execution_uses: tuple[PluginExecutionUseReservationV1, ...]
+    sealed: bool
+    membership_digest: str | None
+    journal_revision: int
+
+
 _PluginExecutionEventPayload = (
     _DecisionIssuedV1
     | _DecisionRevokedV1
     | _ExecutionConsumedV1
     | _ExecutionUseTransitionedV1
     | _ExecutionUsesRecoveredV1
+    | _ResumeParentEnrolledV1
+    | _ResumeParentSealedV1
 )
 
 
@@ -785,10 +841,13 @@ class _PluginExecutionJournalEventV1:
         )
         if self.journal_revision != self.expected_journal_revision + 1:
             raise ValueError("Plugin execution journal CAS revision is invalid")
-        _require_version(
-            self.event_version,
-            expected=PLUGIN_EXECUTION_JOURNAL_EVENT_VERSION,
+        context_event = isinstance(
+            self.payload, (_ResumeParentEnrolledV1, _ResumeParentSealedV1)
+        ) or (
+            isinstance(self.payload, _ExecutionConsumedV1)
+            and self.payload.parent_context is not None
         )
+        _require_version(self.event_version, expected=2 if context_event else 1)
         expected_type: type[object]
         if self.event_kind == "decision_issued":
             expected_type = _DecisionIssuedV1
@@ -800,6 +859,10 @@ class _PluginExecutionJournalEventV1:
             expected_type = _ExecutionUseTransitionedV1
         elif self.event_kind == "execution_uses_recovered":
             expected_type = _ExecutionUsesRecoveredV1
+        elif self.event_kind == "resume_parent_enrolled":
+            expected_type = _ResumeParentEnrolledV1
+        elif self.event_kind == "resume_parent_sealed":
+            expected_type = _ResumeParentSealedV1
         else:
             raise ValueError("Unsupported Plugin execution journal event kind")
         if not isinstance(self.payload, expected_type):
@@ -828,11 +891,20 @@ class _PluginExecutionJournalEventV1:
             },
             name="Plugin execution journal event",
         )
-        _wire_version(
-            document.get("eventVersion"),
-            expected=PLUGIN_EXECUTION_JOURNAL_EVENT_VERSION,
-        )
         kind = _wire_string(document["eventKind"], name="event kind")
+        version = document.get("eventVersion")
+        expected_version = (
+            2
+            if version == 2
+            and kind
+            in {
+                "execution_consumed",
+                "resume_parent_enrolled",
+                "resume_parent_sealed",
+            }
+            else 1
+        )
+        _wire_version(version, expected=expected_version)
         payload = _wire_object(document["payload"], name="event payload")
         try:
             decoded: _PluginExecutionEventPayload
@@ -878,7 +950,8 @@ class _PluginExecutionJournalEventV1:
                         "decision",
                         "expectedDecisionRevision",
                         "reservation",
-                    },
+                    }
+                    | ({"parentContext"} if version == 2 else set()),
                     name="consumption payload",
                 )
                 decoded = _ExecutionConsumedV1(
@@ -892,10 +965,36 @@ class _PluginExecutionJournalEventV1:
                     reservation=PluginExecutionUseReservationV1.from_dict(
                         payload["reservation"]
                     ),
+                    parent_context=(
+                        ResumeEffectParentContextV1.from_dict(payload["parentContext"])
+                        if version == 2
+                        else None
+                    ),
                     consumed_at_unix_ms=_wire_integer(
                         payload["consumedAtUnixMs"],
                         name="consumed-at Unix milliseconds",
                     ),
+                )
+            elif kind == "resume_parent_enrolled":
+                _wire_exact_fields(
+                    payload, keys={"parentContext"}, name="Resume enrollment"
+                )
+                decoded = _ResumeParentEnrolledV1(
+                    ResumeEffectParentContextV1.from_dict(payload["parentContext"])
+                )
+            elif kind == "resume_parent_sealed":
+                _wire_exact_fields(
+                    payload,
+                    keys={"parentContext", "nativeUseIds", "membershipDigest"},
+                    name="Resume seal",
+                )
+                ids = payload["nativeUseIds"]
+                if type(ids) is not list:
+                    raise _invalid_record("Resume membership requires an array")
+                decoded = _ResumeParentSealedV1(
+                    ResumeEffectParentContextV1.from_dict(payload["parentContext"]),
+                    tuple(_wire_string(item, name="native use id") for item in ids),
+                    _wire_string(payload["membershipDigest"], name="membership digest"),
                 )
             elif kind == "execution_use_transitioned":
                 _wire_exact_fields(
@@ -964,6 +1063,7 @@ class _PluginExecutionJournalEventV1:
                 ),
                 event_kind=cast(PluginExecutionJournalEventKind, kind),
                 payload=decoded,
+                event_version=_wire_integer(version, name="event version"),
             )
         except PluginExecutionJournalRecordCodecError:
             raise
@@ -1008,6 +1108,12 @@ class _ReplayedExecutionJournal:
     decisions: dict[str, PluginApprovalDecisionRecordV1]
     subject_decisions: dict[str, list[str]]
     execution_uses: dict[str, PluginExecutionUseReservationV1]
+    resume_parents: dict[str, ResumeEffectParentContextV1]
+    resume_use_parents: dict[str, str]
+    resume_seals: dict[str, _ResumeParentSealedV1]
+
+
+_RESUME_WRITER_CAPABILITIES = frozenset({"harness.plugin-execution.resume-context/v1"})
 
 
 class PluginExecutionDecisionJournal:
@@ -1018,6 +1124,7 @@ class PluginExecutionDecisionJournal:
         path: str | Path,
         *,
         scope_kind: PluginExecutionJournalScopeKind,
+        required_writer_capabilities: frozenset[str] = frozenset(),
         scope_id: str,
         decision_id_factory: Callable[[], str] = lambda: secrets.token_hex(24),
         execution_use_id_factory: Callable[[], str] = lambda: secrets.token_hex(24),
@@ -1030,6 +1137,15 @@ class PluginExecutionDecisionJournal:
             raise ValueError("Unsupported Plugin execution journal scope")
         _require_nonempty(scope_id, name="Plugin execution journal scope id")
         self._path = Path(path)
+        if type(required_writer_capabilities) is not frozenset or any(
+            type(item) is not str for item in required_writer_capabilities
+        ):
+            raise TypeError("Writer capabilities require an exact frozenset of strings")
+        if not required_writer_capabilities <= _RESUME_WRITER_CAPABILITIES:
+            raise self._error(
+                "Required native Writer protocol is unsupported",
+                code="plugin_execution_writer_protocol_unsupported",
+            )
         self._scope_kind = scope_kind
         self._scope_id = scope_id
         self._decision_id_factory = decision_id_factory
@@ -1038,6 +1154,12 @@ class PluginExecutionDecisionJournal:
         self._retained_authority_validator = retained_authority_validator
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
         self._load_policy = JournalLoadPolicy(partial_tail="repair")
+
+    @property
+    def writer_protocol_capabilities(self) -> frozenset[str]:
+        """Implemented wire support only; this value grants no authority."""
+
+        return _RESUME_WRITER_CAPABILITIES
 
     @property
     def path(self) -> Path:
@@ -1152,6 +1274,7 @@ class PluginExecutionDecisionJournal:
         current_policy_revision: str,
         current_source_trust_policy_revision: str,
         expected_journal_revision: int,
+        parent_context: ResumeEffectParentContextV1 | None = None,
     ) -> PluginExecutionUseReservationV1:
         self._require_subject_scope(subject)
         _require_expected_revision(expected_journal_revision)
@@ -1165,8 +1288,17 @@ class PluginExecutionDecisionJournal:
             expected_revocation_epoch,
             name="expected revocation epoch",
         )
+        if parent_context is not None:
+            self._require_resume_parent_context(parent_context)
+            if parent_context.product_id != subject.product_id:
+                raise self._error(
+                    "Resume parent Product does not match native subject",
+                    code="plugin_execution_resume_context_mismatch",
+                )
         with self._lock():
-            replayed = self._load_and_replay_unlocked()
+            replayed = self._load_and_replay_unlocked(
+                required_resume_parent=parent_context, require_open_resume=True
+            )
             self._require_journal_revision(replayed, expected_journal_revision)
             decision = replayed.decisions.get(decision_id)
             if decision is None:
@@ -1269,6 +1401,7 @@ class PluginExecutionDecisionJournal:
                     expected_decision_revision=decision.decision_revision,
                     reservation=reservation,
                     consumed_at_unix_ms=now,
+                    parent_context=parent_context,
                 ),
             )
             return reservation
@@ -1296,6 +1429,15 @@ class PluginExecutionDecisionJournal:
                 raise self._error(
                     "Plugin execution use does not exist",
                     code="plugin_execution_use_missing",
+                )
+            if (
+                target_state == "STARTING"
+                and replayed.resume_use_parents.get(execution_use_id)
+                in replayed.resume_seals
+            ):
+                raise self._error(
+                    "Resume owner enumeration is sealed",
+                    code="plugin_execution_resume_parent_sealed",
                 )
             if current.state != expected_state:
                 raise self._error(
@@ -1509,9 +1651,19 @@ class PluginExecutionDecisionJournal:
             )
             return revoked
 
-    def snapshot(self) -> PluginExecutionDecisionSnapshotV1:
+    def snapshot(
+        self,
+        *,
+        resume_parent_context: ResumeEffectParentContextV1 | None = None,
+        require_open_resume: bool = False,
+    ) -> PluginExecutionDecisionSnapshotV1:
+        if resume_parent_context is not None:
+            self._require_resume_parent_context(resume_parent_context)
         with self._lock():
-            replayed = self._load_and_replay_unlocked()
+            replayed = self._load_and_replay_unlocked(
+                required_resume_parent=resume_parent_context,
+                require_open_resume=require_open_resume,
+            )
         return PluginExecutionDecisionSnapshotV1(
             journal_revision=len(replayed.events),
             decisions=tuple(
@@ -1523,6 +1675,127 @@ class PluginExecutionDecisionJournal:
                 )
             ),
         )
+
+    def resume_parent_scope_digest(self, *, product_id: str) -> str:
+        _require_nonempty(product_id, name="Resume Product id")
+        document = {
+            "ownerId": "harness.plugin-execution",
+            "productId": product_id,
+            "scopeKind": self._scope_kind,
+            "scopeId": self._scope_id,
+        }
+        return hashlib.sha256(
+            b"loushang.plugin-execution.resume-scope/v1\0"
+            + json.dumps(
+                document,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode()
+        ).hexdigest()
+
+    @property
+    def resume_parent_contract_digest(self) -> str:
+        return hashlib.sha256(b"harness.plugin-execution.resume-context/v1").hexdigest()
+
+    def _require_resume_parent_context(
+        self, context: ResumeEffectParentContextV1
+    ) -> None:
+        if type(context) is not ResumeEffectParentContextV1:
+            raise TypeError("Resume native owner requires a typed parent context")
+        if (
+            context.owner_id != "harness.plugin-execution"
+            or context.scope_digest
+            != self.resume_parent_scope_digest(product_id=context.product_id)
+            or context.contract_digest != self.resume_parent_contract_digest
+        ):
+            raise self._error(
+                "Resume context does not match original owner scope/contract",
+                code="plugin_execution_resume_context_mismatch",
+            )
+
+    def enroll_resume_parent(
+        self, context: ResumeEffectParentContextV1, *, expected_journal_revision: int
+    ) -> None:
+        """Enroll inert parent data; native decision consumption still admits uses."""
+        self._require_resume_parent_context(context)
+        _require_expected_revision(expected_journal_revision)
+        with self._lock():
+            replayed = self._load_and_replay_unlocked()
+            self._require_journal_revision(replayed, expected_journal_revision)
+            if context.digest in replayed.resume_parents:
+                raise self._error(
+                    "Resume parent is already enrolled",
+                    code="plugin_execution_resume_parent_exists",
+                )
+            if any(
+                _resume_parent_identity(existing) == _resume_parent_identity(context)
+                for existing in replayed.resume_parents.values()
+            ):
+                raise self._error(
+                    "Resume parent identity was already bound to another intent",
+                    code="plugin_execution_resume_parent_conflict",
+                )
+            self._append_unlocked(
+                replayed,
+                event_kind="resume_parent_enrolled",
+                payload=_ResumeParentEnrolledV1(context),
+            )
+
+    def seal_resume_parent(
+        self, context: ResumeEffectParentContextV1, *, expected_journal_revision: int
+    ) -> PluginExecutionResumeParentSnapshotV1:
+        """Fence all future native starts/registrations for the exact parent.
+
+        STARTING is unresolved even across boots; it cannot be sealed by absence
+        or by a new boot identity. External effect settlement is not inferred.
+        """
+        self._require_resume_parent_context(context)
+        _require_expected_revision(expected_journal_revision)
+        with self._lock():
+            replayed = self._load_and_replay_unlocked(
+                required_resume_parent=context,
+                require_open_resume=True,
+                require_quiescent_resume=True,
+            )
+            self._require_journal_revision(replayed, expected_journal_revision)
+            _require_open_resume_parent(replayed, context, path=self._path)
+            uses = _resume_parent_uses(replayed, context)
+            if any(item.state == "STARTING" for item in uses):
+                raise self._error(
+                    "Original invocation remains unresolved",
+                    code="plugin_execution_resume_start_unknown",
+                )
+            ids = tuple(item.execution_use_id for item in uses)
+            seal = _ResumeParentSealedV1(
+                context, ids, _resume_membership_digest(context, ids)
+            )
+            self._append_unlocked(
+                replayed, event_kind="resume_parent_sealed", payload=seal
+            )
+            return PluginExecutionResumeParentSnapshotV1(
+                context, uses, True, seal.membership_digest, len(replayed.events) + 1
+            )
+
+    def resume_parent_snapshot(
+        self, context: ResumeEffectParentContextV1
+    ) -> PluginExecutionResumeParentSnapshotV1:
+        self._require_resume_parent_context(context)
+        with self._lock():
+            replayed = self._load_and_replay_unlocked(required_resume_parent=context)
+            if replayed.resume_parents.get(context.digest) != context:
+                raise self._error(
+                    "Original parent enrollment is missing",
+                    code="plugin_execution_resume_parent_unknown",
+                )
+            seal = replayed.resume_seals.get(context.digest)
+            return PluginExecutionResumeParentSnapshotV1(
+                context,
+                _resume_parent_uses(replayed, context),
+                seal is not None,
+                seal.membership_digest if seal is not None else None,
+                len(replayed.events),
+            )
 
     def _require_subject_scope(
         self,
@@ -1598,6 +1871,13 @@ class PluginExecutionDecisionJournal:
             expected_journal_revision=len(replayed.events),
             event_kind=event_kind,
             payload=payload,
+            event_version=2
+            if isinstance(payload, (_ResumeParentEnrolledV1, _ResumeParentSealedV1))
+            or (
+                isinstance(payload, _ExecutionConsumedV1)
+                and payload.parent_context is not None
+            )
+            else 1,
         )
         append_jsonl_record(
             self._path,
@@ -1607,16 +1887,68 @@ class PluginExecutionDecisionJournal:
             durability=self._unlocked_durability,
         )
 
-    def _load_and_replay_unlocked(self) -> _ReplayedExecutionJournal:
+    def _load_and_replay_unlocked(
+        self,
+        *,
+        required_resume_parent: ResumeEffectParentContextV1 | None = None,
+        require_open_resume: bool = False,
+        require_quiescent_resume: bool = False,
+    ) -> _ReplayedExecutionJournal:
         if not self._path.exists():
+            if required_resume_parent is not None:
+                raise self._error(
+                    "Original parent enrollment is missing",
+                    code="plugin_execution_resume_parent_unknown",
+                )
             return _empty_replay()
+        replayed = _empty_replay()
+
+        def validate_snapshot(
+            snapshot: JsonlSnapshot[None, _PluginExecutionJournalEventV1],
+        ) -> None:
+            nonlocal replayed
+            replayed = _replay(snapshot.records, path=self._path)
+            for context in replayed.resume_parents.values():
+                self._require_resume_parent_context(context)
+            if required_resume_parent is not None:
+                if (
+                    replayed.resume_parents.get(required_resume_parent.digest)
+                    != required_resume_parent
+                ):
+                    raise self._error(
+                        "Original parent enrollment is missing",
+                        code="plugin_execution_resume_parent_unknown",
+                    )
+                if require_open_resume:
+                    _require_open_resume_parent(
+                        replayed, required_resume_parent, path=self._path
+                    )
+                if require_quiescent_resume and any(
+                    use.state == "STARTING"
+                    for use in _resume_parent_uses(replayed, required_resume_parent)
+                ):
+                    raise self._error(
+                        "Original invocation remains unresolved",
+                        code="plugin_execution_resume_start_unknown",
+                    )
+            if any(
+                decision.scope_kind != self._scope_kind
+                or decision.scope_id != self._scope_id
+                for decision in replayed.decisions.values()
+            ):
+                raise self._error(
+                    "Plugin execution journal contains another durable scope",
+                    code="plugin_execution_journal_corrupt",
+                )
+
         try:
-            snapshot: JsonlSnapshot[None, _PluginExecutionJournalEventV1] = load_jsonl(
+            load_jsonl(
                 self._path,
                 record_codec=_PLUGIN_EXECUTION_EVENT_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
                 load_policy=self._load_policy,
+                validate_snapshot=validate_snapshot,
             )
         except JournalFileError as exc:
             code = (
@@ -1632,16 +1964,6 @@ class PluginExecutionDecisionJournal:
                 "Plugin execution journal cannot be decoded",
                 code=code,
             ) from exc
-        replayed = _replay(snapshot.records, path=self._path)
-        if any(
-            decision.scope_kind != self._scope_kind
-            or decision.scope_id != self._scope_id
-            for decision in replayed.decisions.values()
-        ):
-            raise self._error(
-                "Plugin execution journal contains another durable scope",
-                code="plugin_execution_journal_corrupt",
-            )
         return replayed
 
     def _error(self, message: str, *, code: str) -> PluginExecutionJournalError:
@@ -1654,6 +1976,9 @@ def _empty_replay() -> _ReplayedExecutionJournal:
         decisions={},
         subject_decisions={},
         execution_uses={},
+        resume_parents={},
+        resume_use_parents={},
+        resume_seals={},
     )
 
 
@@ -1670,6 +1995,27 @@ def _replay(
         if event.expected_journal_revision != expected_revision - 1:
             raise _corrupt(path, "Plugin execution journal CAS chain is not contiguous")
         payload = event.payload
+        if isinstance(payload, _ResumeParentEnrolledV1):
+            context = payload.parent_context
+            if any(
+                _resume_parent_identity(existing) == _resume_parent_identity(context)
+                for existing in replayed.resume_parents.values()
+            ):
+                raise _corrupt(path, "Resume parent identity enrolled more than once")
+            replayed.resume_parents[context.digest] = context
+            continue
+        if isinstance(payload, _ResumeParentSealedV1):
+            _require_open_resume_parent(replayed, payload.parent_context, path=path)
+            uses = _resume_parent_uses(replayed, payload.parent_context)
+            if payload.native_use_ids != tuple(
+                item.execution_use_id for item in uses
+            ) or any(item.state == "STARTING" for item in uses):
+                raise _corrupt(
+                    path,
+                    "Resume seal is incomplete or native invocation is still starting",
+                )
+            replayed.resume_seals[payload.parent_context.digest] = payload
+            continue
         if isinstance(payload, _DecisionIssuedV1):
             decision = payload.decision
             latest = _latest_subject_decision(replayed, decision.subject_digest)
@@ -1746,9 +2092,22 @@ def _replay(
                     "Plugin execution consumption cannot be replayed",
                 )
             replayed.decisions[current.decision_id] = payload.decision
+            if payload.parent_context is not None:
+                _require_open_resume_parent(replayed, payload.parent_context, path=path)
+                replayed.resume_use_parents[reservation.execution_use_id] = (
+                    payload.parent_context.digest
+                )
             replayed.execution_uses[reservation.execution_use_id] = reservation
             continue
         if isinstance(payload, _ExecutionUseTransitionedV1):
+            if (
+                payload.reservation.state == "STARTING"
+                and replayed.resume_use_parents.get(
+                    payload.reservation.execution_use_id
+                )
+                in replayed.resume_seals
+            ):
+                raise _corrupt(path, "Native start follows sealed Resume enumeration")
             reservation = payload.reservation
             current_use = replayed.execution_uses.get(reservation.execution_use_id)
             if current_use is None:
@@ -1789,6 +2148,56 @@ def _replay(
                 )
             replayed.execution_uses[reservation.execution_use_id] = reservation
     return replayed
+
+
+def _resume_parent_identity(context: ResumeEffectParentContextV1) -> tuple[str, ...]:
+    return context.product_id, context.session_id, context.attempt_id, context.owner_id
+
+
+def _resume_parent_uses(
+    replayed: _ReplayedExecutionJournal, context: ResumeEffectParentContextV1
+) -> tuple[PluginExecutionUseReservationV1, ...]:
+    return tuple(
+        sorted(
+            (
+                use
+                for key, use in replayed.execution_uses.items()
+                if replayed.resume_use_parents.get(key) == context.digest
+            ),
+            key=lambda use: use.execution_use_id,
+        )
+    )
+
+
+def _require_open_resume_parent(
+    replayed: _ReplayedExecutionJournal,
+    context: ResumeEffectParentContextV1,
+    *,
+    path: Path,
+) -> None:
+    if replayed.resume_parents.get(context.digest) != context:
+        raise PluginExecutionJournalError(
+            "Original parent enrollment is missing",
+            code="plugin_execution_resume_parent_unknown",
+            path=path,
+        )
+    if context.digest in replayed.resume_seals:
+        raise PluginExecutionJournalError(
+            "Original parent enumeration is sealed",
+            code="plugin_execution_resume_parent_sealed",
+            path=path,
+        )
+
+
+def _resume_membership_digest(
+    context: ResumeEffectParentContextV1, ids: tuple[str, ...]
+) -> str:
+    return hashlib.sha256(
+        b"loushang.plugin-execution.resume-membership/v1\0"
+        + context.digest.encode()
+        + b"\0"
+        + json.dumps(list(ids), separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 def _polluted_import_realms(

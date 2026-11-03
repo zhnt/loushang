@@ -145,6 +145,55 @@ def _render_segment(
     )
 
 
+def test_mouse_viewport_navigation_keeps_history_visible_until_returning_to_tail() -> None:
+    root = StaticRoot(tuple(f"line {index}" for index in range(12)))
+    terminal = FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    runtime = TuiRuntime(
+        render_loop=RenderLoop(root),
+        terminal=terminal,
+    )
+    runtime.render_now()
+    assert runtime.render_loop.previous_viewport_top == 7
+    assert tuple(terminal.screen.visible_lines) == tuple(f"line {index}" for index in range(7, 12))
+    native_scrollback = tuple(terminal.screen.scrollback_lines)
+
+    assert runtime.render_loop.scroll_viewport(-3)
+    step = runtime.render_now()
+    assert step.diagnostics.viewport_top == 4
+    assert step.diagnostics.operation_class == "viewport_navigation"
+    assert tuple(terminal.screen.visible_lines) == tuple(f"line {index}" for index in range(4, 9))
+    assert tuple(terminal.screen.scrollback_lines) == native_scrollback
+
+    root.lines += ("line 12", "line 13")
+    runtime.render_now()
+    assert runtime.render_loop.previous_viewport_top == 4
+    assert tuple(terminal.screen.visible_lines) == tuple(f"line {index}" for index in range(4, 9))
+    assert tuple(terminal.screen.scrollback_lines) == native_scrollback
+
+    assert runtime.render_loop.scroll_viewport(100)
+    runtime.render_now()
+    assert runtime.render_loop.previous_viewport_top == 9
+    assert tuple(terminal.screen.visible_lines) == tuple(f"line {index}" for index in range(9, 14))
+    assert tuple(terminal.screen.scrollback_lines) == (*native_scrollback, "line 7", "line 8")
+    assert not runtime.render_loop.scroll_viewport(1)
+
+
+def test_manual_viewport_survives_terminal_resize() -> None:
+    root = StaticRoot(tuple(f"line {index}" for index in range(12)))
+    terminal = FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    runtime = TuiRuntime(render_loop=RenderLoop(root), terminal=terminal)
+    runtime.render_now()
+    assert runtime.render_loop.scroll_viewport(-3)
+    runtime.render_now()
+
+    terminal.resize(TerminalSize(columns=20, rows=4))
+    step = runtime.render_now()
+
+    assert step.diagnostics.operation_class == "viewport_navigation"
+    assert step.diagnostics.viewport_top == 4
+    assert tuple(terminal.screen.visible_lines) == tuple(f"line {index}" for index in range(4, 8))
+
+
 def test_segmented_render_skips_11748_committed_rows_on_bottom_frame_update(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -366,6 +415,68 @@ def test_segment_cache_sweeps_changed_views_without_changing_flat_output() -> No
     assert no_op.materialized_logical_line_count == 0
 
 
+def test_editor_repaint_reuses_long_history_without_rekeying_every_segment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    history = tuple(
+        _render_segment(f"history {index}", identity=f"history-{index}")
+        for index in range(2_000)
+    )
+    root = SegmentedRoot(
+        (*history, _render_segment("draft 1", identity="editor", revision=1))
+    )
+    loop = RenderLoop(root)
+    size = TerminalSize(columns=80, rows=24)
+    first = loop.plan(size)
+    loop.commit(first, size=size)
+    original_key = render_loop_module._render_segment_cache_key
+    key_calls = 0
+
+    def counting_key(segment: RenderLineSegmentLike):
+        nonlocal key_calls
+        key_calls += 1
+        return original_key(segment)
+
+    monkeypatch.setattr(render_loop_module, "_render_segment_cache_key", counting_key)
+    root.segments = (
+        *history,
+        _render_segment("draft 2", identity="editor", revision=2),
+    )
+    changed = loop.plan(size)
+
+    assert key_calls < 16
+    assert changed.materialized_logical_line_count == 1
+    assert changed.changed_line_range == (2_000, 2_000)
+    assert changed.current_logical_lines[0] == "history 0"
+    assert changed.current_logical_lines[-1] == "draft 2"
+
+
+def test_prefix_reuse_stops_at_uncacheable_segment() -> None:
+    stable = _render_segment("stable", identity="stable")
+    volatile = RenderLineSegment(
+        (RenderLine("volatile 1"),), identity="volatile", cacheable=False
+    )
+    editor = _render_segment("draft 1", identity="editor", revision=1)
+    root = SegmentedRoot((stable, volatile, editor))
+    loop = RenderLoop(root)
+    size = TerminalSize(columns=80, rows=24)
+    first = loop.plan(size)
+    loop.commit(first, size=size)
+
+    root.segments = (
+        stable,
+        RenderLineSegment(
+            (RenderLine("volatile 2"),), identity="volatile", cacheable=False
+        ),
+        _render_segment("draft 2", identity="editor", revision=2),
+    )
+    changed = loop.plan(size)
+
+    assert tuple(changed.current_logical_lines) == ("stable", "volatile 2", "draft 2")
+    assert changed.changed_line_range == (1, 2)
+    assert changed.materialized_logical_line_count == 2
+
+
 def test_failed_segmented_flush_reuses_cache_without_advancing_baseline() -> None:
     identity = object()
     root = SegmentedRoot(
@@ -519,6 +630,7 @@ def test_default_render_strategy_order_matches_design() -> None:
         RenderPlanStrategyKind.FIRST_RENDER,
         RenderPlanStrategyKind.TRANSCRIPT_WINDOW_TRIMMED_RESET,
         RenderPlanStrategyKind.BASELINE_RESET,
+        RenderPlanStrategyKind.VIEWPORT_NAVIGATION,
         RenderPlanStrategyKind.RESIZE_REPAINT,
         RenderPlanStrategyKind.UNSAFE_VIEWPORT,
         RenderPlanStrategyKind.NO_CHANGE,

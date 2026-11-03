@@ -14,12 +14,42 @@ from .test_hosted_command import _argv
 
 
 def test_G17_COMPAT_describe_discovery_is_explicit_and_read_only(tmp_path, capsys):
-    assert hosted.main([*_argv(tmp_path), "--session-discovery", "--describe"]) == 0
+    assert hosted.main(
+        [
+            *_argv(tmp_path),
+            "--session-discovery",
+            "--session-execution",
+            "--describe",
+        ]
+    ) == 0
     output = capsys.readouterr()
     assert output.err == ""
-    assert json.loads(output.out)["profile"] == "foreground-stdio-discovery/v1"
+    assert json.loads(output.out)["profile"] == (
+        "foreground-stdio-discovery-execution/v1"
+    )
     assert str(tmp_path) not in output.out
     assert not tuple(tmp_path.iterdir())
+
+
+def test_stdio_command_keeps_product_runtime_selection_lazy_and_trusted(tmp_path):
+    async def scenario():
+        called = []
+
+        def select(manager):
+            called.append(manager)
+            raise AssertionError("construction must not select a Session runtime")
+
+        launch, _ = hosted.parse_launch(_argv(tmp_path))
+        command = hosted.CodingHostedCommandV1(
+            launch, package_product_runtime_factory_for_session=select
+        )
+        factory = command._attempt._request.foreground.session_factory
+        assert factory._package_product_runtime_factory_for_session is select
+        assert called == []
+        await command.close()
+        assert not tuple(tmp_path.iterdir())
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.parametrize("enabled", [False, True])
@@ -28,8 +58,10 @@ def test_G17_COMPAT_main_passes_explicit_discovery_selection(
 ):
     calls = []
 
-    def command(launch, *, session_discovery=False):
-        calls.append((launch, session_discovery))
+    def command(
+        launch, *, session_discovery=False, session_execution=False
+    ):
+        calls.append((launch, session_discovery, session_execution))
         return sentinel
 
     sentinel = object()
@@ -39,7 +71,7 @@ def test_G17_COMPAT_main_passes_explicit_discovery_selection(
     )
     flags = ["--session-discovery"] if enabled else []
     assert hosted.main([*_argv(tmp_path), *flags]) == 17
-    assert len(calls) == 1 and calls[0][1] is enabled
+    assert len(calls) == 1 and calls[0][1:] == (enabled, False)
     assert not tuple(tmp_path.iterdir())
 
 
@@ -74,7 +106,18 @@ def test_G17_COMPAT_missing_port_keeps_command_cleanup_ownership(tmp_path, monke
         events = []
 
         class Application:
+            execution_enabled = True
             discovery_client = None
+
+            def enable_client_scopes(self):
+                pass
+
+            def open_client_scope(self):
+                return type(
+                    "Scope",
+                    (),
+                    {"discovery_client": None, "execution_client": object()},
+                )()
 
             async def close(self):
                 events.append("application.close")
@@ -98,7 +141,9 @@ def test_G17_COMPAT_missing_port_keeps_command_cleanup_ownership(tmp_path, monke
         monkeypatch.setattr(hosted, "create_coding_hosted_attempt", bootstrap)
         monkeypatch.setattr(hosted, "InheritedStdioTransportV1", Transport)
         launch, _ = hosted.parse_launch(_argv(tmp_path))
-        command = hosted.CodingHostedCommandV1(launch, session_discovery=True)
+        command = hosted.CodingHostedCommandV1(
+            launch, session_discovery=True, session_execution=True
+        )
         with pytest.raises(
             HostedApplicationError, match="hosted_discovery_unavailable"
         ):

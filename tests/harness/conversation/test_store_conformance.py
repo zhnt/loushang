@@ -89,6 +89,7 @@ def _file_factory(
     *,
     record_id: Callable[[_Record], str | None] = _record_id,
     head_compatibility_token: str = "test-conversation-store-v1",
+    background_head_updates: bool = False,
 ) -> _StoreFactory:
     root = tmp_path / "conversations"
 
@@ -116,6 +117,7 @@ def _file_factory(
             clock=lambda: _NOW,
             record_id=record_id,
             head_compatibility_token=head_compatibility_token,
+            background_head_updates=background_head_updates,
         )
 
     return create
@@ -772,6 +774,312 @@ def test_file_append_bootstraps_a_missing_head_once(
     )
 
     assert load_calls == 1
+
+
+def test_file_append_reuses_unchanged_writer_head_without_decoding_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    store = cast(FileConversationStore[_Header, _Record], _file_factory(tmp_path)())
+    key = ConversationKey("coding", "cached-writer-head")
+    store._create_sync(key, _Header("Header"), operation_id=_operation("create", key))
+    store._append_sync(
+        key, _Record("record-1", "first"), expected_revision=0, operation_id="record-1"
+    )
+    original = file_store_module._try_load_store_head
+    loads = 0
+
+    def count_load(*args, **kwargs):
+        nonlocal loads
+        loads += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(file_store_module, "_try_load_store_head", count_load)
+    store._append_sync(
+        key, _Record("record-2", "second"), expected_revision=1, operation_id="record-2"
+    )
+
+    assert loads == 0
+    assert store._load_sync(key).snapshot.revision == 2
+
+
+def test_file_background_head_write_does_not_delay_durable_append(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from threading import Event
+
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    store = cast(
+        FileConversationStore[_Header, _Record],
+        _file_factory(tmp_path, background_head_updates=True)(),
+    )
+    key = ConversationKey("coding", "background-head")
+    store._create_sync(key, _Header("Header"), operation_id=_operation("create", key))
+    entered = Event()
+    release = Event()
+    original = file_store_module._try_write_store_head
+
+    def held_write(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(file_store_module, "_try_write_store_head", held_write)
+
+    async def scenario() -> None:
+        try:
+            receipt = await asyncio.wait_for(
+                store.append(
+                    key,
+                    _Record("record-1", "first"),
+                    expected_revision=0,
+                    operation_id="record-1",
+                ),
+                timeout=1,
+            )
+            assert receipt.receipt.revision == 1
+            assert await asyncio.to_thread(entered.wait, 1)
+        finally:
+            release.set()
+        await store.drain_advisory_head_updates()
+        original_load = file_store_module._try_load_store_head
+        loads = 0
+
+        def count_load(*args, **kwargs):
+            nonlocal loads
+            loads += 1
+            return original_load(*args, **kwargs)
+
+        monkeypatch.setattr(file_store_module, "_try_load_store_head", count_load)
+        await store.append(
+            key,
+            _Record("record-2", "second"),
+            expected_revision=1,
+            operation_id="record-2",
+        )
+        assert loads == 0
+        await store.drain_advisory_head_updates()
+        reopened = cast(
+            FileConversationStore[_Header, _Record], _file_factory(tmp_path)()
+        )
+        assert (await reopened.load(key)).snapshot.revision == 2
+
+    asyncio.run(scenario())
+
+
+def test_file_background_head_writes_coalesce_and_drain_without_delay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = cast(
+        FileConversationStore[_Header, _Record],
+        _file_factory(tmp_path, background_head_updates=True)(),
+    )
+    key = ConversationKey("coding", "coalesced-head")
+    store._create_sync(key, _Header("Header"), operation_id=_operation("create", key))
+    writes: list[int] = []
+    original = store._write_head_if_current
+
+    def count_write(key, path, head):
+        writes.append(head.revision)
+        return original(key, path, head)
+
+    monkeypatch.setattr(store, "_write_head_if_current", count_write)
+
+    async def scenario() -> None:
+        await store.append(
+            key,
+            _Record("record-1", "first"),
+            expected_revision=0,
+            operation_id="record-1",
+        )
+        await store.append(
+            key,
+            _Record("record-2", "second"),
+            expected_revision=1,
+            operation_id="record-2",
+        )
+        assert writes == []
+        await asyncio.wait_for(store.drain_advisory_head_updates(), timeout=1)
+        assert writes == [2]
+        reopened = cast(
+            FileConversationStore[_Header, _Record], _file_factory(tmp_path)()
+        )
+        assert (await reopened.load(key)).snapshot.revision == 2
+
+    asyncio.run(scenario())
+
+
+def test_file_background_head_write_does_not_delay_durable_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from threading import Event
+
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    store = cast(
+        FileConversationStore[_Header, _Record],
+        _file_factory(tmp_path, background_head_updates=True)(),
+    )
+    key = ConversationKey("coding", "background-batch-head")
+    store._create_sync(key, _Header("Header"), operation_id=_operation("create", key))
+    entered = Event()
+    release = Event()
+    original = file_store_module._try_write_store_head
+
+    def held_write(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(file_store_module, "_try_write_store_head", held_write)
+
+    async def scenario() -> None:
+        records = (_Record("record-1", "first"), _Record("record-2", "second"))
+        try:
+            result = await asyncio.wait_for(
+                store.append_batch(
+                    key,
+                    records,
+                    expected_revision=0,
+                    operation_ids=("record-1", "record-2"),
+                ),
+                timeout=1,
+            )
+            assert tuple(item.revision for item in result.receipts) == (1, 2)
+            assert await asyncio.to_thread(entered.wait, 1)
+        finally:
+            release.set()
+        await store.drain_advisory_head_updates()
+        reopened = cast(
+            FileConversationStore[_Header, _Record], _file_factory(tmp_path)()
+        )
+        assert (await reopened.load(key)).snapshot.records == records
+
+    asyncio.run(scenario())
+
+
+def test_file_background_head_write_cannot_replace_newer_writer_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from threading import Event
+
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    factory = _file_factory(tmp_path, background_head_updates=True)
+    first = cast(FileConversationStore[_Header, _Record], factory())
+    key = ConversationKey("coding", "stale-background-head")
+    first._create_sync(key, _Header("Header"), operation_id=_operation("create", key))
+    entered = Event()
+    release = Event()
+    original = first._write_head_if_current
+
+    def held_update(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(first, "_write_head_if_current", held_update)
+
+    async def scenario() -> None:
+        try:
+            await first.append(
+                key,
+                _Record("record-1", "first"),
+                expected_revision=0,
+                operation_id="record-1",
+            )
+            assert await asyncio.to_thread(entered.wait, 1)
+            second = cast(
+                FileConversationStore[_Header, _Record], _file_factory(tmp_path)()
+            )
+            second._append_sync(
+                key,
+                _Record("record-2", "second"),
+                expected_revision=1,
+                operation_id="record-2",
+            )
+        finally:
+            release.set()
+        await first.drain_advisory_head_updates()
+        path = tmp_path / "conversations" / "coding" / "stale-background-head.jsonl"
+        head = file_store_module._try_load_store_head(
+            path, compatibility_token="test-conversation-store-v1"
+        )
+        assert head is not None and head.revision == 2
+
+    asyncio.run(scenario())
+
+
+def test_file_writer_head_cache_replays_after_sidecar_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    store = cast(FileConversationStore[_Header, _Record], _file_factory(tmp_path)())
+    key = ConversationKey("coding", "changed-writer-head")
+    store._create_sync(key, _Header("Header"), operation_id=_operation("create", key))
+    store._append_sync(
+        key, _Record("record-1", "first"), expected_revision=0, operation_id="record-1"
+    )
+    path = tmp_path / "conversations" / "coding" / "changed-writer-head.jsonl"
+    path.with_name(f"{path.name}.store.json").write_text("{", encoding="utf-8")
+    original = file_store_module._load_unlocked
+    replays = 0
+
+    def count_replay(*args, **kwargs):
+        nonlocal replays
+        replays += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(file_store_module, "_load_unlocked", count_replay)
+    store._append_sync(
+        key, _Record("record-2", "second"), expected_revision=1, operation_id="record-2"
+    )
+
+    assert replays == 1
+    assert store._load_sync(key).snapshot.revision == 2
+
+
+def test_file_writer_head_cache_rechecks_a_second_writer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    factory = _file_factory(tmp_path)
+    first = cast(FileConversationStore[_Header, _Record], factory())
+    key = ConversationKey("coding", "two-writers")
+    first._create_sync(key, _Header("Header"), operation_id=_operation("create", key))
+    first._append_sync(
+        key, _Record("record-1", "first"), expected_revision=0, operation_id="record-1"
+    )
+    second = cast(FileConversationStore[_Header, _Record], factory())
+    second._append_sync(
+        key, _Record("record-2", "second"), expected_revision=1, operation_id="record-2"
+    )
+    original = file_store_module._try_load_store_head
+    loads = 0
+
+    def count_load(*args, **kwargs):
+        nonlocal loads
+        loads += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(file_store_module, "_try_load_store_head", count_load)
+    first._append_sync(
+        key, _Record("record-3", "third"), expected_revision=2, operation_id="record-3"
+    )
+
+    assert loads == 1
+    assert first._load_sync(key).snapshot.revision == 3
 
 
 def test_file_append_head_only_metadata_preserves_unknown_create_outcome(

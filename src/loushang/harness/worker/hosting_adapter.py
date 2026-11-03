@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import TypeGuard, TypeVar, cast
+from typing import Protocol, TypeGuard, TypeVar, cast
 
 from loushang.harness.workspace.process import ProcessExit, ProcessStderrTail
 from loushang.hosting import (
@@ -52,6 +52,14 @@ WORKER_HOSTING_ENDPOINT_READ_CHUNK_BYTES = 64 * 1024
 _T = TypeVar("_T")
 
 
+class _WorkerSessionStartGatePort(Protocol):
+    """Product-held release authority; the adapter never owns its descriptor."""
+
+    def release(self, lease: ChildSessionLease) -> None: ...
+
+    def close(self) -> None: ...
+
+
 def _is_product_worker_native_profile(
     value: object,
 ) -> TypeGuard[ProductWorkerNativeProfilePort]:
@@ -81,6 +89,7 @@ class HostingManagedWorkerSessionAdapter(ManagedWorkerSessionLaunchPort):
         *,
         hosting: ChildSessionHostingPort,
         preparation: LaunchPreparationPort | ProductWorkerNativeProfilePort,
+        start_gate: _WorkerSessionStartGatePort | None = None,
         endpoint_read_chunk_bytes: int = WORKER_HOSTING_ENDPOINT_READ_CHUNK_BYTES,
     ) -> None:
         if not isinstance(hosting, ChildSessionHostingPort):
@@ -90,6 +99,12 @@ class HostingManagedWorkerSessionAdapter(ManagedWorkerSessionLaunchPort):
             LaunchPreparationPort,
         ) and not _is_product_worker_native_profile(preparation):
             raise TypeError("Worker Hosting adapter requires a preparation port")
+        if start_gate is not None and (
+            not _is_product_worker_native_profile(preparation)
+            or not callable(getattr(start_gate, "release", None))
+            or not callable(getattr(start_gate, "close", None))
+        ):
+            raise TypeError("Worker start gate requires a native profile owner")
         if (
             type(endpoint_read_chunk_bytes) is not int
             or endpoint_read_chunk_bytes < 1
@@ -98,6 +113,7 @@ class HostingManagedWorkerSessionAdapter(ManagedWorkerSessionLaunchPort):
             raise ValueError("Worker Hosting endpoint read chunk is outside its bound")
         self._hosting = hosting
         self._preparation = preparation
+        self._start_gate = start_gate
         self._endpoint_read_chunk_bytes = endpoint_read_chunk_bytes
 
     async def start(
@@ -106,6 +122,23 @@ class HostingManagedWorkerSessionAdapter(ManagedWorkerSessionLaunchPort):
         *,
         correlation_id: str,
         signal: object | None = None,
+    ) -> ManagedWorkerSession:
+        try:
+            return await self._start_once(
+                request,
+                correlation_id=correlation_id,
+                signal=signal,
+            )
+        finally:
+            if self._start_gate is not None:
+                self._start_gate.close()
+
+    async def _start_once(
+        self,
+        request: ManagedWorkerLaunchRequestV1,
+        *,
+        correlation_id: str,
+        signal: object | None,
     ) -> ManagedWorkerSession:
         if not isinstance(request, ManagedWorkerLaunchRequestV1):
             raise TypeError("Worker Hosting adapter requires a typed launch request")
@@ -138,6 +171,8 @@ class HostingManagedWorkerSessionAdapter(ManagedWorkerSessionLaunchPort):
             )
             raise TypeError("Worker Hosting owner returned an invalid session lease")
         try:
+            if self._start_gate is not None:
+                self._start_gate.release(lease)
             return _HostingManagedWorkerSession(
                 lease=lease,
                 evidence=evidence,

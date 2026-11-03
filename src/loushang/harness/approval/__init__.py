@@ -17,6 +17,7 @@ from loushang.harness.approval.broker import (
     ApprovalBroker,
     InteractiveApprovalResolver,
 )
+from loushang.harness.approval.confirmations import ApprovalConfirmation
 from loushang.harness.approval.grants import (
     ApprovalGrant,
     ApprovalPermission,
@@ -60,6 +61,7 @@ from loushang.harness.approval.rules import (
 )
 
 __all__ = [
+    "ApprovalConfirmation",
     "ActorBoundApprovalResolver",
     "ApprovalBroker",
     "ApprovalDecision",

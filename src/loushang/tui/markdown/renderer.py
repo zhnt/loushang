@@ -4,6 +4,7 @@ import importlib
 import inspect
 import re
 from collections.abc import Callable, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import lru_cache, partial
 from typing import Protocol, TypeAlias, cast
@@ -62,6 +63,8 @@ _MARKDOWN_LINE_CACHE_SIZE = 2_048
 _MARKDOWN_STABLE_BLOCK_CACHE_SIZE = 4_096
 # A partial list marker can merge backward into the preceding top-level list.
 _STREAMING_MARKDOWN_FRONTIER_GROUPS = 2
+_FLAT_LIST_STABLE_GROUP_ITEMS = 64
+_PLAIN_FLAT_BULLET_ITEM = re.compile(r"- ([A-Za-z0-9][A-Za-z0-9 ]*)\Z")
 _MARKDOWN_PARSER = MarkdownIt("commonmark").enable("table").enable("strikethrough")
 _QUOTE_MARKER = "│ "
 
@@ -143,6 +146,9 @@ class _StreamingMarkdownParseState:
     _revision: int = 0
     _initialized: bool = False
     _full_parse_only: bool = False
+    _flat_list_completed_blocks: list[_MarkdownBlock] = field(default_factory=list)
+    _flat_list_completed_count: int = 0
+    _flat_list_stable_groups: list[_ParsedMarkdownGroup] = field(default_factory=list)
 
     def parse(self, markdown: str) -> tuple[_MarkdownBlock, ...]:
         partition = self.update(markdown)
@@ -182,6 +188,48 @@ class _StreamingMarkdownParseState:
             self._last_blocks_revision = -1
             return partition
 
+        flat_list = self._parse_flat_bullet_list(normalized)
+        if flat_list is not None:
+            blocks, end_line = flat_list
+            stable_count = (
+                self._flat_list_completed_count // _FLAT_LIST_STABLE_GROUP_ITEMS
+            ) * _FLAT_LIST_STABLE_GROUP_ITEMS
+            while len(self._flat_list_stable_groups) * _FLAT_LIST_STABLE_GROUP_ITEMS < stable_count:
+                start = len(self._flat_list_stable_groups) * _FLAT_LIST_STABLE_GROUP_ITEMS
+                stop = start + _FLAT_LIST_STABLE_GROUP_ITEMS
+                self._flat_list_stable_groups.append(
+                    _ParsedMarkdownGroup(
+                        start_line=start,
+                        end_line=stop,
+                        blocks=blocks[start:stop],
+                    )
+                )
+            flat_frontier_groups = (
+                (
+                    _ParsedMarkdownGroup(
+                        start_line=stable_count,
+                        end_line=end_line,
+                        blocks=blocks[stable_count:],
+                    ),
+                )
+                if stable_count < len(blocks)
+                else ()
+            )
+            partition = _StreamingMarkdownPartition(
+                stable_groups=self._flat_list_stable_groups,
+                frontier_groups=flat_frontier_groups,
+                generation=self._generation,
+                revision=self._revision,
+            )
+            self._last_partition = partition
+            self._last_blocks_revision = -1
+            return partition
+        if self._flat_list_stable_groups:
+            # A later line changed the Markdown structure or defined a link
+            # reference. Reparse the whole source and discard stable list rows.
+            self._flat_list_stable_groups.clear()
+            self._generation = object()
+
         source_lines = normalized.split("\n")
         tail_source = "\n".join(source_lines[self._stable_end_line :])
         tail_groups, has_references = _parse_markdown_groups(
@@ -219,6 +267,71 @@ class _StreamingMarkdownParseState:
         self._last_blocks_revision = -1
         return partition
 
+    def _parse_flat_bullet_list(self, normalized: str) -> tuple[tuple[_MarkdownBlock, ...], int] | None:
+        """Reuse completed, independent list items while a flat list grows.
+
+        Each item must occupy one source line. Other list shapes retain the
+        ordinary parser, since their later lines can change earlier items.
+        """
+
+        if self._stable_groups or self._stable_end_line:
+            return None
+        lines = normalized.split("\n")
+        if lines[-1] == "":
+            lines.pop()
+            complete_count = len(lines)
+        else:
+            complete_count = max(0, len(lines) - 1)
+        if not lines or any(not line.startswith("- ") for line in lines):
+            return None
+        if any("<" in line or re.match(r"^\s*(?:`{3,}|~{3,})", line[2:]) for line in lines):
+            return None
+        if complete_count < self._flat_list_completed_count:
+            return None
+
+        new_lines = lines[self._flat_list_completed_count :]
+        newly_completed: list[_MarkdownBlock] = []
+        last_item = None
+        if len(new_lines) >= 8:
+            plain_blocks = tuple(_plain_flat_bullet_item(line) for line in new_lines)
+            if all(block is not None for block in plain_blocks):
+                new_blocks = cast(tuple[_MarkdownBlock, ...], plain_blocks)
+            elif all(_independent_inline_bullet_item(line) for line in new_lines):
+                # The source has no block syntax or reference definitions, so
+                # each tight-list paragraph has its own inline parse context.
+                new_blocks = tuple(_parse_inline_bullet_item(line) for line in new_lines)
+            else:
+                tail_source = "\n".join(new_lines) + ("\n" if complete_count == len(lines) else "")
+                groups, has_references = _parse_markdown_groups(tail_source, line_offset=0)
+                if (
+                    has_references
+                    or len(groups) != 1
+                    or len(groups[0].blocks) != len(new_lines)
+                    or any(block.kind != "list_item" for block in groups[0].blocks)
+                ):
+                    return None
+                new_blocks = groups[0].blocks
+            newly_completed.extend(new_blocks[: complete_count - self._flat_list_completed_count])
+            if complete_count != len(lines):
+                last_item = new_blocks[-1]
+        else:
+            for line in lines[self._flat_list_completed_count : complete_count]:
+                item = _parse_flat_bullet_item(line)
+                if item is None:
+                    return None
+                newly_completed.append(item)
+            if complete_count != len(lines):
+                last_item = _parse_flat_bullet_item(lines[-1])
+                if last_item is None:
+                    return None
+        self._flat_list_completed_blocks.extend(newly_completed)
+        self._flat_list_completed_count = complete_count
+        completed = self._flat_list_completed_blocks
+        if complete_count == len(lines):
+            return tuple(completed), len(lines)
+        assert last_item is not None
+        return (*completed, last_item), len(lines)
+
     def reset(self) -> None:
         self._source = ""
         self._stable_end_line = 0
@@ -230,12 +343,19 @@ class _StreamingMarkdownParseState:
         self._revision = 0
         self._initialized = False
         self._full_parse_only = False
+        self._flat_list_completed_blocks.clear()
+        self._flat_list_completed_count = 0
+        self._flat_list_stable_groups.clear()
 
 
 @dataclass(slots=True)
 class MarkdownRenderCache:
     stable_entry_limit: int = _MARKDOWN_STABLE_BLOCK_CACHE_SIZE
     _stable_blocks: dict[tuple[object, ...], tuple[str, ...]] = field(default_factory=dict, init=False, repr=False)
+    _prepared_source: str | None = field(default=None, init=False, repr=False)
+    _prepared_blocks: tuple[_MarkdownBlock, ...] | None = field(default=None, init=False, repr=False)
+    _prepared_result_key: tuple[object, ...] | None = field(default=None, init=False, repr=False)
+    _prepared_result: RenderResult | None = field(default=None, init=False, repr=False)
     _streaming_key: object | None = field(default=None, init=False, repr=False)
     _streaming_parse_state: _StreamingMarkdownParseState | None = field(default=None, init=False, repr=False)
     _streaming_render_context: tuple[object, ...] | None = field(default=None, init=False, repr=False)
@@ -248,6 +368,10 @@ class MarkdownRenderCache:
         return len(self._stable_blocks)
 
     @property
+    def has_prepared_result(self) -> bool:
+        return self._prepared_result is not None
+
+    @property
     def stable_line_count(self) -> int:
         return sum(len(lines) for lines in self._stable_blocks.values())
 
@@ -257,7 +381,46 @@ class MarkdownRenderCache:
 
     def clear(self) -> None:
         self._stable_blocks.clear()
+        self._prepared_source = None
+        self._prepared_blocks = None
+        self._prepared_result_key = None
+        self._prepared_result = None
         self.clear_streaming()
+
+    def prepare_blocks(self, markdown: str, blocks: tuple[_MarkdownBlock, ...]) -> None:
+        """Hold one worker-parsed document for the next matching render."""
+
+        self._prepared_source = markdown
+        self._prepared_blocks = blocks
+
+    def take_prepared_blocks(self, markdown: str) -> tuple[_MarkdownBlock, ...] | None:
+        if self._prepared_source != markdown:
+            return None
+        blocks = self._prepared_blocks
+        self._prepared_source = None
+        self._prepared_blocks = None
+        self._prepared_result_key = None
+        self._prepared_result = None
+        return blocks
+
+    def prepare_result(self, key: tuple[object, ...], result: RenderResult) -> None:
+        self._prepared_result_key = key
+        self._prepared_result = result
+
+    def clear_prepared_result(self) -> None:
+        self._prepared_result_key = None
+        self._prepared_result = None
+
+    def take_prepared_result(self, key: tuple[object, ...]) -> RenderResult | None:
+        if key != self._prepared_result_key:
+            return None
+        result = self._prepared_result
+        self._prepared_source = None
+        self._prepared_blocks = None
+        self._prepared_result_key = None
+        self._prepared_result = None
+        return result
+
 
     def clear_streaming(self) -> None:
         self._streaming_key = None
@@ -299,6 +462,50 @@ class MarkdownRenderCache:
         while len(self._stable_blocks) > limit:
             self._stable_blocks.pop(next(iter(self._stable_blocks)))
         return rendered
+
+
+@dataclass(frozen=True, slots=True)
+class AtomicMarkdownRenderSpec:
+    """Capture the exact screen style and width for one completed draft."""
+
+    constraints: RenderConstraints
+    theme: ThemeResolver
+    capabilities: TerminalCapabilities | None
+    cache_key: tuple[object, ...]
+
+
+def atomic_markdown_render_spec(
+    markdown: str,
+    *,
+    width: int,
+    theme: ThemeResolver,
+    capabilities: TerminalCapabilities | None,
+) -> AtomicMarkdownRenderSpec:
+    constraints = RenderConstraints(width=max(1, width) + 1, max_height=1_000_000)
+    return AtomicMarkdownRenderSpec(
+        constraints=constraints,
+        theme=deepcopy(theme),
+        capabilities=capabilities,
+        cache_key=_atomic_result_key(markdown, constraints, theme, capabilities),
+    )
+
+
+def render_prepared_atomic_markdown(
+    markdown: str,
+    blocks: tuple[_MarkdownBlock, ...] | None,
+    spec: AtomicMarkdownRenderSpec,
+) -> RenderResult:
+    """Render a completed draft without touching the live screen cache."""
+
+    cache = MarkdownRenderCache()
+    if blocks is not None:
+        cache.prepare_blocks(markdown, blocks)
+    return MarkdownRenderer(
+        markdown,
+        theme=spec.theme,
+        capabilities=spec.capabilities,
+        render_cache=cache,
+    ).render(spec.constraints)
 
 
 @dataclass(frozen=True, slots=True)
@@ -346,16 +553,31 @@ class MarkdownRenderer:
             raise ValueError("padding_y must be non-negative")
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
+        if (
+            self.render_cache is not None
+            and self.render_cache.has_prepared_result
+            and self.streaming_key is None
+            and self.padding_x == self.padding_y == 0
+            and self.code_highlighter is None
+            and self.default_style is None
+        ):
+            prepared_result = self.render_cache.take_prepared_result(
+                _atomic_result_key(self.markdown, constraints, self.theme, self.capabilities)
+            )
+            if prepared_result is not None:
+                return prepared_result
         target_width = autowrap_safe_width(constraints.width)
         frame_style = _resolve_style(self.theme, "markdown.background", self.capabilities)
         framed = self.padding_x > 0 or self.padding_y > 0 or _has_background_style(frame_style)
         width = _markdown_frame_content_width(target_width, self.padding_x) if framed else target_width
         if self.render_cache is not None:
-            blocks = (
-                self.render_cache.parse_streaming(self.markdown, key=self.streaming_key)
-                if self.streaming_key is not None
-                else _parse_markdown_blocks(self.markdown)
-            )
+            if self.streaming_key is not None:
+                blocks = self.render_cache.parse_streaming(
+                    self.markdown, key=self.streaming_key
+                )
+            else:
+                prepared = self.render_cache.take_prepared_blocks(self.markdown)
+                blocks = prepared if prepared is not None else _parse_markdown_blocks(self.markdown)
             raw_lines = list(
                 _render_markdown_blocks(
                     blocks,
@@ -575,6 +797,22 @@ def _theme_cache_signature(theme: ThemeResolver | None) -> tuple[object, ...] | 
     )
 
 
+def _atomic_result_key(
+    markdown: str,
+    constraints: RenderConstraints,
+    theme: ThemeResolver | None,
+    capabilities: TerminalCapabilities | None,
+) -> tuple[object, ...]:
+    return (
+        markdown,
+        constraints.width,
+        constraints.max_height,
+        ambiguous_width(),
+        _theme_cache_signature(theme),
+        _capabilities_cache_signature(capabilities),
+    )
+
+
 def _style_mapping_cache_signature(
     mapping: dict[str, ThemeStyle],
 ) -> tuple[tuple[str, tuple[tuple[str, str], ...] | None], ...]:
@@ -608,6 +846,12 @@ def _parse_markdown_blocks(markdown: str) -> tuple[_MarkdownBlock, ...]:
 
 
 def _parse_normalized_markdown_blocks(normalized: str) -> tuple[_MarkdownBlock, ...]:
+    plain_list = _parse_plain_flat_bullet_source(normalized)
+    if plain_list is not None:
+        return plain_list
+    inline_list = _parse_inline_flat_bullet_source(normalized)
+    if inline_list is not None:
+        return inline_list
     blocks, _index = _parse_markdown_it_blocks(
         _MARKDOWN_PARSER.parse(normalized),
         0,
@@ -615,6 +859,143 @@ def _parse_normalized_markdown_blocks(normalized: str) -> tuple[_MarkdownBlock, 
         source_lines=normalized.split("\n"),
     )
     return tuple(blocks)
+
+
+def _parse_plain_flat_bullet_source(
+    normalized: str,
+) -> tuple[_MarkdownBlock, ...] | None:
+    if not normalized.startswith("- "):
+        return None
+    lines = normalized.split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    if not lines:
+        return None
+    blocks = tuple(_plain_flat_bullet_item(line) for line in lines)
+    if any(block is None for block in blocks):
+        return None
+    return cast(tuple[_MarkdownBlock, ...], blocks)
+
+
+def _parse_inline_flat_bullet_source(
+    normalized: str,
+) -> tuple[_MarkdownBlock, ...] | None:
+    if not normalized.startswith("- "):
+        return None
+    lines = normalized.split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    if not lines or not all(_independent_inline_bullet_item(line) for line in lines):
+        return None
+    return tuple(_parse_inline_bullet_item(line) for line in lines)
+
+
+def split_independent_flat_bullet_delta(delta: str) -> tuple[str, ...] | None:
+    """Split a large, independent list delta at safe item boundaries.
+
+    The same row predicate guards the fast Markdown parser. An arbitrary
+    Markdown stream may define references or nested blocks later, so it must
+    continue through the ordinary one-delta projection path.
+    """
+
+    if len(delta) < 16_384 or not delta.endswith("\n") or not delta.startswith("- "):
+        return None
+    lines = delta.splitlines(keepends=True)
+    if len(lines) < 64 or not all(
+        line.endswith("\n") and _independent_inline_bullet_item(line[:-1])
+        for line in lines
+    ):
+        return None
+    chunk_chars = max(8_192, (len(delta) + 31) // 32)
+    chunks: list[str] = []
+    current: list[str] = []
+    current_chars = 0
+    for line in lines:
+        if current and current_chars + len(line) > chunk_chars:
+            chunks.append("".join(current))
+            current = []
+            current_chars = 0
+        current.append(line)
+        current_chars += len(line)
+    if current:
+        chunks.append("".join(current))
+    return tuple(chunks) if len(chunks) > 1 else None
+
+
+def split_independent_markdown_block_delta(delta: str) -> tuple[str, ...] | None:
+    """Batch a large Markdown delta at top-level block boundaries.
+
+    Parse the complete delta before choosing boundaries so fenced blocks and
+    nested lists stay intact. Reference definitions can change earlier inline
+    rendering, so those documents keep the ordinary projection path.
+    This function is intended to run off the input event loop.
+    """
+
+    return analyze_large_markdown_delta(delta).chunks
+
+
+@dataclass(frozen=True, slots=True)
+class LargeMarkdownDeltaAnalysis:
+    chunks: tuple[str, ...] | None = None
+    prepared_table_blocks: tuple[_MarkdownBlock, ...] | None = None
+
+
+def analyze_large_markdown_delta(delta: str) -> LargeMarkdownDeltaAnalysis:
+    """Find safe chunks and retain an atomic table parse for the UI thread."""
+
+    if len(delta) < 16_384 or not delta.endswith("\n"):
+        return LargeMarkdownDeltaAnalysis()
+    lines = delta.splitlines(keepends=True)
+    if len(lines) < 64:
+        return LargeMarkdownDeltaAnalysis()
+    parser = MarkdownIt("commonmark").enable("table").enable("strikethrough")
+    environment: dict[str, object] = {}
+    tokens = parser.parse(delta, environment)
+    if environment.get("references"):
+        return LargeMarkdownDeltaAnalysis()
+    ends = sorted(
+        {
+            token.map[1]
+            for token in tokens
+            if token.level == 0
+            and token.map is not None
+            and token.nesting >= 0
+            and 0 < token.map[1] < len(lines)
+        }
+    )
+    if not ends:
+        return _atomic_table_analysis(delta, tokens)
+    target_chars = max(4_096, (len(delta) + 31) // 32)
+    chunks: list[str] = []
+    start = 0
+    previous_end = 0
+    current_chars = 0
+    for end in ends:
+        current_chars += sum(map(len, lines[previous_end:end]))
+        previous_end = end
+        if current_chars >= target_chars:
+            chunks.append("".join(lines[start:end]))
+            start = end
+            current_chars = 0
+    if start < len(lines):
+        chunks.append("".join(lines[start:]))
+    if len(chunks) > 1:
+        return LargeMarkdownDeltaAnalysis(chunks=tuple(chunks))
+    return _atomic_table_analysis(delta, tokens)
+
+
+def _atomic_table_analysis(delta: str, tokens: list[Token]) -> LargeMarkdownDeltaAnalysis:
+    # The committed renderer normalizes tabs before parsing. Restrict the
+    # handoff to exact source text and one table, whose blocks cannot be paced
+    # at independent Markdown boundaries.
+    if "\t" in delta or len(delta) > 131_072:
+        return LargeMarkdownDeltaAnalysis()
+    blocks, _index = _parse_markdown_it_blocks(
+        tokens, 0, stop_type=None, source_lines=delta.split("\n")
+    )
+    if len(blocks) != 1 or blocks[0].kind != "table":
+        return LargeMarkdownDeltaAnalysis()
+    return LargeMarkdownDeltaAnalysis(prepared_table_blocks=tuple(blocks))
 
 
 def _parse_markdown_groups(
@@ -655,6 +1036,69 @@ def _parse_markdown_groups(
             )
         )
     return tuple(groups), False
+
+
+def _parse_flat_bullet_item(line: str) -> _MarkdownBlock | None:
+    plain_item = _plain_flat_bullet_item(line)
+    if plain_item is not None:
+        return plain_item
+    groups, has_references = _parse_markdown_groups(line, line_offset=0)
+    if has_references or len(groups) != 1 or len(groups[0].blocks) != 1:
+        return None
+    item = groups[0].blocks[0]
+    return item if item.kind == "list_item" else None
+
+
+def _plain_flat_bullet_item(line: str) -> _MarkdownBlock | None:
+    """Build the same block as CommonMark for a restricted plain text item."""
+
+    match = _PLAIN_FLAT_BULLET_ITEM.fullmatch(line)
+    if match is None or line.endswith(" "):
+        return None
+    body = match.group(1)
+    inline = (_InlineToken("text", text=body),)
+    return _MarkdownBlock(
+        "list_item",
+        text=line,
+        meta="- ",
+        inline=inline,
+        children=(_MarkdownBlock("paragraph", text=body, inline=inline),),
+    )
+
+
+def _independent_inline_bullet_item(line: str) -> bool:
+    """Whether a list row has a single independent paragraph body."""
+
+    if not line.startswith("- ") or line.endswith(" "):
+        return False
+    body = line[2:]
+    if not body or body[0].isspace() or any(char in body for char in ("<", "\t", "\r")):
+        return False
+    if "]:" in body:
+        # A link reference definition can change earlier list items.
+        return False
+    if body.startswith(("#", ">", "-", "+", "~", "`")):
+        return False
+    if body == "*" or body.startswith("* ") or body.startswith("_ "):
+        return False
+    if re.fullmatch(r"(?:\* *){3,}|(?:_ *){3,}", body):
+        return False
+    if re.match(r"^\d{1,9}[.)](?:\s|$)", body):
+        return False
+    return True
+
+
+def _parse_inline_bullet_item(line: str) -> _MarkdownBlock:
+    parsed = _MARKDOWN_PARSER.parseInline(line[2:])
+    inline = _inline_tokens_from_markdown_it(parsed[0].children or ())
+    body = _inline_tokens_to_plain_text(inline, preserve_markup=True, softbreak="\n")
+    return _MarkdownBlock(
+        "list_item",
+        text=f"- {body}",
+        meta="- ",
+        inline=inline,
+        children=(_MarkdownBlock("paragraph", text=body, inline=inline),),
+    )
 
 
 def _markdown_blocks_from_groups(groups: Sequence[_ParsedMarkdownGroup]) -> tuple[_MarkdownBlock, ...]:
@@ -1291,8 +1735,16 @@ def _render_code_block(
     rendered = [_fit_styled(_apply_markdown_style(header, "markdown.code.fence", theme, capabilities), width)]
     code_lines = _highlight_code(normalize_box_drawing_diagram(lines), language, code_highlighter, capabilities)
     indent = _code_block_indent(theme, capabilities)
+    code_style = _resolve_style(theme, "markdown.code.text", capabilities)
     for line in code_lines:
-        rendered.extend(_wrap(_apply_markdown_style(f"{indent}{line}", "markdown.code.text", theme, capabilities), width=width))
+        content = f"{indent}{line}"
+        styled = apply_theme_style(content, code_style)
+        if content.isascii() and content.isprintable() and len(content) <= max(1, width):
+            # A single printable ASCII line needs neither ANSI tokenization nor
+            # wrapping. The style prefix/suffix stays identical to _wrap.
+            rendered.append(styled.rstrip())
+        else:
+            rendered.extend(_wrap(styled, width=width))
     rendered.append(_fit_styled(_apply_markdown_style("```", "markdown.code.fence", theme, capabilities), width))
     return rendered
 

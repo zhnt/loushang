@@ -27,6 +27,10 @@ class ThreadEntry(ctypes.Structure):
     ]
 
 
+class FileTime(ctypes.Structure):
+    _fields_ = [("low", DWORD), ("high", DWORD)]
+
+
 class WindowsObservationApi:
     def __init__(self):
         self.failed_closes = set()
@@ -128,6 +132,21 @@ class WindowsObservationApi:
         if result not in (0, 258):
             raise ctypes.WinError(ctypes.get_last_error())
         return result == 0
+
+    def created(self, handle):
+        created, exited, kernel, user = (FileTime() for _ in range(4))
+        if not self.call(
+            "GetProcessTimes",
+            [HANDLE, *(ctypes.POINTER(FileTime) for _ in range(4))],
+            ctypes.c_int,
+            handle,
+            ctypes.byref(created),
+            ctypes.byref(exited),
+            ctypes.byref(kernel),
+            ctypes.byref(user),
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return created.high << 32 | created.low
 
     def is_console_host(self, handle):
         # Query the pinned process, not Toolhelp's basename or environment.

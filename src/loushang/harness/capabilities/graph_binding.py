@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 
 from loushang.harness.capabilities.graph_planning import (
@@ -31,6 +32,8 @@ from loushang.harness.capabilities.provider_binding import (
 from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.runtime.bindings import RuntimeBindingState
 from loushang.harness.runtime.registration import RegistrationOwner, RegistrationScope
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -83,6 +86,7 @@ class RuntimeCapabilityGraphBinder:
             try:
                 indexed = _index_bindings(plan, bindings)
                 signatures = _binding_signatures(plan, indexed)
+                _validate_visibility_reuse(runtime, indexed, signatures)
                 assembly_fingerprint = _assembly_fingerprint(
                     runtime,
                     plan,
@@ -183,8 +187,6 @@ class RuntimeCapabilityGraphBinder:
 
                 # Deliver cancellation before entering the no-await publication window.
                 await asyncio.sleep(0)
-                for mounted in staged:
-                    mounted.registration_scope.commit()
                 snapshot = _mount_snapshot(
                     runtime,
                     plan,
@@ -192,6 +194,16 @@ class RuntimeCapabilityGraphBinder:
                     target_generation=target_generation,
                     assembly_fingerprint=assembly_fingerprint,
                 )
+                for mounted in staged:
+                    mounted.registration_scope.commit()
+                try:
+                    for mounted in staged:
+                        for gate in mounted.provider_binding.visibility_gates:
+                            gate.publish(graph_generation=target_generation)
+                except Exception as exc:
+                    raise CapabilityGraphBindingError(
+                        ("provider_visibility_publication_failed",)
+                    ) from exc
             except asyncio.CancelledError as cancelled:
                 rollback_codes, _ = await _cleanup_candidate_and_retain(
                     runtime,
@@ -209,12 +221,13 @@ class RuntimeCapabilityGraphBinder:
                 )
                 raise cancelled
             except Exception as exc:
-                rollback_codes, cleanup_cancellation = (
-                    await _cleanup_candidate_and_retain(
-                        runtime,
-                        tuple(constructing_scopes),
-                        tuple(staged),
-                    )
+                (
+                    rollback_codes,
+                    cleanup_cancellation,
+                ) = await _cleanup_candidate_and_retain(
+                    runtime,
+                    tuple(constructing_scopes),
+                    tuple(staged),
                 )
                 if cleanup_cancellation is not None:
                     runtime._last_attempt = CapabilityGraphBindingAttempt(
@@ -250,14 +263,15 @@ class RuntimeCapabilityGraphBinder:
                 for capability_id in reversed(tuple(previous_nodes))
                 if candidate.get(capability_id) is not previous_nodes[capability_id]
             )
+            for mounted in replaced:
+                for gate in mounted.provider_binding.visibility_gates:
+                    gate.retire()
+                mounted.binding_state.invalidate()
             runtime._nodes = candidate
             runtime._generation = target_generation
             runtime._snapshot = snapshot
             _record_incomplete_retirements(runtime, replaced)
             _publish_registration_inventory(runtime)
-            for mounted in replaced:
-                mounted.binding_state.invalidate()
-
             runtime._last_attempt = CapabilityGraphBindingAttempt(
                 attempt_number=attempt_number,
                 state="committed",
@@ -321,6 +335,8 @@ class RuntimeCapabilityGraphBinder:
             )
             if not runtime._closed:
                 for mounted in nodes:
+                    for gate in mounted.provider_binding.visibility_gates:
+                        gate.retire()
                     mounted.binding_state.invalidate(
                         "Capability Mount graph is disposed."
                     )
@@ -388,11 +404,16 @@ def _index_bindings(
         if capability_id in indexed:
             duplicates.add(capability_id)
         indexed[capability_id] = binding
+    gate_ids = tuple(
+        id(gate) for binding in bindings for gate in binding.visibility_gates
+    )
     expected = set(plan.binding_order)
     actual = set(indexed)
     codes: list[str] = []
     if duplicates:
         codes.append("duplicate_provider_binding")
+    if len(set(gate_ids)) != len(gate_ids):
+        codes.append("duplicate_provider_visibility_gate")
     if expected - actual:
         codes.append("missing_provider_binding")
     if actual - expected:
@@ -409,6 +430,35 @@ def _index_bindings(
     if codes:
         raise CapabilityGraphBindingError(tuple(codes))
     return indexed
+
+
+def _validate_visibility_reuse(
+    runtime: RuntimeCapabilityGraphRuntime,
+    bindings: dict[str, CapabilityBundleProviderBinding],
+    signatures: dict[str, str],
+) -> None:
+    live_gates = {
+        id(gate): mounted
+        for mounted in (*runtime._nodes.values(), *runtime._retired_nodes)
+        for gate in mounted.provider_binding.visibility_gates
+    }
+    for capability_id, binding in bindings.items():
+        previous = runtime._nodes.get(capability_id)
+        if (
+            previous is not None
+            and previous.binding_signature == signatures[capability_id]
+            and previous.provider_binding.visibility_gates != binding.visibility_gates
+        ):
+            raise CapabilityGraphBindingError(("provider_visibility_reuse_mismatch",))
+        for gate in binding.visibility_gates:
+            owner = live_gates.get(id(gate))
+            if owner is not None and not (
+                owner is previous
+                and previous.binding_signature == signatures[capability_id]
+            ):
+                raise CapabilityGraphBindingError(
+                    ("provider_visibility_gate_already_live",)
+                )
 
 
 def _binding_signatures(
@@ -645,6 +695,7 @@ async def _cleanup_nodes_once(
             except asyncio.CancelledError:
                 codes.append("provider_retirement_cancelled")
             except Exception:
+                _LOG.exception("Capability provider retirement failed")
                 codes.append("provider_retirement_failed")
             else:
                 mounted.provider_released = True
@@ -683,6 +734,14 @@ async def _cleanup_candidate_and_retain(
     scopes: tuple[RegistrationScope, ...],
     nodes: tuple[_MountedCapability, ...],
 ) -> tuple[tuple[str, ...], asyncio.CancelledError | None]:
+    synchronous_codes: list[str] = []
+    for mounted in reversed(nodes):
+        for gate in mounted.provider_binding.visibility_gates:
+            gate.retire()
+        try:
+            mounted.registration_scope.rollback_commit()
+        except Exception:
+            synchronous_codes.append("registration_publication_rollback_failed")
     cleanup_task = asyncio.create_task(
         _cleanup_candidate_once(
             tuple(reversed(scopes)),
@@ -697,7 +756,7 @@ async def _cleanup_candidate_and_retain(
         codes = cleanup_task.result()
     _record_incomplete_candidate(runtime, scopes, nodes)
     _publish_registration_inventory(runtime)
-    return codes, cancellation
+    return tuple(sorted(set((*synchronous_codes, *codes)))), cancellation
 
 
 def _node_cleanup_complete(mounted: _MountedCapability) -> bool:
@@ -743,9 +802,7 @@ def _record_incomplete_candidate(
 
 def _prune_completed_cleanup(runtime: RuntimeCapabilityGraphRuntime) -> None:
     runtime._retired_scopes = [
-        scope
-        for scope in runtime._retired_scopes
-        if not _scope_cleanup_complete(scope)
+        scope for scope in runtime._retired_scopes if not _scope_cleanup_complete(scope)
     ]
     runtime._retired_nodes = [
         mounted

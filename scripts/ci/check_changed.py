@@ -14,17 +14,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", default="origin/main")
     parser.add_argument("--full", action="store_true")
+    parser.add_argument("--pr-fast", action="store_true")
     parser.add_argument("--plan-only", action="store_true")
     args = parser.parse_args()
-    plan = select(local_paths(args.base), full=args.full)
+    plan = select(local_paths(args.base), full=args.full, pr_fast=args.pr_fast)
     artifact = ROOT / ".artifacts/check-plan.json"
     artifact.parent.mkdir(exist_ok=True)
     artifact.write_text(json.dumps(plan, indent=2) + "\n")
     pending = []
-    for scope, selected in plan["checks"].items():
+    scopes = list(plan["checks"].items())
+    scopes.extend((f"unit_{package}", True) for package in plan["unit_packages"])
+    scopes.append(("e2e_smoke", plan["e2e"]))
+    for scope, selected in scopes:
         if not selected:
             continue
-        print(f"{scope}: {'; '.join(plan['reasons'][scope])}", flush=True)
+        reason = "; ".join(plan["reasons"].get(scope, ["PR fast route"]))
+        print(f"{scope}: {reason}", flush=True)
         try:
             planned = commands(scope)
         except ValueError:

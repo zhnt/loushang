@@ -85,8 +85,16 @@ revision. Under one migration lock:
 During `compatibility_window`, legacy fields are a derived downgrade projection
 of canonical desired state. Current writers reject independent legacy Plugin
 enablement mutation once a receipt exists. Finalization requires recorded
-minimum-runtime, backup/restore, and roll-forward evidence; deletion of legacy
-fields and mutators remains a later PLC9E change.
+minimum-runtime, backup/restore, and roll-forward evidence plus an explicitly
+bound authority that verifies the exact migration and evidence before the
+journal appends `finalized`. Without that authority, first finalization is
+refused; replay of an already finalized exact receipt remains idempotent.
+Coding does not yet bind a production backup/restore authority, so this is not
+evidence that PLC9E finalization or deletion of legacy fields is available.
+On reopen, both Coding's runtime and read-only management entrance compare the
+installed runtime version against the finalized minimum using PEP 440 version
+ordering, in addition to the migration epoch. A missing or older version is
+refused before management recovery or Product selection.
 
 The compatibility floor is the minimum fence-aware runtime, not every binary
 that predates PLC9A1. Once a receipt exists, direct downgrade to a pre-fence

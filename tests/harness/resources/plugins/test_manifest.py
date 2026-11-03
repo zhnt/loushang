@@ -12,15 +12,12 @@ from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
     PluginDeclarationSource,
 )
-from loushang.harness.resources.plugins.manager import PluginManager
 from loushang.harness.resources.plugins.manifest import (
     PluginManifestError,
     PluginManifestParser,
 )
 from loushang.harness.resources.plugins.resolver import PluginResolver
 from loushang.harness.resources.plugins.types import (
-    InstalledPlugin,
-    PluginManifest,
     PluginSource,
     ResolvedPluginPackage,
 )
@@ -146,8 +143,7 @@ def test_plugin_manifest_parser_accepts_document_source_without_decoding_it(
                                 "kind": "document",
                                 "locator": "declarations/providers.json",
                                 "mediaType": (
-                                    "application/vnd.loushang."
-                                    "plugin-declarations+json"
+                                    "application/vnd.loushang.plugin-declarations+json"
                                 ),
                                 "schemaId": "loushang.plugin-declaration-document",
                                 "schemaVersion": 1,
@@ -359,29 +355,6 @@ def test_plugin_and_package_views_reuse_one_resolved_descriptor(
     assert package_view.resolved_plugin_package is plugin.resolved_package
     assert package_view.version == "1.0.0"
     assert package_view.package_root == resources.resolve()
-    with pytest.raises(PluginManifestError) as caught:
-        resolver.resolve_resources(plugin)
-
-    assert caught.value.code == "plugin_runtime_authority_required"
-
-
-def test_disabled_plugin_projects_effective_state_without_reparsing(
-    tmp_path: Path,
-) -> None:
-    root = tmp_path / "review-pack"
-    root.mkdir()
-    manifest_path = root / "plugin.json"
-    manifest_path.write_text(
-        json.dumps({"name": "review-pack", "enabled": True}),
-        encoding="utf-8",
-    )
-    plugin = PluginManager(disabled_plugins=("review-pack",)).add_plugin_source(root)
-
-    assert plugin.enabled is False
-    assert plugin.source.enabled is False
-    assert plugin.resolved_package is not None
-    assert plugin.resolved_package.source.enabled is True
-    assert plugin.manifest.enabled is True
 
 
 def test_package_manifest_entrypoint_delegates_plugin_json_to_canonical_parser(
@@ -598,46 +571,6 @@ def test_package_manifest_view_rejects_dangling_plugin_manifest_symlink(
     assert resolved.manifest_path == manifest_path
     assert resolved.resolved_plugin_package is None
     assert resolved.diagnostics[0]["code"] == "invalid_package_manifest"
-
-
-def test_resolver_rejects_package_root_replaced_after_resolution(
-    tmp_path: Path,
-    symlink_or_skip,
-) -> None:
-    root = tmp_path / "review-pack"
-    package_root = root / "resources"
-    outside = tmp_path / "outside"
-    package_root.mkdir(parents=True)
-    outside.mkdir()
-    (root / "plugin.json").write_text(
-        json.dumps({"name": "review-pack", "packageRoot": "resources"}),
-        encoding="utf-8",
-    )
-    resolver = PluginResolver()
-    plugin = resolver.resolve_plugin(root)
-    package_root.rmdir()
-    symlink_or_skip(package_root, outside, target_is_directory=True)
-
-    with pytest.raises(PluginManifestError) as caught:
-        resolver.resolve_resources(plugin)
-
-    assert caught.value.code == "plugin_runtime_authority_required"
-
-
-def test_resolver_rejects_enabled_plugin_without_canonical_descriptor(
-    tmp_path: Path,
-) -> None:
-    root = tmp_path / "legacy"
-    root.mkdir()
-    plugin = InstalledPlugin(
-        manifest=PluginManifest(name="legacy", root=root, package_root=root),
-        source=PluginSource(path=root),
-    )
-
-    with pytest.raises(PluginManifestError) as caught:
-        PluginResolver().resolve_resources(plugin)
-
-    assert caught.value.code == "plugin_runtime_authority_required"
 
 
 def test_materialized_remote_source_identity_is_bound_to_descriptor(

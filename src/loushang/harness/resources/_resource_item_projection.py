@@ -9,11 +9,16 @@ from loushang.harness.resources._descriptor_parsing import (
     _prompt_descriptor_from_text,
     _skill_descriptor_from_text,
 )
+from loushang.harness.resources.theme_document import (
+    ThemeDocumentError,
+    parse_theme_document_v1,
+)
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceSourceKind,
     ResourceSourceScope,
     SkillDescriptor,
+    ThemeDescriptor,
 )
 
 
@@ -23,7 +28,7 @@ class CatalogItemProjection:
     public_id: str
     description: str | None
     model_invocable: bool
-    descriptor: PromptFragmentDescriptor | SkillDescriptor | None = None
+    descriptor: PromptFragmentDescriptor | SkillDescriptor | ThemeDescriptor | None = None
     diagnostic_reasons: tuple[str, ...] = ()
     valid: bool = True
 
@@ -139,6 +144,40 @@ def project_catalog_item(
             diagnostic_reasons=tuple(
                 draft.code for draft in prompt_descriptor.diagnostics
             ),
+        )
+
+    if resource_kind == "theme":
+        if body is None:
+            return None
+        try:
+            parse_theme_document_v1(body)
+            content = body.decode("utf-8")
+        except (ThemeDocumentError, UnicodeDecodeError):
+            return CatalogItemProjection(
+                canonical_name=logical_path.name,
+                public_id=fallback_public_id,
+                description=None,
+                model_invocable=False,
+                diagnostic_reasons=("invalid_theme_document",),
+                valid=False,
+            )
+        descriptor = ThemeDescriptor(
+            name=logical_path.stem,
+            source_path=Path(logical_path.as_posix()),
+            content=content,
+            canonical_name=logical_path.name,
+            source_kind=source_kind,
+            source_scope=source_scope,
+            source=source_label,
+            source_root=Path(logical_path.parent.as_posix()),
+            source_root_order=source_root_order,
+        )
+        return CatalogItemProjection(
+            canonical_name=descriptor.canonical_name or descriptor.name,
+            public_id=descriptor.id or descriptor.name,
+            description=None,
+            model_invocable=False,
+            descriptor=descriptor,
         )
 
     return CatalogItemProjection(

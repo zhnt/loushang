@@ -6,12 +6,29 @@ from pathlib import Path
 import pytest
 
 from loushang.harness.artifacts import ArtifactRef, SessionBlobRef, SessionBlobStore
+from loushang.harness.authorization import EffectiveExecutionProfile
 from loushang.harness.session.output_artifacts import (
     SessionOutputPersistingExecService,
 )
 from loushang.harness.tools.workspace import create_bash_tool_definition
 from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 from loushang.harness.workspace.exec import ExecRequest, ExecResult, ExecService
+
+
+def test_persistent_output_service_forwards_live_permissions(tmp_path: Path) -> None:
+    narrow = EffectiveExecutionProfile(readable_roots=(tmp_path,))
+    broad = EffectiveExecutionProfile(readable_roots=(tmp_path.parent,))
+    selected = narrow
+    delegate = ExecService(execution_profile=broad, execution_profile_provider=lambda: selected)
+    service = SessionOutputPersistingExecService(
+        delegate, session_dir=tmp_path / "sessions", session_id="live-permissions",
+        temporary_root=tmp_path / "scratch",
+    )
+    assert service.execution_profile == narrow
+    selected = broad
+    assert service.execution_profile == broad
+    selected = narrow
+    assert service.execution_profile == narrow
 
 
 class _CapturedOutputService(ExecService):

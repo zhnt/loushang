@@ -264,6 +264,20 @@ class ExecutionRegistryV1:
         invocation = binding.active
         if invocation is not None:
             self.interrupt(binding, invocation.record.state.execution_id)
+            await self.retry_settlement(binding, invocation.record.state.execution_id)
+        binding.unsubscribe()
+        binding.unsubscribe = lambda: None
+        binding.listeners.clear()
+
+    async def retry_settlement(self, binding: ExecutionBindingV1, execution_id: str) -> ExecutionRecordV1:
+        """Join or retry the original retained cleanup; never readmit input."""
+        record = self.get(binding.view.identity, execution_id)
+        if record.state.status.terminal:
+            return record
+        invocation = binding.active
+        if invocation is None or invocation.record.state.execution_id != execution_id:
+            raise ExecutionServiceErrorV1(ExecutionErrorCodeV1.NOT_RETAINED)
+        if invocation is not None:
             task = invocation.task
             assert task is not None
             if task.done():
@@ -277,9 +291,7 @@ class ExecutionRegistryV1:
                 invocation.task = task
                 task.add_done_callback(_observe)
             await asyncio.shield(task)
-        binding.unsubscribe()
-        binding.unsubscribe = lambda: None
-        binding.listeners.clear()
+        return self.get(binding.view.identity, execution_id)
 
     def fence(self) -> None:
         self._closed = True

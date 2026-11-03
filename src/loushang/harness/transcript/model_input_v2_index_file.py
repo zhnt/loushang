@@ -20,9 +20,12 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import NoReturn, cast
+from typing import TYPE_CHECKING, NoReturn, cast
 
 from loushang.foundation.json import JSONValue, validate_json_value
+
+if TYPE_CHECKING:
+    from loushang.harness.journal._rooted_io import RootedFileIO
 from loushang.harness.conversation.jsonl_codec import (
     ConversationJsonlHeaderCodec,
     ConversationJsonlRecordCodec,
@@ -93,8 +96,9 @@ class _CacheMiss(Exception):
 
 
 class _DeferredNodeSource:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, raw: bytes | None = None) -> None:
         self._path = path
+        self._raw = raw
         self._entries: dict[str, _DeferredBundleEntry] = {}
         self._bundles: dict[str, tuple[ModelInputNode, ...]] = {}
         self._sequence_links: dict[
@@ -167,9 +171,12 @@ class _DeferredNodeSource:
         if entry is None:
             raise ValueError("deferred Model Input record is outside the index")
         try:
-            with self._path.open("rb") as handle:
-                handle.seek(entry.start)
-                line = handle.read(entry.end - entry.start)
+            if self._raw is not None:
+                line = self._raw[entry.start:entry.end]
+            else:
+                with self._path.open("rb") as handle:
+                    handle.seek(entry.start)
+                    line = handle.read(entry.end - entry.start)
         except OSError as exc:
             raise ValueError(
                 "deferred Model Input journal line is unavailable"
@@ -189,16 +196,26 @@ def load_agent_transcript_snapshot_with_index(
     record_codec: ConversationJsonlRecordCodec,
     lock_factory: LockFactory,
     compatibility_token: str,
+    write_index: bool = True,
+    retain_raw: bool = False,
+    read_bytes: Callable[[], bytes] | None = None,
+    read_cache: Callable[[Path], bytes] | None = None,
+    write_cache: Callable[[Path, bytes], None] | None = None,
 ) -> JsonlSnapshot[ConversationHeader, AgentTranscriptRecord]:
-    """Load through a verified index, or replay strictly and self-heal it."""
+    """Load a verified index, optionally rebuilding it after strict replay.
+
+    Read-only projections supply stable no-follow readers and a non-mutating
+    lock strategy as well as write_index=False; this flag alone is not enough.
+    """
 
     started = time.perf_counter_ns()
     try:
         with lock_factory(path, "shared"):
-            raw = path.read_bytes()
+            raw = read_bytes() if read_bytes is not None else path.read_bytes()
             manifest = _read_manifest(
                 _projection_cache_path(path),
                 compatibility_token=compatibility_token,
+                read_cache=read_cache,
             )
             verify_started = time.perf_counter_ns()
             indexed_size = _integer(manifest, "projectedSize")
@@ -220,6 +237,7 @@ def load_agent_transcript_snapshot_with_index(
                     manifest,
                     header_codec=header_codec,
                     record_codec=record_codec,
+                    retain_raw=retain_raw or not write_index,
                 )
             except JournalFileError:
                 # A strictly decoded appended tail is authoritative and must
@@ -231,16 +249,17 @@ def load_agent_transcript_snapshot_with_index(
                 # Cache-derived construction must be fail-open.  The strict
                 # loader below remains the sole authority for the transcript.
                 raise _CacheMiss("node index projection is invalid") from exc
-            if len(raw) != indexed_size:
+            if write_index and len(raw) != indexed_size:
                 _try_rebuild_manifest(
                     path,
                     raw,
                     snapshot,
                     compatibility_token=compatibility_token,
+                    write_cache=write_cache,
                 )
             _log_stats(
                 AgentTranscriptIndexLoadStats(
-                    status="extended" if len(raw) != indexed_size else "hit",
+                    status=("extended" if write_index else "tail_read") if len(raw) != indexed_size else "hit",
                     indexed_bytes=indexed_size,
                     tail_bytes=len(raw) - indexed_size,
                     record_count=len(snapshot.records),
@@ -253,14 +272,22 @@ def load_agent_transcript_snapshot_with_index(
         pass
 
     snapshot = strict_loader()
+    if not write_index:
+        _log_stats(AgentTranscriptIndexLoadStats(
+            status="replayed", indexed_bytes=0, tail_bytes=0,
+            record_count=len(snapshot.records), verify_ms=0.0,
+            load_ms=_milliseconds(time.perf_counter_ns() - started),
+        ))
+        return snapshot
     try:
         with lock_factory(path, "shared"):
-            raw = path.read_bytes()
+            raw = read_bytes() if read_bytes is not None else path.read_bytes()
             _try_rebuild_manifest(
                 path,
                 raw,
                 snapshot,
                 compatibility_token=compatibility_token,
+                write_cache=write_cache,
             )
     except OSError:
         # The journal result is still authoritative; a disposable cache failure
@@ -279,10 +306,13 @@ def load_agent_transcript_snapshot_with_index(
     return snapshot
 
 
-def delete_agent_transcript_index(path: Path) -> None:
+def delete_agent_transcript_index(path: Path, *, file_io: RootedFileIO | None = None) -> None:
     """Remove the disposable projection associated with one transcript."""
 
-    _projection_cache_path(path).unlink(missing_ok=True)
+    if file_io is not None:
+        file_io.unlink(_projection_cache_path(path), missing_ok=True)
+    else:
+        _projection_cache_path(path).unlink(missing_ok=True)
 
 
 def _load_verified_manifest(
@@ -292,6 +322,7 @@ def _load_verified_manifest(
     *,
     header_codec: ConversationJsonlHeaderCodec,
     record_codec: ConversationJsonlRecordCodec,
+    retain_raw: bool = False,
 ) -> JsonlSnapshot[ConversationHeader, AgentTranscriptRecord]:
     indexed_size = _integer(manifest, "projectedSize")
     ends_at_line_boundary = _boolean(manifest, "endsAtLineBoundary")
@@ -330,7 +361,7 @@ def _load_verified_manifest(
     except Exception as exc:
         raise _CacheMiss("indexed header no longer decodes") from exc
 
-    source = _DeferredNodeSource(path)
+    source = _DeferredNodeSource(path, raw=bytes(raw) if retain_raw else None)
     prepared: list[
         tuple[
             Mapping[str, JSONValue],
@@ -534,6 +565,7 @@ def _try_rebuild_manifest(
     snapshot: JsonlSnapshot[ConversationHeader, AgentTranscriptRecord],
     *,
     compatibility_token: str,
+    write_cache: Callable[[Path, bytes], None] | None = None,
 ) -> None:
     try:
         manifest = _build_manifest(
@@ -541,7 +573,7 @@ def _try_rebuild_manifest(
             snapshot,
             compatibility_token=compatibility_token,
         )
-        _write_manifest(_projection_cache_path(path), manifest)
+        _write_manifest(_projection_cache_path(path), manifest, write_cache=write_cache)
     except Exception as exc:
         _LOGGER.debug("failed to rebuild transcript node index", exc_info=exc)
 
@@ -703,9 +735,11 @@ def _read_manifest(
     path: Path,
     *,
     compatibility_token: str,
+    read_cache: Callable[[Path], bytes] | None = None,
 ) -> dict[str, JSONValue]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject)
+        content = read_cache(path) if read_cache is not None else path.read_text(encoding="utf-8")
+        value = json.loads(content, parse_constant=_reject)
         if not isinstance(value, dict):
             raise TypeError("node index must be an object")
         manifest = cast(dict[str, JSONValue], value)
@@ -723,8 +757,10 @@ def _read_manifest(
         raise _CacheMiss("node index is unavailable or invalid") from exc
 
 
-def _write_manifest(path: Path, manifest: Mapping[str, JSONValue]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _write_manifest(
+    path: Path, manifest: Mapping[str, JSONValue], *,
+    write_cache: Callable[[Path, bytes], None] | None = None,
+) -> None:
     payload = json.dumps(
         manifest,
         ensure_ascii=False,
@@ -732,6 +768,10 @@ def _write_manifest(path: Path, manifest: Mapping[str, JSONValue]) -> None:
         separators=(",", ":"),
         allow_nan=False,
     ).encode("utf-8")
+    if write_cache is not None:
+        write_cache(path, payload)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
     temp_name: str | None = None
     try:
         with tempfile.NamedTemporaryFile(

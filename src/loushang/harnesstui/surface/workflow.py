@@ -186,6 +186,8 @@ class ScreenSurfaceWorkflowPorts:
     build_permissions_surface: Callable[[], ScreenSurfaceView] | None = None
     apply_permission_action: Callable[[str], Awaitable[bool]] | None = None
     build_side_question_surface: Callable[[str], ScreenSurfaceView] | None = None
+    build_reasoning_selector: Callable[[], ScreenSurfaceView | None] | None = None
+    select_reasoning_level: Callable[[str], Awaitable[str]] | None = None
 
 
 @dataclass(slots=True)
@@ -218,6 +220,7 @@ class ScreenSurfaceWorkflow:
             app=self.app,
             handlers={
                 "model": self._handle_model_submit,
+                "reasoning": self._handle_reasoning_submit,
                 "command": self._handle_command_submit,
                 "settings": self._handle_settings_submit,
                 "session": self._handle_session_submit,
@@ -384,6 +387,30 @@ class ScreenSurfaceWorkflow:
             self.close()
         await self.ports.refresh_model_label()
         self.app.set_status(message)
+        if self.ports.build_reasoning_selector is not None:
+            try:
+                reasoning = self.ports.build_reasoning_selector()
+            except Exception as error:
+                self.app.set_status(self.copy.recoverable_error(error))
+            else:
+                if reasoning is not None:
+                    self.open(reasoning)
+
+    async def select_reasoning_level(self, value: str) -> None:
+        handler = self.ports.select_reasoning_level
+        if handler is None:
+            return
+        try:
+            message = await handler(value)
+        except Exception as error:
+            message = self.copy.recoverable_error(error)
+            current = self.current
+            if isinstance(current, ScreenSurfaceView) and current.purpose == "reasoning":
+                current.feedback = message
+            self.app.set_status(message)
+            return
+        self.close()
+        self.app.set_status(message)
 
     def select_command(self, value: str, *, close_surface: bool) -> None:
         command = value.strip()
@@ -505,6 +532,9 @@ class ScreenSurfaceWorkflow:
 
     async def _handle_model_submit(self, payload: str) -> None:
         await self.select_model(payload, close_surface=True)
+
+    async def _handle_reasoning_submit(self, payload: str) -> None:
+        await self.select_reasoning_level(payload)
 
     async def _handle_command_submit(self, payload: str) -> None:
         self.select_command(payload, close_surface=True)
@@ -743,6 +773,7 @@ class ScreenSurfaceWorkflow:
         if apply_action is None or not isinstance(payload, str):
             return
         surface = self.current
+        profile_feedback: str | None = None
         try:
             accepted = await apply_action(payload)
         except Exception as error:
@@ -756,17 +787,24 @@ class ScreenSurfaceWorkflow:
             self.app.set_status("Persistent Policy permission revoked.")
         elif payload.startswith("set-profile:"):
             _prefix, scope, profile_id = payload.split(":", 2)
-            self.app.set_status(
+            profile_feedback = (
                 "Permissions updated to "
-                f"{profile_id.replace('_', ' ').title()} ({scope})."
+                f"{profile_id.replace('_', ' ').title()} for this session."
+                + (f" Saved as the {scope} default." if scope != "session" else "")
             )
+            self.app.set_status(profile_feedback)
         else:
             self.app.set_status("Session permission revoked.")
         if (
             self.current is surface
             and self.ports.build_permissions_surface is not None
         ):
-            self.open(self.ports.build_permissions_surface())
+            refreshed = self.ports.build_permissions_surface()
+            if profile_feedback is not None:
+                # The open page owns visible feedback; reopening an overlay
+                # can clear or hide the conversation's transient status line.
+                refreshed.feedback = profile_feedback
+            self.open(refreshed)
         self.app.request_render(self.request_render_reason)
 
     def _resolve_command(self, text: str) -> ScreenSurfaceCommand | None:

@@ -300,6 +300,43 @@ def test_recovery_does_not_fail_live_attempt_from_current_boot(tmp_path: Path) -
     assert journal.snapshot().activation_uses == (starting,)
 
 
+@pytest.mark.parametrize("failure", ["revision", "scope", "version"])
+@pytest.mark.parametrize("operation", ["snapshot", "consume"])
+def test_rejected_activation_journal_preserves_partial_tail(
+    tmp_path: Path, failure: str, operation: str,
+) -> None:
+    journal = _journal(tmp_path)
+    decision = _issue(journal)
+    event = json.loads(journal.path.read_text(encoding="utf-8"))
+    if failure == "revision":
+        event["journalRevision"] = 2
+        event["expectedJournalRevision"] = 1
+    elif failure == "version":
+        event["eventVersion"] = 99
+    journal.path.write_text(
+        json.dumps(event) + '\n{"eventKind":"activation_consumed"',
+        encoding="utf-8",
+    )
+    original = journal.path.read_bytes()
+    reopened = (
+        PluginActivationDecisionJournal(journal.path, scope_id="other-workspace")
+        if failure == "scope" else _journal(tmp_path)
+    )
+
+    with pytest.raises(PluginActivationJournalError) as caught:
+        if operation == "snapshot":
+            reopened.snapshot()
+        else:
+            _consume(reopened, decision.decision_id)
+
+    assert caught.value.code == (
+        "plugin_activation_decision_scope_mismatch"
+        if failure == "scope" and operation == "consume" else
+        "plugin_activation_journal_corrupt"
+    )
+    assert journal.path.read_bytes() == original
+
+
 def _journal(
     tmp_path: Path,
     *,

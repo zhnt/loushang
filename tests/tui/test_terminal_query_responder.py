@@ -36,3 +36,11 @@ def test_responder_records_unknown_blocking_query_for_fail_closed_driver() -> No
 
     assert responder.feed("\x1b[99n") == ()
     assert responder.unknown_queries == ["\x1b[99n"]
+
+
+def test_responder_skips_osc_output_and_still_answers_later_query() -> None:
+    responder = TerminalQueryResponder(rows=24, columns=80)
+
+    assert responder.feed("\x1b]8;;https://example.test\x07" + "ordinary" * 1000) == ()
+    assert responder.feed("\x1b[5n") == ("\x1b[0n",)
+    assert responder.unknown_queries == []

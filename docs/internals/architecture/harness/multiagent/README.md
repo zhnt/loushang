@@ -3,13 +3,17 @@
 > Status: **implemented**（已实现，Phases 1A-1C / 2A-2B 全部完成）。
 > 本目录的文档描述已实现的架构边界；与代码冲突时以代码
 > 与已接受 ARD 为准（见
-> [Architecture Artifact Model](../../../architecture-method/artifact-model.md)）。
+> [Loushang Architecture Governance Profile](../../governance-profile.md)）。
 
 `loushang.harness.multiagent` 提供子 agent 的派生、隔离、通信与生命
 周期管控——是**纯技术态**能力：它不理解 stage / acceptance / artifact
 等业务语义；业务编排（method / work）经产品装配层间接消费本能力。
 
 ## Reading Order
+
+通用子 Session 的创建、驱动与清理下沉见
+[子 Session 装配与清理](child-session-composition.md)。Coding 保留产品配置，
+Harness 复用原 Session 和多 agent 控制机制；清理失败保留同一 owner 重试。
 
 1. [System Context](system-context.md)
    黑盒边界：直接上游（产品装配层）、直接下游（harness prepared run）、

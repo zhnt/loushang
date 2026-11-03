@@ -52,6 +52,7 @@ from loushang.harness.config.agent.types import (
     WarningSettings,
 )
 from loushang.harness.config.engine import merge_config_patch
+from loushang.harness.config.runtime import ConfigTransactionResult
 from loushang.harness.permissions import (
     PermissionProfileCeiling,
     PermissionProfileId,
@@ -162,6 +163,13 @@ class SettingsManager:
     def reload(self) -> None:
         self._config.reload()
 
+    def transaction(
+        self,
+    ) -> AbstractContextManager[ConfigTransactionResult[ControlConfig]]:
+        """Hold persistent settings file locks through one coherent read."""
+
+        return self._config.transaction()
+
     async def flush(self) -> None:
         return None
 
@@ -212,6 +220,14 @@ class SettingsManager:
     @property
     def global_base_dir(self) -> Path | None:
         return self._config.scope("global").base_dir
+
+    @property
+    def global_settings_path(self) -> Path | None:
+        return self._config.scope("global").path
+
+    @property
+    def project_settings_path(self) -> Path | None:
+        return self._config.scope("project").path
 
     @property
     def project_base_dir(self) -> Path | None:

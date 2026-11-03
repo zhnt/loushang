@@ -54,7 +54,7 @@ def _private_environment(root):
     # Bootstrap model/config lookup needs an OS home even for cwd sessions.
     # Do not read the actual user's home via POSIX pwd or Windows USERPROFILE.
     home = root / "user-home"
-    home.mkdir(exist_ok=True)
+    home.mkdir(mode=0o700, exist_ok=True)
     environment.update(HOME=str(home), USERPROFILE=str(home))
     return environment
 
@@ -74,6 +74,12 @@ def _embedded(root):
         driver.read_until(
             lambda out: (
                 "Welcome to Loushang CLI" in strip_control_sequences(out)
+                # Both fields appear only after startup; either can be omitted
+                # at 100 columns depending on the platform's path rendering.
+                and (
+                    " | idle" in strip_control_sequences(out)
+                    or f" | {root.name} |" in strip_control_sequences(out)
+                )
                 and "\x1b[?2004h" in out
                 and "\x1b[?1004h" in out
             ),
@@ -101,7 +107,7 @@ def test_G17_TERMINAL_LEGACY_installed_profiles_and_embedded_startup(
     record_testsuite_property("native_platform", sys.platform)
     roots = {name: tmp_path / name for name in ("local", "g14", "embedded")}
     for root in roots.values():
-        root.mkdir()
+        root.mkdir(mode=0o700)
     with patch.dict(os.environ, _private_environment(roots["local"]), clear=True):
         _local(roots["local"], record_testsuite_property)
     # G14's older helper inherits cwd/environment; confine it without changing

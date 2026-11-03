@@ -25,7 +25,7 @@ V2 进一步固定：桌面 GUI 不新建 Host，而与 G16 detachable HarnessTU
 Mux 复用既有 AppHost/AppService application；HarnessTUI Embedded 仍走直接
 Product/Harness 组合，G15/G17 foreground child lifecycle 保持不变。
 
-继承 [架构方法](../../architecture-method/README.md)、
+继承 [Loushang Architecture Governance Profile](../governance-profile.md)、
 [治理规范](../governance-profile.md)、
 [系统原则](../loushang-architecture-principles.md) 与
 [AppService 边界设计](appservice-embedded-tui-hosted-boundary-plan.md)。

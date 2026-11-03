@@ -27,7 +27,17 @@ loushang-tui = "loushang.coding.ui.cli:main"
 loushang-hosted = "loushang.coding.cli.hosted:main"
 loushang-hosted-tui = "loushang.coding.cli.hosted_client:main"
 loushang-mux = "loushang.coding.cli.mux:main"
+lmux = "loushang.coding.cli.lmux:main"
 loushang-plugin = "loushang.plugin.__main__:main"
+loushang-coding-plugin-smoke = "loushang.coding.plugin_author_smoke:main"
+loushang-coding-extension = "loushang.coding.extension_author:main"
+loushang-coding-plugin-status = "loushang.coding.plugin_support_status:main"
+loushang-package-cutover = "loushang.coding.cli.package_cutover:main"
+loushang-package-gc = "loushang.coding.cli.package_gc:main"
+loushang-package-repair = "loushang.coding.cli.package_repair:main"
+loushang-plugin-private-data = "loushang.coding.cli.plugin_private_data:main"
+loushang-worker-native = "loushang.coding.cli.package_worker_native:main"
+loushang-worker-windows-candidate = "loushang.coding.cli.package_worker_windows_candidate:main"
 
 [project.optional-dependencies]
 dev = [
@@ -45,6 +55,7 @@ addopts = ["--import-mode=importlib"]
 tmp_path_retention_count = 0
 tmp_path_retention_policy = "none"
 markers = [
+  "e2e_smoke: focused cross-package end-to-end scenario for boundary changes",
   "live: real provider verification that may require network access and credentials",
   "requires_host_runtime: requires host loopback, process, or file-index capabilities unavailable in a restricted sandbox",
   "tui_render_contract: deterministic TUI render correctness, structural performance, and terminal-operation contract",
@@ -95,6 +106,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "loushang" = ["py.typed"]
 "loushang.ai.model" = ["models.json"]
+"loushang.hosting" = ["native/*.c"]
 "loushang.coding._plugins.coding_lsp_default" = [
   "plugin.json",
   "declarations/*.json",

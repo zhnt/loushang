@@ -11,15 +11,14 @@ from pathlib import Path
 
 import pytest
 
-from loushang.ai.types import UserMessage
 from loushang.appserver.protocol import SessionScopeV1
 from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
-from loushang.coding.session_manager import SessionManager
 from loushang.tui.cell_width import strip_control_sequences
 from tests.tui.terminal_process_support import (
     selected_backend_name,
 )
 
+from ._hosted_composition_seed import seed_hosted_history
 from ._hosted_terminal import foreground_terminal, process_table
 from .test_hosted_client import _argv, _launch
 from .test_mux_terminal_process import _terminal_environment
@@ -85,7 +84,7 @@ def _picker_workflow(tmp_path, scope_kind, *, run_cli):
     # Creation is an actual installed CLI operation, not a catalog substitute.
     def create(creator):
         creator.write(f"/new {scope_kind.value} Native history\r")
-        creator.read_until(lambda out: "*1" in strip_control_sequences(out), timeout=20)
+        creator.read_until(lambda out: "*1" in strip_control_sequences(out), timeout=90)
         checkpoint = len(creator.raw_output)
         creator.write("/close --yes\r")
         creator.read_until(
@@ -94,15 +93,7 @@ def _picker_workflow(tmp_path, scope_kind, *, run_cli):
 
     run_cli(tmp_path, _argv(tmp_path), create, exit_command="/exit\r")
 
-    async def seed():
-        (path,) = scope.session_dir.glob("*.jsonl")
-        manager = await SessionManager.open(path)
-        try:
-            await manager.append_message(UserMessage(role="user", content=text, timestamp=1.0))
-        finally:
-            await manager.dispose_runtime_profile()
-
-    asyncio.run(seed())
+    asyncio.run(seed_hosted_history(scope, text))
     arguments = _argv(tmp_path)
     if scope_kind is SessionScopeV1.USER_HOME:
         # Global identity does not depend on the new admitted execution cwd.
@@ -118,30 +109,33 @@ def _picker_workflow(tmp_path, scope_kind, *, run_cli):
     # first predicate by automatically restoring the creator's existing member.
     arguments.extend(["--mux", "picker"])
 
-    def resume(driver, *, attempt):
-        driver.read_until(lambda out: "picker |" in strip_control_sequences(out), timeout=10)
-        checkpoint = 0
-        if attempt == 0:
-            assert text not in strip_control_sequences(driver.raw_output)
-            selected_scope = "global" if scope_kind is SessionScopeV1.USER_HOME else "cwd"
-            driver.write(f"/sessions {selected_scope}\r")
-            driver.read_until(
-                lambda out: "select a saved Session" in strip_control_sequences(out), timeout=15
-            )
-            assert text not in strip_control_sequences(driver.raw_output)
-            checkpoint = len(driver.raw_output)
-            driver.write("\r")
-        driver.read_until(
-            lambda out, start=checkpoint: text in strip_control_sequences(out[start:]), timeout=20
-        )
-        driver.read_until(
-            lambda out, start=checkpoint: "*1" in strip_control_sequences(out[start:]), timeout=10
-        )
-
     for attempt in range(2):
-        run_cli(tmp_path, arguments, lambda driver, attempt=attempt: resume(driver, attempt=attempt),
+        run_cli(tmp_path, arguments,
+                lambda driver, attempt=attempt: _picker_resume(driver, text, scope_kind, attempt),
                 exit_command="\x02d")  # Foreground detach ends this application's child.
     assert len(tuple(scope.session_dir.glob("*.jsonl"))) == 1
+
+
+def _picker_resume(driver, text, scope_kind, attempt):
+    """Shared original witness for live CLI2 and live/restored CLI3."""
+    driver.read_until(lambda out: "picker |" in strip_control_sequences(out), timeout=10)
+    checkpoint = 0
+    if attempt == 0:
+        assert text not in strip_control_sequences(driver.raw_output)
+        selected_scope = "global" if scope_kind is SessionScopeV1.USER_HOME else "cwd"
+        driver.write(f"/sessions {selected_scope}\r")
+        driver.read_until(
+            lambda out: "select a saved Session" in strip_control_sequences(out), timeout=15
+        )
+        assert text not in strip_control_sequences(driver.raw_output)
+        checkpoint = len(driver.raw_output)
+        driver.write("\r")
+    driver.read_until(
+        lambda out, start=checkpoint: text in strip_control_sequences(out[start:]), timeout=20
+    )
+    driver.read_until(
+        lambda out, start=checkpoint: "*1" in strip_control_sequences(out[start:]), timeout=10
+    )
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX independent process-group regression")

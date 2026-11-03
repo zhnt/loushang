@@ -134,6 +134,7 @@ def test_G13_NO_AUTHORITY_EXPANSION_has_no_transport_process_or_path_discovery()
         Path("src/loushang/coding/__init__.py"),
         Path("src/loushang/coding/bootstrap.py"),
         Path("src/loushang/coding/cli/__main__.py"),
+        Path("src/loushang/coding/cli/application.py"),
         Path("src/loushang/coding/ui/cli.py"),
         Path("src/loushang/harnesstui/__init__.py"),
         Path("src/loushang/harnesstui/conversation/application_host.py"),
@@ -190,7 +191,10 @@ def test_G13_NEW_OWNERS_remain_independently_reviewable() -> None:
         "coding-continuity": (CODING_CONTINUITY,),
     }
     limits = {
-        "appservice-continuity": 1_250,
+        # lmux vs a3dbec60: versioned create/close receipt codec +113,
+        # original recovery owner settlement/permission +142. Keep the original
+        # margin and scan every continuity*.py; no renamed-file exclusion.
+        "appservice-continuity": 1_250 + 113 + 142,
         # G17's reviewed borrowed discovery getter and recovery passthrough
         # add seven lines to this exact file, not another lifecycle owner.
         "apphost-continuity": 675,
@@ -205,7 +209,10 @@ def test_G13_PLATFORM_GATES_retain_linux_macos_and_windows_evidence() -> None:
     appservice = _read(APPSERVICE_WORKFLOW)
     for platform in ("ubuntu-24.04", "macos-15", "windows-latest"):
         assert platform in appservice
-    assert "make check-appservice" in appservice
+    assert "native-service:" in appservice
+    assert "installed-service:" in appservice
+    assert "run_g16_installed_evidence.py" in appservice
+    assert "run_g17_installed_evidence.py" in appservice
     apphost = _read(APPHOST_WORKFLOW)
     assert "Prove G13 durable continuity on Windows" in apphost
     assert "hosted-application-g13-windows.xml" in apphost

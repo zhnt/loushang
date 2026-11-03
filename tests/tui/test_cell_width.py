@@ -24,6 +24,41 @@ def test_visible_width_ignores_ansi_sgr_and_osc8_hyperlinks() -> None:
     assert visible_width(text) == 8
 
 
+def test_visible_width_styled_ascii_skips_unicode_measurement(monkeypatch) -> None:
+    def unexpected_unicode_measurement(_text: str) -> bool:
+        raise AssertionError("printable styled ASCII needs no Unicode measurement")
+
+    monkeypatch.setattr(cell_width, "_requires_cluster_measurement", unexpected_unicode_measurement)
+    assert visible_width("\x1b[32mgreen\x1b[0m \x1b]8;;https://example.test\x1b\\link\x1b]8;;\x1b\\") == 10
+
+
+def test_visible_width_printable_sgr_ascii_skips_control_scanner(monkeypatch) -> None:
+    def unexpected_control_scan(_text: str) -> str:
+        raise AssertionError("printable SGR ASCII needs no general control scan")
+
+    monkeypatch.setattr(cell_width, "strip_control_sequences", unexpected_control_scan)
+    assert visible_width("\x1b[38;2;101;202;77munique 798 line\x1b[0m") == 15
+
+
+def test_visible_width_box_table_ascii_skips_unicode_scanner(monkeypatch) -> None:
+    def fail(_text: str) -> int:
+        raise AssertionError("box table row used the general Unicode scanner")
+
+    monkeypatch.setattr(cell_width, "_measure_terminal_cells", fail)
+    assert visible_width("┌─┬─┐") == 5
+    assert visible_width("│ \x1b[32mrow 798\x1b[0m │") == 11
+
+
+def test_ascii_table_cell_skips_grapheme_scan(monkeypatch) -> None:
+    def unexpected_grapheme_scan(_text: str):
+        raise AssertionError("printable ASCII has only one-cell clusters")
+
+    monkeypatch.setattr(cell_width, "_display_grapheme_clusters", unexpected_grapheme_scan)
+    assert cell_width.max_display_cluster_width("plain table cell") == 1
+    assert cell_width.max_display_cluster_width("\x1b[36mstyled table cell\x1b[0m") == 1
+    assert cell_width.max_display_cluster_width("\x1b[0m") == 0
+
+
 def test_visible_width_handles_wide_combining_and_emoji_clusters() -> None:
     assert visible_width("a") == 1
     assert visible_width("中") == 2
@@ -277,6 +312,25 @@ def test_normalize_terminal_output_decomposes_thai_lao_am_vowels() -> None:
     assert visible_width(normalize_terminal_output("ຳabc")) == visible_width("ຳabc")
 
 
+def test_wrap_cells_printable_ascii_preserves_rows_without_grapheme_scan(
+    monkeypatch,
+) -> None:
+    def fail(_text: str) -> list[str]:
+        raise AssertionError("printable ASCII must not scan Unicode graphemes")
+
+    monkeypatch.setattr(cell_width, "_display_grapheme_clusters", fail)
+    assert wrap_cells("\x1b[31mabc def  \x1b[0m\n\nxyz\n", width=4) == [
+        "abc ",
+        "def ",
+        " ",
+        "",
+        "xyz",
+        "",
+    ]
+    assert wrap_cells("", width=1) == [""]
+    assert wrap_cells("a" * 20000, width=80) == ["a" * 80] * 250
+
+
 def test_wrap_cells_preserves_explicit_newlines_and_wraps_by_cell_width() -> None:
     assert wrap_cells("abcd", width=3) == ["abc", "d"]
     assert wrap_cells("中ab", width=3) == ["中a", "b"]
@@ -290,6 +344,22 @@ def test_wrap_ansi_preserves_active_style_after_wrapping() -> None:
     assert lines[0].startswith("\x1b[31m")
     assert lines[1].startswith("\x1b[31m")
     assert all(visible_width(line) <= 4 for line in lines)
+
+
+def test_wrap_ansi_preserves_style_and_hyperlink_across_unwrapped_line() -> None:
+    assert wrap_ansi("\x1b[31mred blue\nnext long text\x1b[0m", width=9) == [
+        "\x1b[31mred blue",
+        "\x1b[31mnext long",
+        "\x1b[31mtext\x1b[0m",
+    ]
+
+    open_link = "\x1b]8;;https://x\x07"
+    close_link = "\x1b]8;;\x07"
+    assert wrap_ansi(f"{open_link}link\nmore link{close_link}", width=8) == [
+        f"{open_link}link",
+        f"{open_link}more{close_link}",
+        f"{open_link}link{close_link}",
+    ]
 
 
 def test_wrap_ansi_does_not_apply_underline_before_styled_text() -> None:

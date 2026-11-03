@@ -152,6 +152,7 @@ def test_g8_concrete_join_preserves_dependency_and_activation_boundaries() -> No
     for path in (
         Path("src/loushang/coding/bootstrap.py"),
         Path("src/loushang/coding/cli/__main__.py"),
+        Path("src/loushang/coding/cli/application.py"),
         Path("src/loushang/coding/ui/cli.py"),
     ):
         assert "apphost_product" not in _read(path)

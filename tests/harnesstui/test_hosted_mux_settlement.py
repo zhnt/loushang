@@ -365,7 +365,8 @@ def test_G17_EXIT_copy_matches_the_selected_application_lifetime(foreground):
         assert ("ends this application" in text) is foreground
         assert ("accepted work continues" in text) is not foreground
         assert ("no background management endpoint" in text) is foreground
-        assert ("create/list/attach/close/stop" in text) is not foreground
+        assert ("lmux new -s NAME" in text) is not foreground
+        assert ("lmux create --continue" in text) is not foreground
         shell.handle(InputEvent(kind="key", key="escape"))
         shell.handle(InputEvent(kind="text", text="/exit"))
         shell.handle(InputEvent(kind="key", key="enter"))

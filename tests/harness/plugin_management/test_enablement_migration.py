@@ -16,6 +16,7 @@ from loushang.harness.plugin_management import (
     PluginEnablementMigrationError,
     PluginEnablementMigrationJournal,
     PluginEnablementMigrationRequestV1,
+    PluginEnablementMigrationSnapshotV1,
     PluginInstallationKeyV1,
     PluginManagementApplicationCommandV1,
     PluginManagementApplicationResultV1,
@@ -222,15 +223,63 @@ def test_finalization_requires_recovery_evidence_and_fences_downgrade(
         roll_forward_procedure="runbook:plugin-enable:v1",
     )
 
+    with pytest.raises(PluginEnablementMigrationError) as unverified:
+        coordinator.finalize(migrated.migration_id, evidence)
+    assert unverified.value.code == "plugin_enablement_finalization_authority_unavailable"
+    assert journal.snapshot(_key()).phase == "compatibility_window"  # type: ignore[union-attr]
+
+    coordinator = PluginEnablementMigrationCoordinator(
+        journal=journal,
+        desired_state=_desired,
+        commands=PluginManagementCommandApplication(_service),
+        finalization_authority=_ApprovedFinalizationAuthority(
+            migrated.migration_id, evidence
+        ),
+    )
     finalized = coordinator.finalize(migrated.migration_id, evidence)
 
     assert finalized.phase == "finalized"
     assert finalized.finalization_evidence == evidence
-    journal.assert_runtime_compatible(supported_migration_epoch=2)
+    journal.assert_runtime_compatible(
+        supported_migration_epoch=2, runtime_version="1.0.0"
+    )
     with pytest.raises(PluginEnablementMigrationError) as downgrade:
-        journal.assert_runtime_compatible(supported_migration_epoch=1)
+        journal.assert_runtime_compatible(
+            supported_migration_epoch=1, runtime_version="1.0.0"
+        )
     assert downgrade.value.code == "plugin_enablement_migration_epoch_unsupported"
-    journal.assert_runtime_compatible(supported_migration_epoch=2)
+    journal.assert_runtime_compatible(
+        supported_migration_epoch=2, runtime_version="1.0.0"
+    )
+
+
+def test_finalized_minimum_runtime_version_fences_same_epoch(tmp_path: Path) -> None:
+    _desired, _service, journal, coordinator = _migration(tmp_path)
+    migrated = coordinator.migrate(_request())
+    evidence = PluginEnablementFinalizationEvidenceV1(
+        minimum_runtime_version="3.0.0",
+        minimum_migration_epoch=1,
+        backup_receipt="backup:verified",
+        restore_test_receipt="restore:test:passed",
+        roll_forward_procedure="runbook:plugin-enable:v1",
+    )
+    journal.finalize(
+        migrated.migration_id,
+        evidence,
+        authority=_ApprovedFinalizationAuthority(migrated.migration_id, evidence),
+    )
+
+    with pytest.raises(PluginEnablementMigrationError) as too_old:
+        journal.assert_runtime_compatible(
+            supported_migration_epoch=1, runtime_version="2.9.9"
+        )
+    assert too_old.value.code == "plugin_enablement_migration_runtime_version_unsupported"
+    with pytest.raises(PluginEnablementMigrationError) as missing:
+        journal.assert_runtime_compatible(supported_migration_epoch=1)
+    assert missing.value.code == "plugin_enablement_migration_runtime_version_unavailable"
+    journal.assert_runtime_compatible(
+        supported_migration_epoch=1, runtime_version="3.0.0"
+    )
 
 
 def test_finalization_crash_replays_exact_receipt(tmp_path: Path) -> None:
@@ -247,6 +296,9 @@ def test_finalization_crash_replays_exact_receipt(tmp_path: Path) -> None:
         journal=journal,
         desired_state=desired,
         commands=PluginManagementCommandApplication(service),
+        finalization_authority=_ApprovedFinalizationAuthority(
+            migrated.migration_id, evidence
+        ),
         phase_observer=lambda phase: (
             _raise_crash(phase) if phase == "finalized" else None
         ),
@@ -257,6 +309,35 @@ def test_finalization_crash_replays_exact_receipt(tmp_path: Path) -> None:
 
     assert journal.snapshot(_key()).phase == "finalized"  # type: ignore[union-attr]
     assert coordinator.finalize(migrated.migration_id, evidence).phase == "finalized"
+
+
+def test_finalization_rejects_authority_for_another_receipt(tmp_path: Path) -> None:
+    desired, service, journal, coordinator = _migration(tmp_path)
+    migrated = coordinator.migrate(_request())
+    evidence = PluginEnablementFinalizationEvidenceV1(
+        minimum_runtime_version="1.0.0",
+        minimum_migration_epoch=1,
+        backup_receipt="backup:verified",
+        restore_test_receipt="restore:test:passed",
+        roll_forward_procedure="runbook:plugin-enable:v1",
+    )
+    authority = _ApprovedFinalizationAuthority("another-migration", evidence)
+    finalizer = PluginEnablementMigrationCoordinator(
+        journal=journal,
+        desired_state=desired,
+        commands=PluginManagementCommandApplication(service),
+        finalization_authority=authority,
+    )
+
+    with pytest.raises(ValueError, match="not approved"):
+        finalizer.finalize(migrated.migration_id, evidence)
+
+    assert journal.snapshot(_key()).phase == "compatibility_window"  # type: ignore[union-attr]
+    assert tuple(item.phase for item in journal.records()) == (
+        "accepted",
+        "desired_committed",
+        "compatibility_window",
+    )
 
 
 def test_future_epoch_and_changed_accepted_input_fail_closed(tmp_path: Path) -> None:
@@ -304,6 +385,23 @@ class _Crash(RuntimeError):
 
 def _raise_crash(phase: str) -> None:
     raise _Crash(phase)
+
+
+@dataclass(frozen=True)
+class _ApprovedFinalizationAuthority:
+    migration_id: str
+    evidence: PluginEnablementFinalizationEvidenceV1
+
+    def verify_finalization(
+        self,
+        migration: PluginEnablementMigrationSnapshotV1,
+        evidence: PluginEnablementFinalizationEvidenceV1,
+    ) -> None:
+        if (
+            migration.migration_id != self.migration_id
+            or evidence != self.evidence
+        ):
+            raise ValueError("Finalization evidence was not approved")
 
 
 @dataclass

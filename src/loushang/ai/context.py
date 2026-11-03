@@ -12,12 +12,15 @@ from loushang.ai.types import (
     AssistantMessage,
     Context,
     Message,
+    ProviderCompactionWindow,
     Tool,
     ToolResultMessage,
     UserMessage,
 )
 
-_CONTEXT_KEYS = frozenset({"system_prompt", "systemPrompt", "messages", "tools"})
+_CONTEXT_KEYS = frozenset(
+    {"system_prompt", "systemPrompt", "messages", "tools", "provider_window"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,13 +28,17 @@ class NormalizedContext:
     system_prompt: str | None
     messages: tuple[Message, ...] = ()
     tools: tuple[Tool, ...] = ()
+    provider_window: ProviderCompactionWindow | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        raw: dict[str, Any] = {
             "system_prompt": self.system_prompt,
             "messages": self.messages,
             "tools": self.tools,
         }
+        if self.provider_window is not None:
+            raw["provider_window"] = self.provider_window
+        return raw
 
 
 @dataclass(frozen=True)
@@ -60,6 +67,9 @@ def normalize_context_result(
     pairing_mode: PairingMode = "strict",
 ) -> NormalizationResult:
     if isinstance(context, NormalizedContext):
+        provider_window = _provider_window(
+            context.provider_window, context.system_prompt, model
+        )
         tools = _normalize_tools(context.tools)
         message_result = normalize_messages_result(
             list(context.messages),
@@ -75,6 +85,7 @@ def normalize_context_result(
                 ),
                 messages=tuple(_validate_normalized_messages(message_result.messages)),
                 tools=tools,
+                provider_window=provider_window,
             ),
             diagnostics=message_result.diagnostics,
         )
@@ -83,6 +94,9 @@ def normalize_context_result(
         return NormalizationResult(context=NormalizedContext(system_prompt=None))
 
     if isinstance(context, Context):
+        provider_window = _provider_window(
+            context.provider_window, context.system_prompt, model
+        )
         tools = _normalize_tools(context.tools)
         message_result = normalize_messages_result(
             list(context.messages),
@@ -98,6 +112,7 @@ def normalize_context_result(
                 ),
                 messages=tuple(_validate_normalized_messages(message_result.messages)),
                 tools=tools,
+                provider_window=provider_window,
             ),
             diagnostics=message_result.diagnostics,
         )
@@ -121,11 +136,15 @@ def normalize_context_result(
         message_paths=message_paths,
     )
     normalized_messages = _validate_normalized_messages(message_result.messages)
+    provider_window = _provider_window(
+        context.get("provider_window"), system_prompt, model
+    )
     return NormalizationResult(
         context=NormalizedContext(
             system_prompt=system_prompt,
             messages=tuple(normalized_messages),
             tools=tools,
+            provider_window=provider_window,
         ),
         diagnostics=message_result.diagnostics,
     )
@@ -142,6 +161,22 @@ def ensure_normalized_context(
 
 def is_normalized_context(context: object) -> bool:
     return isinstance(context, NormalizedContext)
+
+
+def _provider_window(
+    value: object, system_prompt: str | None, model: object
+) -> ProviderCompactionWindow | None:
+    if value is None:
+        return None
+    if not isinstance(value, ProviderCompactionWindow):
+        raise TypeError("provider_window must be ProviderCompactionWindow")
+    if system_prompt:
+        raise ValueError("provider_window already contains the prior system context")
+    if model is not None and not value.matches(model):
+        raise ValueError(
+            "provider_window is incompatible with the selected model route"
+        )
+    return value
 
 
 def _optional_str(value: object) -> str | None:

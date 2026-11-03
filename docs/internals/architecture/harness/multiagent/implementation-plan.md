@@ -228,9 +228,10 @@ Implementation checkpoint (2026-07-26):
   no-tools sessions still install the control runtime but do not receive the
   collaboration tools. Each root session gets a cloned registry so a `/new`
   replacement cannot retain stale live-runtime closures.
-- Harness deliberately has no default child factory. A Product that does not
-  install a concrete factory cannot spawn a child; this prevents Harness from
-  guessing Product transcript, model, tool, approval, or workspace semantics.
+- Harness does not automatically select a Product child runtime. A Product
+  must explicitly install a factory; the shared AgentSessionSubagentFactory
+  now supplies the bounded creation/driver/cleanup mechanics with a Product
+  runtime builder. See [child Session consolidation](child-session-composition.md).
 - The real immediate recipe runner is implemented by the Product-neutral
   `CollaborationRecipeCatalog` / `ImmediateRecipeExecutor` and Coding's
   non-persistent CLI adapter. It uses Host-only completion payloads for fan-in,

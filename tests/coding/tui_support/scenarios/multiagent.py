@@ -951,7 +951,6 @@ def _shared_workspace_playback() -> MultiAgentPlaybackResult:
         recorder = _Recorder()
         with TemporaryDirectory(
             prefix="loushang-shared-worker-",
-            dir="/tmp",
         ) as directory:
             root = Path(directory).resolve()
             target = root / "shared.txt"
@@ -1042,7 +1041,6 @@ def _isolated_artifact_playback() -> MultiAgentPlaybackResult:
         recorder = _Recorder()
         with TemporaryDirectory(
             prefix="loushang-isolated-artifact-",
-            dir="/tmp",
         ) as directory:
             root = Path(directory).resolve()
             repo = root / "repo"
@@ -1175,7 +1173,6 @@ def _shared_parallel_writers_playback() -> MultiAgentPlaybackResult:
         recorder = _Recorder()
         with TemporaryDirectory(
             prefix="loushang-shared-parallel-workers-",
-            dir="/tmp",
         ) as directory:
             root = Path(directory).resolve()
             targets = {
@@ -1781,7 +1778,6 @@ def _child_approval_playback() -> object:
 
     with TemporaryDirectory(
         prefix="loushang-child-approval-",
-        dir="/tmp",
     ) as directory:
         cwd = Path(directory).resolve()
         playback = ScreenTuiLoopPlayback(
@@ -2017,7 +2013,6 @@ def _concurrent_child_approval_playback() -> object:
 
     with TemporaryDirectory(
         prefix="loushang-concurrent-child-approval-",
-        dir="/tmp",
     ) as directory:
         cwd = Path(directory).resolve()
         playback = ScreenTuiLoopPlayback(

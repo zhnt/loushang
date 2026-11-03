@@ -22,7 +22,7 @@
 [界面规约](gui-interface-specification.md) 冻结。以下需求尚未成为已接受 Target，
 也不代表已有 GUI 实现；规约评审与运行验收分别记录。
 
-继承 [架构方法](../../architecture-method/README.md)、
+继承 [Loushang Architecture Governance Profile](../governance-profile.md)、
 [项目治理规范](../governance-profile.md) 和
 [系统原则](../loushang-architecture-principles.md)。
 [工程启动方案](gui-engineering-bootstrap-plan.md) 负责交付编排与技术准备，

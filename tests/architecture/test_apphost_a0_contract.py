@@ -4,6 +4,8 @@ import ast
 import sys
 from pathlib import Path
 
+from tests.architecture._source_imports import resolved_imports
+
 APPHOST_ROOT = Path("src/loushang/apphost")
 APPHOST_MODULES = {
     APPHOST_ROOT / "__init__.py",
@@ -52,26 +54,7 @@ def _source(path: Path) -> str:
 
 
 def _resolved_imports_from_source(path: Path, source: str) -> set[str]:
-    result: set[str] = set()
-    tree = ast.parse(source, filename=str(path))
-    package = path.parent.relative_to("src").parts
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            result.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.level:
-                retained = len(package) - (node.level - 1)
-                if retained < 0:
-                    result.add("<invalid-relative-import>")
-                    continue
-                base = (*package[:retained], *(node.module or "").split("."))
-            else:
-                base = tuple((node.module or "").split("."))
-            base = tuple(part for part in base if part)
-            if base:
-                result.add(".".join(base))
-            result.update(".".join((*base, alias.name)) for alias in node.names)
-    return result
+    return resolved_imports(path, source)
 
 
 def _resolved_imports(path: Path) -> set[str]:
@@ -381,6 +364,10 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
         Path("src/loushang/coding/apphost_product.py"),
         Path("src/loushang/coding/appservice_adapter.py"),
         Path("src/loushang/coding/hosted_application.py"),
+        # COD-KD-HMW-001: explicit application-local Method composition.
+        Path("src/loushang/coding/hosted_method_application.py"),
+        # COD-KD-HG-001: opt-in Goal application on the same AppHost owner.
+        Path("src/loushang/coding/hosted_goal_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
         Path("src/loushang/coding/hosted_catalog.py"),
         Path("src/loushang/coding/hosted_session.py"),
@@ -388,6 +375,14 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
         Path("src/loushang/coding/cli/hosted_client.py"),
         Path("src/loushang/coding/hosted_bootstrap.py"),
         Path("src/loushang/coding/hosted_local.py"),
+        # Accepted optional lmux deployment composition; never a core edge.
+        Path("src/loushang/coding/cli/lmux.py"),
+        Path("src/loushang/coding/cli/lmux_command.py"),
+        Path("src/loushang/coding/cli/lmux_stop_all.py"),
+        Path("src/loushang/coding/managed_bootstrap.py"),
+        Path("src/loushang/coding/managed_catalog.py"),
+        Path("src/loushang/coding/managed_local.py"),
+        Path("src/loushang/coding/managed_process.py"),
     }
     reverse_adapter_consumers = {
         path

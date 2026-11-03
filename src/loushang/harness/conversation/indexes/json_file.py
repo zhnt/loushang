@@ -6,11 +6,12 @@ import json
 import os
 import secrets
 import stat
-from collections.abc import Callable, Mapping, Sequence
-from contextlib import suppress
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from threading import Lock
 from time import time_ns
 from typing import Any, Generic, Protocol, TypeVar, cast
@@ -26,6 +27,8 @@ from loushang.harness.conversation.store import (
     ConversationLocator,
     require_revision,
 )
+from loushang.harness.journal._rooted_io import RootedFile
+from loushang.harness.journal.jsonl import journal_file_lock, journal_file_lock_at
 
 P = TypeVar("P")
 Q = TypeVar("Q")
@@ -54,6 +57,17 @@ class FunctionalProjectionCodec(Generic[P]):
 class ProjectionIndexSnapshot(Generic[P]):
     projections: tuple[P, ...]
     stale: bool = False
+
+
+@dataclass(frozen=True)
+class JsonIndexPublication:
+    """Exact successful local publication, not permission to delete by name."""
+
+    path: Path
+    generation: str
+    sequence: int
+    identity: tuple[int, int]
+    parent_identity: tuple[int, int] | None = None
 
 
 class JsonProjectionIndex(Generic[P]):
@@ -187,6 +201,40 @@ class JsonConversationIndex(Generic[P, Q]):
     async def upsert(self, item: IndexedProjection[P]) -> bool:
         return await asyncio.to_thread(self._upsert_sync, item)
 
+    def upsert_rooted(self, item: IndexedProjection[P], target: RootedFile) -> bool:
+        """Update an existing cache using the caller's retained transaction.
+
+        The caller owns admission and native settlement. This synchronous path
+        neither creates the index nor repairs/renames corrupt pathname caches.
+        Its stable short lock serializes read/modify/write across processes.
+        """
+        require_revision(item.source_revision, name="source revision")
+        if not self._writable:
+            raise RuntimeError("read-only conversation index cannot be modified")
+        try:
+            target.read_bytes(max_bytes=_MAX_CONVERSATION_INDEX_BYTES)
+        except FileNotFoundError:
+            return False
+        target.acquire_lock(exclusive=True, blocking=False, suffix=".lock")
+        try:
+            content = target.read_bytes(max_bytes=_MAX_CONVERSATION_INDEX_BYTES)
+        except FileNotFoundError:
+            return False
+        state = self._decode_state(content, preserve_corrupt=False)
+        if state.index_state != "fresh":
+            return False
+        if item.source_revision <= state.tombstones.get(item.locator, -1):
+            return False
+        current = state.items.get(item.locator)
+        if current is not None and item.source_revision < current.source_revision:
+            return False
+        state.items[item.locator] = item
+        self._write_state(
+            state.items, state.tombstones, generation=_writable_generation(state),
+            sequence=state.sequence + 1, target=target,
+        )
+        return True
+
     async def delete(
         self,
         locator: ConversationLocator,
@@ -218,23 +266,118 @@ class JsonConversationIndex(Generic[P, Q]):
     ) -> tuple[IndexedProjection[P], ...]:
         return await asyncio.to_thread(self._replace_sync, tuple(items))
 
-    def _upsert_sync(self, item: IndexedProjection[P]) -> bool:
-        require_revision(item.source_revision, name="source revision")
-        with self._lock:
-            state = self._read_state()
-            if item.source_revision <= state.tombstones.get(item.locator, -1):
+    async def replace_with_receipt(
+        self, items: Sequence[IndexedProjection[P]],
+    ) -> tuple[tuple[IndexedProjection[P], ...], JsonIndexPublication]:
+        return await asyncio.to_thread(self._replace_with_receipt_sync, tuple(items))
+
+    async def invalidate_if_current(self, receipt: JsonIndexPublication) -> bool:
+        """Invalidate only this exact version, serialized with all writers."""
+        return await asyncio.to_thread(self._invalidate_if_current_sync, receipt)
+
+    async def observe_publication(self) -> JsonIndexPublication | None:
+        """Capture the exact existing version for a subsequent conditional check."""
+        return await asyncio.to_thread(self._observe_publication_sync)
+
+    def _observe_publication_sync(self) -> JsonIndexPublication | None:
+        with self._mutation_scope() as directory:
+            try:
+                content, opened = _read_stable_regular_snapshot(
+                    self.path, max_bytes=_MAX_CONVERSATION_INDEX_BYTES, directory=directory,
+                )
+            except FileNotFoundError:
+                return None
+            state = self._decode_state(content, preserve_corrupt=False)
+            if state.index_state != "fresh":
+                return None
+            parent = os.fstat(directory) if directory is not None else None
+            return JsonIndexPublication(
+                self.path, state.generation, state.sequence, (opened.st_dev, opened.st_ino),
+                (parent.st_dev, parent.st_ino) if parent is not None else None,
+            )
+
+    async def upsert_with_receipt(
+        self, item: IndexedProjection[P],
+    ) -> tuple[bool, JsonIndexPublication | None]:
+        return await asyncio.to_thread(self._upsert_with_receipt_sync, item)
+
+    def _invalidate_if_current_sync(self, receipt: JsonIndexPublication) -> bool:
+        if receipt.path != self.path:
+            raise ValueError("index publication belongs to another path")
+        with self._mutation_scope(create_lock=False) as directory:
+            if directory is not None:
+                status = os.fstat(directory)
+                if (status.st_dev, status.st_ino) != receipt.parent_identity:
+                    return False
+            try:
+                if directory is None:
+                    descriptor, parent = _open_file_no_follow(self.path)
+                else:
+                    descriptor = os.open(
+                        self.path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                        dir_fd=directory,
+                    )
+                    parent = directory
+            except FileNotFoundError:
                 return False
+            try:
+                opened = os.fstat(descriptor)
+                if (not _regular_file_status_no_follow(opened)
+                        or (opened.st_dev, opened.st_ino) != receipt.identity
+                        or opened.st_size > _MAX_CONVERSATION_INDEX_BYTES):
+                    return False
+                chunks: list[bytes] = []
+                remaining = opened.st_size
+                while remaining:
+                    chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+                    if not chunk:
+                        return False
+                    chunks.append(chunk)
+                    remaining -= len(chunk)
+                state = self._decode_state(b"".join(chunks), preserve_corrupt=False)
+                if (state.index_state != "fresh" or state.generation != receipt.generation
+                        or state.sequence != receipt.sequence
+                        or not _same_file_status(opened, os.fstat(descriptor))):
+                    return False
+                current = (os.stat(self.path.name, dir_fd=parent, follow_symlinks=False)
+                           if parent >= 0 else self.path.lstat())
+                if not _same_file_status(opened, current):
+                    return False
+                if parent >= 0:
+                    os.unlink(self.path.name, dir_fd=parent)
+                else:
+                    self.path.unlink()
+                return True
+            finally:
+                try:
+                    os.close(descriptor)
+                finally:
+                    if parent >= 0 and directory is None:
+                        os.close(parent)
+
+    def _upsert_sync(self, item: IndexedProjection[P]) -> bool:
+        return self._upsert_with_receipt_sync(item)[0]
+
+    def _upsert_with_receipt_sync(
+        self, item: IndexedProjection[P],
+    ) -> tuple[bool, JsonIndexPublication | None]:
+        require_revision(item.source_revision, name="source revision")
+        with self._mutation_scope() as directory:
+            state = self._read_state(preserve_corrupt=True, directory=directory)
+            if item.source_revision <= state.tombstones.get(item.locator, -1):
+                return False, None
             current = state.items.get(item.locator)
             if current is not None and item.source_revision < current.source_revision:
-                return False
+                return False, None
             state.items[item.locator] = item
-            self._write_state(
+            receipt = self._write_state(
                 state.items,
                 state.tombstones,
                 generation=_writable_generation(state),
                 sequence=state.sequence + 1,
+                directory=directory,
             )
-            return True
+            return True, receipt
 
     def _delete_sync(
         self,
@@ -242,8 +385,8 @@ class JsonConversationIndex(Generic[P, Q]):
         through_revision: int,
     ) -> bool:
         revision = require_revision(through_revision, name="deletion revision")
-        with self._lock:
-            state = self._read_state()
+        with self._mutation_scope() as directory:
+            state = self._read_state(preserve_corrupt=True, directory=directory)
             previous = state.tombstones.get(locator, -1)
             if revision < previous:
                 return False
@@ -256,6 +399,7 @@ class JsonConversationIndex(Generic[P, Q]):
                 state.tombstones,
                 generation=_writable_generation(state),
                 sequence=state.sequence + 1,
+                directory=directory,
             )
             return revision > previous
 
@@ -285,28 +429,66 @@ class JsonConversationIndex(Generic[P, Q]):
         self,
         replacement: tuple[IndexedProjection[P], ...],
     ) -> tuple[IndexedProjection[P], ...]:
-        with self._lock:
-            state = self._read_state()
+        return self._replace_with_receipt_sync(replacement)[0]
+
+    def _replace_with_receipt_sync(
+        self, replacement: tuple[IndexedProjection[P], ...],
+    ) -> tuple[tuple[IndexedProjection[P], ...], JsonIndexPublication]:
+        with self._mutation_scope() as directory:
+            state = self._read_state(preserve_corrupt=True, directory=directory)
             items = {
                 item.locator: item
                 for item in replacement
                 if item.source_revision > state.tombstones.get(item.locator, -1)
             }
-            self._write_state(
+            receipt = self._write_state(
                 items,
                 state.tombstones,
                 generation=_new_generation(),
                 sequence=0,
+                directory=directory,
             )
-            return tuple(items.values())
+            assert receipt is not None
+            return tuple(items.values()), receipt
+
+    @contextmanager
+    def _mutation_scope(self, *, create_lock: bool = True) -> Iterator[int | None]:
+        """Serialize legacy writers with the retained-root cache transaction.
+
+        Contention is reported before reading or publishing the index. Do not
+        wait on a lock that an owned transaction may retain for cleanup.
+        """
+        if not self._writable:
+            raise RuntimeError("read-only conversation index cannot be modified")
+        with self._lock:
+            if os.name == "posix" and hasattr(os, "O_DIRECTORY"):
+                if create_lock:
+                    self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                directory = os.open(
+                    self.path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                )
+                try:
+                    with journal_file_lock_at(
+                        directory, self.path.name + ".lock", "exclusive",
+                        blocking=False, create=create_lock,
+                    ):
+                        yield directory
+                finally:
+                    os.close(directory)
+            else:
+                with journal_file_lock(self.path, "exclusive", blocking=False, create=create_lock):
+                    yield None
 
     def _read_state(
         self,
+        *, preserve_corrupt: bool = False,
+        directory: int | None = None,
     ) -> _JsonConversationIndexState[P]:
         try:
             content = _read_stable_regular_file(
                 self.path,
                 max_bytes=_MAX_CONVERSATION_INDEX_BYTES,
+                directory=directory,
             )
         except FileNotFoundError:
             return _JsonConversationIndexState(
@@ -324,6 +506,14 @@ class JsonConversationIndex(Generic[P, Q]):
                 sequence=0,
                 index_state="stale",
             )
+        # Read paths must not rename an index concurrently owned by a writer.
+        # Quarantine is permitted only inside the mutation scope above.
+        return self._decode_state(content, preserve_corrupt=preserve_corrupt, directory=directory)
+
+    def _decode_state(
+        self, content: bytes, *, preserve_corrupt: bool = True,
+        directory: int | None = None,
+    ) -> _JsonConversationIndexState[P]:
         try:
             payload = json.loads(content.decode("utf-8"))
             if (
@@ -343,8 +533,8 @@ class JsonConversationIndex(Generic[P, Q]):
             if type(raw_sequence) is not int or raw_sequence < 0:
                 raise ValueError("conversation index sequence is invalid")
         except Exception:
-            if self._writable:
-                self._preserve_corrupt()
+            if self._writable and preserve_corrupt:
+                self._preserve_corrupt(directory=directory)
             return _JsonConversationIndexState(
                 items={},
                 tombstones={},
@@ -407,7 +597,9 @@ class JsonConversationIndex(Generic[P, Q]):
         *,
         generation: str,
         sequence: int,
-    ) -> None:
+        target: RootedFile | None = None,
+        directory: int | None = None,
+    ) -> JsonIndexPublication | None:
         if not self._writable:
             raise RuntimeError("read-only conversation index cannot be modified")
         payload = {
@@ -431,25 +623,64 @@ class JsonConversationIndex(Generic[P, Q]):
                 for locator, revision in sorted(tombstones.items())
             ],
         }
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = self.path.with_suffix(self.path.suffix + ".tmp")
-        try:
-            temp_path.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
+        if target is not None:
+            encoded = (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+            if len(encoded) > _MAX_CONVERSATION_INDEX_BYTES:
+                raise ValueError("conversation index exceeds the bounded cache size")
+            target.atomic_write(encoded)
+            return None
+        if directory is not None:
+            name = f".{self.path.name}.{secrets.token_hex(16)}.tmp"
+            descriptor = os.open(
+                name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o600, dir_fd=directory,
             )
+            try:
+                with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                    stream.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+                    stream.flush()
+                    opened, parent = os.fstat(stream.fileno()), os.fstat(directory)
+                    receipt = JsonIndexPublication(
+                        self.path, generation, sequence, (opened.st_dev, opened.st_ino),
+                        (parent.st_dev, parent.st_ino),
+                    )
+                os.replace(name, self.path.name, src_dir_fd=directory, dst_dir_fd=directory)
+                return receipt
+            except BaseException:
+                with suppress(FileNotFoundError):
+                    os.unlink(name, dir_fd=directory)
+                raise
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path: Path | None = None
+        try:
+            # A private exclusive temporary file avoids following a pre-existing
+            # predictable .tmp link and keeps the published cache owner-only.
+            with NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.path.parent,
+                prefix=f".{self.path.name}.", suffix=".tmp", delete=False,
+            ) as stream:
+                temp_path = Path(stream.name)
+                stream.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+                stream.flush()
+                opened = os.fstat(stream.fileno())
+                receipt = JsonIndexPublication(
+                    self.path, generation, sequence, (opened.st_dev, opened.st_ino),
+                )
             temp_path.replace(self.path)
+            return receipt
         except BaseException:
-            with suppress(FileNotFoundError):
-                temp_path.unlink()
+            if temp_path is not None:
+                with suppress(FileNotFoundError):
+                    temp_path.unlink()
             raise
 
-    def _preserve_corrupt(self) -> Path | None:
-        if not self.path.exists():
-            return None
+    def _preserve_corrupt(self, *, directory: int | None = None) -> Path | None:
         target = self.path.with_name(f"{self.path.name}.corrupt-{time_ns()}")
         try:
-            self.path.replace(target)
+            if directory is None:
+                self.path.replace(target)
+            else:
+                os.replace(self.path.name, target.name, src_dir_fd=directory, dst_dir_fd=directory)
         except Exception:
             return None
         return target
@@ -464,8 +695,15 @@ class _JsonConversationIndexState(Generic[P]):
     index_state: ConversationIndexState
 
 
-def _read_stable_regular_file(path: Path, *, max_bytes: int) -> bytes:
-    before = path.lstat()
+def _read_stable_regular_file(path: Path, *, max_bytes: int, directory: int | None = None) -> bytes:
+    return _read_stable_regular_snapshot(path, max_bytes=max_bytes, directory=directory)[0]
+
+
+def _read_stable_regular_snapshot(
+    path: Path, *, max_bytes: int, directory: int | None = None,
+) -> tuple[bytes, os.stat_result]:
+    before = (path.lstat() if directory is None else
+              os.stat(path.name, dir_fd=directory, follow_symlinks=False))
     if not _regular_file_status_no_follow(before):
         raise OSError("conversation index must be a direct regular file")
     if before.st_size > max_bytes:
@@ -473,7 +711,13 @@ def _read_stable_regular_file(path: Path, *, max_bytes: int) -> bytes:
     descriptor = -1
     parent_descriptor = -1
     try:
-        descriptor, parent_descriptor = _open_file_no_follow(path)
+        if directory is None:
+            descriptor, parent_descriptor = _open_file_no_follow(path)
+        else:
+            descriptor = os.open(
+                path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                dir_fd=directory,
+            )
         opened = os.fstat(descriptor)
         if not _same_file_status(before, opened):
             raise OSError("conversation index identity changed")
@@ -486,12 +730,13 @@ def _read_stable_regular_file(path: Path, *, max_bytes: int) -> bytes:
             chunks.append(chunk)
             remaining -= len(chunk)
         after = os.fstat(descriptor)
-        current = path.lstat()
+        current = (path.lstat() if directory is None else
+                   os.stat(path.name, dir_fd=directory, follow_symlinks=False))
         if not _same_file_status(before, after) or not _same_file_status(
             before, current
         ):
             raise OSError("conversation index changed while reading")
-        return b"".join(chunks)
+        return b"".join(chunks), opened
     finally:
         if descriptor >= 0:
             os.close(descriptor)

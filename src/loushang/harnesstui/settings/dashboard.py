@@ -151,6 +151,11 @@ class SettingsDashboard:
         return "page"
 
 
+def _session_id_lines(snapshot: StatusSnapshotView) -> tuple[str, ...]:
+    session_id = getattr(snapshot, "session_id", None)
+    return (f"Session ID         {session_id}",) if session_id else ()
+
+
 def status_lines(snapshot: StatusSnapshotView) -> tuple[str, ...]:
     return (
         "Status",
@@ -159,6 +164,7 @@ def status_lines(snapshot: StatusSnapshotView) -> tuple[str, ...]:
         f"Workspace          {snapshot.cwd}",
         f"Branch             {snapshot.branch or 'Unavailable'}",
         f"Session            {snapshot.session_label or 'Unavailable'}",
+        *_session_id_lines(snapshot),
         f"Thinking           {snapshot.thinking_level or 'Unavailable'}",
         f"Runtime            {'running' if snapshot.running else 'idle'}",
         f"Status line        {bool_text(snapshot.statusline_visible)}",
@@ -296,6 +302,7 @@ def stats_overview_lines(snapshot: StatusSnapshotView) -> tuple[str, ...]:
         "Session Overview",
         "",
         f"Session            {snapshot.session_label or 'Unavailable'}",
+        *_session_id_lines(snapshot),
         f"Runtime            {'running' if snapshot.running else 'idle'}",
         "Historical stats   Unavailable",
     )

@@ -38,9 +38,10 @@ def render_read_call(
     args: object, theme: Mapping[str, str], context: ToolRenderContext
 ) -> ToolRenderOutput:
     del theme, context
-    path = _path_arg(args)
-    offset = _number_arg(_mapping(args), "offset")
-    limit = _number_arg(_mapping(args), "limit")
+    mapping = _mapping(args)
+    path = _read_path_arg(mapping)
+    offset = _number_arg(mapping, "offset")
+    limit = _number_arg(mapping, "limit")
     suffix = _line_range_suffix(offset=offset, limit=limit)
     return f"read {path}{suffix}"
 
@@ -233,6 +234,14 @@ def _mapping(value: object) -> Mapping[str, Any]:
 def _path_arg(args: object) -> str:
     mapping = _mapping(args)
     return _string_arg(mapping, "path", "file_path", fallback="[invalid arg]")
+
+
+def _read_path_arg(mapping: Mapping[str, Any]) -> str:
+    for key in ("path", "file_path"):
+        if key in mapping:
+            value = mapping[key]
+            return value if isinstance(value, str) else "[invalid path]"
+    return "[missing path]"
 
 
 def _string_arg(mapping: Mapping[str, Any], *keys: str, fallback: str) -> str:

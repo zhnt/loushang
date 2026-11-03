@@ -249,7 +249,9 @@ class RuntimeCapabilityGraphPlanner:
                     )
                 )
                 return
-            if definition.owner_id not in {"harness", request.product_id}:
+            if definition.owner_id not in {"harness", request.product_id} and not (
+                definition.owner_id.startswith(f"{request.product_id}.")
+            ):
                 diagnostics.append(
                     CapabilityGraphDiagnostic(
                         code=(

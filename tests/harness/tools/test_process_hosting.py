@@ -131,6 +131,42 @@ def _request(
     )
 
 
+def test_live_process_selection_is_frozen_before_policy_and_bounded(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        ceiling = EffectiveExecutionProfile(readable_roots=(tmp_path,), network="denied")
+        selected = EffectiveExecutionProfile(readable_roots=(workspace,))
+        gate = asyncio.Event()
+        policy = _Policy(PolicyDecision.allow(), gate=gate)
+        host = _Host()
+        containment = _Containment()
+        launcher = ScopeBoundProcessLauncher(
+            scope=ProcessExecutionScope(
+                policy_evaluator=policy, execution_profile_ceiling=ceiling,
+                execution_profile_provider=lambda: selected,
+            ), host=host, containment=containment,  # type: ignore[arg-type]
+        )
+        pending = asyncio.create_task(launcher.start(_request(tmp_path), correlation_id="frozen"))
+        await policy.entered.wait()
+        # Enabling Full cannot retroactively widen an action already admitted.
+        selected = EffectiveExecutionProfile(
+            readable_roots=(tmp_path.parent,), writable_roots=(tmp_path.parent,),
+        )
+        gate.set()
+        with pytest.raises(ExecutionAuthorizationError):
+            await pending
+        assert host.requests == []
+        await launcher.start(_request(tmp_path), correlation_id="full")
+        assert containment.profiles[-1] == ceiling
+        selected = EffectiveExecutionProfile(readable_roots=(workspace,))
+        with pytest.raises(ExecutionAuthorizationError):
+            await launcher.start(_request(tmp_path), correlation_id="standard")
+        assert len(host.requests) == 1
+
+    asyncio.run(scenario())
+
+
 def test_scope_bound_launcher_silently_allows_and_audits_each_start(
     tmp_path: Path,
 ) -> None:

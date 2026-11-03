@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.journal import journal_file_lock
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageDependencyPinReceiptV1,
     PackageDesiredStateCommitFailureV1,
@@ -52,3 +53,21 @@ def test_handoff_journal_rejects_duplicate_json_keys_with_stable_error(
 
     assert caught.value.code == "package_retention_handoff_journal_corrupt"
     assert caught.value.path == journal.path
+
+
+def test_handoff_operation_read_does_not_create_or_repair_owner_state(
+    tmp_path: Path,
+) -> None:
+    journal = PackageRetentionHandoffJournal(tmp_path / "handoff.jsonl")
+    lock = journal.path.with_name(f"{journal.path.name}.lock")
+    assert journal.read_operation("test:missing") is None
+    assert not journal.path.exists()
+    assert not lock.exists()
+
+    with journal_file_lock(journal.path, "exclusive"):
+        journal.path.write_bytes(b'{"partial":')
+    original = journal.path.read_bytes()
+    with pytest.raises(PackageRetentionHandoffError) as caught:
+        journal.read_operation("test:missing")
+    assert caught.value.code == "package_retention_handoff_journal_corrupt"
+    assert journal.path.read_bytes() == original

@@ -34,7 +34,7 @@ async def configure_agent_cli_session(
     if session_name is not None:
         setter = getattr(session, "set_session_name", None)
         if callable(setter):
-            setter(session_name)
+            await _resolve(setter(session_name))
     try:
         resolved_model = (
             resolve_model_selection()

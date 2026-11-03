@@ -58,7 +58,16 @@ def test_coding_exports_only_its_tool_pack_choices() -> None:
         "edit",
     )
     assert CODING_BUILTIN_TOOL_PACK.name == "coding.builtin"
-    assert "coding workspace" in create_coding_tool_definition("read").description
+    assert '{"path":"file"}' in create_coding_tool_definition("read").description
+    assert "offset starts at 1" in create_coding_tool_definition("read").description
+    assert (
+        '{"path":"file","content":"text"}'
+        in create_coding_tool_definition("write").description
+    )
+    assert (
+        '{"path":"file","edits":[{"oldText":"before","newText":"after"}]}'
+        in create_coding_tool_definition("edit").description
+    )
     assert "ToolDefinition" not in coding.__all__
     assert "create_tool_definition" not in coding.__all__
 

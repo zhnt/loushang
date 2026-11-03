@@ -29,6 +29,7 @@ from loushang.harness.conversation import (
     ConversationIndexSnapshot,
     ConversationJsonlHeaderCodec,
     ConversationJsonlRecordCodec,
+    ConversationKey,
     ConversationLocator,
     ConversationProviderBinding,
     ConversationRepository,
@@ -40,6 +41,7 @@ from loushang.harness.conversation import (
     ProjectionQuery,
     load_conversation_deletion_receipt,
 )
+from loushang.harness.private_directory import create_private_directory_chain
 from loushang.harness.transcript.discovery import (
     SessionDiscoveryMetadata,
     SessionSourceMode,
@@ -83,6 +85,10 @@ _PROFILE = AgentTranscriptProfile.default()
 _HEADER_CODEC = ConversationJsonlHeaderCodec()
 _RECORD_CODEC = ConversationJsonlRecordCodec(_PROFILE.payload_codecs)
 log = get_log(__name__).bind(component="AgentTranscriptSessionCatalog")
+
+
+class _SessionIdentityCollisionError(RuntimeError):
+    """A complete authority check established duplicate logical identities."""
 
 
 @dataclass(frozen=True)
@@ -137,6 +143,17 @@ class BoundedSessionCatalogSnapshot:
     enriched_count: int
     bytes_read: int
     complete: bool = True
+
+
+@dataclass(frozen=True)
+class BoundedAgentTranscriptPreview:
+    """Decoded head and tail records; never a verified selected ancestry."""
+
+    header: ConversationHeader
+    records: tuple[AgentTranscriptRecord, ...]
+    tail_records: tuple[AgentTranscriptRecord, ...]
+    source_fingerprint: str
+    bytes_read: int
 
 
 @dataclass(frozen=True)
@@ -493,7 +510,7 @@ class AgentTranscriptSessionCatalog:
         self._provider = ConversationProviderBinding(
             provider_id=(f"agent-conversation-jsonl:{resolved_session_dir.as_posix()}"),
             namespace=layout.namespace,
-            store=create_agent_transcript_file_store(layout),
+            store=create_agent_transcript_file_store(layout, read_only=True),
         )
         self._external_index: ConversationIndex[SessionSummary, SessionQuery] | None = (
             None
@@ -578,7 +595,7 @@ class AgentTranscriptSessionCatalog:
             if not budget.reserve(candidates=1, bytes_=header_charge):
                 break
             try:
-                header = load_agent_transcript_header(candidate.path)
+                header = load_agent_transcript_header(candidate.path, read_only=True)
                 if session_id_prefix is not None and not (
                     header.conversation_id.startswith(session_id_prefix)
                     or candidate.path.name == session_id_prefix
@@ -593,6 +610,7 @@ class AgentTranscriptSessionCatalog:
                     loaded_header, records = load_agent_transcript_file(
                         candidate.path,
                         max_bytes=_MAX_PATH_SUMMARY_FILE_BYTES,
+                        read_only=True,
                     )
                     if (
                         loaded_header.conversation_id != header.conversation_id
@@ -665,7 +683,7 @@ class AgentTranscriptSessionCatalog:
             ):
                 break
             try:
-                header = load_agent_transcript_header(candidate.path)
+                header = load_agent_transcript_header(candidate.path, read_only=True)
                 key = self._layout.key(header.conversation_id)
                 locator = ConversationLocator(self._provider.provider_id, key)
                 summary = _header_only_session_summary(
@@ -706,14 +724,22 @@ class AgentTranscriptSessionCatalog:
     def refresh_index(self) -> list[SessionSummary]:
         before = self._validated_unique_authority_snapshot()
         if self.session_dir is not None:
-            self.session_dir.mkdir(parents=True, exist_ok=True)
-        result = _run_catalog(self._catalog(indexed=True).refresh())
+            create_private_directory_chain(self.session_dir)
+        # Keep projection semantics, but retain this publication's receipt for
+        # post-scan validation instead of deleting an arbitrary pathname cache.
+        result = _run_catalog(self._catalog(indexed=True).scan())
+        index = self._projection_index()
+        receipt = None
+        if isinstance(index, JsonConversationIndex):
+            _, receipt = _run_catalog(index.replace_with_receipt(result.items))
+        else:
+            _run_catalog(index.replace(result.items))
         after, after_complete = self._bounded_candidates_with_completeness()
         if not after_complete or _bounded_candidate_identities(
             before
         ) != _bounded_candidate_identities(after):
-            if self.session_dir is not None:
-                self.index_path.unlink(missing_ok=True)
+            if receipt is not None and isinstance(index, JsonConversationIndex):
+                _run_catalog(index.invalidate_if_current(receipt))
             raise RuntimeError("session authority changed during index refresh")
         return _sort_summaries(item.projection for item in result.items)
 
@@ -735,33 +761,26 @@ class AgentTranscriptSessionCatalog:
         snapshot = _run_catalog(query_snapshot(SessionQuery()))
         if snapshot.index_state != "fresh":
             return self.refresh_index()
-        try:
-            index_modified = self.index_path.stat().st_mtime_ns
-            changed_paths = self._layout.transcript_paths_modified_after(index_modified)
-            replacement, changed = _run_catalog(
-                self._repair_local_index(
-                    snapshot.items,
-                    changed_paths,
-                )
-            )
-            before_publish, before_publish_complete = (
-                self._bounded_candidates_with_completeness()
-            )
-            if not before_publish_complete or _bounded_candidate_identities(
-                before
-            ) != _bounded_candidate_identities(before_publish):
-                raise RuntimeError("session authority changed during index repair")
-            repaired = (
-                _run_catalog(index.replace(replacement)) if changed else replacement
-            )
-            after, after_complete = self._bounded_candidates_with_completeness()
-            if not after_complete or _bounded_candidate_identities(
-                before
-            ) != _bounded_candidate_identities(after):
-                self.index_path.unlink(missing_ok=True)
-                raise RuntimeError("session authority changed during index repair")
-        except Exception:
-            return self.refresh_index()
+        index_modified = self.index_path.stat().st_mtime_ns
+        changed_paths = self._layout.transcript_paths_modified_after(index_modified)
+        replacement, changed = _run_catalog(
+            self._repair_local_index(snapshot.items, changed_paths)
+        )
+        before_publish = self._validated_unique_authority_snapshot()
+        if _bounded_candidate_identities(before) != _bounded_candidate_identities(before_publish):
+            raise RuntimeError("session authority changed during index repair")
+        receipt = None
+        repaired = replacement
+        if changed:
+            if isinstance(index, JsonConversationIndex):
+                repaired, receipt = _run_catalog(index.replace_with_receipt(replacement))
+            else:
+                repaired = _run_catalog(index.replace(replacement))
+        after, after_complete = self._bounded_candidates_with_completeness()
+        if not after_complete or _bounded_candidate_identities(before) != _bounded_candidate_identities(after):
+            if receipt is not None and isinstance(index, JsonConversationIndex):
+                _run_catalog(index.invalidate_if_current(receipt))
+            raise RuntimeError("session authority changed during index repair")
         return _sort_summaries(item.projection for item in repaired)
 
     def load_index(self) -> list[SessionSummary]:
@@ -861,6 +880,7 @@ class AgentTranscriptSessionCatalog:
         enrich_limit: int = _BOUNDED_ENRICH_LIMIT,
         segment_bytes: int = _BOUNDED_SEGMENT_BYTES,
         read_budget: SessionDiscoveryReadBudget | None = None,
+        cached_items: Sequence[IndexedProjection[SessionSummary]] = (),
     ) -> BoundedSessionCatalogSnapshot:
         """Build a bounded resume view without replaying transcript authority.
 
@@ -906,6 +926,7 @@ class AgentTranscriptSessionCatalog:
         projected, bytes_read = self._project_bounded_candidates(
             selected_candidates,
             segment_bytes=segment_bytes,
+            cached_items=cached_items,
         )
 
         selected = _query_indexed_summaries(query or SessionQuery(), projected)
@@ -935,13 +956,14 @@ class AgentTranscriptSessionCatalog:
             raise ValueError("provider-backed catalogs cannot build a bounded index")
         if type(segment_bytes) is not int or segment_bytes < 1:
             raise ValueError("bounded catalog segment size must be positive")
-        self.session_dir.mkdir(parents=True, exist_ok=True)
+        create_private_directory_chain(self.session_dir)
         before, before_complete = self._bounded_candidates_with_completeness()
         if not before_complete:
             raise RuntimeError("session authority scan was truncated")
         projected, _bytes_read = self._project_bounded_candidates(
             before,
             segment_bytes=segment_bytes,
+            cached_items=self.try_query_index_snapshot().items,
         )
         if len({item.projection.session_id for item in projected}) != len(projected):
             raise RuntimeError("session authority contains duplicate identities")
@@ -952,14 +974,20 @@ class AgentTranscriptSessionCatalog:
             after
         ):
             raise RuntimeError("session authority changed during bounded index refresh")
-        published = _run_catalog(self._projection_index().replace(projected))
+        index = self._projection_index()
+        receipt = None
+        if isinstance(index, JsonConversationIndex):
+            published, receipt = _run_catalog(index.replace_with_receipt(projected))
+        else:
+            published = _run_catalog(index.replace(projected))
         after_publish, after_publish_complete = (
             self._bounded_candidates_with_completeness()
         )
         if not after_publish_complete or _bounded_candidate_identities(
             before
         ) != _bounded_candidate_identities(after_publish):
-            self.index_path.unlink(missing_ok=True)
+            if receipt is not None and isinstance(index, JsonConversationIndex):
+                _run_catalog(index.invalidate_if_current(receipt))
             raise RuntimeError(
                 "session authority changed during bounded index refresh"
             )
@@ -970,12 +998,31 @@ class AgentTranscriptSessionCatalog:
         candidates: Sequence[_BoundedSessionCandidate],
         *,
         segment_bytes: int,
+        cached_items: Sequence[IndexedProjection[SessionSummary]] = (),
     ) -> tuple[list[IndexedProjection[SessionSummary]], int]:
         if self._layout is None:
             raise ValueError("provider-backed catalogs have no local file layout")
         projected: list[IndexedProjection[SessionSummary]] = []
         bytes_read = 0
+        cached_by_path = {
+            item.projection.session_file: item
+            for item in cached_items
+            if self._local_index_item_is_valid(item)
+        }
         for candidate in candidates:
+            cached = cached_by_path.get(candidate.path)
+            if (
+                cached is not None
+                and cached.projection.authority_fingerprint == candidate.fingerprint
+                and (current := _bounded_candidate(candidate.path)) is not None
+                and current.fingerprint == candidate.fingerprint
+            ):
+                # Directory-wide staleness must not replace an unchanged exact
+                # projection with a partial head/tail replay. A name patch may
+                # be in the omitted middle of a long conversation.
+                self._layout.bind_path(cached.locator.key, candidate.path)
+                projected.append(cached)
+                continue
             result = _project_bounded_session_summary(
                 candidate,
                 segment_bytes=segment_bytes,
@@ -1027,8 +1074,39 @@ class AgentTranscriptSessionCatalog:
         if collision_budget.truncated:
             raise RuntimeError("session authority scan was truncated")
         if collisions:
-            raise RuntimeError("session authority contains duplicate identities")
+            raise _SessionIdentityCollisionError("session authority contains duplicate identities")
         return candidates
+
+    def publish_owned_summary(
+        self, *, publication: Callable[
+            [Path, JsonConversationIndex[SessionSummary, SessionQuery], Callable[[str], IndexedProjection[SessionSummary]]], bool
+        ], key: ConversationKey,
+        source_path: Path, header: ConversationHeader,
+        records: tuple[AgentTranscriptRecord, ...], leaf_id: str | None,
+    ) -> bool:
+        """Publish a frozen writer snapshot through its existing storage port.
+
+        The caller retains writer admission until native settlement. No scan,
+        repair, pathname invalidation or creation of an absent cache occurs.
+        """
+        if self.session_dir is None or key.namespace != str(self.session_dir):
+            raise ValueError("owned summary belongs to another transcript root")
+        if header.conversation_id != key.conversation_id:
+            raise ValueError("owned summary identity differs from its writer")
+        if source_path.parent != self.session_dir:
+            raise ValueError("owned summary must select a direct transcript child")
+        def project(before: str) -> IndexedProjection[SessionSummary]:
+            locator = ConversationLocator(self._provider.provider_id, key)
+            summary = project_agent_transcript_session_summary(
+                header, records, leaf_id, source_path, locator=locator,
+                include_all_messages_text=False,
+            )
+            return IndexedProjection(locator, len(records), replace(summary, authority_fingerprint=before))
+
+        index = self._projection_index()
+        if not isinstance(index, JsonConversationIndex):
+            raise ValueError("owned summary requires the local JSON cache")
+        return publication(self.index_path, index, project)
 
     async def upsert_summary(
         self,
@@ -1044,8 +1122,15 @@ class AgentTranscriptSessionCatalog:
             raise ValueError("local session summary has no transcript path")
         if source_revision != summary.entry_count:
             raise ValueError("session summary revision must equal its entry count")
+        index = self._projection_index()
+        observed = await index.observe_publication() if isinstance(index, JsonConversationIndex) else None
         try:
             before = self._validated_unique_authority_snapshot()
+        except _SessionIdentityCollisionError:
+            if observed is not None and isinstance(index, JsonConversationIndex):
+                await index.invalidate_if_current(observed)
+            raise
+        try:
             key = self._layout.bind_existing_path(summary.session_file)
             if key.conversation_id != summary.session_id:
                 raise ValueError(
@@ -1053,21 +1138,27 @@ class AgentTranscriptSessionCatalog:
                 )
             locator = ConversationLocator(self._provider.provider_id, key)
             indexed_summary = _summary_with_authority_fingerprint(summary)
-            changed = await self._projection_index().upsert(
-                IndexedProjection(
-                    locator=locator,
-                    source_revision=source_revision,
-                    projection=replace(indexed_summary, locator=locator),
-                )
+            item = IndexedProjection(
+                locator=locator,
+                source_revision=source_revision,
+                projection=replace(indexed_summary, locator=locator),
             )
+            receipt = None
+            if isinstance(index, JsonConversationIndex):
+                changed, receipt = await index.upsert_with_receipt(item)
+            else:
+                changed = await index.upsert(item)
             after, after_complete = self._bounded_candidates_with_completeness()
             if not after_complete or _bounded_candidate_identities(
                 before
             ) != _bounded_candidate_identities(after):
+                if receipt is not None and isinstance(index, JsonConversationIndex):
+                    await index.invalidate_if_current(receipt)
                 raise RuntimeError("session authority changed during index upsert")
             return changed
         except Exception:
-            self.index_path.unlink(missing_ok=True)
+            # Failure (including lock contention) grants no authority to delete
+            # another writer's cache. Readers revalidate source fingerprints.
             raise
 
     def load_authoritative_revision(self, locator: ConversationLocator) -> int:
@@ -1291,7 +1382,7 @@ def refresh_all_agent_transcript_session_indexes(
     sessions_root: str | Path,
 ) -> list[SessionSummary]:
     root = Path(sessions_root)
-    root.mkdir(parents=True, exist_ok=True)
+    create_private_directory_chain(root.absolute())
     summaries = AgentTranscriptSessionCatalog(root).refresh_index()
     for child in sorted(root.iterdir(), key=lambda path: path.name):
         if child.is_dir():
@@ -1498,58 +1589,10 @@ def _project_bounded_session_summary(
     *,
     segment_bytes: int,
 ) -> tuple[SessionSummary, int] | None:
-    try:
-        head, tail = _read_bounded_segments(candidate, segment_bytes=segment_bytes)
-        current = _bounded_candidate(candidate.path)
-    except OSError:
+    bounded = _decode_bounded_candidate(candidate, segment_bytes=segment_bytes)
+    if bounded is None:
         return None
-    if current is None or current.fingerprint != candidate.fingerprint:
-        return None
-
-    lines = {
-        offset: line
-        for offset, line in (
-            *_complete_segment_lines(
-                head,
-                start=0,
-                total_size=candidate.size,
-                drop_first=False,
-            ),
-            *_complete_segment_lines(
-                tail,
-                start=max(0, candidate.size - len(tail)),
-                total_size=candidate.size,
-                drop_first=candidate.size > len(tail),
-            ),
-        )
-    }
-    header: ConversationHeader | None = None
-    records: list[AgentTranscriptRecord] = []
-    for _offset, line in sorted(lines.items()):
-        try:
-            value = json.loads(
-                line.decode("utf-8"), parse_constant=_reject_json_constant
-            )
-        except (UnicodeError, json.JSONDecodeError, ValueError):
-            continue
-        if not isinstance(value, dict):
-            continue
-        if value.get("type") == "conversation" and header is None:
-            try:
-                header = _HEADER_CODEC.decode_header(value)
-            except Exception:
-                return None
-            continue
-        if value.get("type") != "record":
-            continue
-        try:
-            records.append(
-                cast(AgentTranscriptRecord, _RECORD_CODEC.decode_record(value))
-            )
-        except Exception:
-            continue
-    if header is None:
-        return None
+    header, records = bounded.header, bounded.records
 
     name = _normalize_nonblank(header.metadata.get("name"))
     messages: list[AgentMessage] = []
@@ -1623,7 +1666,91 @@ def _project_bounded_session_summary(
             bounded=True,
             counts_exact=candidate.size <= segment_bytes * 2,
         ),
-        len(head) + len(tail),
+        bounded.bytes_read,
+    )
+
+
+def read_agent_transcript_bounded_preview(
+    path: str | Path, *, segment_bytes: int = _BOUNDED_SEGMENT_BYTES,
+) -> BoundedAgentTranscriptPreview:
+    """Read stable bounded head/tail records without locks, indexes, or repair."""
+
+    if type(segment_bytes) is not int or not 1 <= segment_bytes <= 1024 * 1024:
+        raise ValueError("bounded transcript segment budget is invalid")
+    candidate = _bounded_candidate(Path(path))
+    if candidate is None:
+        raise OSError("bounded transcript source must be a regular file")
+    preview = _decode_bounded_candidate(candidate, segment_bytes=segment_bytes)
+    if preview is None:
+        raise ValueError("bounded transcript preview is unavailable")
+    return preview
+
+
+def _decode_bounded_candidate(
+    candidate: _BoundedSessionCandidate, *, segment_bytes: int,
+) -> BoundedAgentTranscriptPreview | None:
+    try:
+        head, tail = _read_bounded_segments(candidate, segment_bytes=segment_bytes)
+        current = _bounded_candidate(candidate.path)
+    except OSError:
+        return None
+    if current is None or current.fingerprint != candidate.fingerprint:
+        return None
+
+    lines = {
+        offset: line
+        for offset, line in (
+            *_complete_segment_lines(
+                head,
+                start=0,
+                total_size=candidate.size,
+                drop_first=False,
+            ),
+            *_complete_segment_lines(
+                tail,
+                start=max(0, candidate.size - len(tail)),
+                total_size=candidate.size,
+                drop_first=candidate.size > len(tail),
+            ),
+        )
+    }
+    header: ConversationHeader | None = None
+    records: list[AgentTranscriptRecord] = []
+    tail_records: list[AgentTranscriptRecord] = []
+    # A file that fits entirely in the head also contains its complete tail.
+    tail_start = candidate.size - len(tail) if tail else (
+        0 if candidate.size <= segment_bytes else candidate.size
+    )
+    for offset, line in sorted(lines.items()):
+        try:
+            value = json.loads(
+                line.decode("utf-8"), parse_constant=_reject_json_constant
+            )
+        except (UnicodeError, json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(value, dict):
+            continue
+        if value.get("type") == "conversation" and header is None:
+            try:
+                header = _HEADER_CODEC.decode_header(value)
+            except Exception:
+                return None
+            continue
+        if value.get("type") != "record":
+            continue
+        try:
+            record = cast(AgentTranscriptRecord, _RECORD_CODEC.decode_record(value))
+        except Exception:
+            continue
+        records.append(record)
+        if offset >= tail_start:
+            tail_records.append(record)
+    if header is None:
+        return None
+    return BoundedAgentTranscriptPreview(
+        header=header, records=tuple(records), tail_records=tuple(tail_records),
+        source_fingerprint=candidate.fingerprint,
+        bytes_read=len(head) + len(tail),
     )
 
 
@@ -2101,6 +2228,7 @@ def _run_catalog(awaitable):
 
 __all__ = [
     "AgentTranscriptSessionCatalog",
+    "BoundedAgentTranscriptPreview",
     "BoundedSessionCatalogSnapshot",
     "SessionMetadata",
     "SessionQuery",
@@ -2120,6 +2248,7 @@ __all__ = [
     "list_all_indexed_agent_transcript_session_summaries",
     "load_agent_transcript_session_metadata",
     "project_agent_transcript_session_summary",
+    "read_agent_transcript_bounded_preview",
     "refresh_all_agent_transcript_session_indexes",
     "same_agent_transcript_session_path",
     "session_summary_authority_is_current",

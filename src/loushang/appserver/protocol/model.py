@@ -73,6 +73,13 @@ class SessionEventKindV1(str, Enum):
     INTERACTION_DISMISSED = "interaction_dismissed"
 
 
+class SessionSubmissionModeV1(str, Enum):
+    """Client delivery contract for the next user submission."""
+
+    LEGACY = "legacy"
+    EXECUTION = "execution"
+
+
 class InteractionOutcomeV1(str, Enum):
     APPROVE = "approve"
     DENY = "deny"
@@ -288,6 +295,7 @@ class SessionSnapshotV1:
     revision: int
     running: bool
     records: tuple[TranscriptRecordV1, ...] = ()
+    submission_mode: SessionSubmissionModeV1 = SessionSubmissionModeV1.LEGACY
 
     def __post_init__(self) -> None:
         if type(self.identity) is not SessionIdentityV1:
@@ -301,6 +309,8 @@ class SessionSnapshotV1:
             raise ValueError("invalid session revision")
         if type(self.running) is not bool:
             raise TypeError("invalid session running state")
+        if type(self.submission_mode) is not SessionSubmissionModeV1:
+            raise TypeError("invalid session submission mode")
         if (
             not isinstance(self.records, tuple)
             or len(self.records) > MAX_SNAPSHOT_RECORDS
@@ -814,6 +824,7 @@ __all__ = [
     "SessionModelChoiceV1",
     "SessionModelSelectV1",
     "SessionModelsV1",
+    "SessionSubmissionModeV1",
     "TranscriptRecordKindV1",
     "TranscriptRecordV1",
     "TurnInterruptV1",

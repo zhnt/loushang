@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from loushang.appserver.client import AppClientV1
+from loushang.appserver.execution.client import ExecutionClientV1
 from loushang.appserver.protocol import MuxSelectorV1
 
 from .controller import HostedMuxControllerV1
@@ -13,6 +14,7 @@ async def open_hosted_mux_profile(
     *,
     selector: MuxSelectorV1,
     mailbox_capacity: int = 256,
+    execution_client: ExecutionClientV1 | None = None,
 ) -> HostedMuxControllerV1:
     """Explicitly construct and attach the hosted profile; never auto-discovered."""
 
@@ -20,6 +22,7 @@ async def open_hosted_mux_profile(
         client,
         selector=selector,
         mailbox_capacity=mailbox_capacity,
+        execution_client=execution_client,
     )
     await controller.start()
     return controller

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -36,6 +39,9 @@ from loushang.harness.resource_catalog.product_inputs import (
     ProductAdmittedPackageResourceSpec,
     ProductEmbeddedResourceCollectionSpec,
     ProductNativeResourceRootSpec,
+)
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.plugins.authority import PluginResolutionAuthority
@@ -290,6 +296,46 @@ def test_product_selection_rejects_duplicate_package_admissions(
             )
     finally:
         handle.close()
+
+
+def test_product_snapshot_resource_refuses_unverified_caller_bytes(
+    tmp_path: Path,
+) -> None:
+    admission, handle = _package_skill_admission(tmp_path)
+    try:
+        with pytest.raises(TypeError, match="selected Store manifest"):
+            ProductSelectedResourceInput(
+                admission=admission,
+                selected_manifest=object(),  # type: ignore[arg-type]
+                relative_path="skills/review/SKILL.md",
+            )
+        with pytest.raises(TypeError):
+            ProductSelectedResourceInput(  # type: ignore[call-arg]
+                admission=admission,
+                relative_path="skills/review/SKILL.md",
+                body=b"caller-controlled",
+            )
+    finally:
+        handle.close()
+
+
+def test_importing_product_snapshot_source_does_not_load_wheel_runtime() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import loushang.harness.resource_catalog.product_snapshot_source; "
+            "assert 'loushang.harness.package_product.product_local_wheel_runtime' "
+            "not in sys.modules",
+        ],
+        env={**os.environ, "PYTHONPATH": str(repo_root / "src")},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_catalog_bootstrap_disabled_skill_retains_only_precedence_winner(
@@ -556,6 +602,40 @@ def test_product_adapter_consumes_compiled_resource_admissions_from_plugin_selec
             )
         assert extra.value.code == "product_contribution_owner_extra"
         assert extra.value.owner_keys == (extra_binding.owner_key,)
+
+        projected_candidates = tuple(
+            replace(
+                prepare_owner_contribution_candidate(selection, item),
+                dependency_lock_digest="a" * 64,
+            )
+            for item in contribution_candidates
+        )
+        projected = assemble_product_composition(
+            replace(assembly_request, owner_candidates=projected_candidates),
+            evaluated_at=150,
+        )
+        assert all(
+            item.candidate.dependency_lock_digest == "a" * 64
+            for item in (
+                *projected.resource_admissions,
+                *projected.catalog_admissions,
+            )
+        )
+        with pytest.raises(ProductCompositionAssemblyError) as changed_owner:
+            assemble_product_composition(
+                replace(
+                    assembly_request,
+                    owner_candidates=(
+                        replace(projected_candidates[0], owner_id="resources.rogue"),
+                        *projected_candidates[1:],
+                    ),
+                ),
+                evaluated_at=150,
+            )
+        assert (
+            changed_owner.value.code
+            == "product_contribution_candidate_projection_mismatch"
+        )
 
         composition = assemble_product_composition(
             assembly_request,

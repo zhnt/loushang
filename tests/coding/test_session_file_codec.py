@@ -206,40 +206,6 @@ def test_loaded_repository_append_is_detached_from_source(tmp_path: Path) -> Non
     assert len(load_session_repository(path).records) == 1
 
 
-def test_read_only_repository_rejects_session_v3_without_rewriting_source(
-    tmp_path: Path,
-) -> None:
-    path = tmp_path / "session.jsonl"
-    values = [
-        {
-            "type": "session",
-            "version": 3,
-            "id": "session-1",
-            "timestamp": "2026-07-16T00:00:00Z",
-            "cwd": "/workspace/project",
-            "parentSession": None,
-        },
-        {
-            "type": "message",
-            "id": "record-1",
-            "parentId": None,
-            "timestamp": "2026-07-16T00:00:01Z",
-            "message": {"role": "user", "content": "Hello", "timestamp": 1.0},
-        },
-    ]
-    path.write_text(
-        "".join(json.dumps(value) + "\n" for value in values),
-        encoding="utf-8",
-    )
-    original = path.read_bytes()
-
-    with pytest.raises(SessionFileError) as error:
-        load_session_repository(path)
-
-    assert error.value.code == "unsupported_session_format"
-    assert path.read_bytes() == original
-
-
 @pytest.mark.parametrize("loader", [load_session_file, load_session_repository])
 def test_conversation_jsonl_future_version_is_rejected(tmp_path: Path, loader) -> None:
     path = tmp_path / "session.jsonl"

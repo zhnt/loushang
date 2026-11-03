@@ -45,9 +45,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
 # existed. Keep one schema and one fingerprint domain; the platform-specific
 # names below are internal aliases, not a second interpretation of the record.
 PackageWindowsEpochCutoverRequestV1: TypeAlias = PackagePosixEpochCutoverRequestV1
-PackageWindowsEpochRootSwitchReceiptV1: TypeAlias = (
-    PackagePosixEpochRootSwitchReceiptV1
-)
+PackageWindowsEpochRootSwitchReceiptV1: TypeAlias = PackagePosixEpochRootSwitchReceiptV1
 PackageWindowsEpochCutoverFailureV1: TypeAlias = PackagePosixEpochCutoverFailureV1
 PackageWindowsEpochCutoverResultV1: TypeAlias = PackagePosixEpochCutoverResultV1
 
@@ -67,6 +65,102 @@ class PackageWindowsEpochCutoverError(RuntimeError):
 class PackageWindowsEpochCutoverOwner:
     """Configured Windows capability owner; public records remain pathless."""
 
+    @staticmethod
+    def reopen_fenced(
+        authority_root: Path,
+        *,
+        store_id: str,
+        epoch_journal: PackageEpochFenceJournal,
+        epochs_root_name: str,
+    ) -> PackageWindowsEpochCutoverResultV1:
+        """Rebuild current Windows fence evidence without the pre-B Source."""
+
+        if os.name != "nt" or not supports_windows_rooted_io():
+            raise PackageWindowsEpochCutoverError(
+                "Windows Package epoch reopen is unavailable",
+                code="package_epoch_cutover_unavailable",
+            )
+        if (
+            not isinstance(authority_root, Path)
+            or not authority_root.is_absolute()
+            or ".." in authority_root.parts
+            or authority_root == Path(authority_root.anchor)
+            or not isinstance(epoch_journal, PackageEpochFenceJournal)
+        ):
+            raise ValueError("Package epoch reopen authority is invalid")
+        _require_safe_id(store_id, name="Package store identity")
+        _require_component(epochs_root_name, name="Package epochs root name")
+        records = epoch_journal.records()
+        if not records or records[-1].receipt.store_id != store_id:
+            raise PackageWindowsEpochCutoverError(
+                "Package epoch fence is unavailable",
+                code="package_epoch_fence_stale",
+            )
+        current = records[-1].receipt
+        prior = records[-2].receipt if len(records) > 1 else None
+        source = current.request
+        request = PackageWindowsEpochCutoverRequestV1.create(
+            store_id=store_id,
+            prior_fence=prior,
+            expected_legacy_root_identity=source.legacy_root_identity,
+            namespace_id=source.namespace_id,
+            minimum_runtime_version=source.minimum_runtime_version,
+            minimum_runtime_protocol_epoch=source.minimum_runtime_protocol_epoch,
+        )
+        switch = PackageWindowsEpochRootSwitchReceiptV1.create(
+            request,
+            fenced_root_identity=source.fenced_root_identity,
+            quiescence_receipt_id=source.quiescence_receipt_id,
+            snapshot_receipt_id=source.snapshot_receipt_id,
+        )
+        if switch.switch_receipt_id != source.root_switch_receipt_id:
+            raise _identity_changed()
+        try:
+            pinned = _PinnedWindowsAuthority.open(authority_root)
+            try:
+                epochs_fd = pinned.open_authority_child(epochs_root_name)
+                try:
+                    epochs_identity = _directory_native_identity(epochs_fd)
+                    selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
+                    try:
+                        if (
+                            _directory_identity(selected_fd)
+                            != source.fenced_root_identity
+                        ):
+                            raise _identity_changed()
+                    finally:
+                        os.close(selected_fd)
+                finally:
+                    os.close(epochs_fd)
+                pinned.assert_visible()
+                epochs_fd = pinned.open_authority_child(
+                    epochs_root_name, expected_identity=epochs_identity
+                )
+                try:
+                    selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
+                    try:
+                        if (
+                            _directory_identity(selected_fd)
+                            != source.fenced_root_identity
+                        ):
+                            raise _identity_changed()
+                    finally:
+                        os.close(selected_fd)
+                finally:
+                    os.close(epochs_fd)
+            finally:
+                pinned.close()
+        except Exception as exc:
+            raise _native_error(exc) from exc
+        if epoch_journal.current(store_id) != current:
+            raise PackageWindowsEpochCutoverError(
+                "Package epoch changed during reopen",
+                code="package_epoch_fence_stale",
+            )
+        return PackageWindowsEpochCutoverResultV1.fenced(
+            request, fence=current, switch_receipt=switch
+        )
+
     def __init__(
         self,
         authority_root: str | Path,
@@ -77,6 +171,8 @@ class PackageWindowsEpochCutoverOwner:
         snapshots: PackageEpochCutoverSnapshotPort,
         legacy_root_name: str = "legacy",
         epochs_root_name: str = "epochs",
+        snapshot_admission: Callable[[PackageEpochCutoverSnapshotReceiptV1], None]
+        | None = None,
         before_fence_probe: Callable[[], None] | None = None,
     ) -> None:
         if os.name != "nt" or not supports_windows_rooted_io():
@@ -108,6 +204,8 @@ class PackageWindowsEpochCutoverOwner:
             raise TypeError("Package epoch coordination owner is required")
         if not callable(getattr(snapshots, "capture", None)):
             raise TypeError("Package epoch snapshot owner is required")
+        if snapshot_admission is not None and not callable(snapshot_admission):
+            raise TypeError("Package epoch snapshot admission must be callable")
         if before_fence_probe is not None and not callable(before_fence_probe):
             raise TypeError("Package epoch pre-fence probe must be callable")
         self._root = raw_root
@@ -115,6 +213,7 @@ class PackageWindowsEpochCutoverOwner:
         self._journal = epoch_journal
         self._coordination = coordination
         self._snapshots = snapshots
+        self._snapshot_admission = snapshot_admission
         self._legacy_name = legacy_root_name
         self._epochs_name = epochs_root_name
         self._before_fence_probe = before_fence_probe
@@ -186,9 +285,7 @@ class PackageWindowsEpochCutoverOwner:
             return replay
         self._validate_prior(request, current)
         try:
-            exclusive = self._coordination.exclusive_quiescence(
-                store_id=self._store_id
-            )
+            exclusive = self._coordination.exclusive_quiescence(store_id=self._store_id)
             with exclusive as quiescence:
                 locked_current = self._journal.current(self._store_id)
                 replay = self._exact_replay(request, locked_current)
@@ -265,6 +362,8 @@ class PackageWindowsEpochCutoverOwner:
                 quiescence_receipt_id=quiescence.receipt_id,
             )
             _validate_snapshot(snapshot, request, quiescence)
+            if self._snapshot_admission is not None:
+                self._snapshot_admission(snapshot)
             try:
                 new_fd = _open_directory_at(
                     epochs_fd,
@@ -296,9 +395,7 @@ class PackageWindowsEpochCutoverOwner:
                 fenced_root_identity=new_identity,
                 namespace_id=request.namespace_id,
                 minimum_runtime_version=request.minimum_runtime_version,
-                minimum_runtime_protocol_epoch=(
-                    request.minimum_runtime_protocol_epoch
-                ),
+                minimum_runtime_protocol_epoch=(request.minimum_runtime_protocol_epoch),
                 quiescence_receipt_id=quiescence.receipt_id,
                 snapshot_receipt_id=snapshot.receipt_id,
                 root_switch_receipt_id=switch.switch_receipt_id,
@@ -385,8 +482,7 @@ class PackageWindowsEpochCutoverOwner:
             or epoch_request.legacy_root_identity
             != request.expected_legacy_root_identity
             or epoch_request.namespace_id != request.namespace_id
-            or epoch_request.minimum_runtime_version
-            != request.minimum_runtime_version
+            or epoch_request.minimum_runtime_version != request.minimum_runtime_version
             or epoch_request.minimum_runtime_protocol_epoch
             != request.minimum_runtime_protocol_epoch
         ):
@@ -464,12 +560,12 @@ class _PinnedWindowsAuthority:
         root: Path,
         *,
         expected_identities: tuple[_NativeIdentity, ...] | None = None,
+        read_control: bool = False,
     ) -> _PinnedWindowsAuthority:
-        descriptors = _open_ancestor_chain(root)
+        descriptors = _open_ancestor_chain(root, read_control=read_control)
         try:
             identities = tuple(
-                _directory_native_identity(descriptor)
-                for descriptor in descriptors
+                _directory_native_identity(descriptor) for descriptor in descriptors
             )
             if expected_identities is not None and identities != expected_identities:
                 raise _identity_changed()
@@ -526,7 +622,7 @@ class _PinnedWindowsAuthority:
             os.close(descriptor)
 
 
-def _open_ancestor_chain(root: Path) -> tuple[int, ...]:
+def _open_ancestor_chain(root: Path, *, read_control: bool = False) -> tuple[int, ...]:
     descriptors: list[int] = []
     try:
         current = open_windows_directory(
@@ -542,6 +638,7 @@ def _open_ancestor_chain(root: Path) -> tuple[int, ...]:
                 dir_fd=current,
                 share_delete=False,
                 writable=index == len(components) - 1,
+                read_control=read_control and index == len(components) - 1,
             )
             descriptors.append(current)
         return tuple(descriptors)
@@ -612,8 +709,7 @@ def _validate_snapshot(
 ) -> None:
     if not isinstance(snapshot, PackageEpochCutoverSnapshotReceiptV1) or (
         snapshot.store_id != request.store_id
-        or snapshot.legacy_root_identity
-        != request.expected_legacy_root_identity
+        or snapshot.legacy_root_identity != request.expected_legacy_root_identity
         or snapshot.quiescence_receipt_id != quiescence.receipt_id
     ):
         raise PackageWindowsEpochCutoverError(

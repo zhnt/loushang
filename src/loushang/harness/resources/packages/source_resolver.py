@@ -34,7 +34,7 @@ PackageSourceScope = Literal["user", "project", "session", "merged"]
 
 @dataclass(frozen=True)
 class PackageResolveResult:
-    """Result of resolving configured remote package sources."""
+    """Result of resolving configured package sources."""
 
     records: tuple[
         PackageMaterializationRecord | PackageProductLifecycleRecordV1, ...
@@ -53,7 +53,7 @@ class PackageSourceResolver:
     """
 
     settings_manager: object
-    materializer: PackageMaterializer
+    materializer: PackageMaterializer | None
     diagnostics_service: DiagnosticsService | None = None
     session_id: str | None = None
     product_lifecycle: PackageProductLifecycleOperationPort | None = None
@@ -62,6 +62,12 @@ class PackageSourceResolver:
     def __post_init__(self) -> None:
         if self.product_lifecycle_mode not in {"legacy", "dark", "enforced"}:
             raise ValueError("Unsupported Package Product lifecycle mode")
+        if self.materializer is None and (
+            self.product_lifecycle is None or self.product_lifecycle_mode != "enforced"
+        ):
+            raise ValueError(
+                "Materializer-free Package Source resolver requires enforced Product activation"
+            )
         if self.product_lifecycle_mode == "legacy":
             if self.product_lifecycle is not None:
                 raise ValueError(
@@ -89,9 +95,16 @@ class PackageSourceResolver:
         scopes = package_source_scopes(self.settings_manager)
         for package_source in configured_package_sources(self.settings_manager):
             source = package_source.source
-            if not is_remote_package_source(source):
+            if (
+                not is_remote_package_source(source)
+                and self.product_lifecycle_mode != "enforced"
+            ):
                 continue
-            existing_record = self.materializer.get_record(source)
+            existing_record = (
+                self.materializer.get_record(source)
+                if self.product_lifecycle is None and self.materializer is not None
+                else None
+            )
             if (
                 self.product_lifecycle is None
                 and existing_record is not None
@@ -104,7 +117,11 @@ class PackageSourceResolver:
                 if callable(missing_source_action)
                 else missing_source_action
             )
-            if package_offline_enabled() and action == "install":
+            if (
+                package_offline_enabled()
+                and action == "install"
+                and self.product_lifecycle_mode != "enforced"
+            ):
                 action = "skip"
             if action == "skip":
                 skipped.append(source)
@@ -121,6 +138,8 @@ class PackageSourceResolver:
             if materialized.lifecycle == "failed":
                 failed.append(source)
                 self._record_materialization_failure(materialized, phase=phase)
+                if self.product_lifecycle_mode == "enforced":
+                    break
             else:
                 records.append(materialized)
         return PackageResolveResult(
@@ -137,6 +156,8 @@ class PackageSourceResolver:
     ) -> PackageMaterializationRecord | PackageProductLifecycleRecordV1:
         lifecycle = self.product_lifecycle
         if lifecycle is None:
+            if self.materializer is None:
+                raise RuntimeError("Package materializer is unavailable")
             return self.materializer.materialize_remote_source_sync(source)
         operation_id = sha256(
             f"startup:{self.session_id or 'product'}:{scope}:{source}".encode()
@@ -144,13 +165,23 @@ class PackageSourceResolver:
         outcome = lifecycle.route(
             PackageProductLifecycleIntentV1(
                 operation_id=operation_id,
-                action="materialize",
+                action=(
+                    "install"
+                    if self.product_lifecycle_mode == "enforced"
+                    else "materialize"
+                ),
                 source=source,
                 scope=scope,
             ),
             entrypoint="startup",
         )
         if not outcome.handled:
+            if self.product_lifecycle_mode == "enforced":
+                raise RuntimeError(
+                    "Package Product route has no accepted non-Plugin owner"
+                )
+            if self.materializer is None:
+                raise RuntimeError("Package Product route has no legacy fallback")
             return self.materializer.materialize_remote_source_sync(source)
         if outcome.record is None:
             raise RuntimeError("Plugin Package startup route returned no record")
@@ -159,6 +190,12 @@ class PackageSourceResolver:
     def prepare_configured_remote_records(
         self,
     ) -> tuple[PackageMaterializationRecord, ...]:
+        if self.product_lifecycle_mode == "enforced":
+            raise RuntimeError(
+                "Package Product preparation has no accepted non-Plugin owner"
+            )
+        if self.materializer is None:
+            raise RuntimeError("Package materializer is unavailable")
         records: list[PackageMaterializationRecord] = []
         for package_source in configured_package_sources(self.settings_manager):
             source = package_source.source
@@ -200,14 +237,24 @@ class PackageSourceResolver:
     ) -> None:
         if self.diagnostics_service is None:
             return
+        code = (
+            record.failure_code
+            if isinstance(record, PackageProductLifecycleRecordV1)
+            and record.failure_code is not None
+            else "package_materialization_failed"
+        )
         self.diagnostics_service.capture_failure(
-            code="package_materialization_failed",
+            code=code,
             error=getattr(record, "error_message", None)
             or getattr(record, "failure_code", None)
             or f"Package materialization failed: {record.source}",
             phase=phase,
             source="package",
-            level="warning",
+            level=(
+                "error"
+                if isinstance(record, PackageProductLifecycleRecordV1)
+                else "warning"
+            ),
             session_id=self.session_id,
             details={
                 "package_source": record.source,

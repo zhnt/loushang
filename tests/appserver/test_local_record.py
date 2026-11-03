@@ -17,6 +17,13 @@ from loushang.appserver.local_record import (
     encode_connection_record,
 )
 from loushang.appserver.protocol import SessionScopeV1
+from loushang.appserver.protocol.connection_profile import (
+    resume_input_lookup_profile,
+    supports_managed_mux,
+    supports_managed_mux_close,
+    supports_resume_input_lookup,
+    supports_session_discovery,
+)
 
 
 def _scopes():
@@ -29,6 +36,37 @@ def _record():
         endpoint="workspace", application_id="application", product_id="coding",
         instance="c" * 32, port=12345, scopes=_scopes(), key=b"k" * 32,
     )
+
+
+@pytest.mark.parametrize("discovery", [False, True])
+@pytest.mark.parametrize("management,closure", [(False, False), (True, False), (True, True)])
+def test_resume_lookup_record_authenticates_the_exact_optional_profile(discovery, management, closure):
+    ordinary = replace(_record(), session_execution=True, session_discovery=discovery,
+                       mux_management=management, mux_closure=closure)
+    enabled = replace(ordinary, resume_input_lookup=True)
+    assert decode_connection_record(encode_connection_record(enabled)) == enabled
+    assert enabled.semantic_profile is resume_input_lookup_profile(ordinary.semantic_profile)
+    assert supports_resume_input_lookup(enabled.semantic_profile)
+    assert not supports_resume_input_lookup(ordinary.semantic_profile)
+    assert supports_session_discovery(enabled.semantic_profile) is discovery
+    assert supports_managed_mux(enabled.semantic_profile) is management
+    assert supports_managed_mux_close(enabled.semantic_profile) is closure
+    assert enabled.authentication.record_digest != ordinary.authentication.record_digest
+    assert json.loads(encode_connection_record(enabled))["capabilities"] == [
+        *json.loads(encode_connection_record(ordinary))["capabilities"], "resume_input_lookup",
+    ]
+
+
+def test_resume_lookup_record_requires_execution_and_closed_capabilities():
+    with pytest.raises(ValueError):
+        replace(_record(), resume_input_lookup=True)
+    with pytest.raises(TypeError):
+        replace(_record(), session_execution=True, resume_input_lookup=1)
+    raw = json.loads(encode_connection_record(_record()))
+    raw["capabilities"].append("resume_input_lookup")
+    with pytest.raises(LocalRecordError):
+        decode_connection_record(json.dumps(raw).encode())
+    assert not decode_connection_record(encode_connection_record(_record())).resume_input_lookup
 
 
 def test_G16_PRIVATE_RECORD_closed_round_trip_and_public_digest() -> None:

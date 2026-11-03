@@ -238,6 +238,7 @@ def _summarize_tool_args_json(raw: str) -> dict[str, object]:
 
 
 class AnthropicMessagesAdapter(AnthropicMessagesProtocol):
+    prepare_request_in_worker = True
     api = "anthropic-messages"
 
     def __init__(self, *, client: Any | None = None) -> None:
@@ -421,7 +422,9 @@ class AnthropicMessagesAdapter(AnthropicMessagesProtocol):
         prepared: PreparedModelRequest,
     ) -> AsyncIterator[RawPart]:
         try:
-            from anthropic import AsyncAnthropic, Omit  # type: ignore
+            from loushang.ai.sdk_import import load_sdk_symbols
+
+            AsyncAnthropic, Omit = await load_sdk_symbols(self.api)  # type: ignore[misc]
         except Exception as e:  # pragma: no cover
             raise RuntimeError(
                 "anthropic SDK is not installed. Install via `pip install anthropic`"
@@ -430,7 +433,6 @@ class AnthropicMessagesAdapter(AnthropicMessagesProtocol):
         if self._client is None:
             client = AsyncAnthropic(  # type: ignore[call-arg]
                 api_key="",
-                auth_token="",
                 base_url=request.base_url,
             )
             owns_client = True

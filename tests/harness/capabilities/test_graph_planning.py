@@ -483,6 +483,48 @@ def test_graph_planner_rejects_cross_product_dependencies() -> None:
     ]
 
 
+def test_graph_planner_accepts_exact_product_subowner_without_prefix_spoof() -> None:
+    owned = CapabilityDefinition(
+        capability_id="coding.lsp.hover",
+        owner_id="coding.lsp",
+        contract_version=1,
+        facets=("hover",),
+        scope="session",
+        refresh_boundary="sealed",
+        phase="final",
+    )
+    provider = _provider("coding.lsp.hover", facets=("hover",))
+    plan = RuntimeCapabilityGraphPlanner().plan(
+        CapabilityGraphPlanRequest(
+            product_id="coding",
+            roots=(owned.capability_id,),
+            definitions=(owned,),
+            providers=(provider,),
+        )
+    )
+    assert plan.binding_order == ("coding.lsp.hover",)
+
+    foreign = CapabilityDefinition(
+        capability_id="codingevil.lsp.hover",
+        owner_id="codingevil.lsp",
+        contract_version=1,
+        facets=("hover",),
+        scope="session",
+        refresh_boundary="sealed",
+        phase="final",
+    )
+    with pytest.raises(CapabilityGraphPlanningError) as rejected:
+        RuntimeCapabilityGraphPlanner().plan(
+            CapabilityGraphPlanRequest(
+                product_id="coding",
+                roots=(foreign.capability_id,),
+                definitions=(foreign,),
+                providers=(_provider(foreign.capability_id, facets=("hover",)),),
+            )
+        )
+    assert [item.code for item in rejected.value.diagnostics] == ["cross_product_root"]
+
+
 def test_ambiguous_inputs_have_order_independent_diagnostics() -> None:
     definitions = (
         _definition("research.root", facets=("old",), scope="session"),

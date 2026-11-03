@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from uuid import uuid4
 
@@ -34,6 +35,7 @@ from loushang.ai.structured import (
     parse_structured_output,
     with_structured_output_options,
 )
+from loushang.ai.types import Context
 from loushang.ai.utils.capabilities import context_has_image_input
 
 
@@ -163,7 +165,10 @@ def _validate_capability(
         )
 
     supports_image_input = bool(getattr(capabilities, "supports_image_input", False))
-    if context_has_image_input(normalized_context.messages) and not supports_image_input:
+    if (
+        context_has_image_input(normalized_context.messages)
+        and not supports_image_input
+    ):
         raise UnsupportedCapabilityError(
             f"Model {model.id!r} does not support image input",
             model=getattr(model, "id", None),
@@ -256,11 +261,68 @@ async def _start_stream(
         prepared_options,
         _resolved_adapter_config(resolved_model),
     )
-    normalization_result = normalize_context_result(
-        context,
-        model=resolved_model,
-        pairing_mode=_resolve_pairing_mode(options),
-    )
+    pairing_mode = _resolve_pairing_mode(options)
+    committer = options.prepared_request_committer if options is not None else None
+    if (
+        type(context) is Context
+        and options is not None
+        and options.trace is None
+        and getattr(committer, "normalize_context_in_worker", None) is True
+    ):
+        # Session owns this typed context. Snapshot its outer arrays before a
+        # worker normalizes the long history; keep diagnostics on the caller.
+        owned_context = Context(
+            system_prompt=context.system_prompt,
+            messages=list(context.messages),
+            tools=list(context.tools) if context.tools is not None else None,
+        )
+
+        start_sealed_verification = getattr(
+            committer, "start_sealed_context_verification", None
+        )
+        owned_sealed_context = getattr(committer, "owned_sealed_context", None)
+        normalize_owned_context = getattr(committer, "normalize_owned_context", None)
+
+        def normalize_sealed_context():
+            source_context = (
+                owned_sealed_context(owned_context)
+                if callable(owned_sealed_context)
+                else owned_context
+            )
+            if type(source_context) is not Context:
+                raise TypeError("Session sealed context must be a Context")
+            result = (
+                normalize_owned_context(
+                    source_context,
+                    model=resolved_model,
+                    pairing_mode=pairing_mode,
+                )
+                if callable(normalize_owned_context)
+                else normalize_context_result(
+                    source_context,
+                    model=resolved_model,
+                    pairing_mode=pairing_mode,
+                )
+            )
+            if not callable(owned_sealed_context) and not callable(
+                start_sealed_verification
+            ):
+                verify_sealed_context = getattr(
+                    committer, "verify_sealed_context", None
+                )
+                if callable(verify_sealed_context):
+                    verify_sealed_context(owned_context)
+            return result
+
+        normalization_result = await asyncio.to_thread(normalize_sealed_context)
+        if not callable(owned_sealed_context) and callable(start_sealed_verification):
+            start_sealed_verification(owned_context)
+    else:
+        normalization_result = normalize_context_result(
+            context,
+            model=resolved_model,
+            pairing_mode=pairing_mode,
+        )
     normalized = normalization_result.context
     _emit_normalization_diagnostics(options, normalization_result.diagnostics)
     resolved = replace(

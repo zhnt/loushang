@@ -14,6 +14,8 @@
 [G14 Foreground Stdio](../appserver/foreground-stdio-hosted-app-g14.md) ·
 [G15 Foreground Hosted TUI Design](foreground-hosted-tui-g15.md) ·
 [G17 Explicit Hosted Session Workflow](hosted-session-workflow-g17.md) ·
+[lmux Managed Contract M0](lmux-contract-m0.md) ·
+[ARD-004 A/A Stability Gate vs Interactive Metric Scale (accepted)](decisions/accepted/ARD-004-aa-stability-gate-vs-interactive-metric-scale.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -36,6 +38,17 @@
   defaults are unchanged
 - Owner: Loushang AppHost architecture
 
+## Accepted Resume Contract
+
+AppHost retains one canonical Product binding and its final close owner. Resume readiness is an internal Product state within that binding.
+
+The project owner accepted the cross-scope #696 boundaries on 2026-10-12:
+[ARD-004](../decisions/accepted/ARD-004-resume-history-and-current-authority.md),
+[ARD-005](../decisions/accepted/ARD-005-resume-continuation-commit.md), and
+[ARD-006](../decisions/accepted/ARD-006-hosted-resume-readiness-and-admission.md).
+The [Delta ledger](../current-target-gap-ledger.md) records remaining work;
+acceptance does not establish writable release or performance readiness.
+
 ## Scope
 
 AppHost is the Product-neutral process-local composition root for admitted
@@ -47,6 +60,15 @@ AppHost is a sibling Architecture Scope and initially remains in the main
 and a later packaging decision.
 
 ## Current
+
+The accepted [lmux M0 contract](lmux-contract-m0.md) adds an optional Linux
+managed-deployment Target and shared-client/view boundaries. Pure identity,
+handoff-state, stop-evidence and layout values, a Linux private-file owner and
+SQLite name reservations and clean-instance lifecycle coordination are implemented
+in `apphost.managed`; native service
+control, managed discovery/connection coordination, Session writer
+admission and the installed `lmux` entry remain unactivated. This does not
+change the existing foreground or explicit G16 lifecycle.
 
 A0.1 supplies immutable standard-library contracts and exact validation for:
 

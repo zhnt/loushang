@@ -29,6 +29,19 @@ from loushang.harness.resources.types import (
 TextReader = Callable[[Path], str]
 
 
+def _directory_entries(
+    directory: Path, work_probe: Callable[[], None] | None,
+) -> list[Path]:
+    """Permit cancellation or a caller budget before collecting a whole directory."""
+
+    entries: list[Path] = []
+    for entry in directory.iterdir():
+        if work_probe is not None:
+            work_probe()
+        entries.append(entry)
+    return entries
+
+
 def _discover_prompts_from_dir(
     prompts_dir: Path,
     *,
@@ -37,13 +50,16 @@ def _discover_prompts_from_dir(
     source_label: str,
     source_root_order: int = 0,
     text_reader: TextReader | None = None,
+    work_probe: Callable[[], None] | None = None,
 ) -> tuple[list[PromptFragmentDescriptor], list[DiagnosticDraft]]:
     if not prompts_dir.is_dir():
         return [], []
 
     descriptors: list[PromptFragmentDescriptor] = []
     diagnostics: list[DiagnosticDraft] = []
-    for entry in sorted(prompts_dir.iterdir(), key=lambda path: path.name):
+    for entry in sorted(_directory_entries(prompts_dir, work_probe), key=lambda path: path.name):
+        if work_probe is not None:
+            work_probe()
         if entry.is_file() and entry.suffix == ".md":
             text, read_diagnostics = _read_text_file(
                 entry,
@@ -89,6 +105,7 @@ def _discover_skills_from_dir(
     source_label: str,
     source_root_order: int = 0,
     text_reader: TextReader | None = None,
+    work_probe: Callable[[], None] | None = None,
 ) -> tuple[list[SkillDescriptor], list[DiagnosticDraft]]:
     if not skills_dir.is_dir():
         return [], []
@@ -102,6 +119,7 @@ def _discover_skills_from_dir(
         source_label=source_label,
         source_root_order=source_root_order,
         text_reader=text_reader,
+        work_probe=work_probe,
     )
 
 
@@ -115,7 +133,10 @@ def _discover_skills_recursive(
     source_label: str,
     source_root_order: int = 0,
     text_reader: TextReader | None = None,
+    work_probe: Callable[[], None] | None = None,
 ) -> tuple[list[SkillDescriptor], list[DiagnosticDraft]]:
+    if work_probe is not None:
+        work_probe()
     descriptors: list[SkillDescriptor] = []
     diagnostics: list[DiagnosticDraft] = []
     active_ignore_patterns = (
@@ -141,7 +162,9 @@ def _discover_skills_recursive(
         diagnostics.extend(skill_diagnostics)
         return ([descriptor] if descriptor is not None else []), diagnostics
 
-    for entry in sorted(current_dir.iterdir(), key=lambda path: path.name):
+    for entry in sorted(_directory_entries(current_dir, work_probe), key=lambda path: path.name):
+        if work_probe is not None:
+            work_probe()
         if entry.name == "SKILL.md":
             continue
         if entry.is_file():
@@ -171,6 +194,7 @@ def _discover_skills_recursive(
             source_label=source_label,
             source_root_order=source_root_order,
             text_reader=text_reader,
+            work_probe=work_probe,
         )
         descriptors.extend(child_descriptors)
         diagnostics.extend(child_diagnostics)
@@ -251,6 +275,7 @@ def _discover_extensions_from_dir(
     source_scope: ResourceSourceScope,
     source_label: str,
     source_root_order: int = 0,
+    work_probe: Callable[[], None] | None = None,
 ) -> tuple[list[ExtensionDescriptor], list[DiagnosticDraft]]:
     if not extensions_dir.is_dir():
         return [], []
@@ -258,9 +283,11 @@ def _discover_extensions_from_dir(
     descriptors: list[ExtensionDescriptor] = []
     diagnostics: list[DiagnosticDraft] = []
     for entry in sorted(
-        extensions_dir.iterdir(),
+        _directory_entries(extensions_dir, work_probe),
         key=lambda path: (0 if path.is_dir() else 1, path.name),
     ):
+        if work_probe is not None:
+            work_probe()
         if entry.is_file() and entry.suffix == ".py":
             descriptors.append(
                 ExtensionDescriptor(
@@ -323,13 +350,16 @@ def _discover_themes_from_dir(
     source_label: str,
     source_root_order: int = 0,
     text_reader: TextReader | None = None,
+    work_probe: Callable[[], None] | None = None,
 ) -> tuple[list[ThemeDescriptor], list[DiagnosticDraft]]:
     if not themes_dir.is_dir():
         return [], []
 
     descriptors: list[ThemeDescriptor] = []
     diagnostics: list[DiagnosticDraft] = []
-    for entry in sorted(themes_dir.iterdir(), key=lambda path: path.name):
+    for entry in sorted(_directory_entries(themes_dir, work_probe), key=lambda path: path.name):
+        if work_probe is not None:
+            work_probe()
         content: str | None = None
         if entry.is_file() and not entry.name.endswith(".json"):
             diagnostics.append(

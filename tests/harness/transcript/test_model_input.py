@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from loushang.agent import Agent
+from loushang.ai import prepared_request as prepared_request_module
 from loushang.ai.api_registry import get_default_api_registry
 from loushang.ai.context import NormalizedContext
 from loushang.ai.json_codec import serialize_message
@@ -35,6 +36,7 @@ from loushang.harness.conversation import (
     ConversationHeader,
     ConversationKey,
     MemoryConversationStore,
+    StoreCommitOutcomeUnknown,
 )
 from loushang.harness.transcript import (
     MODEL_CALL_ATTEMPT_USAGE_KIND,
@@ -44,6 +46,7 @@ from loushang.harness.transcript import (
     MODEL_INPUT_PREPARED_KIND,
     AgentTranscriptFileLayout,
     AgentTranscriptRecordFactory,
+    AgentTranscriptSession,
     AgentTranscriptUnitOfWork,
     BranchContextSummary,
     ModelCallAttemptUsage,
@@ -77,6 +80,7 @@ from loushang.harness.transcript.model_input_v2_types import (
     ModelInputNodeReference,
     ModelInputSequenceTailNode,
     ModelInputSnapshotV2,
+    create_model_input_json_value,
     hash_model_input_node,
     model_input_node_hash_basis,
     model_input_node_to_json,
@@ -319,6 +323,7 @@ def _prepared(
     attempt: int = 1,
     tools: list[dict[str, object]] | None = None,
     payload: dict[str, object] | None = None,
+    reuse_from: PreparedModelRequest | None = None,
 ) -> PreparedModelRequest:
     model = _model(api="model-input-test")
     request = ProviderRequest(
@@ -344,6 +349,7 @@ def _prepared(
             "model": model.id,
         },
         model_visible_headers={"anthropic-beta": "feature-1"},
+        reuse_from=reuse_from,
     )
 
 
@@ -412,8 +418,465 @@ def test_model_input_records_are_hidden_deduplicated_and_hash_verified() -> None
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("has_image", [False, True])
+def test_model_input_releases_unused_binary_projection_before_indexing(
+    tmp_path, monkeypatch, has_image
+):
+    import weakref
+
+    class WeakMapping(dict):
+        pass
+
+    class TrackingCodec(SessionModelInputBlobCodec):
+        roots = []
+
+        def externalize_mapping(self, value, **kwargs):
+            projected = super().externalize_mapping(value, **kwargs)
+            root = WeakMapping(projected.value)
+            self.roots.append(weakref.ref(root))
+            return replace(projected, value=root)
+
+    async def scenario():
+        transcript = await _memory_transcript()
+        store = SessionBlobStore(tmp_path / "data", "model-input-conversation")
+        codec = TrackingCodec(store)
+        logical = dict(thaw_model_input_json(_context(transcript).logical_input))
+        if has_image:
+            image = b"projection-lifetime-image"
+            store.put_bytes(
+                image,
+                logical_name="images/input.png",
+                kind="image",
+                media_type="image/png",
+                source="test",
+            )
+            logical["messages"] = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "mimeType": "image/png",
+                            "data": base64.b64encode(image).decode("ascii"),
+                        }
+                    ],
+                }
+            ]
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript, logical_input=logical),
+            runtime_references=_runtime_references(),
+            binary_codec=codec,
+        )
+        original = model_input_v2_module.ModelInputV2Writer.prepare
+
+        async def prepare(cls, **kwargs):
+            assert len(codec.roots) == 2
+            assert all(
+                (reference() is not None) == has_image for reference in codec.roots
+            ), "unused full request copies survived into cold index construction"
+            return await original(**kwargs)
+
+        monkeypatch.setattr(
+            model_input_v2_module.ModelInputV2Writer, "prepare", classmethod(prepare)
+        )
+        request = _prepared()
+        await committer.commit_prepared_request(request)
+        rebuilt = rebuild_model_input(
+            transcript, committer.commits[0].snapshot_id, binary_codec=codec
+        )
+        assert rebuilt.logical_input == logical
+        assert rebuilt.prepared_payload_hash == request.payload_hash
+
+    asyncio.run(scenario())
+
+
+def test_plain_model_input_materializes_frozen_messages_without_full_thaw(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        logical = {
+            "system_prompt": "system prompt",
+            "messages": [
+                {"role": "user", "content": f"message {index}"}
+                for index in range(200)
+            ],
+            "tools": [],
+            "request_options": {},
+        }
+        context = _context(transcript, logical_input=logical)
+        first_committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=context,
+            runtime_references=_runtime_references(),
+        )
+        await first_committer.commit_prepared_request(_prepared())
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="latest", timestamp=2.0)
+        )
+        assert transcript.leaf_id is not None
+        logical = {**logical, "messages": [*logical["messages"], {"role": "user", "content": "latest"}]}
+        next_context = ModelInputCommitContext(
+            purpose="main_turn",
+            source_leaf_id=transcript.leaf_id,
+            source_revision=transcript.revision,
+            logical_input=logical,
+            reuse_from=context,
+        )
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=next_context,
+            runtime_references=_runtime_references(),
+        )
+        original_thaw = model_input_module.thaw_model_input_json
+        full_thaws = 0
+
+        def thaw(value):
+            nonlocal full_thaws
+            if value is next_context.logical_input:
+                full_thaws += 1
+            return original_thaw(value)
+
+        monkeypatch.setattr(model_input_module, "thaw_model_input_json", thaw)
+        await committer.commit_prepared_request(_prepared(invocation_id="invocation-2"))
+
+        assert full_thaws == 0
+        assert (
+            rebuild_model_input(transcript, committer.commits[-1].snapshot_id)
+            .logical_input
+            == logical
+        )
+
+    asyncio.run(scenario())
+
+
+def test_owned_prepared_request_commits_without_copying_sealed_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        first_request = _prepared()
+        await committer.commit_prepared_request(first_request)
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="latest", timestamp=2.0)
+        )
+        next_committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        next_payload = first_request.payload_for_transport()
+        next_payload["messages"].append({"role": "user", "content": "latest"})
+        request = _prepared(
+            invocation_id="invocation-2",
+            payload=next_payload,
+            reuse_from=first_request,
+        )
+        copies = 0
+        original_copy = PreparedModelRequest._owned_payload_copy
+
+        def copy(request: PreparedModelRequest):
+            nonlocal copies
+            copies += 1
+            return original_copy(request)
+
+        monkeypatch.setattr(PreparedModelRequest, "_owned_payload_copy", copy)
+        await next_committer.commit_prepared_request(request)
+
+        assert copies == 0
+        assert (
+            rebuild_model_input(transcript, next_committer.commits[-1].snapshot_id)
+            .prepared_payload
+            == thaw_model_input_json(request.payload)
+        )
+
+    asyncio.run(scenario())
+
+
+def test_prewarmed_logical_canonical_is_committed_without_reencoding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        logical = {
+            "system_prompt": "system",
+            "messages": [{"role": "user", "content": "hello"}],
+            "tools": [],
+            "request_options": {},
+        }
+        context = _context(transcript, logical_input=logical)
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=context,
+            runtime_references=_runtime_references(),
+            binary_codec=SessionModelInputBlobCodec(
+                SessionBlobStore(tmp_path / "data", "model-input-conversation")
+            ),
+        )
+        await committer.prewarm_logical_input()
+        prewarmed = committer._prewarmed_logical_canonical
+        assert prewarmed is not None
+        canonical, digest = prewarmed
+
+        def unexpected_reencode(_context: object, _value: object) -> str:
+            pytest.fail("prewarmed logical input was encoded again during commit")
+
+        monkeypatch.setattr(
+            ModelInputCommitContext,
+            "_canonical_logical_input_json",
+            unexpected_reencode,
+        )
+        await committer.commit_prepared_request(_prepared())
+        rebuilt = rebuild_model_input(
+            transcript,
+            committer.commits[-1].snapshot_id,
+            binary_codec=SessionModelInputBlobCodec(
+                SessionBlobStore(tmp_path / "data", "model-input-conversation")
+            ),
+        )
+        assert rebuilt.logical_input == logical
+        assert rebuilt.snapshot.logical_input_hash == digest
+        assert canonical == model_input_module.canonical_model_input_json(
+            logical, name="logical Model Input"
+        )
+
+    asyncio.run(scenario())
+
+
+def test_cancelled_prewarm_worker_settles_before_direct_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import threading
+
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        context = _context(transcript)
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=context,
+            runtime_references=_runtime_references(),
+            binary_codec=SessionModelInputBlobCodec(
+                SessionBlobStore(tmp_path / "data", "model-input-conversation")
+            ),
+        )
+        started = threading.Event()
+        release = threading.Event()
+        original_prepare = committer._prepare_logical_canonical
+        original_canonical = ModelInputCommitContext._canonical_logical_input_json
+
+        def held_prepare() -> tuple[str, str]:
+            started.set()
+            assert release.wait(1.0)
+            return original_prepare()
+
+        def guarded_canonical(self, value):
+            assert release.is_set(), "commit encoded while cancelled prewarm was active"
+            return original_canonical(self, value)
+
+        monkeypatch.setattr(committer, "_prepare_logical_canonical", held_prepare)
+        monkeypatch.setattr(
+            ModelInputCommitContext,
+            "_canonical_logical_input_json",
+            guarded_canonical,
+        )
+        prewarm = asyncio.create_task(committer.prewarm_logical_input())
+        assert await asyncio.to_thread(started.wait, 1.0)
+        prewarm.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await prewarm
+        try:
+            commit = asyncio.create_task(committer.commit_prepared_request(_prepared()))
+            await asyncio.sleep(0.05)
+            assert not commit.done(), "commit did not wait for the existing worker"
+        finally:
+            release.set()
+        await commit
+        assert len(committer.commits) == 1
+
+    asyncio.run(scenario())
+
+
+def test_model_input_omits_plain_builtin_binary_projection(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        codec = SessionModelInputBlobCodec(
+            SessionBlobStore(tmp_path / "data", "model-input-conversation")
+        )
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+            binary_codec=codec,
+        )
+
+        def unnecessary_projection(*args, **kwargs):
+            raise AssertionError("plain request copied through blob projection")
+
+        monkeypatch.setattr(
+            SessionModelInputBlobCodec,
+            "externalize_mapping",
+            unnecessary_projection,
+        )
+        request = _prepared()
+        await committer.commit_prepared_request(request)
+        rebuilt = rebuild_model_input(transcript, committer.commits[-1].snapshot_id)
+        assert rebuilt.prepared_payload == request.payload_for_transport()
+        assert rebuilt.snapshot.binary_projection_version == 0
+
+    asyncio.run(scenario())
+
+
+def test_plain_model_input_does_not_open_deferred_blob_authority(tmp_path) -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        codec = SessionModelInputBlobCodec(
+            SessionBlobStore(tmp_path / "data", "model-input-conversation")
+        )
+        openings = 0
+
+        def open_codec() -> SessionModelInputBlobCodec:
+            nonlocal openings
+            openings += 1
+            return codec
+
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+            binary_codec_factory=open_codec,
+        )
+        await committer.commit_prepared_request(_prepared())
+        assert openings == 0
+        rebuilt = rebuild_model_input(transcript, committer.commits[-1].snapshot_id)
+        assert rebuilt.snapshot.binary_projection_version == 0
+
+    asyncio.run(scenario())
+
+
+def test_prepared_payload_projection_does_not_hold_two_complete_container_trees():
+    import tracemalloc
+
+    request = _prepared(
+        payload={
+            "rows": [
+                {"index": i, "text": "message", "flags": [True, None]}
+                for i in range(2500)
+            ]
+        }
+    )
+    tracemalloc.start()
+    try:
+        projected = model_input_module._prepared_json_mapping(request, "payload")
+        retained, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert len(projected["rows"]) == 2500
+    assert peak < retained * 1.5, (
+        "projection retained an extra frozen tree while copying"
+    )
+
+
+def test_owned_prepared_request_commits_without_recanonicalizing_payload(
+    monkeypatch,
+):
+    async def scenario():
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        request = _prepared()
+
+        def unexpected_recanonicalization(*_args, **_kwargs):
+            raise AssertionError("sealed prepared payload was recanonicalized")
+
+        monkeypatch.setattr(
+            model_input_module,
+            "canonical_model_input_json",
+            unexpected_recanonicalization,
+        )
+        monkeypatch.setattr(
+            prepared_request_module,
+            "validate_json_value",
+            unexpected_recanonicalization,
+        )
+        await committer.commit_prepared_request(request)
+        assert len(committer.commits) == 1
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("invalid", ["cycle", "nan", "surrogate", "non_string_key"])
+def test_invalid_prepared_payload_is_rejected_before_any_model_input_write(invalid):
+    async def scenario():
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        request = _prepared()
+        if invalid == "cycle":
+            payload = {}
+            payload["self"] = payload
+        elif invalid == "nan":
+            payload = {"nested": [float("nan")]}
+        elif invalid == "surrogate":
+            payload = {"nested": ["\ud800"]}
+        else:
+            payload = {1: "invalid key"}
+        object.__setattr__(request, "payload", payload)
+        before = transcript.records
+        with pytest.raises(TypeError):
+            await committer.commit_prepared_request(request)
+        assert transcript.records == before
+        assert not committer.commits
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "attribute,replacement",
+    [
+        ("payload", {"messages": []}),
+        ("model_visible_headers", {"anthropic-beta": "changed"}),
+        ("canonical_payload", "{}"),
+        ("payload_hash", "sha256:" + "0" * 64),
+    ],
+)
+def test_changed_prepared_envelope_is_rejected_before_model_input_write(
+    attribute, replacement
+):
+    async def scenario():
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        request = _prepared()
+        object.__setattr__(request, attribute, replacement)
+        before = transcript.records
+        with pytest.raises(ModelInputIntegrityError):
+            await committer.commit_prepared_request(request)
+        assert transcript.records == before
+        assert not committer.commits
+
+    asyncio.run(scenario())
+
+
 def test_model_input_externalizes_session_images_without_losing_exact_rebuild(
     tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def scenario() -> None:
         transcript = await _memory_transcript()
@@ -452,25 +915,41 @@ def test_model_input_externalizes_session_images_without_losing_exact_rebuild(
                     "content": [
                         {
                             "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{encoded}"
-                            },
+                            "image_url": {"url": f"data:image/png;base64,{encoded}"},
                         }
                     ],
                 }
             ],
         }
         codec = SessionModelInputBlobCodec(store)
+        openings = 0
+
+        def open_codec() -> SessionModelInputBlobCodec:
+            nonlocal openings
+            openings += 1
+            return codec
+
+        context = _context(transcript, logical_input=logical_input)
         committer = ModelInputTranscriptCommitter(
             transcript=transcript,
-            context=_context(transcript, logical_input=logical_input),
+            context=context,
             runtime_references=_runtime_references(),
-            binary_codec=codec,
+            binary_codec_factory=open_codec,
         )
 
-        await committer.commit_prepared_request(
-            _prepared(payload=prepared_payload)
-        )
+        original_thaw = model_input_module.thaw_model_input_json
+        full_logical_thaws = 0
+
+        def thaw(value):
+            nonlocal full_logical_thaws
+            if value is context.logical_input:
+                full_logical_thaws += 1
+            return original_thaw(value)
+
+        monkeypatch.setattr(model_input_module, "thaw_model_input_json", thaw)
+        await committer.commit_prepared_request(_prepared(payload=prepared_payload))
+        assert openings == 1
+        assert full_logical_thaws == 1
 
         snapshot_id = committer.commits[0].snapshot_id
         snapshot_record = next(
@@ -518,9 +997,7 @@ def test_model_input_reserved_literal_alone_sets_projection_version(tmp_path) ->
             "system_prompt": "system prompt",
             "messages": [],
             "tools": [],
-            "request_options": {
-                "$loushang.sessionBlob": {"application": "literal"}
-            },
+            "request_options": {"$loushang.sessionBlob": {"application": "literal"}},
         }
         prepared_payload = {
             "model": "model-input-model",
@@ -536,9 +1013,7 @@ def test_model_input_reserved_literal_alone_sets_projection_version(tmp_path) ->
             binary_codec=codec,
         )
 
-        await committer.commit_prepared_request(
-            _prepared(payload=prepared_payload)
-        )
+        await committer.commit_prepared_request(_prepared(payload=prepared_payload))
 
         snapshot_id = committer.commits[0].snapshot_id
         snapshot = next(
@@ -555,6 +1030,56 @@ def test_model_input_reserved_literal_alone_sets_projection_version(tmp_path) ->
         )
         assert rebuilt.logical_input == logical_input
         assert rebuilt.prepared_payload == prepared_payload
+
+    asyncio.run(scenario())
+
+
+def test_incremental_logical_hash_preserves_literal_projection(tmp_path) -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        logical = {
+            "system_prompt": "system prompt",
+            "messages": [],
+            "tools": [],
+            "request_options": {},
+        }
+        first = ModelInputCommitContext(
+            purpose="main_turn",
+            source_leaf_id=transcript.leaf_id,
+            source_revision=transcript.revision,
+            logical_input=logical,
+        )
+        first._canonical_owned_logical_input(
+            model_input_module._logical_input_for_materialization(first.logical_input)
+        )
+        logical["messages"] = [
+            {"role": "user", "content": {"$loushang.literal": "unchanged"}}
+        ]
+        context = ModelInputCommitContext(
+            purpose="main_turn",
+            source_leaf_id=transcript.leaf_id,
+            source_revision=transcript.revision,
+            logical_input=logical,
+            reuse_from=first,
+        )
+        codec = SessionModelInputBlobCodec(
+            SessionBlobStore(tmp_path / "data", "model-input-conversation")
+        )
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=context,
+            runtime_references=_runtime_references(),
+            binary_codec=codec,
+        )
+        await committer.prewarm_logical_input()
+        assert committer._prewarmed_logical_canonical is not None
+        assert committer._prewarmed_logical_canonical[0] is None
+        await committer.commit_prepared_request(_prepared())
+        rebuilt = rebuild_model_input(
+            transcript, committer.commits[-1].snapshot_id, binary_codec=codec
+        )
+        assert rebuilt.snapshot.binary_projection_version == 1
+        assert rebuilt.logical_input == logical
 
     asyncio.run(scenario())
 
@@ -601,7 +1126,9 @@ def test_model_input_commit_emits_one_aggregate_performance_event(
         assert set(phases) == {
             "preconditions",
             "validate_prepared_request",
+            "post_validation_yield",
             "logical_input_thaw",
+            "pre_writer_yield",
             "active_path",
             "node_index_build",
             "resolver_build",
@@ -609,6 +1136,7 @@ def test_model_input_commit_emits_one_aggregate_performance_event(
             "snapshot_build",
             "append_snapshot",
             "incremental_verify",
+            "publish_commit",
         }
         assert all(
             isinstance(value, dict)
@@ -735,17 +1263,29 @@ def test_model_input_v2_node_index_cache_extends_selected_ancestry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     builds = 0
+    resolver_builds = 0
     original_init = model_input_v2_module.ModelInputV2NodeIndex.__init__
+    original_resolver_init = model_input_v2_module.ModelInputV2Resolver.__init__
 
     def counting_init(self, records) -> None:
         nonlocal builds
         builds += 1
         original_init(self, records)
 
+    def counting_resolver_init(self, records) -> None:
+        nonlocal resolver_builds
+        resolver_builds += 1
+        original_resolver_init(self, records)
+
     monkeypatch.setattr(
         model_input_v2_module.ModelInputV2NodeIndex,
         "__init__",
         counting_init,
+    )
+    monkeypatch.setattr(
+        model_input_v2_module.ModelInputV2Resolver,
+        "__init__",
+        counting_resolver_init,
     )
 
     async def scenario() -> None:
@@ -767,6 +1307,326 @@ def test_model_input_v2_node_index_cache_extends_selected_ancestry(
         await second.commit_prepared_request(_prepared(invocation_id="second"))
 
         assert builds == 1
+        assert resolver_builds == 1
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("change", ["none", "cancel", "branch", "commit"])
+def test_model_input_validation_yields_before_writing(monkeypatch, change):
+    async def scenario():
+        transcript = await _memory_transcript()
+        root = transcript.leaf_id
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="next", timestamp=2.0)
+        )
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        before = transcript.records
+        validated = asyncio.Event()
+        original = model_input_module._validate_prepared_request
+
+        def validate(request):
+            result = original(request)
+            validated.set()
+            return result
+
+        monkeypatch.setattr(model_input_module, "_validate_prepared_request", validate)
+        job = asyncio.create_task(committer.commit_prepared_request(_prepared()))
+        await validated.wait()
+        assert not job.done(), "request validation blocked input until durable writes"
+        assert transcript.records == before
+        if change == "cancel":
+            job.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await job
+            assert transcript.records == before
+        elif change == "branch":
+            transcript.branch(root)
+            with pytest.raises(ModelInputIntegrityError, match="changed"):
+                await job
+            transcript.branch(before[-1].record_id)
+            assert transcript.records == before
+        elif change == "commit":
+            await transcript.append_agent_message(
+                UserMessage(role="user", content="other", timestamp=2.0)
+            )
+            with pytest.raises(ModelInputIntegrityError, match="changed"):
+                await job
+            assert len(transcript.records) == len(before) + 1
+        else:
+            await job
+            rebuilt = rebuild_model_input(transcript, committer.commits[0].snapshot_id)
+            assert rebuilt.prepared_payload_hash == _prepared().payload_hash
+        if change != "none":
+            assert not committer.commits
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("change", ["none", "cancel", "branch", "commit"])
+@pytest.mark.parametrize("warm", [False, True])
+def test_model_input_planning_services_input_before_finishing(
+    monkeypatch, change, warm
+):
+    import threading
+
+    async def scenario():
+        transcript = await _memory_transcript()
+        root = transcript.leaf_id
+        if warm:
+            first = ModelInputTranscriptCommitter(
+                transcript=transcript,
+                context=_context(transcript),
+                runtime_references=_runtime_references(),
+            )
+            await first.commit_prepared_request(_prepared())
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="continue", timestamp=3.0)
+        )
+        messages = [{"role": "user", "content": str(i)} for i in range(30)]
+        logical = dict(thaw_model_input_json(_context(transcript).logical_input))
+        logical["messages"] = messages
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript, logical_input=logical),
+            runtime_references=_runtime_references(),
+        )
+        request = _prepared(payload={"messages": messages})
+        before = transcript.records
+        prior_cache = model_input_v2_module._MODEL_INPUT_V2_INDEX_CACHES.get(transcript)
+        prior_plans = {} if prior_cache is None else dict(prior_cache.sequence_plans)
+        planning = asyncio.Event()
+        release_planning = threading.Event()
+        loop = asyncio.get_running_loop()
+        loop_thread = threading.get_ident()
+        planning_thread = None
+        collected = []
+        original = model_input_v2_module.ModelInputV2Writer._collect_value
+
+        def collect(writer, value):
+            nonlocal planning_thread
+            result = original(writer, value)
+            collected.append(value)
+            if len(collected) == 3:
+                planning_thread = threading.get_ident()
+                if planning_thread == loop_thread:
+                    planning.set()
+                else:
+                    loop.call_soon_threadsafe(planning.set)
+                    release_planning.wait(timeout=10)
+            return result
+
+        monkeypatch.setattr(
+            model_input_v2_module.ModelInputV2Writer, "_collect_value", collect
+        )
+        job = asyncio.create_task(committer.commit_prepared_request(request))
+        await planning.wait()
+        assert planning_thread != loop_thread, "planning occupied the input event loop"
+        assert not job.done()
+        assert len(collected) < 30, "planning a long request blocked pending input"
+        assert transcript.records == before
+        if change == "cancel":
+            job.cancel()
+            release_planning.set()
+            with pytest.raises(asyncio.CancelledError):
+                await job
+            assert transcript.records == before
+        elif change == "branch":
+            transcript.branch(root)
+            release_planning.set()
+            with pytest.raises(ModelInputIntegrityError, match="changed"):
+                await job
+            assert transcript.records == before
+        elif change == "commit":
+            await transcript.append_agent_message(
+                UserMessage(role="user", content="other", timestamp=4.0)
+            )
+            release_planning.set()
+            with pytest.raises(ModelInputIntegrityError, match="changed"):
+                await job
+            assert len(transcript.records) == len(before) + 1
+        else:
+            release_planning.set()
+            await job
+            rebuilt = rebuild_model_input(transcript, committer.commits[0].snapshot_id)
+            assert rebuilt.prepared_payload_hash == request.payload_hash
+            assert rebuilt.logical_input == logical
+        if change != "none":
+            assert not committer.commits
+            cache = model_input_v2_module._MODEL_INPUT_V2_INDEX_CACHES.get(transcript)
+            assert cache is None or cache.sequence_plans == prior_plans
+
+    asyncio.run(scenario())
+
+
+def test_model_input_append_reuses_verified_prefix_value_references(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        messages = [{"role": "user", "content": str(index)} for index in range(50)]
+        logical = dict(thaw_model_input_json(_context(transcript).logical_input))
+        logical["messages"] = messages
+        first = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript, logical_input=logical),
+            runtime_references=_runtime_references(),
+        )
+        await first.commit_prepared_request(_prepared(payload={"messages": messages}))
+
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="continue", timestamp=3.0)
+        )
+        next_messages = [*messages, {"role": "user", "content": "new"}]
+        next_logical = dict(thaw_model_input_json(_context(transcript).logical_input))
+        next_logical["messages"] = next_messages
+        second = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript, logical_input=next_logical),
+            runtime_references=_runtime_references(),
+        )
+        value_lookups = 0
+        yield_checks = 0
+        original_find = model_input_v2_module.ModelInputV2NodeIndex.find_value
+        original_yield = model_input_v2_module.ModelInputV2Writer._yield_if_needed
+
+        def find_value(index, value_hash):
+            nonlocal value_lookups
+            value_lookups += 1
+            return original_find(index, value_hash)
+
+        monkeypatch.setattr(
+            model_input_v2_module.ModelInputV2NodeIndex,
+            "find_value",
+            find_value,
+        )
+        async def count_yield(writer):
+            nonlocal yield_checks
+            yield_checks += 1
+            await original_yield(writer)
+
+        monkeypatch.setattr(
+            model_input_v2_module.ModelInputV2Writer,
+            "_yield_if_needed",
+            count_yield,
+        )
+        request = _prepared(payload={"messages": next_messages})
+        await second.commit_prepared_request(request)
+
+        assert value_lookups < 10, "append rechecked every verified old value"
+        assert yield_checks < 20, f"append checked {yield_checks} verified old values"
+        rebuilt = rebuild_model_input(transcript, second.commits[-1].snapshot_id)
+        assert rebuilt.logical_input == next_logical
+        assert rebuilt.prepared_payload == request.payload_for_transport()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("change", ["none", "cancel", "branch", "commit", "invalid"])
+@pytest.mark.parametrize("warm", [False, True])
+def test_model_input_index_preparation_yields_without_publishing_partial_state(
+    monkeypatch, change, warm
+):
+    from types import SimpleNamespace
+
+    async def scenario():
+        transcript = await _memory_transcript()
+        root = transcript.leaf_id
+        if warm:
+            first = ModelInputTranscriptCommitter(
+                transcript=transcript,
+                context=_context(transcript),
+                runtime_references=_runtime_references(),
+            )
+            await first.commit_prepared_request(_prepared())
+            transcript.branch(root)
+        previous_cache = model_input_v2_module._MODEL_INPUT_V2_INDEX_CACHES.get(
+            transcript
+        )
+        nodes = tuple(create_model_input_json_value({"value": i}) for i in range(100))
+        await transcript.append_model_input_node_bundles(
+            (ModelInputNodeBundle(nodes),),
+            max_encoded_record_bytes=MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
+            expected_revision=transcript.revision,
+            expected_leaf_id=transcript.leaf_id,
+        )
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        before = transcript.records
+        clock = [0.0]
+        indexed = []
+        original = model_input_v2_module.ModelInputV2NodeIndex._add_indexed_node
+
+        def add(index, node, **kwargs):
+            clock[0] += 0.005
+            indexed.append(node)
+            if change == "invalid" and len(indexed) == 100:
+                raise ModelInputIntegrityError("invalid final indexed node")
+            return original(index, node, **kwargs)
+
+        monkeypatch.setattr(
+            model_input_v2_module.ModelInputV2NodeIndex, "_add_indexed_node", add
+        )
+        monkeypatch.setattr(
+            model_input_v2_module,
+            "time",
+            SimpleNamespace(monotonic=lambda: clock[0]),
+            raising=False,
+        )
+        job = asyncio.create_task(committer.commit_prepared_request(_prepared()))
+        while not indexed and not job.done():
+            await asyncio.sleep(0)
+        assert not job.done(), (
+            "cold Model Input index blocked input until it was complete"
+        )
+        assert 0 < len(indexed) < 100
+        assert (
+            model_input_v2_module._MODEL_INPUT_V2_INDEX_CACHES.get(transcript)
+            is previous_cache
+        )
+        assert transcript.records == before
+        if change == "cancel":
+            job.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await job
+        elif change == "branch":
+            transcript.branch(root)
+            with pytest.raises(ModelInputIntegrityError, match="changed"):
+                await job
+        elif change == "commit":
+            await transcript.append_agent_message(
+                UserMessage(role="user", content="other", timestamp=2.0)
+            )
+            with pytest.raises(ModelInputIntegrityError, match="changed"):
+                await job
+        elif change == "invalid":
+            with pytest.raises(ModelInputIntegrityError, match="invalid final"):
+                await job
+        else:
+            await job
+            rebuilt = rebuild_model_input(transcript, committer.commits[0].snapshot_id)
+            assert rebuilt.prepared_payload_hash == _prepared().payload_hash
+            assert rebuilt.logical_input == thaw_model_input_json(
+                _context(transcript).logical_input
+            )
+        if change != "none":
+            assert not committer.commits
+            assert (
+                model_input_v2_module._MODEL_INPUT_V2_INDEX_CACHES.get(transcript)
+                is previous_cache
+            )
+        assert not [
+            task
+            for task in asyncio.all_tasks()
+            if task is not asyncio.current_task() and not task.done()
+        ]
 
     asyncio.run(scenario())
 
@@ -1062,7 +1922,9 @@ def test_attempt_usage_committer_is_atomic_idempotent_and_terminal() -> None:
         )
         assert await committer.record_model_call_attempt_usage(terminal) is True
         assert project_model_call_usage(transcript.active_path()).complete is True
-        assert project_model_call_usage(transcript.active_path()).usage.total_tokens == 12
+        assert (
+            project_model_call_usage(transcript.active_path()).usage.total_tokens == 12
+        )
         assert [
             record.payload
             for record in transcript.records
@@ -1120,6 +1982,259 @@ def test_attempt_usage_committer_rejects_identity_and_revision_drift() -> None:
         )
         with pytest.raises(ModelInputIntegrityError, match="changed outside"):
             await committer.record_model_call_attempt_usage(fact)
+
+    asyncio.run(scenario())
+
+
+def test_terminal_usage_and_outcome_commit_as_one_ordered_batch() -> None:
+    async def scenario() -> None:
+        backend = _CountingModelInputStore()
+        transcript = await _memory_transcript(backend)
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        before_batches = len(backend.batch_sizes)
+        before_appends = backend.append_calls
+        usage = ModelCallAttemptUsage(
+            invocation_id="invocation-1",
+            attempt=1,
+            model_input_snapshot_id=committer.commits[-1].snapshot_id,
+            input=10,
+            output=2,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=12,
+            terminal=True,
+        )
+        await committer.record_terminal_model_call(
+            PreparedModelCallOutcome(
+                invocation_id="invocation-1",
+                disposition="completed",
+                stop_reason="stop",
+                usage=Usage(10, 2, 0, 0, 12, None),
+            ),
+            usage=usage,
+        )
+        assert backend.batch_sizes[before_batches:] == [2]
+        assert backend.append_calls == before_appends
+        assert [record.kind for record in transcript.records[-2:]] == [
+            MODEL_CALL_ATTEMPT_USAGE_KIND,
+            MODEL_CALL_OUTCOME_KIND,
+        ]
+        assert project_model_call_usage(transcript.active_path()).complete
+
+    asyncio.run(scenario())
+
+
+def test_terminal_observation_batch_recovers_unknown_receipt_once() -> None:
+    class UnknownOnceStore(_CountingModelInputStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fail_next_batch = False
+
+        async def append_batch(self, key, records, *, expected_revision, operation_ids):
+            result = await super().append_batch(
+                key,
+                records,
+                expected_revision=expected_revision,
+                operation_ids=operation_ids,
+            )
+            if self.fail_next_batch:
+                self.fail_next_batch = False
+                raise StoreCommitOutcomeUnknown("lost terminal batch receipt")
+            return result
+
+    async def scenario() -> None:
+        backend = UnknownOnceStore()
+        transcript = await _memory_transcript(backend)
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        usage = ModelCallAttemptUsage(
+            invocation_id="invocation-1",
+            attempt=1,
+            model_input_snapshot_id=committer.commits[-1].snapshot_id,
+            input=10,
+            output=2,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=12,
+            terminal=True,
+        )
+        before_batches = len(backend.batch_sizes)
+        backend.fail_next_batch = True
+        await committer.record_terminal_model_call(
+            PreparedModelCallOutcome(
+                invocation_id="invocation-1",
+                disposition="completed",
+                stop_reason="stop",
+                usage=Usage(10, 2, 0, 0, 12, None),
+            ),
+            usage=usage,
+        )
+        assert backend.batch_sizes[before_batches:] == [2, 2]
+        assert [record.kind for record in transcript.records[-2:]] == [
+            MODEL_CALL_ATTEMPT_USAGE_KIND,
+            MODEL_CALL_OUTCOME_KIND,
+        ]
+        assert sum(
+            record.kind == MODEL_CALL_ATTEMPT_USAGE_KIND
+            for record in transcript.records
+        ) == 1
+        assert sum(
+            record.kind == MODEL_CALL_OUTCOME_KIND for record in transcript.records
+        ) == 1
+        assert project_model_call_usage(transcript.active_path()).complete
+
+    asyncio.run(scenario())
+
+
+def test_terminal_observation_batch_settles_before_cancellation() -> None:
+    async def scenario() -> None:
+        backend = _BlockingModelInputStore()
+        transcript = await _memory_transcript(backend)
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        usage = ModelCallAttemptUsage(
+            invocation_id="invocation-1",
+            attempt=1,
+            model_input_snapshot_id=committer.commits[-1].snapshot_id,
+            input=10,
+            output=2,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=12,
+            terminal=True,
+        )
+        backend.block_appends = True
+        task = asyncio.create_task(
+            committer.record_terminal_model_call(
+                PreparedModelCallOutcome(
+                    invocation_id="invocation-1",
+                    disposition="completed",
+                    stop_reason="stop",
+                    usage=Usage(10, 2, 0, 0, 12, None),
+                ),
+                usage=usage,
+            )
+        )
+        await backend.committed.wait()
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+        backend.release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert [record.kind for record in transcript.records[-2:]] == [
+            MODEL_CALL_ATTEMPT_USAGE_KIND,
+            MODEL_CALL_OUTCOME_KIND,
+        ]
+        assert project_model_call_usage(transcript.active_path()).complete
+
+    asyncio.run(scenario())
+
+
+def test_terminal_observation_batch_uses_committed_lineage_without_path_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        usage = ModelCallAttemptUsage(
+            invocation_id="invocation-1",
+            attempt=1,
+            model_input_snapshot_id=committer.commits[-1].snapshot_id,
+            input=10,
+            output=2,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=12,
+            terminal=True,
+        )
+
+        def unexpected_path_scan():
+            raise AssertionError("terminal commit rescanned the active path")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(transcript, "active_path", unexpected_path_scan)
+            await committer.record_terminal_model_call(
+                PreparedModelCallOutcome(
+                    invocation_id="invocation-1",
+                    disposition="completed",
+                    stop_reason="stop",
+                    usage=Usage(10, 2, 0, 0, 12, None),
+                ),
+                usage=usage,
+            )
+        assert project_model_call_usage(transcript.active_path()).complete
+
+    asyncio.run(scenario())
+
+
+def test_terminal_observation_batch_rejects_prior_outcome_on_other_branch() -> None:
+    async def scenario() -> None:
+        backend = _CountingModelInputStore()
+        transcript = await _memory_transcript(backend)
+        source_leaf_id = transcript.leaf_id
+        assert source_leaf_id is not None
+        first = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await first.commit_prepared_request(_prepared())
+        outcome = PreparedModelCallOutcome(
+            invocation_id="invocation-1",
+            disposition="completed",
+            stop_reason="stop",
+            usage=Usage(10, 2, 0, 0, 12, None),
+        )
+        await first.record_model_call_outcome(outcome)
+
+        reopened = await AgentTranscriptUnitOfWork.load(
+            backend,
+            ConversationKey("test", "model-input-conversation"),
+            leaf_id=source_leaf_id,
+        )
+        second = ModelInputTranscriptCommitter(
+            transcript=reopened,
+            context=_context(reopened),
+            runtime_references=_runtime_references(),
+        )
+        await second.commit_prepared_request(_prepared())
+        usage = ModelCallAttemptUsage(
+            invocation_id="invocation-1",
+            attempt=1,
+            model_input_snapshot_id=second.commits[-1].snapshot_id,
+            input=10,
+            output=2,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=12,
+            terminal=True,
+        )
+        with pytest.raises(ModelInputIntegrityError, match="already has"):
+            await second.record_terminal_model_call(outcome, usage=usage)
+        assert not any(
+            record.kind == MODEL_CALL_ATTEMPT_USAGE_KIND
+            and record.payload.model_input_snapshot_id == usage.model_input_snapshot_id
+            for record in reopened.records
+        )
 
     asyncio.run(scenario())
 
@@ -1516,7 +2631,7 @@ def test_loading_a_v1_file_is_byte_stable_before_appending_v2(tmp_path: Path) ->
     asyncio.run(scenario())
 
 
-def test_model_input_materializes_missing_v2_layers_in_bounded_store_batches() -> None:
+def test_model_input_materializes_v2_graph_and_snapshot_in_one_store_batch() -> None:
     async def scenario() -> None:
         backend = _CountingModelInputStore()
         transcript = await _memory_transcript(backend)
@@ -1532,17 +2647,141 @@ def test_model_input_materializes_missing_v2_layers_in_bounded_store_batches() -
         component_count = sum(
             record.kind == MODEL_INPUT_COMPONENT_KIND for record in transcript.records
         )
-        assert sum(backend.batch_sizes) == component_count
-        assert 1 <= len(backend.batch_sizes) <= 4
-        assert backend.append_calls == append_calls_before + 1
+        assert backend.batch_sizes == [component_count + 1]
+        assert backend.append_calls == append_calls_before
         first_batch_sizes = list(backend.batch_sizes)
 
         await committer.commit_prepared_request(
             _prepared(invocation_id="invocation-1", attempt=2)
         )
 
-        assert backend.batch_sizes == first_batch_sizes
-        assert backend.append_calls == append_calls_before + 2
+        assert backend.batch_sizes == [*first_batch_sizes, 1]
+        assert backend.append_calls == append_calls_before
+        assert verify_model_input(transcript, committer.commits[-1].snapshot_id).verified
+
+    asyncio.run(scenario())
+
+
+def test_failed_v2_staging_leaves_no_graph_facts_or_cached_references(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        backend = _CountingModelInputStore()
+        transcript = await _memory_transcript(backend)
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        before = transcript.records
+        original = transcript.stage_model_input_node_bundles
+        stages = 0
+
+        def fail_after_values(*args, **kwargs):
+            nonlocal stages
+            stages += 1
+            if stages == 2:
+                raise ModelInputIntegrityError("staging failed")
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(
+            transcript, "stage_model_input_node_bundles", fail_after_values
+        )
+        with pytest.raises(ModelInputIntegrityError, match="staging failed"):
+            await committer.commit_prepared_request(_prepared())
+        assert stages == 2
+        assert transcript.records == before
+        assert backend.batch_sizes == []
+        cached = model_input_v2_module._MODEL_INPUT_V2_INDEX_CACHES[transcript]
+        assert cached.records == transcript.active_path()
+        assert cached.index.find_value(
+            model_input_v2_module.ModelInputV2Writer._value_plan(
+                {"role": "user", "content": "hello"}
+            ).value_hash
+        ) is None
+
+        monkeypatch.setattr(transcript, "stage_model_input_node_bundles", original)
+        await committer.commit_prepared_request(_prepared())
+        assert verify_model_input(transcript, committer.commits[-1].snapshot_id).verified
+
+    asyncio.run(scenario())
+
+
+def test_v2_batch_recovers_unknown_store_receipt_without_duplicate_facts() -> None:
+    class UnknownOnceStore(_CountingModelInputStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.unknown_once = True
+
+        async def append_batch(self, key, records, *, expected_revision, operation_ids):
+            result = await super().append_batch(
+                key,
+                records,
+                expected_revision=expected_revision,
+                operation_ids=operation_ids,
+            )
+            if self.unknown_once:
+                self.unknown_once = False
+                raise StoreCommitOutcomeUnknown("lost batch receipt")
+            return result
+
+    async def scenario() -> None:
+        backend = UnknownOnceStore()
+        transcript = await _memory_transcript(backend)
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        assert len(backend.batch_sizes) == 2
+        assert backend.batch_sizes[0] == backend.batch_sizes[1]
+        assert sum(
+            record.kind == MODEL_INPUT_PREPARED_KIND
+            for record in transcript.records
+        ) == 1
+        assert verify_model_input(transcript, committer.commits[-1].snapshot_id).verified
+
+    asyncio.run(scenario())
+
+
+def test_branch_during_v2_staging_rejects_the_entire_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        backend = _CountingModelInputStore()
+        transcript = await _memory_transcript(backend)
+        root = transcript.leaf_id
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="second", timestamp=2.0)
+        )
+        selected = transcript.leaf_id
+        before = transcript.records
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        original = transcript.stage_model_input_node_bundles
+        changed = False
+
+        def branch_after_first_stage(*args, **kwargs):
+            nonlocal changed
+            records = original(*args, **kwargs)
+            if not changed:
+                changed = True
+                transcript.branch(root)
+            return records
+
+        monkeypatch.setattr(
+            transcript, "stage_model_input_node_bundles", branch_after_first_stage
+        )
+        with pytest.raises(ModelInputIntegrityError, match="changed"):
+            await committer.commit_prepared_request(_prepared())
+        assert changed
+        assert transcript.records == before
+        assert backend.batch_sizes == []
+        transcript.branch(selected)
 
     asyncio.run(scenario())
 
@@ -1684,6 +2923,328 @@ def test_model_input_v2_reuses_the_previous_message_prefix_and_appends_suffix(
     asyncio.run(scenario())
 
 
+def test_v2_writer_reuses_sealed_prepared_message_prefix_without_reencoding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        messages = [{"role": "user", "content": str(index)} for index in range(50)]
+        payload = {"messages": messages, "tools": [], "model": "model-input-model"}
+        first = _prepared(payload=payload)
+        await committer.commit_prepared_request(first)
+
+        model = _model(api="model-input-test")
+        request = ProviderRequest(
+            model=model,
+            context=NormalizedContext(system_prompt=None),
+            options=None,
+            base_url=model.base_url,
+            invocation_id=first.invocation_id,
+            attempt=2,
+        )
+        second = PreparedModelRequest.from_provider_request(
+            request,
+            payload={**payload, "messages": [*messages, {"role": "user", "content": "tail"}]},
+            model_visible_headers={"anthropic-beta": "feature-1"},
+            reuse_from=first,
+        )
+        assert second.payload["messages"][0] is first.payload["messages"][0]
+        count = 0
+        original = model_input_v2_module.canonical_model_input_json
+
+        def canonical(value, *, name):
+            nonlocal count
+            if name == "Model Input v2 cached sequence item":
+                count += 1
+            return original(value, name=name)
+
+        monkeypatch.setattr(model_input_v2_module, "canonical_model_input_json", canonical)
+        await committer.commit_prepared_request(second)
+        assert count < 10
+        assert verify_model_input(transcript, committer.commits[-1].snapshot_id).verified
+        changed = [{"role": "user", "content": "changed"}, *messages[1:]]
+        await committer.commit_prepared_request(
+            _prepared(
+                attempt=3,
+                payload={**payload, "messages": changed},
+            )
+        )
+        rebuilt = rebuild_model_input(transcript, committer.commits[-1].snapshot_id)
+        assert rebuilt.prepared_payload["messages"][0] == changed[0]
+
+    asyncio.run(scenario())
+
+
+def test_logical_context_freeze_reuses_only_an_exact_immutable_prefix() -> None:
+    messages = [
+        {"role": "user", "content": ["same", {"value": index}]}
+        for index in range(50)
+    ]
+    logical = {
+        "system_prompt": None,
+        "messages": messages,
+        "tools": [],
+        "request_options": {},
+    }
+    first = ModelInputCommitContext(
+        purpose="main_turn",
+        source_leaf_id="first",
+        source_revision=1,
+        logical_input=logical,
+    )
+    next_messages = [*messages, {"role": "user", "content": "tail"}]
+    second = ModelInputCommitContext(
+        purpose="main_turn",
+        source_leaf_id="second",
+        source_revision=2,
+        logical_input={**logical, "messages": next_messages},
+        reuse_from=first,
+    )
+    assert second.logical_input["messages"][0] is first.logical_input["messages"][0]
+    messages[0]["content"][1]["value"] = "changed"
+    third = ModelInputCommitContext(
+        purpose="main_turn",
+        source_leaf_id="third",
+        source_revision=3,
+        logical_input={**logical, "messages": next_messages},
+        reuse_from=second,
+    )
+    assert third.logical_input["messages"][0] is not second.logical_input["messages"][0]
+    assert third.logical_input["messages"][1] == second.logical_input["messages"][1]
+    assert third.logical_input["messages"][0]["content"][1]["value"] == "changed"
+    zero = ModelInputCommitContext(
+        purpose="main_turn",
+        source_leaf_id="zero",
+        source_revision=4,
+        logical_input={**logical, "messages": [{"content": 0.0}]},
+    )
+    negative_zero = ModelInputCommitContext(
+        purpose="main_turn",
+        source_leaf_id="negative-zero",
+        source_revision=5,
+        logical_input={**logical, "messages": [{"content": -0.0}]},
+        reuse_from=zero,
+    )
+    assert negative_zero.logical_input["messages"][0] is not zero.logical_input[
+        "messages"
+    ][0]
+    assert canonical_model_input_json(
+        negative_zero.logical_input["messages"][0], name="negative zero"
+    ) != canonical_model_input_json(zero.logical_input["messages"][0], name="zero")
+
+
+def test_logical_canonical_reuses_only_verified_message_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages = [
+        {"role": "user", "content": ["same", {"value": index}]}
+        for index in range(80)
+    ]
+    logical = {
+        "system_prompt": "system",
+        "messages": messages,
+        "tools": [{"name": "tool"}],
+        "request_options": {},
+        "resource_evidence": {"enabled": True},
+    }
+    first = ModelInputCommitContext(
+        purpose="main_turn", source_leaf_id="first", source_revision=1,
+        logical_input=logical,
+    )
+    first._canonical_logical_input_json(thaw_model_input_json(first.logical_input))
+    second = ModelInputCommitContext(
+        purpose="main_turn", source_leaf_id="second", source_revision=2,
+        logical_input={**logical, "messages": [*messages, {"role": "tool", "content": "done"}]},
+        reuse_from=first,
+    )
+    exact = thaw_model_input_json(second.logical_input)
+    expected = canonical_model_input_json(exact, name="logical Model Input")
+    original = model_input_module.canonical_model_input_json
+    historical_calls = 0
+
+    def counted(value: object, *, name: str) -> str:
+        nonlocal historical_calls
+        if name.startswith("logical Model Input.messages["):
+            historical_calls += 1
+        return original(value, name=name)
+
+    monkeypatch.setattr(model_input_module, "canonical_model_input_json", counted)
+    assert second._canonical_logical_input_json(exact) == expected
+    assert historical_calls <= 2
+
+    messages[10]["content"][1]["value"] = -0.0
+    changed = ModelInputCommitContext(
+        purpose="main_turn", source_leaf_id="changed", source_revision=3,
+        logical_input={**logical, "messages": [*messages, {"role": "tool", "content": "done"}]},
+        reuse_from=second,
+    )
+    changed_value = thaw_model_input_json(changed.logical_input)
+    assert changed._canonical_logical_input_json(changed_value) == original(
+        changed_value, name="logical Model Input"
+    )
+    assert changed.logical_input["messages"][10] is not second.logical_input[
+        "messages"
+    ][10]
+
+
+def test_owned_logical_canonical_hash_reuses_exact_append_only_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hashlib
+
+    messages = [{"role": "user", "content": '历史\\"文' * 4000}]
+    logical = {
+        "alpha_component": {"messages": [{"text": "嵌套"}]},
+        "system_prompt": "系统",
+        "messages": messages,
+        "tools": [{"name": "工具"}],
+        "request_options": {},
+    }
+    previous = ModelInputCommitContext(
+        purpose="main_turn",
+        source_leaf_id="one",
+        source_revision=1,
+        logical_input=logical,
+    )
+    previous._canonical_owned_logical_input(
+        model_input_module._logical_input_for_materialization(previous.logical_input)
+    )
+    original = model_input_module.canonical_model_input_json
+    for index, suffix in enumerate(
+        (
+            {"role": "assistant", "content": '回答\\"一'},
+            {"role": "toolResult", "content": "输出二"},
+            {"role": "user", "content": {"type": "image", "data": "图"}},
+        ),
+        start=2,
+    ):
+        messages = [*messages, suffix]
+        current = ModelInputCommitContext(
+            purpose="main_turn",
+            source_leaf_id=str(index),
+            source_revision=index,
+            logical_input={**logical, "messages": messages},
+            reuse_from=previous,
+        )
+        historical_calls = 0
+
+        def counted(value: object, *, name: str) -> str:
+            nonlocal historical_calls
+            if name.startswith("logical Model Input.messages["):
+                historical_calls += 1
+            return original(value, name=name)
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(model_input_module, "canonical_model_input_json", counted)
+            canonical, digest = current._canonical_owned_logical_input(
+                model_input_module._logical_input_for_materialization(
+                    current.logical_input
+                )
+            )
+        expected = original(
+            thaw_model_input_json(current.logical_input), name="logical Model Input"
+        )
+        assert canonical is None
+        assert (
+            digest == "sha256:" + hashlib.sha256(expected.encode("utf-8")).hexdigest()
+        )
+        assert historical_calls <= 1
+        for marker in model_input_module._LOGICAL_BINARY_MARKERS:
+            assert (marker in expected) == (marker in current._owned_binary_markers)
+        previous = current
+
+    changed = ModelInputCommitContext(
+        purpose="main_turn",
+        source_leaf_id="changed",
+        source_revision=5,
+        logical_input={**logical, "messages": messages, "system_prompt": "新系统"},
+        reuse_from=previous,
+    )
+    canonical, digest = changed._canonical_owned_logical_input(
+        model_input_module._logical_input_for_materialization(changed.logical_input)
+    )
+    expected = original(
+        thaw_model_input_json(changed.logical_input), name="logical Model Input"
+    )
+    assert canonical == expected
+    assert digest == "sha256:" + hashlib.sha256(expected.encode("utf-8")).hexdigest()
+
+    prefix_digest = previous._owned_prefix_digest
+    assert prefix_digest is not None
+    prefix_digest.update(b"corrupt")
+    appended = [*messages, {"role": "user", "content": "after cache change"}]
+    fallback = ModelInputCommitContext(
+        purpose="main_turn", source_leaf_id="fallback", source_revision=6,
+        logical_input={**logical, "messages": appended}, reuse_from=previous,
+    )
+    fallback_canonical, fallback_digest = fallback._canonical_owned_logical_input(
+        model_input_module._logical_input_for_materialization(fallback.logical_input)
+    )
+    fallback_expected = original(
+        thaw_model_input_json(fallback.logical_input), name="logical Model Input"
+    )
+    assert fallback_canonical == fallback_expected
+    assert fallback_digest == "sha256:" + hashlib.sha256(
+        fallback_expected.encode("utf-8")
+    ).hexdigest()
+
+
+def test_session_append_reuses_verified_logical_prefix_at_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        session = AgentTranscriptSession(transcript=transcript)
+        messages = [{"role": "user", "content": str(index)} for index in range(50)]
+        logical = {
+            "system_prompt": None,
+            "messages": messages,
+            "tools": [],
+            "request_options": {},
+        }
+        first = session.create_model_input_committer(
+            purpose="main_turn",
+            logical_input=logical,
+            runtime_references=_runtime_references(),
+        )
+        await first.commit_prepared_request(_prepared())
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="tail", timestamp=2.0)
+        )
+        second = session.create_model_input_committer(
+            purpose="main_turn",
+            logical_input={
+                **logical,
+                "messages": [*messages, {"role": "user", "content": "tail"}],
+            },
+            runtime_references=_runtime_references(),
+        )
+        assert (
+            second._context.logical_input["messages"][0]
+            is first._context.logical_input["messages"][0]
+        )
+        count = 0
+        original = model_input_v2_module.canonical_model_input_json
+
+        def canonical(value, *, name):
+            nonlocal count
+            if name == "Model Input v2 cached sequence item":
+                count += 1
+            return original(value, name=name)
+
+        monkeypatch.setattr(model_input_v2_module, "canonical_model_input_json", canonical)
+        await second.commit_prepared_request(_prepared(invocation_id="next"))
+        assert count < 10
+        assert verify_model_input(transcript, second.commits[-1].snapshot_id).verified
+
+    asyncio.run(scenario())
+
+
 def test_model_input_v2_sequence_prefix_comparison_preserves_json_types() -> None:
     assert not model_input_v2_module._same_model_input_json(
         {"content": 1},
@@ -1692,6 +3253,10 @@ def test_model_input_v2_sequence_prefix_comparison_preserves_json_types() -> Non
     assert not model_input_v2_module._same_model_input_json(
         {"content": 1},
         {"content": 1.0},
+    )
+    assert not model_input_v2_module._same_model_input_json(
+        {"content": -0.0},
+        {"content": 0.0},
     )
     assert model_input_v2_module._same_model_input_json(
         {"content": ["same", {"nested": None}]},
@@ -2527,12 +4092,16 @@ def test_model_input_commit_propagates_cancellation_after_safe_append() -> None:
         with pytest.raises(asyncio.CancelledError):
             await task
 
+        snapshots = [
+            record.payload
+            for record in transcript.records
+            if record.kind == MODEL_INPUT_PREPARED_KIND
+        ]
+        assert len(snapshots) == 1
         assert any(
             record.kind == MODEL_INPUT_COMPONENT_KIND for record in transcript.records
         )
-        assert not any(
-            record.kind == MODEL_INPUT_PREPARED_KIND for record in transcript.records
-        )
+        assert verify_model_input(transcript, snapshots[0].snapshot_id).verified
 
         backend.block_appends = False
         resumed = ModelInputTranscriptCommitter(
@@ -2702,5 +4271,46 @@ def test_main_agent_turn_rebuilds_after_restart_and_source_deletion(
             envelope = json.loads(line)
             if envelope.get("kind", "").startswith("model.input."):
                 assert len((line + "\n").encode("utf-8")) <= 1024 * 1024
+
+    asyncio.run(scenario())
+
+
+def test_forwarded_cancel_runs_before_the_next_logical_projection(monkeypatch):
+    async def scenario():
+        transcript = await _memory_transcript()
+        before = transcript.records
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        original_validate = model_input_module._validate_prepared_request
+        original_thaw = model_input_module.thaw_model_input_json
+        validated = False
+        logical_projections = []
+
+        def validate(request):
+            nonlocal validated
+            value = original_validate(request)
+            validated = True
+            loop.call_soon(lambda: loop.call_soon(job.cancel))
+            return value
+
+        def thaw(value):
+            if validated:
+                logical_projections.append(value is not None)
+            return original_thaw(value)
+
+        monkeypatch.setattr(model_input_module, "_validate_prepared_request", validate)
+        monkeypatch.setattr(model_input_module, "thaw_model_input_json", thaw)
+        loop = asyncio.get_running_loop()
+        job = asyncio.create_task(committer.commit_prepared_request(_prepared()))
+        with pytest.raises(asyncio.CancelledError):
+            await job
+        assert not logical_projections, (
+            "queued cancel forwarding lost priority to another full request clone"
+        )
+        assert transcript.records == before
+        assert not committer.commits
 
     asyncio.run(scenario())

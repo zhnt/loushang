@@ -17,22 +17,28 @@ from loushang.harness.capabilities import StagedResourceCompositionCandidate
 from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
+from loushang.harness.capabilities.tools import (
+    ToolSelection,
+    normalize_allowed_tool_names,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeBindingV1,
+    PackageProductRuntimeFactoryPort,
+    PackageProductRuntimeRequestV1,
+    activate_package_product_runtime,
+)
 from loushang.harness.resources.activation import (
     ResourceActivation,
     SkillActivationRuntime,
 )
+from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleInventoryPort,
     PackageProductLifecycleMode,
     PackageProductLifecycleOperationPort,
-)
-from loushang.harness.resources.packages.product_runtime import (
-    PackageProductRuntimeFactoryPort,
-    PackageProductRuntimeRequestV1,
-    activate_package_product_runtime,
 )
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
@@ -77,6 +83,9 @@ BundleT = TypeVar("BundleT")
 RegistryT = TypeVar("RegistryT")
 StandardExtensionT = TypeVar("StandardExtensionT", bound=StandardExtensionRuntime)
 ConstructionDiagnosticT = TypeVar("ConstructionDiagnosticT")
+PackageProductCatalogBootstrapProjectionPreparer = Callable[
+    [ResourceLoader, Path, PackageProductRuntimeBindingV1], ResourceBundle
+]
 
 
 def _record_drafts(
@@ -169,7 +178,7 @@ class AgentSessionConstructionRequest(Generic[BundleT, RegistryT]):
     resource_bundle: BundleT
     tools: Sequence[ToolDefinition] | None
     tool_registry: RegistryT | None
-    allowed_tool_names: Sequence[str] | None
+    allowed_tool_names: Sequence[str] | ToolSelection | None
     active_tool_names: Sequence[str] | None
     no_tools_mode: NoToolsMode | None
 
@@ -211,13 +220,9 @@ class AgentSessionConstructionRuntime(
         ],
     ) -> SessionT:
         resolved_registry = request.tool_registry
-        allowed_tool_names = (
-            set(request.allowed_tool_names)
-            if request.allowed_tool_names is not None
-            else None
-        )
+        allowed_tool_names = normalize_allowed_tool_names(request.allowed_tool_names)
         if request.no_tools_mode == "all":
-            allowed_tool_names = set()
+            allowed_tool_names = frozenset()
         if resolved_registry is None and request.tools:
             new_registry = registry_factory()
             for tool in request.tools:
@@ -292,7 +297,7 @@ class AgentProductConstructionRequest(Generic[AgentT, SessionT, StandardExtensio
     thinking_level: object
     tools: Sequence[ToolDefinition] | None
     tool_registry: WorkspaceToolRegistry | None
-    allowed_tool_names: Sequence[str] | None
+    allowed_tool_names: Sequence[str] | ToolSelection | None
     active_tool_names: Sequence[str] | None
     no_tools: NoToolsMode | bool | None
     stream_fn: Callable[..., object] | None
@@ -477,7 +482,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         self,
         *,
         services: BootstrapServices,
-        package_materializer: PackageMaterializer,
+        package_materializer: PackageMaterializer | None,
         package_product_lifecycle: PackageProductLifecycleOperationPort | None = None,
         package_product_inventory: PackageProductLifecycleInventoryPort | None = None,
         package_product_lifecycle_mode: PackageProductLifecycleMode = "legacy",
@@ -489,6 +494,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         prepare_catalog_bootstrap_projection: (
             CatalogBootstrapProjectionPreparer | None
         ) = None,
+        prepare_package_product_catalog_bootstrap_projection: (
+            PackageProductCatalogBootstrapProjectionPreparer | None
+        ) = None,
         selected_plugin_packages: Sequence[SelectedPluginPackageInput] = (),
         explicit_system_prompt: str | None,
         append_system_prompt: Sequence[str],
@@ -496,7 +504,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         thinking_level: object | None,
         tools: Sequence[ToolDefinition] | None,
         tool_registry: WorkspaceToolRegistry | None,
-        allowed_tool_names: Sequence[str] | None,
+        allowed_tool_names: Sequence[str] | ToolSelection | None,
         active_tool_names: Sequence[str] | None,
         no_tools: NoToolsMode | bool | None,
         stream_fn: Callable[..., object] | None,
@@ -556,11 +564,27 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
             raise ValueError(
                 "Package Product identity is required for runtime activation"
             )
+        if (
+            prepare_package_product_catalog_bootstrap_projection is not None
+            and package_product_runtime_factory is None
+        ):
+            raise ValueError(
+                "Package Product Catalog preparation requires an activated runtime"
+            )
         bootstrap_capability_runtime = self.bind_capabilities()
         bootstrap_capability_handles = _root_owned_resource_handles(
             bootstrap_capability_runtime
         )
         session_side_question_bindings: list[LegacySideQuestionBinding] = []
+        package_runtime: PackageProductRuntimeBindingV1 | None = None
+
+        def bind_package_runtime(session: SessionT) -> SessionT:
+            if package_runtime is not None and package_runtime.on_dispose is not None:
+                bind = getattr(session, "_bind_package_product_runtime", None)
+                if not callable(bind):
+                    raise TypeError("Package Product Session cannot own its runtime")
+                bind(package_runtime)
+            return session
 
         def create_session(
             agent: AgentT,
@@ -605,18 +629,20 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                     ],
                     session_factory,
                 )
-                return legacy_factory(
-                    bootstrap_capability_runtime,
-                    agent,
-                    bundle,
-                    extension_runtime,
-                    registry,
-                    active,
-                    prompt,
-                    mode,
-                    product_lifecycle,
-                    product_inventory,
-                    product_lifecycle_mode,
+                return bind_package_runtime(
+                    legacy_factory(
+                        bootstrap_capability_runtime,
+                        agent,
+                        bundle,
+                        extension_runtime,
+                        registry,
+                        active,
+                        prompt,
+                        mode,
+                        product_lifecycle,
+                        product_inventory,
+                        product_lifecycle_mode,
+                    )
                 )
             factory_with_side_question = cast(
                 Callable[
@@ -639,19 +665,21 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 session_factory,
             )
             assert side_question_binding is not None
-            return factory_with_side_question(
-                bootstrap_capability_runtime,
-                side_question_binding,
-                agent,
-                bundle,
-                extension_runtime,
-                registry,
-                active,
-                prompt,
-                mode,
-                product_lifecycle,
-                product_inventory,
-                product_lifecycle_mode,
+            return bind_package_runtime(
+                factory_with_side_question(
+                    bootstrap_capability_runtime,
+                    side_question_binding,
+                    agent,
+                    bundle,
+                    extension_runtime,
+                    registry,
+                    active,
+                    prompt,
+                    mode,
+                    product_lifecycle,
+                    product_inventory,
+                    product_lifecycle_mode,
+                )
             )
 
         try:
@@ -668,6 +696,24 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 package_product_lifecycle = package_runtime.lifecycle
                 package_product_inventory = package_runtime.inventory
                 package_product_lifecycle_mode = package_runtime.mode
+            selected_catalog_preparer = prepare_catalog_bootstrap_projection
+            if (
+                package_runtime is not None
+                and prepare_package_product_catalog_bootstrap_projection is not None
+            ):
+                activated_runtime = package_runtime
+                product_catalog_preparer = (
+                    prepare_package_product_catalog_bootstrap_projection
+                )
+
+                def prepare_selected_product_catalog(
+                    loader: ResourceLoader, resolved_cwd: Path
+                ) -> ResourceBundle:
+                    return product_catalog_preparer(
+                        loader, resolved_cwd, activated_runtime
+                    )
+
+                selected_catalog_preparer = prepare_selected_product_catalog
             result = AgentProductConstructionRuntime[
                 AgentT,
                 SessionT,
@@ -691,7 +737,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                         extension_flag_values=extension_flag_values,
                         catalog_authoritative=catalog_authoritative,
                         prepare_catalog_bootstrap_projection=(
-                            prepare_catalog_bootstrap_projection
+                            selected_catalog_preparer
                         ),
                         selected_plugin_packages=tuple(selected_plugin_packages),
                         package_product_lifecycle=package_product_lifecycle,
@@ -737,6 +783,13 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 )
             )
         except BaseException as error:
+            if package_runtime is not None:
+                try:
+                    package_runtime.dispose_runtime()
+                except BaseException as cleanup_error:
+                    error.add_note(
+                        f"Package Product runtime cleanup also failed: {cleanup_error}"
+                    )
             for side_question_binding in reversed(session_side_question_bindings):
                 try:
                     side_question_binding.dispose()

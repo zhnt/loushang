@@ -1,0 +1,715 @@
+"""Product-owned ingress, dependency selection, and Source for pinned Wheels.
+
+Unknown Sources remain indeterminate. This policy has no non-Plugin authority
+and never grants a materializer fallback from an unrecognized input.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from hashlib import sha256
+from pathlib import Path
+from typing import Literal
+
+from packaging.version import InvalidVersion, Version
+
+from loushang.harness.resources.packages.plugin_lifecycle.closure_owner import (
+    PackageDependencyResolutionError,
+    PackageDependencySelectionRequestV1,
+    PackageDependencySelectionV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
+    PackagePinnedLocalWheelSourceAuthority,
+    PackagePinnedLocalWheelSourceProofV1,
+    PackagePinnedSourceProofError,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    PackageClassificationBasisFactV1,
+    PackageClassificationBasisKind,
+    PackageClassificationFactsV1,
+    PackageLifecycleIngressRequestV1,
+    PackageLifecycleRequestV1,
+    PackageLifecycleRequestV2,
+    PackageLifecycleStatusV1,
+    PluginBoundPackageClassificationV1,
+    canonical_json_bytes,
+    canonicalize_source_identity,
+)
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleIntentV1,
+)
+from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
+
+_SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_PROJECT_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+_LOCAL_WHEEL_ACTIONS = frozenset({"materialize", "install", "update"})
+_FACT_KINDS: tuple[PackageClassificationBasisKind, ...] = (
+    "explicit_plugin_intent",
+    "existing_plugin_binding",
+    "existing_plugin_history",
+    "independent_non_plugin_authority",
+)
+
+
+class PackageProductRebindSourceError(RuntimeError):
+    """Original Product Source authority or bytes cannot be proved for rebind."""
+
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductLocalWorkerAdmissionV1:
+    """Exact Product decision input for one inert local Worker Wheel candidate."""
+
+    contribution_id: str
+    owner_id: str
+    native_platform: Literal["linux-x86_64", "windows-amd64"]
+
+    def __post_init__(self) -> None:
+        for value, name in (
+            (self.contribution_id, "Worker contribution"),
+            (self.owner_id, "Worker owner"),
+        ):
+            if not isinstance(value, str) or _SAFE_ID.fullmatch(value) is None:
+                raise ValueError(f"Product {name} identity is invalid")
+        if self.native_platform not in {"linux-x86_64", "windows-amd64"}:
+            raise ValueError("Product Worker native platform is unsupported")
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductLocalWheelBindingV1:
+    """One Product-reviewed Source, requested Package, and Plugin identity."""
+
+    source_identity: str
+    requested_package: str
+    plugin_id: str
+    artifact_digest: str
+    plugin_manifest_path: str | None = None
+    source_trust_class: str | None = None
+    worker_admission: PackageProductLocalWorkerAdmissionV1 | None = None
+
+    def __post_init__(self) -> None:
+        _require_local_wheel_source(self.source_identity)
+        if (
+            not isinstance(self.requested_package, str)
+            or not self.requested_package
+            or len(self.requested_package) > 256
+            or any(char in self.requested_package for char in ("/", "\\", "@", "?", "#"))
+        ):
+            raise ValueError("Product requested Package identity is invalid")
+        if not isinstance(self.plugin_id, str) or _SAFE_ID.fullmatch(self.plugin_id) is None:
+            raise ValueError("Product Plugin identity is invalid")
+        if (
+            not isinstance(self.artifact_digest, str)
+            or _SHA256.fullmatch(self.artifact_digest) is None
+        ):
+            raise ValueError("Product local Wheel digest is invalid")
+        if self.plugin_manifest_path is not None:
+            try:
+                logical_path = canonical_plugin_relative_path(
+                    self.plugin_manifest_path
+                )
+            except ValueError as exc:
+                raise ValueError("Product Plugin manifest path is invalid") from exc
+            if logical_path.name != "plugin.json":
+                raise ValueError("Product Plugin manifest path must name plugin.json")
+        if self.source_trust_class is not None and (
+            not isinstance(self.source_trust_class, str)
+            or _SAFE_ID.fullmatch(self.source_trust_class) is None
+        ):
+            raise ValueError("Product Plugin source trust class is invalid")
+        if self.source_trust_class == "local-worker-candidate":
+            if (
+                not isinstance(self.worker_admission, PackageProductLocalWorkerAdmissionV1)
+                or self.plugin_manifest_path is None
+            ):
+                raise ValueError("Product Worker candidate requires exact admission")
+        elif self.worker_admission is not None:
+            raise ValueError("Product Worker admission requires Worker candidate trust")
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductLocalWheelDependencyV1:
+    """One deterministic Product-approved dependency version and Source."""
+
+    source_identity: str
+    project_name: str
+    version: str
+    artifact_digest: str
+
+    def __post_init__(self) -> None:
+        _require_local_wheel_source(self.source_identity)
+        if (
+            not isinstance(self.project_name, str)
+            or _PROJECT_NAME.fullmatch(self.project_name) is None
+        ):
+            raise ValueError("Product dependency project name is not canonical")
+        if not isinstance(self.version, str) or not self.version:
+            raise ValueError("Product dependency version is invalid")
+        try:
+            if str(Version(self.version)) != self.version:
+                raise ValueError("Product dependency version is not canonical")
+        except InvalidVersion as exc:
+            raise ValueError("Product dependency version is invalid") from exc
+        if (
+            not isinstance(self.artifact_digest, str)
+            or _SHA256.fullmatch(self.artifact_digest) is None
+        ):
+            raise ValueError("Product dependency Wheel digest is invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductLocalWheelPolicy:
+    """One immutable Product authority for classification, resolution, and Source."""
+
+    product_id: str
+    project_scope_id: str
+    source_root: Path
+    bindings: tuple[PackageProductLocalWheelBindingV1, ...]
+    policy_revision: str
+    quota_profile_revision: str
+    resolution_environment_fingerprint: str
+    authority_id: str
+    dependencies: tuple[PackageProductLocalWheelDependencyV1, ...] = ()
+    classifier_epoch: int = 1
+
+    def __post_init__(self) -> None:
+        for value, name in (
+            (self.product_id, "Product identity"),
+            (self.project_scope_id, "Product project scope"),
+            (self.policy_revision, "Product policy revision"),
+            (self.quota_profile_revision, "Product quota revision"),
+            (self.authority_id, "Product classification authority"),
+        ):
+            if not isinstance(value, str) or _SAFE_ID.fullmatch(value) is None:
+                raise ValueError(f"{name} is invalid")
+        if (
+            not isinstance(self.source_root, Path)
+            or not self.source_root.is_absolute()
+            or ".." in self.source_root.parts
+        ):
+            raise ValueError("Product local Wheel Source root is invalid")
+        if (
+            type(self.bindings) is not tuple
+            or len(self.bindings) > 128
+            or any(
+                not isinstance(binding, PackageProductLocalWheelBindingV1)
+                for binding in self.bindings
+            )
+        ):
+            raise ValueError("Product local Wheel bindings are invalid")
+        identities = tuple(binding.source_identity for binding in self.bindings)
+        if identities != tuple(sorted(set(identities))):
+            raise ValueError("Product local Wheel bindings must be uniquely ordered")
+        if (
+            type(self.dependencies) is not tuple
+            or len(self.dependencies) > 128
+            or any(
+                not isinstance(dependency, PackageProductLocalWheelDependencyV1)
+                for dependency in self.dependencies
+            )
+        ):
+            raise ValueError("Product local Wheel dependencies are invalid")
+        project_versions = tuple(
+            (item.project_name, item.version) for item in self.dependencies
+        )
+        if project_versions != tuple(sorted(set(project_versions))) or len(
+            {(item.project_name, Version(item.version)) for item in self.dependencies}
+        ) != len(self.dependencies):
+            raise ValueError("Product dependency versions must be uniquely ordered")
+        all_sources = identities + tuple(
+            item.source_identity for item in self.dependencies
+        )
+        if len(all_sources) != len(set(all_sources)):
+            raise ValueError("Product local Wheel Source roles must be distinct")
+        if (
+            not isinstance(self.resolution_environment_fingerprint, str)
+            or _SHA256.fullmatch(self.resolution_environment_fingerprint) is None
+        ):
+            raise ValueError("Product resolution environment identity is invalid")
+        if type(self.classifier_epoch) is not int or self.classifier_epoch < 1:
+            raise ValueError("Product classifier epoch is invalid")
+        # Source Authority validates that every exact path is below the root.
+        self.source_authority()
+
+    @property
+    def authority_revision(self) -> str:
+        values = {
+            "authorityId": self.authority_id,
+            "bindings": [
+                {
+                    "artifactDigest": item.artifact_digest,
+                    "pluginId": item.plugin_id,
+                    "requestedPackage": item.requested_package,
+                    "sourceIdentity": item.source_identity,
+                    **(
+                        {"pluginManifestPath": item.plugin_manifest_path}
+                        if item.plugin_manifest_path is not None
+                        else {}
+                    ),
+                    **(
+                        {"sourceTrustClass": item.source_trust_class}
+                        if item.source_trust_class is not None
+                        else {}
+                    ),
+                    **(
+                        {
+                            "workerAdmission": {
+                                "contributionId": item.worker_admission.contribution_id,
+                                "nativePlatform": item.worker_admission.native_platform,
+                                "ownerId": item.worker_admission.owner_id,
+                            }
+                        }
+                        if item.worker_admission is not None
+                        else {}
+                    ),
+                }
+                for item in self.bindings
+            ],
+            "classifierEpoch": self.classifier_epoch,
+            "dependencies": [
+                {
+                    "artifactDigest": item.artifact_digest,
+                    "projectName": item.project_name,
+                    "sourceIdentity": item.source_identity,
+                    "version": item.version,
+                }
+                for item in self.dependencies
+            ],
+            "policyRevision": self.policy_revision,
+            "productId": self.product_id,
+            "projectScopeId": self.project_scope_id,
+            "quotaProfileRevision": self.quota_profile_revision,
+            "resolutionEnvironmentFingerprint": (
+                self.resolution_environment_fingerprint
+            ),
+            "sourceRoot": str(self.source_root),
+        }
+        return sha256(canonical_json_bytes(values)).hexdigest()
+
+    def source_authority(self) -> PackagePinnedLocalWheelSourceAuthority:
+        """Issue the same exact digest allowlist used by Product classification."""
+
+        return PackagePinnedLocalWheelSourceAuthority(
+            source_root=self.source_root,
+            allowed_digests={
+                **{
+                    item.source_identity: item.artifact_digest
+                    for item in self.bindings
+                },
+                **{
+                    item.source_identity: item.artifact_digest
+                    for item in self.dependencies
+                },
+            },
+            policy_revision=self.policy_revision,
+            authority_id=self.authority_id,
+            capture_epoch=self.classifier_epoch,
+        )
+
+    def prove_rebind_root_source(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        max_bytes: int,
+    ) -> PackagePinnedLocalWheelSourceProofV1:
+        """Read-only root proof; no cleanup, admission, or retry is authorized."""
+
+        return self._prove_rebind_root_source(
+            request, status, max_bytes=max_bytes, active_acquired=False
+        )
+
+    def prove_acquired_claim_root_source(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        max_bytes: int,
+    ) -> PackagePinnedLocalWheelSourceProofV1:
+        """Read-only Source proof for an acquired claim selected by Product."""
+
+        return self._prove_rebind_root_source(
+            request, status, max_bytes=max_bytes, active_acquired=True
+        )
+
+    def _prove_rebind_root_source(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        max_bytes: int,
+        active_acquired: bool,
+    ) -> PackagePinnedLocalWheelSourceProofV1:
+        eligible_status = isinstance(status, PackageLifecycleStatusV1) and (
+            (
+                status.disposition == "active"
+                and status.phase
+                in {
+                    "classified", "acquiring",
+                    "acquired", "inspecting", "extracted", "resolving_closure",
+                    "closure_verified",
+                    "transaction_pinned",
+                    "set_published",
+                }
+            )
+            if active_acquired
+            else (
+                status.disposition == "retryable_failure"
+                and status.failure is not None
+                and status.failure.operator_action == "retry"
+            )
+        )
+        if (
+            not isinstance(request, PackageLifecycleRequestV2)
+            or not eligible_status
+            or request.operation_id != status.operation_id
+            or request.request_fingerprint != status.request_fingerprint
+            or status.classification is None
+            or status.classification.decision != "plugin_bound"
+        ):
+            raise PackageProductRebindSourceError(
+                "Package retry has no exact Product Source candidate",
+                code="package_rebind_source_not_retryable",
+            )
+        binding = self._binding(request.canonical_source_identity)
+        if (
+            binding is None
+            or request.product_id != self.product_id
+            or request.scope_id != self.project_scope_id
+            or request.requested_package != binding.requested_package
+            or request.requested_plugin_id != binding.plugin_id
+            or request.action not in {"install", "update"}
+            or self.recheck(request, status.classification)
+            != status.classification
+        ):
+            raise PackageProductRebindSourceError(
+                "Original Product Source policy changed",
+                code="package_rebind_source_policy_changed",
+            )
+        try:
+            return self.source_authority().verify_pinned_bytes(
+                request.canonical_source_identity, max_bytes=max_bytes
+            )
+        except PackagePinnedSourceProofError as exc:
+            raise PackageProductRebindSourceError(str(exc), code=exc.code) from exc
+
+    def prove_rebind_selected_sources(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        selections: tuple[PackageDependencySelectionV1, ...],
+        max_bytes: int,
+    ) -> tuple[PackagePinnedLocalWheelSourceProofV1, ...]:
+        """Recheck root and exact selected dependency bytes under one total cap.
+
+        The caller must obtain selections from the strict resolution-owner read.
+        This byte observation grants no rebind or retry authority.
+        """
+
+        return self._prove_rebind_selected_sources(
+            request,
+            status,
+            selections=selections,
+            max_bytes=max_bytes,
+            active_acquired=False,
+        )
+
+    def prove_acquired_claim_selected_sources(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        selections: tuple[PackageDependencySelectionV1, ...],
+        max_bytes: int,
+    ) -> tuple[PackagePinnedLocalWheelSourceProofV1, ...]:
+        """Recheck selected Source bytes for an acquired Product claim."""
+
+        return self.prove_selected_active_claim_sources(
+            request,
+            status,
+            selections=selections,
+            max_bytes=max_bytes,
+        )
+
+    def prove_selected_active_claim_sources(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        selections: tuple[PackageDependencySelectionV1, ...],
+        max_bytes: int,
+    ) -> tuple[PackagePinnedLocalWheelSourceProofV1, ...]:
+        """Recheck selected Source bytes for an active root or closure claim."""
+
+        return self._prove_rebind_selected_sources(
+            request,
+            status,
+            selections=selections,
+            max_bytes=max_bytes,
+            active_acquired=True,
+        )
+
+    def _prove_rebind_selected_sources(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        selections: tuple[PackageDependencySelectionV1, ...],
+        max_bytes: int,
+        active_acquired: bool,
+    ) -> tuple[PackagePinnedLocalWheelSourceProofV1, ...]:
+        if (
+            not isinstance(selections, tuple)
+            or len(selections) > 512
+            or any(
+                not isinstance(item, PackageDependencySelectionV1)
+                for item in selections
+            )
+        ):
+            raise TypeError("Package rebind selections are invalid")
+        root = self._prove_rebind_root_source(
+            request,
+            status,
+            max_bytes=max_bytes,
+            active_acquired=active_acquired,
+        )
+        selected: dict[str, PackageDependencySelectionV1] = {}
+        for selection in selections:
+            configured = next(
+                (
+                    item
+                    for item in self.dependencies
+                    if item.project_name == selection.project_name
+                ),
+                None,
+            )
+            if (
+                selection.operation_id != status.operation_id
+                or selection.attempt_epoch != status.attempt_epoch
+                or selection.request_fingerprint != status.request_fingerprint
+                or selection.resolution_environment_fingerprint
+                != self.resolution_environment_fingerprint
+                or selection.resolver_id != self.authority_id
+                or selection.resolver_revision != self.authority_revision
+                or configured is None
+                or selection.canonical_source_identity != configured.source_identity
+                or selection.version != configured.version
+                or selection.expected_artifact_digest != configured.artifact_digest
+            ):
+                raise PackageProductRebindSourceError(
+                    "Original dependency selection changed",
+                    code="package_rebind_dependency_selection_changed",
+                )
+            prior = selected.get(selection.project_name)
+            if prior is not None and (
+                prior.canonical_source_identity
+                != selection.canonical_source_identity
+                or prior.version != selection.version
+                or prior.expected_artifact_digest
+                != selection.expected_artifact_digest
+            ):
+                raise PackageProductRebindSourceError(
+                    "Original dependency selections conflict",
+                    code="package_rebind_dependency_selection_changed",
+                )
+            selected[selection.project_name] = selection
+        source_authority = self.source_authority()
+        remaining = max_bytes - root.byte_count
+        proofs = [root]
+        for project_name in sorted(selected):
+            if remaining <= 0:
+                raise PackageProductRebindSourceError(
+                    "Selected Sources exceed the proof byte limit",
+                    code="package_source_size_limit",
+                )
+            selection = selected[project_name]
+            try:
+                proof = source_authority.verify_pinned_bytes(
+                    selection.canonical_source_identity, max_bytes=remaining
+                )
+            except PackagePinnedSourceProofError as exc:
+                raise PackageProductRebindSourceError(
+                    str(exc), code=exc.code
+                ) from exc
+            proofs.append(proof)
+            remaining -= proof.byte_count
+        return tuple(proofs)
+
+    def resolve(
+        self, request: PackageDependencySelectionRequestV1
+    ) -> PackageDependencySelectionV1:
+        """Select the highest Product-pinned version satisfying this requirement."""
+
+        if not isinstance(request, PackageDependencySelectionRequestV1):
+            raise TypeError("Package dependency selection request is required")
+        if request.resolution_environment_fingerprint != (
+            self.resolution_environment_fingerprint
+        ):
+            raise PackageDependencyResolutionError(
+                "Product has no matching pinned local Wheel dependency",
+                code="package_closure_conflict",
+            )
+        matching = tuple(
+            item
+            for item in self.dependencies
+            if item.project_name == request.requirement.project_name
+            and request.requirement.matches_version(item.version)
+        )
+        if not matching:
+            raise PackageDependencyResolutionError(
+                "Product has no matching pinned local Wheel dependency",
+                code="package_closure_conflict",
+            )
+        selected = max(matching, key=lambda item: Version(item.version))
+        return PackageDependencySelectionV1(
+            operation_id=request.operation_id,
+            attempt_epoch=request.attempt_epoch,
+            parent_node_id=request.parent_node_id,
+            request_fingerprint=request.request_fingerprint,
+            resolution_environment_fingerprint=(
+                request.resolution_environment_fingerprint
+            ),
+            requirement_fingerprint=request.requirement_fingerprint,
+            project_name=selected.project_name,
+            version=selected.version,
+            canonical_source_identity=selected.source_identity,
+            wheel_filename=Path(selected.source_identity).name,
+            expected_artifact_digest=selected.artifact_digest,
+            resolver_id=self.authority_id,
+            resolver_revision=self.authority_revision,
+        )
+
+    def scope_id(self, intent: PackageProductLifecycleIntentV1) -> str:
+        if not isinstance(intent, PackageProductLifecycleIntentV1):
+            raise TypeError("Package Product intent is required")
+        if intent.scope == "project":
+            return self.project_scope_id
+        return f"unsupported:{intent.scope}:{self.project_scope_id}"
+
+    def create(
+        self, intent: PackageProductLifecycleIntentV1
+    ) -> PackageLifecycleIngressRequestV1:
+        if not isinstance(intent, PackageProductLifecycleIntentV1):
+            raise TypeError("Package Product intent is required")
+        binding = self._binding(intent.source) if intent.scope == "project" else None
+        return PackageLifecycleIngressRequestV1(
+            operation_id=intent.operation_id,
+            action=intent.action,
+            product_id=self.product_id,
+            scope_id=self.scope_id(intent),
+            requested_package=(
+                "unclassified-wheel" if binding is None else binding.requested_package
+            ),
+            requested_plugin_id=None if binding is None else binding.plugin_id,
+            source_locator=intent.source,
+            policy_revision=self.policy_revision,
+            quota_profile_revision=self.quota_profile_revision,
+            resolution_environment_fingerprint=(
+                self.resolution_environment_fingerprint
+            ),
+        )
+
+    def classification_facts(
+        self, request: PackageLifecycleIngressRequestV1
+    ) -> PackageClassificationFactsV1:
+        if not isinstance(request, PackageLifecycleIngressRequestV1):
+            raise TypeError("Package ingress request is required")
+        binding = self._binding(request.source_locator)
+        explicit = bool(
+            binding is not None
+            and request.action in _LOCAL_WHEEL_ACTIONS
+            and request.product_id == self.product_id
+            and request.scope_id == self.project_scope_id
+            and request.requested_package == binding.requested_package
+            and request.requested_plugin_id == binding.plugin_id
+            and request.policy_revision == self.policy_revision
+            and request.quota_profile_revision == self.quota_profile_revision
+            and request.resolution_environment_fingerprint
+            == self.resolution_environment_fingerprint
+        )
+        return PackageClassificationFactsV1(
+            facts=tuple(
+                PackageClassificationBasisFactV1(
+                    kind=kind,
+                    present=kind == "explicit_plugin_intent" and explicit,
+                    authority_id=f"{self.authority_id}:{kind}",
+                    owner_revision=self.authority_revision,
+                )
+                for kind in _FACT_KINDS
+            ),
+            policy_revision=self.policy_revision,
+            classifier_epoch=self.classifier_epoch,
+        )
+
+    def recheck(
+        self,
+        request: PackageLifecycleRequestV1,
+        prior: PluginBoundPackageClassificationV1,
+    ) -> PluginBoundPackageClassificationV1:
+        if not isinstance(request, PackageLifecycleRequestV1) or not isinstance(
+            prior, PluginBoundPackageClassificationV1
+        ):
+            raise TypeError("Package classification recheck requires exact evidence")
+        if request.request_fingerprint != prior.request_fingerprint:
+            raise ValueError("Package classification request changed")
+        facts = self.classification_facts(
+            PackageLifecycleIngressRequestV1(
+                operation_id=request.operation_id,
+                action=request.action,
+                product_id=request.product_id,
+                scope_id=request.scope_id,
+                requested_package=request.requested_package,
+                requested_plugin_id=request.requested_plugin_id,
+                source_locator=request.canonical_source_identity,
+                policy_revision=request.policy_revision,
+                quota_profile_revision=request.quota_profile_revision,
+                resolution_environment_fingerprint=(
+                    request.resolution_environment_fingerprint
+                ),
+            )
+        )
+        return PluginBoundPackageClassificationV1(
+            decision=(
+                "plugin_bound"
+                if prior.decision == "plugin_bound" and facts.facts[0].present
+                else "indeterminate"
+            ),
+            request_fingerprint=prior.request_fingerprint,
+            basis_facts=facts,
+            policy_revision=facts.policy_revision,
+            classifier_epoch=facts.classifier_epoch,
+            canonical_source_identity=request.canonical_source_identity,
+        )
+
+    def _binding(self, source: str) -> PackageProductLocalWheelBindingV1 | None:
+        # An alias with a query, fragment, or URL spelling is not an authorized
+        # local path even if canonicalization would erase the extra bytes.
+        return next(
+            (item for item in self.bindings if item.source_identity == source),
+            None,
+        )
+
+
+def _require_local_wheel_source(source: str) -> None:
+    if (
+        not isinstance(source, str)
+        or canonicalize_source_identity(source) != source
+        or not Path(source).is_absolute()
+        or Path(source).suffix != ".whl"
+    ):
+        raise ValueError("Product local Wheel Source must be canonical")
+
+
+__all__ = [
+    "PackageProductLocalWorkerAdmissionV1",
+    "PackageProductLocalWheelBindingV1",
+    "PackageProductLocalWheelDependencyV1",
+    "PackageProductLocalWheelPolicy",
+    "PackageProductRebindSourceError",
+]

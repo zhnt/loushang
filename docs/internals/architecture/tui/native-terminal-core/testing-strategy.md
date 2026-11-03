@@ -217,12 +217,12 @@ so a stalled async lifecycle emits a Python stack before the runner deadline.
 HarnessTUI core and Coding UI adapter jobs preserve separate JUnit reports
 and the existing fail-closed report verifier.
 
-`tui-cross-platform-contracts` remains a compatibility required-check context
-backed by `quality-gate`. Every selected check must succeed; an unselected
+`quality-gate` is the required check and aggregates the TUI and HarnessTUI
+workflows. Every selected check must succeed; an unselected
 check must be skipped intentionally. A failed selector or an unexpectedly
 skipped selected check blocks the gate. Scheduled and manual full runs select
 every native contract. See [change-aware quality gates](../../../testing/change-aware-quality-gates.md)
-for selection rules and the branch-protection migration.
+for selection rules and branch-protection requirements.
 
 Deterministic screen-loop lifecycle recipes use `BlockingPromptController`
 for prompts that settle during abort. Its one-shot context requires the prompt

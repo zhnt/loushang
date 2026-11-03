@@ -7,6 +7,7 @@ installed Coding code, not a transport, process owner or installed command.
 from __future__ import annotations
 
 import hashlib
+import sys
 from dataclasses import dataclass, field
 from importlib.metadata import version
 from pathlib import Path
@@ -29,8 +30,12 @@ from loushang.appservice.discovery_ports import (
     HostedSessionDiscoveryBindingV1,
     HostedSessionDiscoveryScopeV1,
 )
+from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.machine_resources import prepare_private_directory_chain
+from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 from .bootstrap import BootstrapServices, create_services
 from .control.settings_store import (
@@ -44,6 +49,7 @@ from .hosted_application import (
 from .hosted_catalog import (
     CODING_HOSTED_COMPATIBILITY_ID,
     CodingHostedCandidateValidatorV1,
+    CodingHostedResumeCatalogV1,
     CodingHostedScopeV1,
     CodingHostedSessionCatalogV1,
 )
@@ -52,7 +58,10 @@ from .hosted_continuity import (
     CodingHostedContinuityRequestV1,
     create_coding_hosted_continuity_attempt,
 )
-from .hosted_session import CodingRealHostedSessionFactoryV1
+from .hosted_session import (
+    CodingHostedProductRuntimeFactoryForSession,
+    CodingRealHostedSessionFactoryV1,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,12 +155,86 @@ def create_coding_hosted_attempt(
     stream_fn: StreamFn | None = None,
     tools: list[ToolDefinition] | None = None,
     session_discovery: bool = False,
+    owned_transcripts: bool = False,
+    package_product_runtime_factory_for_session: (
+        CodingHostedProductRuntimeFactoryForSession | None
+    ) = None,
 ) -> CodingHostedContinuityAttemptV1:
     """Bind real Coding/G13 once; test seams never enter command-line input."""
     if type(session_discovery) is not bool:
         raise TypeError("invalid discovery activation")
+    if type(owned_transcripts) is not bool:
+        raise TypeError("invalid owned transcript activation")
+    # Keep Product execution negotiation cross-platform while retaining the
+    # existing native Writer support boundary used by Embedded Coding.
+    owned_transcripts = owned_transcripts and sys.platform == "linux"
     generation = token_hex(16)
-    catalog = CodingHostedSessionCatalogV1(launch.scopes)
+    catalog = CodingHostedSessionCatalogV1(launch.scopes, owned_transcripts=owned_transcripts)
+    return _create_coding_attempt(
+        application_root=launch.application_root, application_id=launch.application_id,
+        catalog=catalog, generation=generation, model=model, stream_fn=stream_fn, tools=tools,
+        session_discovery=session_discovery, owned_transcripts=owned_transcripts,
+        resume_history=owned_transcripts,
+        profile_id=CODING_HOSTED_APPLICATION_PROFILE_ID,
+        package_product_runtime_factory_for_session=(
+            package_product_runtime_factory_for_session
+        ),
+    )
+
+
+def prepare_coding_hosted_session_roots(launch: CodingHostedLaunchV1) -> None:
+    """Prepare owned Session leaves only after an explicit startup is admitted."""
+    if type(launch) is not CodingHostedLaunchV1:
+        raise TypeError("invalid hosted launch")
+    for scope in launch.scopes:
+        prepare_private_directory_chain(scope.session_dir)
+
+
+def _create_coding_attempt(
+    *, application_root: Path, application_id: str, catalog: CodingHostedSessionCatalogV1,
+    generation: str, model: Model | ModelSelection | None, stream_fn: StreamFn | None,
+    tools: list[ToolDefinition] | None, session_discovery: bool, owned_transcripts: bool,
+    profile_id: str, resume_history: bool = False, managed_selection: bool = False,
+    managed_mux: ManagedMuxServiceBindingV1 | None = None,
+    output_capture_factory: ExecCaptureFactory | None = None,
+    package_product_runtime_factory_for_session: (
+        CodingHostedProductRuntimeFactoryForSession | None
+    ) = None,
+) -> CodingHostedContinuityAttemptV1:
+    """Installed Product wiring shared by explicit legacy/managed launch facts."""
+    foreground = _coding_foreground_request(
+        application_id=application_id, catalog=catalog, generation=generation,
+        model=model, stream_fn=stream_fn, tools=tools, session_discovery=session_discovery,
+        owned_transcripts=owned_transcripts, profile_id=profile_id, resume_history=resume_history,
+        managed_selection=managed_selection, managed_mux=managed_mux,
+        output_capture_factory=output_capture_factory,
+        package_product_runtime_factory_for_session=package_product_runtime_factory_for_session,
+    )
+    return create_coding_hosted_continuity_attempt(
+        CodingHostedContinuityRequestV1(
+            activation=HostedApplicationContinuityActivationV1(),
+            foreground=foreground,
+            application_id=application_id,
+            owner_epoch=token_hex(16),
+            store=JsonFileApplicationContinuityStoreV1(application_root),
+        )
+    )
+
+
+def _coding_foreground_request(
+    *, application_id: str, catalog: CodingHostedSessionCatalogV1,
+    generation: str, model: Model | ModelSelection | None, stream_fn: StreamFn | None,
+    tools: list[ToolDefinition] | None, session_discovery: bool, owned_transcripts: bool,
+    profile_id: str, resume_history: bool = False, managed_selection: bool = False,
+    managed_mux: ManagedMuxServiceBindingV1 | None = None,
+    session_tool_policy: PolicyEvaluator | None = None,
+    session_active_tools: list[str] | None = None,
+    session_allowed_tools: list[str] | None = None,
+    session_system_prompt: str | None = None,
+    output_capture_factory: ExecCaptureFactory | None = None,
+    package_product_runtime_factory_for_session: CodingHostedProductRuntimeFactoryForSession | None = None,
+) -> CodingForegroundHostedApplicationRequestV1:
+    """Shared installed Product composition, independent of application persistence."""
     admitted_scopes = tuple(HostedSessionDiscoveryScopeV1(
         "coding", scope.scope, scope.fingerprint,
     ) for scope in catalog.scopes)
@@ -159,7 +242,21 @@ def create_coding_hosted_attempt(
         generation, admitted_scopes, catalog,
     )
     product_version = hashlib.sha256(version("loushang").encode()).hexdigest()
-    foreground = CodingForegroundHostedApplicationRequestV1(
+    sessions = (
+        CodingHostedResumeCatalogV1(catalog)
+        if (
+            resume_history
+            and not managed_selection
+            and package_product_runtime_factory_for_session is None
+        )
+        else catalog
+    )
+    execution = None
+    if not managed_selection:
+        from .hosted_execution import create_coding_execution_service_binding
+
+        execution = create_coding_execution_service_binding(application_id)
+    return CodingForegroundHostedApplicationRequestV1(
         activation=HostedApplicationActivationV1(),
         generation_id=generation,
         product_version=product_version,
@@ -173,29 +270,33 @@ def create_coding_hosted_attempt(
             AdmissionIdentityV1(
                 generation,
                 AppHostAdmissionSubjectKind.PROFILE,
-                CODING_HOSTED_APPLICATION_PROFILE_ID,
+                profile_id,
             )
         ),
         candidate_validator=CodingHostedCandidateValidatorV1(),
-        sessions=catalog,
+        sessions=sessions,
         discovery=discovery,
         admitted_scopes=admitted_scopes,
+        execution=execution,
         session_factory=CodingRealHostedSessionFactoryV1(
             services_factory=_services,
             model=model,
             stream_fn=stream_fn,
             tools=tools,
+            session_tool_policy=session_tool_policy,
+            session_active_tools=session_active_tools,
+            session_allowed_tools=session_allowed_tools,
+            session_system_prompt=session_system_prompt,
+            output_capture_factory=output_capture_factory,
+            package_product_runtime_factory_for_session=(
+                package_product_runtime_factory_for_session
+            ),
         ),
         shutdown_budget=AppHostShutdownBudgetV1(10.0, 5.0),
-    )
-    return create_coding_hosted_continuity_attempt(
-        CodingHostedContinuityRequestV1(
-            activation=HostedApplicationContinuityActivationV1(),
-            foreground=foreground,
-            application_id=launch.application_id,
-            owner_epoch=token_hex(16),
-            store=JsonFileApplicationContinuityStoreV1(launch.application_root),
-        )
+        session_owner=sessions if owned_transcripts else None,
+        profile_id=profile_id,
+        managed_selection=managed_selection,
+        managed_mux=managed_mux,
     )
 
 
@@ -208,4 +309,8 @@ def _services(cwd: Path) -> BootstrapServices:
     )
 
 
-__all__ = ["CodingHostedLaunchV1", "create_coding_hosted_attempt"]
+__all__ = [
+    "CodingHostedLaunchV1",
+    "create_coding_hosted_attempt",
+    "prepare_coding_hosted_session_roots",
+]

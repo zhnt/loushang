@@ -712,7 +712,7 @@ def _collection_items(
             items.append(
                 _EmbeddedItem("skill", path, path, path.parent.name, "text/markdown")
             )
-        elif len(parts) == 2 and parts[0] == "themes":
+        elif len(parts) == 2 and parts[0] == "themes" and path.suffix == ".json":
             items.append(
                 _EmbeddedItem("theme", path, path, path.stem, "application/json")
             )

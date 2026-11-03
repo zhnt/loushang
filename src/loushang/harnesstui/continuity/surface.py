@@ -25,6 +25,7 @@ from loushang.harnesstui.continuity.keybindings import (
     CONTINUITY_SORT_ACTION,
     continuity_keybinding_manager,
 )
+from loushang.harnesstui.status.identity import short_session_ids
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.tui import (
     CursorDeclaration,
@@ -1040,9 +1041,18 @@ def _summary_descriptions(
         max((visible_width(context) for _time, context, _status in rows), default=0),
     )
     show_status = any(status for _time, _context, status in rows)
+    identifiers = short_session_ids(summary.target.opaque_id for summary in summaries)
+    identity_width = max(visible_width(value) for value in identifiers.values())
     descriptions: list[str] = []
-    for time_text, context, status in rows:
-        facts = [_right_align(time_text, time_width)]
+    for summary, (time_text, context, status) in zip(summaries, rows, strict=True):
+        facts = [
+            _right_align(time_text, time_width),
+            truncate_to_width(
+                identifiers[summary.target.opaque_id],
+                max_width=identity_width,
+                pad=True,
+            ),
+        ]
         if context_width:
             facts.append(
                 truncate_to_width(

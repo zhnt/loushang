@@ -275,7 +275,7 @@ def test_settings_page_statusline_tab_rows_search_cycles_and_preview() -> None:
     ):
         assert any(label in line for line in lines)
     assert any(
-        "moonshot:test-endpoint:kimi-for-coding" in line and "repo" in line
+        "kimi-for-coding" in line and "repo" in line
         for line in lines
     )
 
@@ -304,7 +304,7 @@ def test_settings_page_statusline_apply_updates_rows_and_preview() -> None:
     lines = _plain(page, width=120, height=24)
     assert any("Separator" in line and "dot" in line for line in lines)
     assert any(
-        "moonshot:test-endpoint:kimi-for-coding · repo · main · abcd · idle · queued=1 steer=2"
+        "kimi-for-coding · repo · main · abcd · idle · queued=1 steer=2"
         in line
         for line in lines
     )

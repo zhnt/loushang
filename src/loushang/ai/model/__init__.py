@@ -22,6 +22,12 @@ from loushang.ai.model.loader import (
     load_model_registry_from_file,
     validate_model_registry_raw,
 )
+from loushang.ai.model.reasoning import (
+    available_thinking_levels,
+    native_reasoning_effort,
+    preferred_thinking_level,
+    validate_reasoning_request,
+)
 from loushang.ai.model.registry import (
     AmbiguousModelReference,
     ModelRegistry,
@@ -46,6 +52,7 @@ from loushang.ai.model.selection import (
 __all__ = [
     "AdapterConfig",
     "AmbiguousModelReference",
+    "available_thinking_levels",
     "AnthropicMessagesConfig",
     "Auth",
     "Capabilities",
@@ -75,9 +82,12 @@ __all__ = [
     "model_selection_ref",
     "parse_model_selection_reference",
     "normalize_model_selection",
+    "native_reasoning_effort",
+    "preferred_thinking_level",
     "reload_default_model_registry",
     "resolve_model_api",
     "resolve_model_endpoint",
     "resolve_model_ref",
     "validate_model_registry_raw",
+    "validate_reasoning_request",
 ]
