@@ -98,3 +98,7 @@ S2共享执行中间切片本地提交3cffb4199。随后把原单次文本回复
 ## 最终整体评审与闭合
 
 完整三视角发现应用direct输入遗漏原受理，以及Goal缺撤权/关闭失败/waiter取消组合证据。原direct/trigger已接回同一admission，冲突前拒绝、正常原commit/project持票，未增加队列；真实公共send_message来源隔离与原身份重试通过。托管组合通过，原server重试保留Goal与父Session，不重跑业务；重复prompt模板已薄再导出。三视角关闭，详见[最终评审](refactoring-final-review.md)。已合入最新main（GUI为主、文件零重叠）；整体选择检查正在收尾，尚未远程发布或宣布整个Goal完成。
+
+## PR与首轮集成回归
+
+已推送并创建PR #852。完整CI识别原retry调度、合法/new回调与子执行取消分类三处回归；已修正且原失败用例未改，12项原用例及39项runtime/router回归通过。详细证据见[CI回归修正](refactoring-ci-regression-review.md)。此前源码无阻断不等于完整回归通过；最终合并继续等待修复提交的实际CI结果。

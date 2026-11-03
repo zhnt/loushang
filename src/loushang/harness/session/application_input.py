@@ -84,7 +84,8 @@ class ApplicationInputRuntime:
         if self.admission is None:
             yield
             return
-        self.admission.require_current()
+        # begin_input validates this exact writable Session. A legitimate
+        # replacement withSession callback may still own a pending transition.
         # Immediate delivery cannot be silently reinterpreted as queued input.
         # Refuse before persistence when another execution owns the Session;
         # its caller can retry the same application identity after settlement.

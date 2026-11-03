@@ -1203,3 +1203,66 @@ def test_immediate_application_input_rejects_closed_or_stale_session():
             await runtime.dispose()
 
     asyncio.run(scenario())
+
+
+def test_retry_capture_preserves_delay_and_original_recovery_blocks_new_goal():
+    from dataclasses import replace
+
+    import pytest
+
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    async def scenario():
+        calls = []
+        recovery = True
+        agent = Agent()
+
+        async def continuation(*, model_call_purpose="continuation"):
+            calls.append(model_call_purpose)
+
+        agent.continue_run = continuation
+        runtime = _admission_runtime(agent)
+        runtime.after_turn_policy = replace(runtime.after_turn_policy, recovery_pending=lambda: recovery)
+        captured = runtime.capture_continue_run(model_call_purpose="retry")
+        turn = asyncio.get_running_loop().create_future()
+        asyncio.get_running_loop().call_soon(turn.set_result, None)
+        await turn
+        assert not calls and not runtime.host_runtime.has_pending_runs
+        with pytest.raises(SessionExecutionUnavailable):
+            runtime.execution_admission.reserve_candidate()
+        await captured()
+        assert calls == ["retry"]
+        recovery = False
+        ready = runtime.execution_admission.reserve_candidate()
+        ready.release()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_current_replacement_callback_can_commit_input_while_goal_admission_waits():
+    import pytest
+
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    from .test_application_input import _Committer, _message
+
+    async def scenario():
+        committer = _Committer()
+        runtime = _admission_runtime(Agent(), application_committer=committer.commit)
+        runtime.execution_admission.bind_lifecycle(
+            is_current=lambda: True, transition_pending=lambda: True,
+        )
+        with pytest.raises(SessionExecutionUnavailable):
+            runtime.execution_admission.reserve_candidate()
+        await runtime.application_inputs.deliver(_message("new-session-callback"))
+        assert list(committer.persisted) == ["new-session-callback"]
+        runtime.execution_admission.bind_lifecycle(
+            is_current=lambda: False, transition_pending=lambda: False,
+        )
+        with pytest.raises(SessionExecutionUnavailable):
+            await runtime.application_inputs.deliver(_message("old-session-callback"))
+        assert list(committer.persisted) == ["new-session-callback"]
+        await runtime.dispose()
+
+    asyncio.run(scenario())

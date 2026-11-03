@@ -142,6 +142,7 @@ class AfterTurnPolicyPort:
     sync_extension_diagnostics: ExtensionDiagnosticsSync
     record_assistant_response_error: AssistantResponseErrorRecorder
     check_auto_compaction: AutoCompactionChecker
+    recovery_pending: Callable[[], bool] = lambda: False
 
 
 @dataclass
@@ -184,7 +185,8 @@ class SessionRuntime:
             request_evidence=self.request_evidence,
         )
         self.execution_admission = SessionExecutionAdmission(
-            busy=lambda: self._host_runtime.is_active or self._host_runtime.has_pending_runs,
+            busy=lambda: (self._host_runtime.is_active or self._host_runtime.has_pending_runs
+                          or self.after_turn_policy.recovery_pending()),
             pending=self._queue_controller.has_pending_execution_input,
             delivery_released=self._queue_controller.flush_delivery,
         )
@@ -368,34 +370,42 @@ class SessionRuntime:
         *,
         model_call_purpose: str = "continuation",
     ) -> asyncio.Task[None]:
-        return self.capture_continue_run(model_call_purpose=model_call_purpose)()
+        if self.execution_configuration.current() is not None:
+            return self.capture_continue_run(model_call_purpose=model_call_purpose)()
+        self.execution_admission.input_arrived()
+
+        async def operation() -> None:
+            self.execution_admission.require_unbound_run()
+            await self.agent.continue_run(model_call_purpose=model_call_purpose)
+
+        return self._host_runtime.defer_run(
+            operation, key="agent-continue",
+            wait_until_ready=self.execution_admission.wait_for_unbound_run,
+        )
 
     def capture_continue_run(
         self, *, model_call_purpose: str = "continuation",
     ) -> Callable[[], asyncio.Task[None]]:
         handle = self.execution_configuration.current()
-        if handle is not None and handle.suppress_recovery:
+        if handle is None:
+            # Keep the original scheduling port and retry owner's delay. Merely
+            # capturing a continuation must not start it before that owner calls.
+            return lambda: self.schedule_continue_run(model_call_purpose=model_call_purpose)
+        if handle.suppress_recovery:
             raise SessionExecutionUnavailable("automatic continuation disabled for this execution")
-        scope = self.execution_admission.execution_scope(handle.execution)() if handle is not None else None
-        self.execution_admission.input_arrived()
+        scope = self.execution_admission.execution_scope(handle.execution)()
 
         async def operation() -> None:
-            if scope is None:
-                self.execution_admission.require_unbound_run()
-                await self.agent.continue_run(model_call_purpose=model_call_purpose)
-            else:
-                with scope:
-                    assert handle is not None
-                    await self.agent.continue_run(
-                        model_call_purpose=model_call_purpose, run_options=handle.run_options(),
-                    )
+            with scope:
+                await self.agent.continue_run(
+                    model_call_purpose=model_call_purpose, run_options=handle.run_options(),
+                )
 
-        task = self._host_runtime.defer_run(
-            operation,
-            key="agent-continue",
-            wait_until_ready=self.execution_admission.wait_for_unbound_run if scope is None else None,
-        )
-        return lambda: task
+        def schedule() -> asyncio.Task[None]:
+            self.execution_admission.input_arrived()
+            return self._host_runtime.defer_run(operation, key="agent-continue")
+
+        return schedule
 
     async def check_auto_compaction(
         self,
