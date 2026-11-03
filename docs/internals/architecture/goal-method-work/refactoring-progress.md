@@ -11,7 +11,7 @@
 | S0 | 冻结迁移前Goal记录、通用proof、calculator/repository真实规划input/proof/Work及公开符号签名；保存原源码快照，旧reader9例通过 | 随后续受影响切片扩充固定样本和物理并发/回退矩阵，不以当前有限fixture冒称全部历史组合 |
 | S1 | 执行控制首切片：Harness新增ModelCallAllowance与ExecutionDeadline；原Coding限额/托管Invocation委托，原异常与结果映射保留；三视角代码评审及修正完成，专项38 passed/315 deselected | 完整Coding检查4165 passed、21 skipped、62 deselected；Harness首轮6038 passed后发现依赖放置错误，修正后6389 passed、121 skipped；取消/收敛的通用资源组合待S2合同落地继续提炼；尚未远程交付 |
 | S2 | 用户已接受[协同专项R2](session-goal-coordination.md)；现有Goal接入原Session受理、队列隔离、操作配置与原SessionWorkRuntime resolver；切片三视角问题逐项关闭 | 继续普通Session公开接入及完整阶段验收；当前没有把中间切片当整个阶段完成 |
-| S3 | 旧profile fixture和解释基线已准备 | 通用来源核对、Work证据与Goal策略/方法集成实际收敛；双向兼容回归 |
+| S3 | 通用来源核对已提炼到Harness，三视角无阻断；固定旧proof与直接读取通过 | 通用批次选择/消费及Goal策略/方法集成继续收敛；专项设计细化中，不能把helper提炼当全阶段完成 |
 | S4a | 无实施 | 本地与application-local AppService共享装配和真实等价/权限验收，清理重复实现 |
 | S4b | 分离为后续专项 | 真实lmux Goal wire；不能因本地能力通过就宣称可达 |
 
@@ -64,3 +64,9 @@ Harness只拥有Session身份/输入受理、明确任务委托、操作配置�
 中间快照三视角分别发现关闭异常永久锁存、旧Goal取消期限从None漂移至30秒、复用后端缺少期限/来源核对、同文本绑定输入误消费尚未投递的普通输入；随后补查并发收敛及命令启动前的取消窗口。已修复并完成独立复核，详见[代码评审汇总](refactoring-s2-code-review.md)。既有架构检查另外发现具体Agent依赖，已改中立只读接口，未改白名单；最终包边界、Session与Agent专项224项通过，文档9项通过。托管组合补查纯同步publisher取消声明，已修复并三视角复核；该失败点之后的25项及冻结收尾预算20项通过。旧reader读取新记录的11个Goal、30个Work、10份规划来源证明通过。整仓check-changed及最终PR检查尚未运行，不能据此声明S2全部验收。
 
 验证执行器现经原Bash完成屏障及已受理delegate退出证明收敛，启动前与执行中取消两场景通过。unsupported及未知追加仍保留未知，不能因Work cancelled而释放依赖。普通Session公开接入、S3规划/方法收敛和S4双入口等价仍未完成；本次切片仅本地保存，尚未发布S2。
+
+## S3来源核对首切片
+
+S2共享执行中间切片本地提交3cffb4199。随后把原单次文本回复的Transcript来源核对提炼到Harness.session.response_proof，Coding保留旧错误、入口及3次attempt读侧上限。[首切片评审](refactoring-s3-response-review.md)三视角无阻断，28项与12项精确检查通过（有重叠），两源Ruff/mypy通过。没有更改writer、提示或Goal/Work算法；没有线上调用。
+
+下一项批次策略提炼先形成专项设计，补明确inventory与opaque上下文配对、旧异常分支、intent消费和原槽位owner，并冻结旧算法的下一candidate/trace/下一输入作差分。尚未实施该策略迁移，原有领域profile仍权威。
