@@ -1,5 +1,7 @@
 # Goal重构推进记录
 
+当前交付与实际检查结果见[交付记录](refactoring-delivery.md)及PR #852；下文按切片保留历史进展，早期pending/未交付表述不代表当前状态。S4b真实lmux等明确范围外工作不计入本轮完成口径。
+
 - Authority: descriptive；总Goal：按[重构计划R2](refactoring-plan.md)完成既有职责收敛和双入口共同能力，包含最终交付。
 - 源码基线e1601d059；隔离任务分支refactor/goal-shared-session，工作树goal-refactor。原code/harness工作树未提交材料保持原状。
 - 用户启动了完整重构Goal。S2普通Session环境、交互、联合受理、配置和资源owner须用户评审后实施；不是本记录可以自行免除的条件。
@@ -102,3 +104,7 @@ S2共享执行中间切片本地提交3cffb4199。随后把原单次文本回复
 ## PR与首轮集成回归
 
 已推送并创建PR #852。完整CI识别原retry调度、合法/new回调与子执行取消分类三处回归；已修正且原失败用例未改，12项原用例及39项runtime/router回归通过。详细证据见[CI回归修正](refactoring-ci-regression-review.md)。此前源码无阻断不等于完整回归通过；最终合并继续等待修复提交的实际CI结果。
+
+## 本轮验收结果
+
+修复运行代码d804165c6已通过CI run 968：Coding4184、Harness5993、Agent169、Work187、HarnessWork54项通过，三平台Resume烟测及source facts通过；原策略跳过项未重启。Harness静态784源文件通过。最终数据与边界见[交付记录](refactoring-delivery.md)。PR及本地同步的最终状态以实际远程记录与工作树核对为准。
