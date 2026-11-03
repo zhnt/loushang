@@ -2162,6 +2162,8 @@ def test_goal_planning_work_uses_original_runtime_and_publishes_bound_evidence(
 
         monkeypatch.setattr(limits, "stream", original)
 
+        reservation = object()
+
         class Session:
             session_id = "session"
             session_manager = manager
@@ -2174,11 +2176,18 @@ def test_goal_planning_work_uses_original_runtime_and_publishes_bound_evidence(
             def get_active_tool_names(self):
                 return list(self.active)
 
-            async def set_active_tools(self, tools):
-                self.active = list(tools)
+            selected = None
+
+            def configure_execution(self, execution, *, stream_fn, tool_names, additional_policy):
+                assert execution is reservation and stream_fn is allowance.stream
+                self.selected = tool_names
+
+            def release_execution(self, execution):
+                assert execution is reservation
+                self.selected = None
 
             async def prompt(self, text, **kwargs):
-                assert text == prompt and self.active == []
+                assert text == prompt and self.selected == ()
                 await allowance.stream(None, None)
                 records.extend(completed)
                 for event in events:
@@ -2188,7 +2197,10 @@ def test_goal_planning_work_uses_original_runtime_and_publishes_bound_evidence(
             async def wait_for_idle(self):
                 pass
 
+        from types import SimpleNamespace
+
         session = Session()
+        session.runtime = SimpleNamespace(execution_configuration=session)
         tools = PlanningToolPolicy(tmp_path)
         original_executor = SessionTurnExecutor(
             session=session,
@@ -2201,7 +2213,7 @@ def test_goal_planning_work_uses_original_runtime_and_publishes_bound_evidence(
             session=session,
             allowance=allowance,
             policy=tools,
-            phase="planning",
+            phase="planning", execution=lambda: reservation,
         )
         blobs = SessionBlobStore(tmp_path / "blobs", "session")
         executor = PlanningWork(
@@ -2277,18 +2289,22 @@ def test_goal_planning_original_work_cancel_retains_scope_until_idle(
 
         class Session:
             active = list(prior)
-            selections = 0
+            configured = None
 
             def get_active_tool_names(self):
                 return list(self.active)
 
-            async def set_active_tools(self, names):
-                self.selections += 1
-                if self.selections > 1 and restore == "raises":
-                    raise RuntimeError("restoration failed")
-                self.active = (
-                    [] if self.selections > 1 and restore == "mismatch" else list(names)
-                )
+            def configure_execution(self, execution, **options):
+                assert execution is reservation
+                self.configured = options
+
+            def release_execution(self, execution):
+                assert execution is reservation
+                if restore == "raises":
+                    raise RuntimeError("configuration release failed")
+                if restore == "mismatch":
+                    raise GoalError("configuration still published")
+                self.configured = None
 
             def subscribe_runtime_events(self, listener):
                 return lambda: None
@@ -2304,7 +2320,9 @@ def test_goal_planning_original_work_cancel_retains_scope_until_idle(
                 idle_waiting.set()
                 await idle.wait()
 
+        reservation = object()
         session = Session()
+        session.runtime = SimpleNamespace(execution_configuration=session)
         allowance, policy = PlanningCallAllowance(), PlanningToolPolicy(tmp_path)
         delegate = SessionTurnExecutor(
             session=session,
@@ -2313,7 +2331,8 @@ def test_goal_planning_original_work_cancel_retains_scope_until_idle(
             turn=SessionWorkTurn("execute"),
         )
         scoped = ScopedSessionWork(
-            delegate, session=session, allowance=allowance, policy=policy, phase=phase
+            delegate, session=session, allowance=allowance, policy=policy, phase=phase,
+            execution=lambda: reservation,
         )
 
         class Resolver:
@@ -2341,9 +2360,9 @@ def test_goal_planning_original_work_cancel_retains_scope_until_idle(
         assert allowance.phase is None and policy.step is None
         assert runtime.get_cancellation(run.run_id).status == "settled"
         if restore == "okay":
-            assert not allowance.fenced and session.active == prior
+            assert not allowance.fenced and session.active == prior and session.configured is None
         else:
-            assert allowance.fenced
+            assert allowance.fenced and session.configured is not None and session.active == prior
             with pytest.raises(PlanningCallLimit):
                 allowance.enter("another-op", "planning")
             owner = CodingGoal(tmp_path, tmp_path / "data")
@@ -3894,5 +3913,27 @@ def test_goal_query_outer_finally_can_join_same_close_without_deadlock(tmp_path)
         result = await asyncio.gather(task, return_exceptions=True)
         assert isinstance(result[0], asyncio.CancelledError)
         assert released == ["reader", "core", "writer"] and owner._closed
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("execution", [None, lambda: None])
+def test_goal_model_work_without_execution_binding_cannot_enter_allowance_or_session(tmp_path, execution):
+    from loushang.coding.adapters._goal_planning_limits import PlanningCallAllowance
+    from loushang.coding.adapters._goal_planning_work import (
+        PlanningToolPolicy,
+        ScopedSessionWork,
+    )
+
+    async def scenario():
+        allowance = PlanningCallAllowance()
+        policy = PlanningToolPolicy(tmp_path)
+        work = ScopedSessionWork(
+            object(), session=object(), allowance=allowance, policy=policy,
+            phase="planning", execution=execution,
+        )
+        with pytest.raises(GoalError, match="Session execution binding"):
+            await work.execute(object(), object())
+        assert allowance.phase is None and allowance.total_calls == 0 and policy.step is None
 
     asyncio.run(scenario())

@@ -82,3 +82,7 @@ S2共享执行中间切片本地提交3cffb4199。随后把原单次文本回复
 ## 当前Session接入首切片
 
 已增加CodingGoal.attach，借用确切持久Session及历史，沿共同受理/配置/Work桥接运行，不修改原基线。新inspect_session_goal支持实际Session目录冷读；旧公开API保持。三视角关闭transport漂移、标准函数声明与目录冷读问题。7项配置组合、2项真实失败路径、174项原路径回归及175项旧兼容/包边界通过（范围部分重叠），详见[实施评审](current-session-implementation-review.md)。本切片不是所有普通Session组合的支持声明，S4双入口等价尚待完成。
+
+## 删除无消费者的全局配置回退
+
+所有模型Work生产构造均提供原执行绑定，已删除ScopedSessionWork旧global setter/快照恢复分支；缺绑定明确拒绝，旧候选只构造解释器保留。三视角无阻断，16项相关回归通过；见[清理评审](refactoring-configuration-cleanup-review.md)。当前仍在核对两入口相同profile的业务结果，不因共享类名相同就宣称等价验收完成。

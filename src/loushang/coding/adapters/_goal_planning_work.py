@@ -105,7 +105,7 @@ class PlanningToolPolicy:
 
 
 class ScopedSessionWork:
-    """Restore tool selection even when the original turn fails or is cancelled."""
+    """Bind the original Session overlay and retain it until its turn settles."""
 
     def __init__(self, delegate, *, session, allowance, policy, phase, execution=None):
         self.delegate, self.session, self.allowance = delegate, session, allowance
@@ -113,8 +113,11 @@ class ScopedSessionWork:
         self.execution = execution
 
     async def execute(self, operation, context):
-        prior = self.session.get_active_tool_names() if self.execution is None else None
-        reservation = self.execution() if self.execution is not None else None
+        if self.execution is None:
+            raise GoalError("Goal model Work requires a Session execution binding")
+        reservation = self.execution()
+        if reservation is None:
+            raise GoalError("Goal model Work requires a Session execution binding")
         self.allowance.enter(operation.operation_id, self.phase)
         step = context.step_id if self.phase == "repair" else None
         self.policy.step = step
@@ -128,15 +131,10 @@ class ScopedSessionWork:
         try:
             if self.phase == "repair" and step not in {"inspect", "repair"}:
                 raise GoalError("unsupported Method step in model-planning profile")
-            if reservation is not None:
-                self.session.configure_execution(
-                    reservation, stream_fn=self.allowance.stream, tool_names=tuple(tools),
-                    additional_policy=self.policy,
-                )
-            else:
-                await self.session.set_active_tools(tools)
-                if set(self.session.get_active_tool_names()) != set(tools):
-                    raise GoalError("Goal tool configuration did not take effect")
+            self.session.configure_execution(
+                reservation, stream_fn=self.allowance.stream, tool_names=tuple(tools),
+                additional_policy=self.policy,
+            )
             result = await self.delegate.execute(operation, context)
             if self.phase == "repair" and self.allowance.failed:
                 raise GoalError("repair model allowance failed")
@@ -146,12 +144,7 @@ class ScopedSessionWork:
             try:
                 await self.session.wait_for_idle()
                 self.policy.step = None
-                if reservation is not None:
-                    self.session.runtime.execution_configuration.release_execution(reservation)
-                else:
-                    await self.session.set_active_tools(prior)
-                    if self.session.get_active_tool_names() != prior:
-                        raise GoalError("Goal tool configuration was not restored")
+                self.session.runtime.execution_configuration.release_execution(reservation)
             except BaseException:
                 self.allowance.fenced = True
                 raise
