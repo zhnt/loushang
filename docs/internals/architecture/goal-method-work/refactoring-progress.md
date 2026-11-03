@@ -86,3 +86,7 @@ S2共享执行中间切片本地提交3cffb4199。随后把原单次文本回复
 ## 删除无消费者的全局配置回退
 
 所有模型Work生产构造均提供原执行绑定，已删除ScopedSessionWork旧global setter/快照恢复分支；缺绑定明确拒绝，旧候选只构造解释器保留。三视角无阻断，16项相关回归通过；见[清理评审](refactoring-configuration-cleanup-review.md)。当前仍在核对两入口相同profile的业务结果，不因共享类名相同就宣称等价验收完成。
+
+## S4a两入口业务等价切片
+
+本地Session attach与application-local AppService现对同一固定calculator profile、匹配模型输出/调用限额做原管线对照。正常完成及无效提案后暂停2项通过32.68秒，三视角无阻断，见[等价评审](dual-entry-equivalence-review.md)。实际日常TUI菜单及真实lmux wire未激活；取消/deadline/权限的其他组合沿原专项与最终回归核查，不因两个样例一致泛称全矩阵等价。

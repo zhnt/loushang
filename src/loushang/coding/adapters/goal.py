@@ -191,11 +191,14 @@ class CodingGoal:
         )
 
     @classmethod
-    async def attach(cls, *, session) -> CodingGoal:
+    async def attach(
+        cls, *, session, max_model_calls: int | None = None, max_output_tokens: int | None = None,
+    ) -> CodingGoal:
         """Bind the finite planning profile to an existing writable Session.
 
         The caller retains Session ownership and its baseline configuration.
         This explicit entry creates Goal history, never another Session.
+        Optional limits belong to this execution owner, not Session settings.
         """
         from loushang.agent.model_transport import is_prepared_request_conformant
         from loushang.ai.api import stream
@@ -216,7 +219,10 @@ class CodingGoal:
         owner._session, owner.session_id = session, session.session_id
         owner._model_planning = True
         owner._ordinary_transport = delegate
-        owner._allowance = PlanningCallAllowance.from_stream(delegate, checkpoint=owner._check_current_transport)
+        owner._allowance = PlanningCallAllowance.from_stream(
+            delegate, total_limit=max_model_calls, max_output_tokens=max_output_tokens,
+            checkpoint=owner._check_current_transport,
+        )
         policy = PlanningToolPolicy(owner.workspace)
         try:
             owner._attach_scope()
