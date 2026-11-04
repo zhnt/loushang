@@ -27,6 +27,8 @@ Loushang 以 method 为工作契约、以 work 为运行事实、以 agent 为�
 
 Loushang 目前处于早期开发阶段。推荐从源码运行。
 
+首次在线运行前，请配置所选模型的凭证；[快速开始](./docs/zh-CN/getting-started/#配置-provider-凭证)说明了 API key 环境变量和 OAuth 路线。
+
 ```bash
 git clone https://github.com/zhnt/loushang.git
 cd loushang
