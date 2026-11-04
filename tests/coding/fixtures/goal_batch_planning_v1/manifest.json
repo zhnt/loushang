@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "baseline_commit": "3cffb41999fc7b972a106e951f30d2352a98f727",
+  "source_sha256": "2023aa48f4cf4b590d2b530bda7b85f44d26c4ef036ae3a9f84fc903cb0cb162",
+  "expected_sha256": "236ee8fb545111a1afb3bd078353d13c230faf09172fb3d28bfab17af53da524",
+  "cases": [
+    "initial",
+    "initial_budget",
+    "pending_input",
+    "proposal",
+    "semantic_rejection",
+    "report_rejection",
+    "source_failure",
+    "no_progress",
+    "intent_limit",
+    "parent_refuses",
+    "own_intent",
+    "consumed_not_submitted"
+  ],
+  "scope": "Original parent algorithm with deterministic domain ports; no provider or Work execution"
+}

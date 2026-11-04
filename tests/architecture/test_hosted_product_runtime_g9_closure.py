@@ -541,6 +541,9 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "remote_client.py",
         "managed_mux.py",
         "managed_mux_wire.py",
+        # Application-local typed Method observations, no wire activation.
+        "method_work.py",
+        "goal.py",  # COD-KD-HG-001: local SDK data/bridge, no wire activation.
         "managed_mux_close.py",
         "stdio.py",
     }

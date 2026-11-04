@@ -1,12 +1,25 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, replace
+from dataclasses import FrozenInstanceError, dataclass, replace
 from datetime import UTC, datetime
+from functools import wraps
 
 import pytest
 
-from loushang.harnesswork import InMemoryEventLogBackend, WorkRuntime
+from loushang.harnesswork import (
+    InMemoryEventLogBackend,
+    JsonlEventLogBackend,
+    UnknownWorkRunError,
+    WorkEventFact,
+    WorkRecordingFormatError,
+    WorkRecordingPolicy,
+    WorkRecordingUnavailable,
+    WorkRecordingVersionError,
+    WorkRunReplayError,
+    WorkRuntime,
+    project_work_runs,
+)
 from loushang.harnesswork.goal import (
     GoalAssessment,
     GoalController,
@@ -1753,3 +1766,484 @@ async def test_goal_fence_blocks_resume_readers_and_close_blocks_external_cancel
     with pytest.raises(GoalError, match="closing"):
         await goal.request_cancel("g")
     assert calls == []
+
+
+# HW-KD-003: optional recording contract and append-confirmed observations.
+def _run_recording_scenario(function):
+    @wraps(function)
+    def test(*args, **kwargs):
+        return asyncio.run(function(*args, **kwargs))
+
+    return test
+
+
+def _recording_operation(name="one"):
+    return WorkOperation(name, "Execute", None, "custom", {"input": name})
+
+
+class _RecordingExecutor:
+    def __init__(self):
+        self.calls = 0
+
+    async def execute(self, operation, context):
+        self.calls += 1
+        context.publish(
+            WorkEventFact("CustomResult", {"value": operation.operation_id})
+        )
+        return object()  # Results are explicitly published, never auto-serialized.
+
+
+@_run_recording_scenario
+@pytest.mark.parametrize("persistent", [False, True])
+async def test_default_records_anonymous_work_and_unknown_facts(tmp_path, persistent):
+    log = (
+        JsonlEventLogBackend(tmp_path / "work.jsonl")
+        if persistent
+        else InMemoryEventLogBackend()
+    )
+    runtime = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    run = await runtime.accept(_recording_operation())
+    accepted = runtime.get_recording(run.run_id)
+    assert accepted.run.status == "accepted"
+    assert accepted.observed_sequence == 0
+    assert accepted.source_event_id is None
+    assert accepted.contract.capture == "published_facts"
+    assert accepted.contract.retention == ("persistent" if persistent else "memory")
+    assert not accepted.contract.require_persistence
+    with pytest.raises(FrozenInstanceError):
+        accepted.contract.require_persistence = True
+    await runtime.wait(run.run_id)
+    record = runtime.get_recording(run.run_id)
+    assert record.run == runtime.get_run(run.run_id)
+    assert record.run.session_id == ""
+    assert record.run.status == "completed"
+    assert record.basis == "acknowledged"
+    entries = log.query(run_id=run.run_id)
+    assert entries[-1].sequence == record.observed_sequence
+    assert entries[-1].event_id == record.source_event_id
+    assert [e.payload["kind"] for e in entries] == [
+        "Execute",
+        "WorkRunStarted",
+        "CustomResult",
+        "WorkRunCompleted",
+    ]
+    assert project_work_runs(entries) == (record.run,)
+    assert accepted.run.status == "accepted"  # No live mutation of old snapshots.
+
+
+@_run_recording_scenario
+async def test_product_lower_bound_and_per_work_strengthening(tmp_path):
+    log = JsonlEventLogBackend(tmp_path / "work.jsonl")
+    runtime = WorkRuntime(
+        event_log=log,
+        executor=_RecordingExecutor(),
+        recording_version=1,
+        recording_policy=WorkRecordingPolicy(require_persistence=True),
+    )
+    with pytest.raises(ValueError, match="weaken"):
+        await runtime.accept(
+            _recording_operation(),
+            spec=WorkRunSpec(recording_policy=WorkRecordingPolicy()),
+        )
+    assert not log.query()
+    run = await runtime.accept(_recording_operation())
+    await runtime.wait(run.run_id)
+    assert runtime.get_recording(run.run_id).contract.require_persistence
+    second = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    strengthened = await second.accept(
+        _recording_operation("two"),
+        spec=WorkRunSpec(
+            recording_policy=WorkRecordingPolicy(require_persistence=True)
+        ),
+    )
+    await second.wait(strengthened.run_id)
+    assert second.get_recording(strengthened.run_id).contract.require_persistence
+    assert second.get_recording(run.run_id).contract.require_persistence
+
+
+@_run_recording_scenario
+@pytest.mark.parametrize("declared", [True, False])
+async def test_persistent_requirement_rejected_before_resolver_or_append(declared):
+    class Backend(InMemoryEventLogBackend):
+        @property
+        def recording_retention(self):
+            if not declared:
+                raise AttributeError("optional capability absent")
+            return "memory"
+
+    class Resolver:
+        def resolve(self, operation, spec):
+            raise AssertionError("must reject before resolving execution")
+
+    log = Backend()
+    runtime = WorkRuntime(
+        event_log=log,
+        resolver=Resolver(),
+        recording_version=1,
+        recording_policy=WorkRecordingPolicy(require_persistence=True),
+    )
+    with pytest.raises(ValueError, match="persistent backend"):
+        await runtime.accept(_recording_operation())
+    assert not log.query()
+    with pytest.raises(UnknownWorkRunError):  # Preflight rejection did not poison.
+        runtime.get_recording("unaccepted")
+
+
+@_run_recording_scenario
+async def test_undeclared_backend_default_is_usable_and_contract_is_frozen():
+    class Backend(InMemoryEventLogBackend):
+        @property
+        def recording_retention(self):
+            raise AttributeError("optional capability absent")
+
+    log = Backend()
+    runtime = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    run = await runtime.accept(_recording_operation())
+    await runtime.wait(run.run_id)
+    assert runtime.get_recording(run.run_id).contract.retention == "unknown"
+    entry = log.query()[0]
+    entry.payload["_harnesswork"]["recording"]["retention"] = "persistent"
+    assert runtime.get_recording(run.run_id).contract.retention == "unknown"
+
+
+@_run_recording_scenario
+@pytest.mark.parametrize("kind", ["Execute", "CustomResult", "WorkRunCompleted"])
+@pytest.mark.parametrize("after_write", [False, True])
+async def test_append_failure_is_sticky_and_cold_read_uses_actual_file(
+    tmp_path, kind, after_write
+):
+    class Backend(JsonlEventLogBackend):
+        failed = False
+
+        def append(self, entry):
+            if not self.failed and entry.payload["kind"] == kind:
+                self.failed = True
+                if after_write:
+                    super().append(entry)
+                raise OSError("injected append failure")
+            return super().append(entry)
+
+    path = tmp_path / "work.jsonl"
+    log = Backend(path)
+    executor = _RecordingExecutor()
+    runtime = WorkRuntime(event_log=log, executor=executor, recording_version=1)
+    if kind == "Execute":
+        with pytest.raises(OSError):
+            await runtime.accept(
+                _recording_operation(), spec=WorkRunSpec(run_id="first")
+            )
+        assert executor.calls == 0
+    else:
+        await runtime.accept(_recording_operation(), spec=WorkRunSpec(run_id="first"))
+        with pytest.raises(OSError):
+            await runtime.wait("first")
+        assert runtime.get_run("first").status == (
+            "failed" if kind == "CustomResult" else "completed"
+        )
+    with pytest.raises(WorkRecordingUnavailable):
+        runtime.get_recording("first")
+    later = await runtime.accept(_recording_operation("later"))
+    await runtime.wait(later.run_id)
+    with pytest.raises(WorkRecordingUnavailable):
+        runtime.get_recording(later.run_id)
+    with pytest.raises(WorkRecordingUnavailable):
+        runtime.get_recording("first")
+    # All writer tasks are settled. A fresh backend actually reloads the file.
+    cold = WorkRuntime(
+        event_log=JsonlEventLogBackend(path), executor=executor, recording_version=1
+    )
+    if kind == "Execute" and not after_write:
+        with pytest.raises(UnknownWorkRunError):
+            cold.get_recording("first")
+    else:
+        record = cold.get_recording("first")
+        assert record.basis == "loaded"
+        expected = (
+            "failed"
+            if kind == "CustomResult"
+            else "completed"
+            if kind == "WorkRunCompleted" and after_write
+            else "orphaned"
+        )
+        assert record.run.status == expected
+    assert cold.get_recording(later.run_id).run.status == "completed"
+
+
+@_run_recording_scenario
+async def test_ack_boundary_and_hot_reads_do_not_rescan():
+    before = []
+    after = []
+
+    class Backend(InMemoryEventLogBackend):
+        def append(self, entry):
+            if entry.payload["kind"] == "WorkRunCompleted":
+                before.append(runtime.get_recording(entry.run_id))
+                assert runtime.get_run(entry.run_id).status == "completed"
+            return super().append(entry)
+
+    log = Backend()
+    runtime = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    runtime.subscribe_events(
+        lambda event: after.append(runtime.get_recording(event.run_id))
+    )
+    run = await runtime.accept(_recording_operation())
+    await runtime.wait(run.run_id)
+    assert before[0].run.status == "running"
+    assert after[-1].run.status == "completed"
+    assert before[0].observed_sequence < after[-1].observed_sequence
+
+    def no_query(**kwargs):
+        raise AssertionError("confirmed state must not rescan history")
+
+    log.query = no_query
+    for _ in range(10):
+        assert runtime.get_recording(run.run_id) == after[-1]
+
+
+@_run_recording_scenario
+async def test_legacy_new_mixed_and_rollback_histories(tmp_path):
+    path = tmp_path / "work.jsonl"
+    log = JsonlEventLogBackend(path)
+    legacy = WorkRuntime(event_log=log, executor=_RecordingExecutor())
+    old_run = await legacy.accept(_recording_operation("old"))
+    await legacy.wait(old_run.run_id)
+    with pytest.raises(ValueError, match="recording_version"):
+        legacy.get_recording(old_run.run_id)
+    assert "recording" not in log.query()[0].payload["_harnesswork"]
+    new = WorkRuntime(
+        event_log=JsonlEventLogBackend(path),
+        executor=_RecordingExecutor(),
+        recording_version=1,
+    )
+    assert new.get_recording(old_run.run_id).contract is None
+    new_run = await new.accept(_recording_operation("new"))
+    await new.wait(new_run.run_id)
+    rollback = WorkRuntime(
+        event_log=JsonlEventLogBackend(path), executor=_RecordingExecutor()
+    )
+    third = await rollback.accept(_recording_operation("rollback"))
+    await rollback.wait(third.run_id)
+    reader = WorkRuntime(
+        event_log=JsonlEventLogBackend(path),
+        executor=_RecordingExecutor(),
+        recording_version=1,
+    )
+    assert reader.get_recording(old_run.run_id).contract is None
+    assert reader.get_recording(new_run.run_id).contract.version == 1
+    assert reader.get_recording(third.run_id).contract is None
+    assert all(run.status == "completed" for run in project_work_runs(log.query()))
+
+
+@_run_recording_scenario
+@pytest.mark.parametrize(
+    "change,error",
+    [
+        ({"version": 2}, WorkRecordingVersionError),
+        ({"version": True}, WorkRecordingVersionError),
+        ({"extra": True}, WorkRecordingFormatError),
+        ({"capture": "filtered"}, WorkRecordingFormatError),
+        ({"require_persistence": 1}, WorkRecordingFormatError),
+        ({"require_persistence": True}, WorkRecordingFormatError),
+    ],
+)
+async def test_contract_failure_is_scoped_to_one_run(change, error):
+    log = InMemoryEventLogBackend()
+    runtime = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    one = await runtime.accept(_recording_operation())
+    await runtime.wait(one.run_id)
+    two = await runtime.accept(_recording_operation("two"))
+    await runtime.wait(two.run_id)
+    changed = InMemoryEventLogBackend()
+    for entry in log.query():
+        if entry.run_id == one.run_id and entry.entry_type == "operation":
+            entry.payload["_harnesswork"]["recording"].update(change)
+        changed.append(entry)
+    reader = WorkRuntime(
+        event_log=changed, executor=_RecordingExecutor(), recording_version=1
+    )
+    with pytest.raises(error):
+        reader.get_recording(one.run_id)
+    assert reader.get_run(one.run_id).status == "completed"
+    assert reader.get_recording(two.run_id).run.status == "completed"
+
+
+@_run_recording_scenario
+async def test_invalid_projection_is_a_read_error_not_a_failed_append():
+    class CustomExecutor:
+        async def execute(self, operation, context):
+            context.publish(WorkEventFact("", {}))  # Existing publisher permits this.
+
+    log = InMemoryEventLogBackend()
+    runtime = WorkRuntime(event_log=log, executor=CustomExecutor(), recording_version=1)
+    run = await runtime.accept(_recording_operation())
+    assert (await runtime.wait(run.run_id)).status == "completed"
+    assert log.query()[-1].payload["kind"] == "WorkRunCompleted"
+    with pytest.raises(WorkRunReplayError):
+        runtime.get_recording(run.run_id)
+
+
+@pytest.mark.parametrize("version", [0, 2, True, 1.0, "1"])
+def test_recording_activation_rejects_unknown_version(version):
+    with pytest.raises(WorkRecordingVersionError):
+        WorkRuntime(
+            event_log=InMemoryEventLogBackend(),
+            executor=_RecordingExecutor(),
+            recording_version=version,
+        )
+
+
+@_run_recording_scenario
+async def test_policy_requires_explicit_activation():
+    with pytest.raises(ValueError, match="recording_version"):
+        WorkRuntime(
+            event_log=InMemoryEventLogBackend(),
+            executor=_RecordingExecutor(),
+            recording_policy=WorkRecordingPolicy(),
+        )
+    log = InMemoryEventLogBackend()
+    runtime = WorkRuntime(event_log=log, executor=_RecordingExecutor())
+    with pytest.raises(ValueError, match="recording_version"):
+        await runtime.accept(
+            _recording_operation(),
+            spec=WorkRunSpec(recording_policy=WorkRecordingPolicy()),
+        )
+    assert not log.query()
+
+
+@_run_recording_scenario
+async def test_new_recording_preserves_cancellation_evidence_and_subscriptions():
+    started = asyncio.Event()
+
+    class WaitingExecutor:
+        async def execute(self, operation, context):
+            started.set()
+            await asyncio.Event().wait()
+
+    log = InMemoryEventLogBackend()
+    runtime = WorkRuntime(
+        event_log=log, executor=WaitingExecutor(), recording_version=1
+    )
+    run = await runtime.accept(_recording_operation())
+    await started.wait()
+    await runtime.cancel(run.run_id)
+    record = runtime.get_recording(run.run_id)
+    assert record.run.status == "cancelled"
+    assert runtime.get_cancellation(run.run_id).status == "unsupported"
+    stream = runtime.subscribe(run_id=run.run_id)
+    entries = log.query(run_id=run.run_id)
+    try:
+        assert [await anext(stream) for _ in entries] == entries
+    finally:
+        await stream.aclose()
+    assert record.source_event_id == entries[-1].event_id
+    assert replace(record.run, status="cancelled") == runtime.get_run(run.run_id)
+
+
+@_run_recording_scenario
+@pytest.mark.parametrize("kind", ["Execute", "CustomResult", "WorkRunCompleted"])
+async def test_recording_observer_failure_does_not_interrupt_acknowledged_execution(
+    kind,
+):
+    log = InMemoryEventLogBackend()
+    runtime = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    original = runtime._recording._projector.apply
+
+    def broken_observer(entry):
+        if entry.payload["kind"] == kind:
+            raise RuntimeError("injected derived observer failure")
+        original(entry)
+
+    runtime._recording._projector.apply = broken_observer
+    events = []
+    runtime.subscribe_events(events.append)
+    run = await runtime.accept(_recording_operation())
+    assert (await runtime.wait(run.run_id)).status == "completed"
+    assert runtime.active_runs() == ()
+    assert (await runtime.cancel(run.run_id)).status == "completed"
+    assert runtime.get_cancellation(run.run_id).status == "not_requested"
+    with pytest.raises(WorkRecordingUnavailable):
+        runtime.get_recording(run.run_id)
+    assert [e.kind for e in events].count("WorkRunCompleted") == 1
+    assert "WorkRunCancelled" not in [e.kind for e in events]
+    cold = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    assert cold.get_recording(run.run_id).run.status == "completed"
+
+
+def test_shared_selector_passes_opaque_domain_context_without_coding_inputs():
+    from types import SimpleNamespace
+
+    from loushang.harnesswork.goal import GoalBasis, GoalFacts
+    from loushang.harnesswork.goal.batch_planning import BatchPlanningPolicy
+    from loushang.harnesswork.goal.records import GoalBatch, GoalState
+
+    async def scenario():
+        context = object()
+        fingerprint = {"sources": "original-revision"}
+        goal = GoalState("research", (Requirement("R1", "Summarize the supplied sources"),), 4, {})
+        basis = GoalBasis(GoalHeader("session", "session", "research/v1"), goal, 2)
+        batch = GoalBatch("plan", "research", "plan-op", 1, 1, 1, "plan", {
+            "phase": "planning", "inventory": fingerprint, "basis": basis.identity,
+        })
+        run = SimpleNamespace(operation_id="plan-op", run_id="plan-run", session_id="session", status="completed")
+        proposal = SimpleNamespace(action=SimpleNamespace(data=lambda: {"name": "summarize-sources"}))
+
+        class Domain:
+            def confirm_candidate(self, candidate):
+                return True
+
+        class RejectedAction(ValueError):
+            pass
+
+        class Policy(BatchPlanningPolicy, Domain):
+            rejection_error = RejectedAction
+            limits = {"invalid_proposals": 2, "no_progress": 2, "planning_intents": 3}
+            prepared = {"old-unaccepted-binding": object()}
+
+            def planning_input_pending(self):
+                return False
+
+            def planning_context(self, current):
+                return fingerprint, context
+
+            def planning_session_id(self):
+                return "session"
+
+            def _observations(self, current, facts):
+                return [], [], [], 1, 0, 0
+
+            def _proposal(self, previous, original_run):
+                assert previous is batch and original_run is run
+                return proposal
+
+            def _implementation(self, *args):
+                raise AssertionError("shared selector must not require a Coding implementation hook")
+
+            def bind_planned_action(self, current, proposed, snapshot, original_context, evidence):
+                assert original_context is context and snapshot is fingerprint and proposed is proposal
+                return WorkCandidate(current, WorkOperation("summary-op", "SummarizeSources", "session", "research", {}),
+                                     WorkRunSpec(), {"phase": "summary"})
+
+            def _planning(self, *args):
+                raise AssertionError("existing proposal must be selected without another planning batch")
+
+        policy = Policy()
+        result = await policy.prepare(basis, GoalFacts((batch,), (run,)))
+        assert isinstance(result, WorkCandidate)
+        assert result.operation.domain == "research" and result.source["proposal_id"] == "plan-op"
+        assert not policy.prepared
+
+    asyncio.run(scenario())

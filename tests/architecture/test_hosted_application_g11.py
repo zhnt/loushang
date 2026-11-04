@@ -126,6 +126,14 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/coding/hosted_resume.py"),
         Path("src/loushang/coding/hosted_session.py"),
         Path("src/loushang/coding/_hosted_execution_work.py"),
+        # COD-KD-HMW-001: original guard/registry, no second execution owner.
+        Path("src/loushang/coding/hosted_method.py"),
+        Path("src/loushang/coding/_hosted_method_work.py"),
+        # COD-KD-HG-001: original registry/guard drives one bounded Goal.
+        Path("src/loushang/coding/hosted_goal.py"),
+        Path("src/loushang/coding/_hosted_goal_work.py"),
+        # COD-KD-HG-002: fixed repository command selection in that same guard.
+        Path("src/loushang/coding/_hosted_repository_work.py"),
         Path("src/loushang/apphost/managed/bootstrap.py"),
         Path("src/loushang/apphost/managed/mux_creation.py"),
         Path("src/loushang/apphost/managed/mux_management.py"),
@@ -266,12 +274,16 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # G17's independently reviewed optional discovery algebra/codec adds
         # 271 lines to this exact group; all protocol modules still count.
         # See hosted-session-workflow-g17.md, Reviewability Budget Supplement.
-        "appserver": 2_100,
+        # GUI's attachment-scoped model control adds 121 net lines to the
+        # existing protocol/client group (6 client, 6 exports, 49 codec, 60 model).
+        "appserver": 2_100 + 121,
         # LMUX M0 §60 reviewed ManagedCreate adds 170 net lines for the same
         # state lock/atomic continuity authority; all four core files still count.
         # LMUX M0 §72 keeps close coordination on the same state/continuity
         # owner; reviewed core is 1876 lines, including original core files.
-        "appservice-core": 1_900,
+        # Hosted capability routing and attachment-scoped model control share
+        # this existing AppService core owner.
+        "appservice-core": 1_961,
         # LMUX M0 §71 reviewed v3 close history adds 59 net lines to the
         # same continuity schema/recovery boundary; no owner split or activation.
         # LMUX M0 §73 reviewed recovery stays on the original Attempt/lease;
@@ -279,13 +291,10 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         "appservice-continuity": 1_400,
         "appservice-managed-contract": 150,
         "appserver-close-values": 80,
-        # Optional execution adds omission metadata and a synchronous projection
-        # seam; its two owners have a separate budget in the Wave A contract.
-        "coding-adapter": 420,
-        # Reviewed neutral capability projection, stable execution recovery,
-        # and explicit profile wiring add 87 lines versus da820585.
-        # The current main baseline is 688 lines; this change does not touch
-        # the mux owners. Keep the existing owner boundary explicit.
+        # Hosted execution plus redacted, session-local model control remain
+        # isolated in the Coding AppService adapter.
+        "coding-adapter": 470,
+        # Stable execution recovery and explicit profile wiring from main.
         "harnesstui-mux": 688,
     }
     for name, paths in groups.items():

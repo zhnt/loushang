@@ -37,6 +37,12 @@ from loushang.harness.private_directory import create_private_directory_chain
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
+    _PinnedWindowsAuthority,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_regular_file_at,
+)
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
     PackagePosixEpochCutoverResultV1,
     PackageProductPosixCutoverAttemptV1,
@@ -362,9 +368,7 @@ def hold_coding_pre_b_snapshot_owner(
         with _hold_pointer_root(projection_parent) as pointer_root:
             package = resolve_coding_package_pre_b_store_members(lifecycle)
             state = resolve_coding_lifecycle_pre_b_members(lifecycle)
-            source_projection = json.loads(
-                (source_root / "coding-source-configuration.json").read_bytes()
-            )
+            source_projection = json.loads(_read_source_projection(source_root))
             legacy_classification = classify_coding_legacy_workspace(
                 source_projection,
                 lifecycle=state,
@@ -415,6 +419,21 @@ def hold_coding_pre_b_snapshot_owner(
                 source_configuration_root=source_root,
                 legacy_classification=legacy_classification,
             )
+
+
+def _read_source_projection(source_root: Path) -> bytes:
+    name = "coding-source-configuration.json"
+    if os.name != "nt":
+        return (source_root / name).read_bytes()
+    pinned = _PinnedWindowsAuthority.open(source_root, read_control=True)
+    try:
+        descriptor = open_windows_regular_file_at(
+            pinned.descriptor, name, create_new=False, write=False,
+        )
+        with os.fdopen(descriptor, "rb") as stream:
+            return stream.read()
+    finally:
+        pinned.close()
 
 
 __all__ = [

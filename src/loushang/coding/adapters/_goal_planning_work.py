@@ -11,10 +11,13 @@ from loushang.harness.effects import FilesystemEffect, ProcessEffect
 from loushang.harness.policy import PolicyDecision, ToolPolicySubject
 from loushang.harnesswork.goal import GoalError
 from loushang.harnesswork.goal.records import canonical, plain
+from loushang.harnesswork.integrations.planning import (
+    PlanningWork as _SharedPlanningWork,
+)
 
 from . import _goal_driver as driver
 from ._goal_calculator import put
-from ._goal_planning_response import ResponseBoundary, capture_response
+from ._goal_planning_response import capture_response
 from ._goal_proposal import ProposalRejected, parse_proposal
 from ._work_evidence import validate_evidence_fact, work_evidence_fact
 
@@ -31,8 +34,14 @@ def publish_report(blobs, context, value, *, role, session_id):
 class PlanningToolPolicy:
     """Only the current Method step may grant model file-tool access."""
 
-    def __init__(self, workspace: Path):
+    def __init__(self, workspace: Path, *, read_paths=None, write_paths=None):
         self.workspace = workspace.resolve()
+        self.read_paths = None if read_paths is None else frozenset(read_paths)
+        self.write_paths = (
+            frozenset(write_paths)
+            if write_paths is not None
+            else {self.workspace / "calculator.py"}
+        )
         self.step: str | None = None
         self.verification: Mapping[str, object] | None = None
 
@@ -74,7 +83,9 @@ class PlanningToolPolicy:
             if item.resolved_path is None or not Path(item.resolved_path).is_absolute():
                 return deny
             path = Path(item.resolved_path).resolve()
-            if not path.is_relative_to(self.workspace):
+            if not path.is_relative_to(self.workspace) or (
+                self.read_paths is not None and path not in self.read_paths
+            ):
                 return deny
             paths.add(path)
         expected = "read" if subject.tool_name == "read" else "write"
@@ -87,23 +98,30 @@ class PlanningToolPolicy:
                     return deny
                 effect_paths.add(Path(value).resolve())
         if paths != effect_paths or (
-            expected == "write" and paths != {self.workspace / "calculator.py"}
+            expected == "write" and not paths <= self.write_paths
         ):
             return deny
         return PolicyDecision.allow()
 
 
 class ScopedSessionWork:
-    """Restore tool selection even when the original turn fails or is cancelled."""
+    """Bind the original Session overlay and retain it until its turn settles."""
 
-    def __init__(self, delegate, *, session, allowance, policy, phase):
+    def __init__(self, delegate, *, session, allowance, policy, phase, execution=None, step_aliases=None):
         self.delegate, self.session, self.allowance = delegate, session, allowance
         self.policy, self.phase = policy, phase
+        self.step_aliases = dict(step_aliases or {})
+        self.execution = execution
 
     async def execute(self, operation, context):
-        prior = self.session.get_active_tool_names()
+        if self.execution is None:
+            raise GoalError("Goal model Work requires a Session execution binding")
+        reservation = self.execution()
+        if reservation is None:
+            raise GoalError("Goal model Work requires a Session execution binding")
         self.allowance.enter(operation.operation_id, self.phase)
         step = context.step_id if self.phase == "repair" else None
+        step = self.step_aliases.get(step, step)
         self.policy.step = step
         tools = (
             ["read"]
@@ -115,9 +133,10 @@ class ScopedSessionWork:
         try:
             if self.phase == "repair" and step not in {"inspect", "repair"}:
                 raise GoalError("unsupported Method step in model-planning profile")
-            await self.session.set_active_tools(tools)
-            if set(self.session.get_active_tool_names()) != set(tools):
-                raise GoalError("Goal tool configuration did not take effect")
+            self.session.configure_execution(
+                reservation, stream_fn=self.allowance.stream, tool_names=tuple(tools),
+                additional_policy=self.policy,
+            )
             result = await self.delegate.execute(operation, context)
             if self.phase == "repair" and self.allowance.failed:
                 raise GoalError("repair model allowance failed")
@@ -127,9 +146,7 @@ class ScopedSessionWork:
             try:
                 await self.session.wait_for_idle()
                 self.policy.step = None
-                await self.session.set_active_tools(prior)
-                if self.session.get_active_tool_names() != prior:
-                    raise GoalError("Goal tool configuration was not restored")
+                self.session.runtime.execution_configuration.release_execution(reservation)
             except BaseException:
                 self.allowance.fenced = True
                 raise
@@ -144,79 +161,46 @@ class ScopedSessionWork:
 class ScopedVerificationWork:
     """Authorize only the already admitted verifier's exact command and input."""
 
-    def __init__(self, delegate, *, policy):
+    def __init__(self, delegate, *, policy, session=None, execution=None):
         self.delegate, self.policy = delegate, policy
+        self.session, self.execution = session, execution
 
     async def execute(self, operation, context):
         if self.policy.verification is not None or self.policy.step is not None:
             raise GoalError("overlapping Goal execution scope")
         self.policy.verification = operation.payload
+        reservation = self.execution() if self.execution is not None else None
         try:
+            if reservation is not None:
+                self.session.configure_execution(reservation, additional_policy=self.policy)
             return await self.delegate.execute(operation, context)
         finally:
             self.policy.verification = None
-
-
-class PlanningWork:
-    def __init__(
-        self, delegate, *, session, blobs, allowance, prompt, input_ref, known_evidence
-    ):
-        self.delegate, self.session, self.blobs = delegate, session, blobs
-        self.allowance, self.prompt = allowance, prompt
-        self.input_ref, self.known_evidence = input_ref, tuple(known_evidence)
-
-    async def execute(self, operation, context):
-        manager = self.session.session_manager
-        boundary = ResponseBoundary.capture(manager)
-        events = []
-
-        async def listen(event):
-            if event.kind == "agent.message_end":
-                events.append(event)
-
-        unsubscribe = self.session.subscribe_runtime_events(listen)
-        try:
-            await self.delegate.execute(operation, context)
-            await self.session.wait_for_idle()
-        finally:
-            unsubscribe()
-        report: dict[str, object] = {
-            "version": 1,
-            "operation_id": operation.operation_id,
-            "run_id": context.run_id,
-            "session_id": operation.session_id,
-            "input_ref": self.input_ref,
-        }
-        try:
-            if self.allowance.failed:
-                raise ProposalRejected("planning model allowance failed")
-            raw, proof = capture_response(
-                manager,
-                boundary,
-                session_id=operation.session_id,
-                prompt=self.prompt,
-                events=events,
-            )
-            report["response_ref"] = put(
-                self.blobs, raw, f"{operation.operation_id}/response.txt"
-            )
-            report["response_proof"] = proof
-            proposal = parse_proposal(raw, known_evidence=self.known_evidence)
-            report["proposal"] = proposal.data()
-            report["rejection"] = None
-        except ProposalRejected as error:
-            report["proposal"] = None
-            report["rejection"] = str(error)
-        publish_report(
-            self.blobs,
-            context,
-            report,
-            role="goal_planning_report",
-            session_id=operation.session_id,
-        )
+            if reservation is not None:
+                self.session.runtime.execution_configuration.release_execution(reservation)
 
     async def cancel_and_wait(self, operation, context):
         return await self.delegate.cancel_and_wait(operation, context)
+
+
+class PlanningWork(_SharedPlanningWork):
+    """Legacy Coding evidence format over the shared reply handoff."""
+
+    def __init__(
+        self, delegate, *, session, blobs, allowance, prompt, input_ref,
+        known_evidence, parser=parse_proposal,
+    ):
+        self.blobs, self.allowance = blobs, allowance
+        super().__init__(
+            delegate, session=session, read_transcript=lambda: session.session_manager,
+            model_failed=lambda: allowance.failed, prompt=prompt, input_ref=input_ref,
+            known_evidence=known_evidence, parser=parser, capture_response=capture_response,
+            write_response=lambda operation, raw: put(blobs, raw, f"{operation.operation_id}/response.txt"),
+            publish_report=lambda context, report, session_id: publish_report(
+                blobs, context, report, role="goal_planning_report", session_id=session_id,
+            ),
+            rejection_error=ProposalRejected,
+        )
 
 
 class InspectionWork:

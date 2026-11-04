@@ -1,0 +1,66 @@
+{
+  "loushang.coding.adapters.goal:CodingGoal": {
+    "module": "loushang.coding.adapters.goal",
+    "qualname": "CodingGoal",
+    "methods": {
+      "open": "(*, workspace: 'Path', data_root: 'Path', model=None, session_id: 'str | None' = None, stream_fn=None, approval_resolver=None, tool_policy_evaluator=None, model_planning: 'bool' = False, transcript_retained_until: 'datetime | None' = None) -> 'CodingGoal'",
+      "create": "(self, goal_id: 'str', *, command_id: 'str', limit: 'int | None' = None)",
+      "advance": "(self, goal_id: 'str', *, command_id: 'str', revision: 'int', epoch: 'int')",
+      "query": "(self, goal_id: 'str') -> 'CodingGoalView'",
+      "steer": "(self, goal_id: 'str', text: 'str', *, images=None) -> 'None'",
+      "follow_up": "(self, goal_id: 'str', text: 'str', *, images=None) -> 'None'",
+      "clear_queue": "(self)",
+      "close": "(self) -> 'None'"
+    },
+    "bases": null
+  },
+  "loushang.coding.adapters._goal_planning_limits:PlanningCallAllowance": {
+    "module": "loushang.coding.adapters._goal_planning_limits",
+    "qualname": "PlanningCallAllowance",
+    "methods": {
+      "enter": "(self, operation_id: 'str', phase: 'str') -> 'None'",
+      "leave": "(self, operation_id: 'str') -> 'None'",
+      "model_budget": "(self)",
+      "model_limits": "(self, profile)"
+    },
+    "bases": null
+  },
+  "loushang.coding.adapters._goal_planning_limits:PlanningCallLimit": {
+    "module": "loushang.coding.adapters._goal_planning_limits",
+    "qualname": "PlanningCallLimit",
+    "methods": {},
+    "bases": [
+      "loushang.harnesswork.goal.records:GoalError"
+    ]
+  },
+  "loushang.harnesswork.goal:GoalController": {
+    "module": "loushang.harnesswork.goal.controller",
+    "qualname": "GoalController",
+    "methods": {
+      "create": "(self, goal_id: 'str', requirements: 'Sequence[Requirement]', *, command_id: 'str', limit: 'int', metadata: 'Mapping[str, object] | None' = None) -> 'CommandReceipt'",
+      "revise": "(self, goal_id: 'str', requirements: 'Sequence[Requirement]', *, command_id: 'str', revision: 'int', epoch: 'int', reason: 'str') -> 'CommandReceipt'",
+      "control": "(self, goal_id: 'str', action: 'str', *, command_id: 'str', revision: 'int', epoch: 'int', reason: 'str', limit: 'int | None' = None) -> 'CommandReceipt'",
+      "advance": "(self, goal_id: 'str', *, command_id: 'str', revision: 'int', epoch: 'int') -> 'CommandReceipt'",
+      "query": "(self, goal_id: 'str') -> 'GoalState'",
+      "request_cancel": "(self, goal_id: 'str') -> 'tuple[object, ...]'"
+    },
+    "bases": null
+  },
+  "loushang.harnesswork.goal:GoalError": {
+    "module": "loushang.harnesswork.goal.records",
+    "qualname": "GoalError",
+    "methods": {},
+    "bases": [
+      "builtins:ValueError"
+    ]
+  },
+  "loushang.method:MethodDomainRuntime": {
+    "module": "loushang.method.runtime",
+    "qualname": "MethodDomainRuntime",
+    "methods": {
+      "prepare_turn": "(self, request: 'MethodDomainRequest') -> 'MethodDomainPreparedTurn'",
+      "prepare_turns": "(self, request: 'MethodDomainRequest') -> 'tuple[MethodDomainPreparedTurn, ...]'"
+    },
+    "bases": null
+  }
+}

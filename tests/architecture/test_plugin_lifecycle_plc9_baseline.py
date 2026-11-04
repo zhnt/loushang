@@ -1017,13 +1017,11 @@ def test_plc9_keeps_one_desired_state_writer_and_exact_composition_sites() -> No
         ),
     }
     assert _call_sites(Path("src/loushang"), "PluginDesiredStateLedger") == {
+        # Shared construction for the two original Coding wrappers; recovery
+        # and Product admission stay in those wrappers.
         (
-            Path("src/loushang/coding/_plugin_lifecycle.py"),
-            "build_coding_plugin_lifecycle",
-        ),
-        (
-            Path("src/loushang/coding/_plugin_lifecycle.py"),
-            "build_coding_plugin_management_application",
+            Path("src/loushang/harness/plugin_management/assembly.py"),
+            "bind_plugin_management_core",
         ),
         # Fresh B state is opened only behind the fenced Coding Product owner;
         # the management service remains the sole desired-state mutation site.

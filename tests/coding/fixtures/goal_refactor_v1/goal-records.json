@@ -1,0 +1,88 @@
+{
+  "header": {
+    "kind": "goal_header",
+    "version": 1,
+    "scope_id": "baseline-session",
+    "session_id": "baseline-session",
+    "policy_id": "coding-calculator-model-planning/v1",
+    "policy_version": 1
+  },
+  "records": [
+    {
+      "version": 1,
+      "sequence": 1,
+      "scope_id": "baseline-session",
+      "goal_id": "baseline-goal",
+      "kind": "command_received",
+      "command_id": "create",
+      "data": {
+        "request": "{\"action\":\"create\",\"data\":{\"limit\":6,\"metadata\":{},\"requirements\":[{\"id\":\"R1\",\"text\":\"Preserve the frozen objective\"}]},\"epoch\":0,\"goal_id\":\"baseline-goal\",\"revision\":0}"
+      }
+    },
+    {
+      "version": 1,
+      "sequence": 2,
+      "scope_id": "baseline-session",
+      "goal_id": "baseline-goal",
+      "kind": "created",
+      "command_id": "create",
+      "data": {
+        "requirements": [
+          {
+            "id": "R1",
+            "text": "Preserve the frozen objective"
+          }
+        ],
+        "limit": 6,
+        "metadata": {}
+      }
+    },
+    {
+      "version": 1,
+      "sequence": 3,
+      "scope_id": "baseline-session",
+      "goal_id": "baseline-goal",
+      "kind": "command_finished",
+      "command_id": "create",
+      "data": {
+        "outcome": "created",
+        "details": {}
+      }
+    },
+    {
+      "version": 1,
+      "sequence": 4,
+      "scope_id": "baseline-session",
+      "goal_id": "baseline-goal",
+      "kind": "command_received",
+      "command_id": "pause",
+      "data": {
+        "request": "{\"action\":\"pause\",\"data\":{\"reason\":\"user requested pause\",\"status\":\"paused\"},\"epoch\":1,\"goal_id\":\"baseline-goal\",\"revision\":1}"
+      }
+    },
+    {
+      "version": 1,
+      "sequence": 5,
+      "scope_id": "baseline-session",
+      "goal_id": "baseline-goal",
+      "kind": "control_changed",
+      "command_id": "pause",
+      "data": {
+        "status": "paused",
+        "reason": "user requested pause"
+      }
+    },
+    {
+      "version": 1,
+      "sequence": 6,
+      "scope_id": "baseline-session",
+      "goal_id": "baseline-goal",
+      "kind": "command_finished",
+      "command_id": "pause",
+      "data": {
+        "outcome": "pause",
+        "details": {}
+      }
+    }
+  ]
+}

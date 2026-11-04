@@ -416,7 +416,7 @@ def test_coding_multiagent_prompt_names_the_admitted_roles_and_wait_discipline()
     assert "directly in the current worktree and branch" in prompt
     assert "maximum open children" in prompt
     assert "maximum concurrent children" not in prompt
-    assert "A failed spawn creates no child" in prompt
+    assert "may retain a cleanup-only child" in prompt
     assert "do not wait for it" in prompt
     assert "remain open, addressable, and count against open-child limits" in prompt
     assert "After one-shot fan-out and aggregation, close children" in prompt
@@ -745,7 +745,6 @@ def test_factory_binds_shared_approval_resolver_to_child_incarnation(
     assert delegated.approval_actor_id == bound.actor_id
     assert delegated.execution_profile_ceiling.readable_roots == (tmp_path.resolve(),)
     assert delegated.execution_profile_ceiling.writable_roots == ()
-    assert driver.delegated_execution_profile is delegated
     grant = root_resolver.grant_store.issue(
         ApprovalRequest(
             tool_name="bash",

@@ -326,6 +326,7 @@ class GoalController:
                     scope_event_payload=cast(
                         Mapping[str, object], plain(original_spec.scope_event_payload)
                     ),
+                    recording_policy=original_spec.recording_policy,
                     steps=tuple(
                         WorkStepSpec(
                             s.step_id, cast(Mapping[str, object], plain(s.payload))
@@ -449,7 +450,10 @@ class GoalController:
             return
         if self._quiescence_error is not None:
             raise self._quiescence_error
-        if self._inflight or self._work.active_runs(session_id=self.header.session_id):
+        owned = {batch.operation_id for batch in self._history.batches}
+        if self._inflight or any(
+            run.operation_id in owned for run in self._work.active_runs(session_id=self.header.session_id)
+        ):
             raise GoalError("borrowed capabilities still active")
         self._retired = self._fenced = True
 

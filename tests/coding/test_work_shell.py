@@ -6,7 +6,7 @@ import shlex
 import shutil
 import sys
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -2162,6 +2162,8 @@ def test_goal_planning_work_uses_original_runtime_and_publishes_bound_evidence(
 
         monkeypatch.setattr(limits, "stream", original)
 
+        reservation = object()
+
         class Session:
             session_id = "session"
             session_manager = manager
@@ -2174,11 +2176,18 @@ def test_goal_planning_work_uses_original_runtime_and_publishes_bound_evidence(
             def get_active_tool_names(self):
                 return list(self.active)
 
-            async def set_active_tools(self, tools):
-                self.active = list(tools)
+            selected = None
+
+            def configure_execution(self, execution, *, stream_fn, tool_names, additional_policy):
+                assert execution is reservation and stream_fn is allowance.stream
+                self.selected = tool_names
+
+            def release_execution(self, execution):
+                assert execution is reservation
+                self.selected = None
 
             async def prompt(self, text, **kwargs):
-                assert text == prompt and self.active == []
+                assert text == prompt and self.selected == ()
                 await allowance.stream(None, None)
                 records.extend(completed)
                 for event in events:
@@ -2188,7 +2197,10 @@ def test_goal_planning_work_uses_original_runtime_and_publishes_bound_evidence(
             async def wait_for_idle(self):
                 pass
 
+        from types import SimpleNamespace
+
         session = Session()
+        session.runtime = SimpleNamespace(execution_configuration=session)
         tools = PlanningToolPolicy(tmp_path)
         original_executor = SessionTurnExecutor(
             session=session,
@@ -2201,7 +2213,7 @@ def test_goal_planning_work_uses_original_runtime_and_publishes_bound_evidence(
             session=session,
             allowance=allowance,
             policy=tools,
-            phase="planning",
+            phase="planning", execution=lambda: reservation,
         )
         blobs = SessionBlobStore(tmp_path / "blobs", "session")
         executor = PlanningWork(
@@ -2277,18 +2289,22 @@ def test_goal_planning_original_work_cancel_retains_scope_until_idle(
 
         class Session:
             active = list(prior)
-            selections = 0
+            configured = None
 
             def get_active_tool_names(self):
                 return list(self.active)
 
-            async def set_active_tools(self, names):
-                self.selections += 1
-                if self.selections > 1 and restore == "raises":
-                    raise RuntimeError("restoration failed")
-                self.active = (
-                    [] if self.selections > 1 and restore == "mismatch" else list(names)
-                )
+            def configure_execution(self, execution, **options):
+                assert execution is reservation
+                self.configured = options
+
+            def release_execution(self, execution):
+                assert execution is reservation
+                if restore == "raises":
+                    raise RuntimeError("configuration release failed")
+                if restore == "mismatch":
+                    raise GoalError("configuration still published")
+                self.configured = None
 
             def subscribe_runtime_events(self, listener):
                 return lambda: None
@@ -2304,7 +2320,9 @@ def test_goal_planning_original_work_cancel_retains_scope_until_idle(
                 idle_waiting.set()
                 await idle.wait()
 
+        reservation = object()
         session = Session()
+        session.runtime = SimpleNamespace(execution_configuration=session)
         allowance, policy = PlanningCallAllowance(), PlanningToolPolicy(tmp_path)
         delegate = SessionTurnExecutor(
             session=session,
@@ -2313,7 +2331,8 @@ def test_goal_planning_original_work_cancel_retains_scope_until_idle(
             turn=SessionWorkTurn("execute"),
         )
         scoped = ScopedSessionWork(
-            delegate, session=session, allowance=allowance, policy=policy, phase=phase
+            delegate, session=session, allowance=allowance, policy=policy, phase=phase,
+            execution=lambda: reservation,
         )
 
         class Resolver:
@@ -2341,9 +2360,9 @@ def test_goal_planning_original_work_cancel_retains_scope_until_idle(
         assert allowance.phase is None and policy.step is None
         assert runtime.get_cancellation(run.run_id).status == "settled"
         if restore == "okay":
-            assert not allowance.fenced and session.active == prior
+            assert not allowance.fenced and session.active == prior and session.configured is None
         else:
-            assert allowance.fenced
+            assert allowance.fenced and session.configured is not None and session.active == prior
             with pytest.raises(PlanningCallLimit):
                 allowance.enter("another-op", "planning")
             owner = CodingGoal(tmp_path, tmp_path / "data")
@@ -2520,8 +2539,9 @@ def test_goal_planning_fixed_verifier_scope_executes_without_model_authority(
 
 
 @pytest.mark.parametrize("pause_while_planning", [False, True])
+@pytest.mark.parametrize("source_binding", [False, True])
 def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
-    tmp_path, monkeypatch, pause_while_planning
+    tmp_path, monkeypatch, pause_while_planning, source_binding
 ):
     from loushang.ai.api_registry import get_default_api_registry
     from loushang.ai.json_codec import serialize_message
@@ -2605,6 +2625,9 @@ def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
                 data_root=tmp_path / "data",
                 model=model,
                 model_planning=True,
+                transcript_retained_until=(
+                    datetime.now(UTC) + timedelta(days=1) if source_binding else None
+                ),
             )
             owner.create("g", command_id="create")
             task = asyncio.create_task(
@@ -2692,6 +2715,41 @@ def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
             if p.is_file()
         }
         assert before == after
+        from loushang.coding.adapters.goal import read_goal_work_sources
+        from loushang.harness.transcript.source_reader import TranscriptSourceReader
+
+        source_reader = TranscriptSourceReader(
+            session_file=next(
+                p for p in (owner.data_root / "sessions").glob("20*.jsonl")
+            ),
+            conversation_id=owner.session_id,
+            store_state_root=tmp_path / "platform/state/session-stores",
+        )
+        try:
+            sources = await read_goal_work_sources(
+                data_root=owner.data_root,
+                session_id=owner.session_id,
+                goal_id="g",
+                reader=source_reader,
+            )
+            assert len(sources) == 2
+            for view, batch in zip(sources, batches, strict=True):
+                assert view.operation_id == batch.operation_id
+                assert view.recording.contract.require_persistence
+                expected = (
+                    "complete"
+                    if source_binding and batch.source["phase"] == "planning"
+                    else "not_declared"
+                )
+                assert view.status == expected
+                if expected == "complete":
+                    assert {
+                        r.handoff_id for r in view.resolution.handoffs.references
+                    } == {"0:0"}
+            # A borrowed reader stays usable after the adapter returns.
+            await source_reader.inspect_identity()
+        finally:
+            await source_reader.aclose()
         # Missing original Transcript is unknown, regardless of exported trace copies.
         transcript = next(
             p
@@ -2741,6 +2799,593 @@ def _goal_offline_model():
             input=("text",), context_window=128000, max_tokens=4096
         ),
     )
+
+
+@pytest.mark.parametrize("close_during_cancel", [False, True])
+def test_goal_verification_cancel_waits_for_original_command_owner_before_close(tmp_path, monkeypatch, close_during_cancel):
+    from loushang.agent.types import AgentToolResult
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+
+    async def scenario():
+        owner = await CodingGoal.open(
+            workspace=_goal_project(tmp_path), data_root=tmp_path / "data",
+            model=_goal_offline_model(), stream_fn=_goal_text_transport(),
+        )
+        entered, drained, aborted = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        signals = []
+
+        async def execute(definition, **kwargs):
+            signals.append(kwargs["signal"])
+            entered.set()
+            await drained.wait()
+            return AgentToolResult(content=[], details={
+                "exit_code": None, "cancelled": True, "truncated": False,
+                "stdio_complete": True, "stdio_drain_reason": None,
+            })
+
+        monkeypatch.setattr(owner._session.command_execution._runtime, "execute_definition", execute)
+        original_abort = owner._session.command_execution.abort
+
+        def abort():
+            original_abort()
+            aborted.set()
+
+        monkeypatch.setattr(owner._session.command_execution, "abort", abort)
+        owner.create("g", command_id="create")
+        advancing = asyncio.create_task(owner.advance("g", command_id="advance", revision=1, epoch=1))
+        await entered.wait()
+        cancel_finally, cancellation_waiting = asyncio.Event(), asyncio.Event()
+        cancellation = None
+        original_cancel = owner._work.cancel
+
+        async def cancel_work(run_id):
+            result = await original_cancel(run_id)
+            if close_during_cancel and asyncio.current_task() is cancellation:
+                # Keep the public cancellation invocation open after physical
+                # settlement, without holding the Work's own cancellation driver.
+                cancellation_waiting.set()
+                await asyncio.Event().wait()
+            return result
+
+        monkeypatch.setattr(owner._work, "cancel", cancel_work)
+
+        async def cancel():
+            try:
+                return await owner.controller.request_cancel("g")
+            finally:
+                cancel_finally.set()
+                if close_during_cancel:
+                    await owner.close()
+
+        cancellation = asyncio.create_task(cancel())
+        await aborted.wait()
+        assert signals[0].aborted and not cancellation.done()
+        assert owner._session.command_execution.is_running
+        drained.set()
+        if close_during_cancel:
+            await asyncio.wait_for(cancellation_waiting.wait(), 10)
+            with pytest.raises(asyncio.CancelledError):
+                await advancing
+            closing = asyncio.create_task(owner.close())
+            await asyncio.wait_for(cancel_finally.wait(), 2)
+            await asyncio.wait_for(closing, 10)
+            result = await asyncio.gather(cancellation, return_exceptions=True)
+            assert isinstance(result[0], asyncio.CancelledError)
+        else:
+            await cancellation
+            with pytest.raises(asyncio.CancelledError):
+                await advancing
+        assert not owner._session.command_execution.is_running
+        assert owner.controller.query("g").status != "completed"
+        for batch in owner.controller.history.batches:
+            run = owner._work.get_run_for_operation(batch.operation_id)
+            assert run is not None
+            assert owner._work.get_cancellation(run.run_id).status == "settled"
+        await owner.close()
+        assert owner._closed
+
+    asyncio.run(scenario())
+
+
+def _goal_text_transport():
+    from loushang.agent import synthetic_model_transport
+    from loushang.ai.event_stream.stream import AssistantMessageEventStream
+    from loushang.ai.types import AssistantMessage, TextPart, Usage
+
+    @synthetic_model_transport
+    async def stream(model, context, options=None):
+        message = AssistantMessage(
+            role="assistant",
+            endpoint="anthropic-messages",
+            api="anthropic-messages",
+            provider="offline",
+            model=model.id,
+            response_id=None,
+            content=[TextPart(type="text", text="Inspected the supplied task.")],
+            usage=Usage(
+                input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=0,
+        )
+        output = AssistantMessageEventStream()
+        output.push({"type": "start", "partial": message})
+        output.push({"type": "done", "reason": "stop", "message": message})
+        return output
+
+    return stream
+
+
+@pytest.mark.parametrize("arrival", ["steer_in_prompt", "follow_in_prompt", "handoff"])
+def test_goal_repair_input_preserves_original_source_groups(
+    tmp_path, monkeypatch, arrival
+):
+    from loushang.agent import synthetic_model_transport
+    from loushang.harnesswork.goal import GoalBasis, PolicyStop
+    from loushang.harnesswork.integrations.transcript import resolve_work_transcript
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+
+    async def scenario():
+        transport = _goal_text_transport()
+        calls = 0
+        text = "Keep the existing calculator requirements unchanged."
+
+        @synthetic_model_transport
+        async def stream(model, context, options=None):
+            nonlocal calls
+            calls += 1
+            if calls == 1 and arrival != "handoff":
+                send = owner.steer if arrival == "steer_in_prompt" else owner.follow_up
+                send("g", text)
+            return await transport(model, context, options)
+
+        owner = await CodingGoal.open(
+            workspace=_goal_project(tmp_path),
+            data_root=tmp_path / "data",
+            model=_goal_offline_model(),
+            stream_fn=stream,
+            transcript_retained_until=datetime.now(UTC) + timedelta(days=1),
+        )
+        try:
+            owner.create("g", command_id="create")
+            original_prepare = owner._policy.prepare
+
+            async def method_work(basis, facts):
+                snapshot, *_ = owner._policy._current_inputs(basis)
+                return owner._policy.prepare_repair(basis, snapshot, {})
+
+            monkeypatch.setattr(owner._policy, "prepare", method_work)
+            if arrival == "handoff":
+                reader = owner._source_reader
+                original_read = reader.read
+                reads = 0
+
+                async def read(ids=()):
+                    nonlocal reads
+                    if ids:
+                        reads += 1
+                        if reads == 2:
+                            # The last prompt has returned; input belongs to the
+                            # original queue, not this already-frozen handoff.
+                            owner.follow_up("g", text)
+                    return await original_read(ids)
+
+                monkeypatch.setattr(reader, "read", read)
+            receipt = await owner.advance("g", command_id="repair", revision=1, epoch=1)
+            assert receipt.outcome == (
+                "paused" if arrival == "handoff" else "work_finished"
+            ), owner.controller.last_error
+            facts = owner.controller.facts()
+            run = facts.runs[-1]
+            assert run.status == "completed"
+            result = await resolve_work_transcript(
+                owner._work.get_recording(run.run_id),
+                owner._work.query(),
+                source=owner._policy.transcript_source,
+            )
+            assert result.handoffs.complete
+            assert {r.handoff_id for r in result.handoffs.references} == {"0:0", "1:0"}
+            consumed = any(text in str(r.record.payload) for r in result.records)
+            assert consumed is (arrival != "handoff")
+            if arrival == "handoff":
+                assert owner._session.pending_message_count == 1
+                basis = GoalBasis(
+                    owner.controller.header,
+                    owner.controller.query("g"),
+                    owner.controller.history.sequence,
+                )
+                stop = await original_prepare(basis, facts)
+                assert isinstance(stop, PolicyStop) and stop.reason == "pending_input"
+                assessment = await owner._policy.assess(basis, facts)
+                assert assessment.status == "needs_user"
+                assert assessment.reason == "pending_input"
+                owner.clear_queue()
+                assert owner._session.pending_message_count == 0
+            else:
+                assert owner._session.pending_message_count == 0
+            assert owner.controller.query("g").status == (
+                "paused" if arrival == "handoff" else "active"
+            )
+        finally:
+            await owner.close()
+
+    asyncio.run(scenario())
+
+
+def test_goal_method_batches_record_original_sources_and_cold_read_in_new_process(
+    tmp_path, monkeypatch
+):
+    import subprocess
+
+    from loushang.coding.adapters.goal import read_goal_work_sources
+    from loushang.harness.transcript.source_reader import TranscriptSourceReader
+    from loushang.harnesswork.integrations.transcript import WorkTranscriptExpired
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+
+    async def scenario():
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        owner = await CodingGoal.open(
+            workspace=_goal_project(tmp_path),
+            data_root=tmp_path / "data",
+            model=_goal_offline_model(),
+            stream_fn=_goal_text_transport(),
+            transcript_retained_until=deadline,
+        )
+        try:
+            owner.create("g", command_id="create")
+
+            async def method_work(basis, facts):
+                snapshot, *_ = owner._policy._current_inputs(basis)
+                # This test selects actual Method work to exercise the source
+                # boundary; it does not simulate independent business acceptance.
+                return owner._policy.prepare_repair(basis, snapshot, {})
+
+            monkeypatch.setattr(owner._policy, "prepare", method_work)
+            for number in range(2):
+                receipt = await owner.advance(
+                    "g", command_id=f"method-{number}", revision=1, epoch=1
+                )
+                assert receipt.outcome == "work_finished", owner.controller.last_error
+                run = owner.controller.facts().runs[-1]
+                assert owner._work.get_recording(run.run_id).run.status == "completed"
+            session_file = Path(owner._session.session_manager.get_session_file())
+            assert owner.controller.query("g").status == "active"
+        finally:
+            await owner.close()
+
+        reader = TranscriptSourceReader(
+            session_file=session_file,
+            conversation_id=owner.session_id,
+            store_state_root=tmp_path / "platform/state/session-stores",
+        )
+
+        async def read_sources():
+            return await read_goal_work_sources(
+                data_root=owner.data_root,
+                session_id=owner.session_id,
+                goal_id="g",
+                reader=reader,
+            )
+
+        try:
+            views = await read_sources()
+            assert len({v.recording.run.run_id for v in views}) == 2
+            assert {v.status for v in views} == {"complete"}
+            assert {v.recording.run.session_id for v in views} == {owner.session_id}
+            assert all(
+                {r.handoff_id for r in v.resolution.handoffs.references}
+                == {"0:0", "1:0"}
+                for v in views
+            )
+            assert all(v.resolution.handoffs.retained_until == deadline for v in views)
+
+            script = """
+import asyncio, json, sys
+from pathlib import Path
+from loushang.coding.adapters.goal import read_goal_work_sources
+from loushang.harness.transcript.source_reader import TranscriptSourceReader
+async def main():
+    root, sid, path, state = sys.argv[1:]
+    reader = TranscriptSourceReader(session_file=Path(path), conversation_id=sid, store_state_root=Path(state))
+    try:
+        views = await read_goal_work_sources(data_root=Path(root), session_id=sid, goal_id="g", reader=reader)
+        print(json.dumps([v.status for v in views]))
+        await reader.inspect_identity()
+    finally:
+        await reader.aclose()
+asyncio.run(main())
+"""
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    script,
+                    str(owner.data_root),
+                    owner.session_id,
+                    str(session_file),
+                    str(reader.store_state_root),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=True,
+            )
+            assert json.loads(result.stdout) == ["complete", "complete"]
+
+            # Removing the whole Work log is unresolved, not undeclared.
+            work_path = next((owner.data_root / "sessions").glob("*.work.jsonl"))
+            original_work = work_path.read_bytes()
+            work_path.unlink()
+            assert {v.status for v in await read_sources()} == {"unresolved"}
+            work_path.write_bytes(original_work)
+
+            # Keep old/default capture readable without inventing a source contract.
+            rows = [json.loads(line) for line in original_work.splitlines()]
+            first_run = views[0].recording.run.run_id
+            for row in rows:
+                if row["run_id"] == first_run and row["entry_type"] == "operation":
+                    row["payload"].pop("_harnesswork", None)
+                    row["payload"]["payload"].pop("_harnesswork_transcript", None)
+            # Source facts with no contract must still be rejected; no silent legacy fallback.
+            work_path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+            with pytest.raises(ValueError, match="without admission contract"):
+                await read_sources()
+            legacy = [
+                row
+                for row in rows
+                if not (
+                    row["run_id"] == first_run
+                    and row["payload"].get("kind")
+                    in {
+                        "WorkTranscriptReferenced",
+                        "WorkTranscriptHandoffCompleted",
+                    }
+                )
+            ]
+            work_path.write_text("".join(json.dumps(row) + "\n" for row in legacy))
+            mixed = await read_sources()
+            assert [v.status for v in mixed] == ["not_declared", "complete"]
+            assert mixed[0].recording.contract is None
+            assert mixed[1].recording.contract.version == 1
+            work_path.write_bytes(original_work)
+
+            original_check = WorkTranscriptSource.check
+
+            def expired(source):
+                raise WorkTranscriptExpired("retention_expired")
+
+            monkeypatch.setattr(WorkTranscriptSource, "check", expired)
+            with pytest.raises(WorkTranscriptExpired):
+                await read_sources()
+            monkeypatch.setattr(WorkTranscriptSource, "check", original_check)
+
+            # A failed native cleanup remains on the caller's borrowed reader.
+            from loushang.harness.transcript import source_reader as source_module
+
+            close = source_module._ReadOwner.close
+
+            def fail_close(self):
+                raise OSError("cold reader cleanup pending")
+
+            monkeypatch.setattr(source_module._ReadOwner, "close", fail_close)
+            with pytest.raises(OSError, match="cleanup pending"):
+                await read_sources()
+            pending = reader._owner
+            assert pending is not None
+            with pytest.raises(OSError, match="cleanup pending"):
+                await reader.aclose()
+            assert reader._owner is pending
+            monkeypatch.setattr(source_module._ReadOwner, "close", close)
+            await reader.aclose()
+            assert reader._owner is None
+            reader = TranscriptSourceReader(
+                session_file=session_file,
+                conversation_id=owner.session_id,
+                store_state_root=tmp_path / "platform/state/session-stores",
+            )
+
+            content = session_file.read_bytes()
+            session_file.write_bytes(
+                content.replace(
+                    b"Inspected the supplied task.", b"Changed the supplied reply."
+                )
+            )
+            with pytest.raises(ValueError, match="digest"):
+                await read_sources()
+            session_file.write_bytes(content)
+            session_file.unlink()
+            with pytest.raises((ValueError, OSError)):
+                await read_sources()
+        finally:
+            await reader.aclose()
+
+    from loushang.harnesswork.integrations.transcript import WorkTranscriptSource
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("stage", ["before_intent", "after_intent"])
+def test_goal_bound_candidate_expiry_preserves_original_dispatch_outcome(
+    tmp_path, monkeypatch, stage
+):
+    from loushang.harnesswork.integrations.transcript import (
+        WorkTranscriptExpired,
+        WorkTranscriptSource,
+    )
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+
+    async def scenario():
+        owner = await CodingGoal.open(
+            workspace=_goal_project(tmp_path),
+            data_root=tmp_path / "data",
+            model=_goal_offline_model(),
+            stream_fn=_goal_text_transport(),
+            transcript_retained_until=datetime.now(UTC) + timedelta(days=1),
+        )
+        expired = False
+        check = WorkTranscriptSource.check
+
+        def check_deadline(source):
+            if expired:
+                raise WorkTranscriptExpired("retention_expired")
+            check(source)
+
+        monkeypatch.setattr(WorkTranscriptSource, "check", check_deadline)
+        try:
+            owner.create("g", command_id="create")
+
+            async def method_work(basis, facts):
+                nonlocal expired
+                snapshot, *_ = owner._policy._current_inputs(basis)
+                candidate = owner._policy.prepare_repair(basis, snapshot, {})
+                if stage == "before_intent":
+                    expired = True
+                return candidate
+
+            monkeypatch.setattr(owner._policy, "prepare", method_work)
+            append = owner._store.append
+
+            def append_and_expire(sequence, record):
+                nonlocal expired
+                result = append(sequence, record)
+                if stage == "after_intent" and record.kind == "batch_intent":
+                    expired = True
+                return result
+
+            monkeypatch.setattr(owner._store, "append", append_and_expire)
+            receipt = await owner.advance("g", command_id="expire", revision=1, epoch=1)
+            assert not owner.controller.facts().runs and not owner._prepared
+            if stage == "before_intent":
+                assert receipt.outcome == "paused"
+                assert owner.controller.query("g").reason == "candidate_outdated"
+                assert not owner.controller.history.batches
+            else:
+                assert receipt.outcome == "not_submitted"
+                assert owner.controller.history.batches[-1].not_submitted
+            # The same Product's verifier has no message source obligation.
+            from loushang.harnesswork.goal import GoalBasis
+
+            basis = GoalBasis(
+                owner.controller.header,
+                owner.controller.query("g"),
+                owner.controller.history.sequence,
+            )
+            snapshot, source, tests, code = owner._policy._current_inputs(basis)
+            verification = owner._policy.prepare_verification(
+                basis, snapshot, source, tests, code
+            )
+            assert owner._policy.confirm_candidate(verification)
+        finally:
+            await owner.close()
+
+    asyncio.run(scenario())
+
+
+def test_goal_source_close_failure_keeps_session_dependencies_for_retry(tmp_path):
+    calls = []
+
+    class Reader:
+        async def aclose(self):
+            calls.append("reader")
+            if calls.count("reader") == 1:
+                raise OSError("source cleanup pending")
+
+    class SDK:
+        async def dispose_session_runtime(self):
+            calls.append("session")
+
+    class Store:
+        def close(self):
+            calls.append("writer")
+
+    async def scenario():
+        owner = CodingGoal(tmp_path, tmp_path / "data")
+        owner._source_reader, owner._sdk, owner._store = Reader(), SDK(), Store()
+        with pytest.raises(OSError, match="source cleanup"):
+            await owner.close()
+        assert calls == ["reader"] and not owner._closed
+        await owner.close()
+        assert calls == ["reader", "reader", "session", "writer"] and owner._closed
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("outcome", ["success", "failure", "cancelled"])
+def test_goal_cold_journal_close_failure_returns_original_owner(
+    tmp_path, monkeypatch, outcome
+):
+    from types import SimpleNamespace
+
+    from loushang.coding.adapters import _goal_work_sources as module
+    from loushang.coding.adapters._goal_store import GoalJournal
+    from loushang.coding.adapters.goal import GoalWorkSourceCleanupError
+    from loushang.harness.journal._directory_lease import DirectoryWriterError
+    from loushang.harnesswork.goal import GoalHeader
+
+    root = tmp_path / "sessions"
+    root.mkdir(mode=0o700)
+    header = GoalHeader("session", "session", module.POLICY_ID)
+    journal = GoalJournal(root, header)
+    journal.open(create=True)
+    journal.close()
+    # Real journal/lease, with only the unrelated Goal history and source read
+    # replaced so each error path reaches the same owned cleanup boundary.
+    history = SimpleNamespace(goal=lambda _: object(), batches=())
+    monkeypatch.setattr(module, "replay", lambda *_: history)
+    read_error = (
+        OSError("source unavailable")
+        if outcome == "failure"
+        else asyncio.CancelledError()
+        if outcome == "cancelled"
+        else None
+    )
+
+    def facts(*args):
+        if read_error is not None:
+            raise read_error
+        return (), False
+
+    monkeypatch.setattr(module, "_goal_work_facts", facts)
+    original_close = GoalJournal.close
+    failed_owners = []
+
+    def fail_close(owner):
+        failed_owners.append(owner)
+        raise OSError("journal cleanup failed")
+
+    monkeypatch.setattr(GoalJournal, "close", fail_close)
+
+    async def scenario():
+        with pytest.raises(GoalWorkSourceCleanupError) as caught:
+            await module.read_goal_work_sources(
+                data_root=tmp_path,
+                session_id="session",
+                goal_id="g",
+                reader=SimpleNamespace(conversation_id="session"),
+            )
+        error = caught.value
+        assert error.owner is failed_owners[0]
+        assert error.read_error is read_error
+        assert isinstance(error.cleanup_error, OSError)
+        # A new owner cannot replace cleanup of the original lease.
+        second = GoalJournal(root, header, read_only=True)
+        with pytest.raises(DirectoryWriterError, match="busy"):
+            second.open()
+        monkeypatch.setattr(GoalJournal, "close", original_close)
+        error.owner.close()
+        second.close()
+        replacement = GoalJournal(root, header, read_only=True)
+        try:
+            replacement.open()
+        finally:
+            replacement.close()
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.parametrize(
@@ -3104,20 +3749,19 @@ def test_goal_query_cleanup_error_is_retained_without_disposing_resources(tmp_pa
         started = asyncio.Event()
 
         async def query():
-            task = asyncio.current_task()
-            owner._queries.add(task)
             started.set()
             try:
                 await asyncio.Event().wait()
             finally:
-                owner._queries.discard(task)
                 raise OSError("query reader cleanup pending")
 
-        task = asyncio.create_task(query())
+        task = asyncio.create_task(owner._observations.invoke(query))
         await started.wait()
         with pytest.raises(OSError, match="reader cleanup pending"):
             await owner.close()
         assert task.done() and not disposed and not owner._closed
+        result = await asyncio.gather(task, return_exceptions=True)
+        assert isinstance(result[0], OSError)
         with pytest.raises(OSError, match="reader cleanup pending"):
             await owner.close()
         assert not disposed
@@ -3242,5 +3886,88 @@ def test_goal_verifier_nonzero_uses_last_cumulative_preview_not_exception_text(
             assert output == b"actual failure\n"
         else:
             assert view.passed is None and not view.records
+
+    asyncio.run(scenario())
+
+
+def test_goal_query_outer_finally_can_join_same_close_without_deadlock(tmp_path):
+    from types import SimpleNamespace
+
+    async def scenario():
+        owner = CodingGoal(tmp_path, tmp_path / "data")
+        started = asyncio.Event()
+        released = []
+
+        class Core:
+            fenced = False
+            header = object()
+            history = SimpleNamespace(sequence=0)
+
+            def query(self, goal_id):
+                return object()
+
+            def facts(self):
+                return object()
+
+            def begin_close(self):
+                pass
+
+            async def quiesce(self):
+                pass
+
+            async def settle_work(self):
+                pass
+
+            def retire(self):
+                released.append("core")
+
+        class Policy:
+            async def assess(self, basis, facts):
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    released.append("reader")
+
+        class Store:
+            def close(self):
+                released.append("writer")
+
+        owner._core, owner._policy, owner._store = Core(), Policy(), Store()
+
+        async def caller():
+            try:
+                await owner.query("goal")
+            finally:
+                await owner.close()
+
+        task = asyncio.create_task(caller())
+        await started.wait()
+        await asyncio.wait_for(owner.close(), 2)
+        result = await asyncio.gather(task, return_exceptions=True)
+        assert isinstance(result[0], asyncio.CancelledError)
+        assert released == ["reader", "core", "writer"] and owner._closed
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("execution", [None, lambda: None])
+def test_goal_model_work_without_execution_binding_cannot_enter_allowance_or_session(tmp_path, execution):
+    from loushang.coding.adapters._goal_planning_limits import PlanningCallAllowance
+    from loushang.coding.adapters._goal_planning_work import (
+        PlanningToolPolicy,
+        ScopedSessionWork,
+    )
+
+    async def scenario():
+        allowance = PlanningCallAllowance()
+        policy = PlanningToolPolicy(tmp_path)
+        work = ScopedSessionWork(
+            object(), session=object(), allowance=allowance, policy=policy,
+            phase="planning", execution=execution,
+        )
+        with pytest.raises(GoalError, match="Session execution binding"):
+            await work.execute(object(), object())
+        assert allowance.phase is None and allowance.total_calls == 0 and policy.step is None
 
     asyncio.run(scenario())

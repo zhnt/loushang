@@ -449,7 +449,7 @@ PLC9B_BOUNDARY_SINKS = (
     ),
     (
         "posix_materialization.py",
-        "_PosixRoleStore._validate_receipt",
+        "_PosixStorePlatform.pin_root",
         "package-posix-role-store",
         {"path_read": 1},
     ),
@@ -479,7 +479,7 @@ PLC9B_BOUNDARY_SINKS = (
     ),
     (
         "windows_materialization.py",
-        "_WindowsRoleStore._validate_receipt",
+        "_WindowsStorePlatform.pin_root",
         "package-windows-role-store",
         {"path_read": 1},
     ),
@@ -650,16 +650,21 @@ for _module, _qualified, _owner, _counts in PLC9B_BOUNDARY_SINKS:
         _key = (*_site, _operation)
         assert _key not in EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS
         EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS[_key] = _count
-_DISTRIBUTION_TOP_LEVEL_SITE = (
-    Path("src/loushang/harness/resources/plugins/distribution_evidence.py"),
+# Existing distribution evidence reads belong to the same resolver. The wheel
+# RECORD fast path was introduced in 19056149d without updating this inventory.
+for _qualified in (
     "_declared_top_level_packages",
-)
-EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS[_DISTRIBUTION_TOP_LEVEL_SITE] = (
-    "installed-python-distribution-evidence-resolver"
-)
-EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS[
-    (*_DISTRIBUTION_TOP_LEVEL_SITE, "path_read")
-] = 1
+    "InstalledPythonDistributionEvidenceResolver._resolve_installed_candidate",
+):
+    _site = (
+        Path("src/loushang/harness/resources/plugins/distribution_evidence.py"),
+        _qualified,
+    )
+    EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS[_site] = (
+        "installed-python-distribution-evidence-resolver"
+    )
+    EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS[(*_site, "path_read")] = 1
+
 
 
 # Post-PLC9B owner inventory for exact Product, migration, and management reads.

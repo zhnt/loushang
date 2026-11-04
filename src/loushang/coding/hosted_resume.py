@@ -391,8 +391,8 @@ class CodingDeferredHostedSessionV1:
             prepare_coding_product_approval_state_root,
         )
         from .embedded_resume import (
-            _capability_plugins_enabled,
             _require_no_capability_plugin_effects,
+            _resume_capability_plugins_required,
         )
         from .resume_activation_attempt import (
             CodingActivationAttemptV1,
@@ -461,10 +461,11 @@ class CodingDeferredHostedSessionV1:
                 settings_manager=self._services.settings_manager,
             )
             require_subject()
-            plugins_enabled = _capability_plugins_enabled(
+            plugins_enabled = _resume_capability_plugins_required(
                 plan_set_id=plan.composition_comparison.candidate_set_id,
                 settings_manager=self._services.settings_manager,
                 no_tools=None,
+                history=self._source.history,
             )
             state_id = hashlib.sha256(
                 b"loushang.coding-capability-plugin-state/v1\0"

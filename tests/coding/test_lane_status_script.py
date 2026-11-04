@@ -50,13 +50,13 @@ def test_lane_status_is_read_only_and_reports_dirty_ahead_and_extra(
     _git(repo, "commit", "-m", "base")
     _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
     (repo / ".worktrees").mkdir()
-    ai_lane = repo / ".worktrees" / "ai"
+    gui_lane = repo / ".worktrees" / "gui"
     extra = repo / ".worktrees" / "scratch"
-    _git(repo, "worktree", "add", "-b", "task/ai", str(ai_lane), "main")
-    (ai_lane / "ai.txt").write_text("committed\n", encoding="utf-8")
-    _git(ai_lane, "add", "ai.txt")
-    _git(ai_lane, "commit", "-m", "ai change")
-    (ai_lane / "dirty.txt").write_text("dirty\n", encoding="utf-8")
+    _git(repo, "worktree", "add", "-b", "task/gui", str(gui_lane), "main")
+    (gui_lane / "gui.txt").write_text("committed\n", encoding="utf-8")
+    _git(gui_lane, "add", "gui.txt")
+    _git(gui_lane, "commit", "-m", "gui change")
+    (gui_lane / "dirty.txt").write_text("dirty\n", encoding="utf-8")
     _git(repo, "worktree", "add", "-b", "scratch", str(extra), "main")
     before = _git(repo, "status", "--porcelain").stdout
 
@@ -64,13 +64,13 @@ def test_lane_status_is_read_only_and_reports_dirty_ahead_and_extra(
     rendered = render_lane_status(statuses)
 
     after = _git(repo, "status", "--porcelain").stdout
-    ai = next(status for status in statuses if status.name == "ai")
+    gui = next(status for status in statuses if status.name == "gui")
     residual = next(status for status in statuses if status.name == "extra")
     assert before == after
-    assert ai.branch == "task/ai"
-    assert ai.dirty is True
-    assert ai.ahead == 1
-    assert ai.behind == 0
+    assert gui.branch == "task/gui"
+    assert gui.dirty is True
+    assert gui.ahead == 1
+    assert gui.behind == 0
     assert residual.path == extra.resolve()
     assert "Summary: active=3 dirty=1 behind=0 extra=1 prunable=0" in rendered
     assert "Lane status (read-only; compared with the local origin/main ref)" in rendered

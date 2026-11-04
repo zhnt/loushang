@@ -64,6 +64,38 @@ For current kind, Product, platform, and entry-route status, use the
 [Plugin support matrix](plugin-support-matrix.md). Earlier status lines in
 delivery records are chronological evidence and may predate later gates.
 
+The [Plugin and Harness convergence audit](convergence-audit.md) traces Session
+creation, Plugin loading, disable, and shutdown at the 2026-11-04 source baseline.
+It separates observed ownership from proposed simplification; its candidate
+list does not change accepted contracts or authorize legacy-path removal.
+
+The [materialization platform Adapter](materialization-platform-adapter.md)
+defines shared Store rules with narrow native operations. M1a receipt
+verification and M1b finish/reuse/publication coordination are locally
+implemented; Windows native validation remains pending.
+
+The [M1c tree validation design](materialization-tree-validation.md)
+separates one shared traversal/verification algorithm from native rooted reads,
+including the existing partial-delete GC observation path. The shared scanner
+and both platform readers are locally implemented and code-reviewed; Windows
+native validation remains pending. File writing has its own accepted slice
+below; tree deletion remains a follow-on concern.
+
+The accepted [M1c file sink design](materialization-file-sinks.md) follows that
+read/validation slice. It separates shared file consumption and completion
+rules from native writes and handle cleanup, and preserves the original tree
+owner's completion authority. The shared sinks and platform Writers are locally
+implemented and code-reviewed; Windows native validation remains pending.
+Tree deletion remains outside its scope.
+
+The accepted [D1 ledger assembly design](management-ledger-assembly.md) covers
+the two legacy Coding lifecycle/management builders. It shares construction in
+two stages around the original caller-owned compatibility/recovery boundary;
+Product policy, leases, fenced B assembly, and retirement coordination stay
+with their existing owners. This slice is locally implemented and independently
+code-reviewed; focused offline verification is recorded in its review. It does
+not complete the wider D1 convergence work.
+
 ## Authority Order
 
 When documents disagree, use this order:

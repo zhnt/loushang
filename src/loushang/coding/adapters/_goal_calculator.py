@@ -33,7 +33,12 @@ from loushang.harnesswork.goal.records import canonical, document, plain
 from loushang.harnesswork.integrations.session import (
     PreparedSessionWorkTurn,
     SessionTurnExecutor,
+    prepare_session_work_source,
     project_prepared_session_work_turns,
+)
+from loushang.harnesswork.integrations.transcript import (
+    CONTRACT_KEY,
+    WorkTranscriptSource,
 )
 from loushang.harnesswork.ports import WorkExecutionBinding
 from loushang.harnesswork.types import WorkOperation, WorkStepSpec
@@ -188,9 +193,14 @@ class CalculatorPolicy:
         event_log: Any,
         prepared: dict[str, WorkExecutionBinding],
         policy_id: str | None = None,
+        transcript_source: WorkTranscriptSource | None = None,
+        execution_session=None, execution=None,
     ):
         self.root, self.session, self.blobs = workspace, session, blobs
         self.log, self.prepared = event_log, prepared
+        self.transcript_source = transcript_source
+        self.execution_session = execution_session or session
+        self.execution = execution
         if policy_id is not None:
             self.policy_id = policy_id
 
@@ -256,8 +266,22 @@ class CalculatorPolicy:
             except (ValueError, OSError, KeyError):
                 return PolicyStop("verification_evidence_unavailable")
         if repair:
-            return self.prepare_repair(basis, snapshot, previous)
+            try:
+                return self.prepare_repair(basis, snapshot, previous)
+            except (ValueError, OSError, KeyError) as error:
+                return PolicyStop(str(error))
         return self.prepare_verification(basis, snapshot, source, tests, code)
+
+    def _bind_source(self, operation, spec, executor):
+        if self.transcript_source is None:
+            return operation, executor
+        return prepare_session_work_source(
+            operation,
+            spec=spec,
+            session=self.execution_session,
+            executor=executor,
+            source=self.transcript_source,
+        )
 
     def _operation_inputs(self, basis, snapshot):
         return f"goal-op-{uuid4().hex}", {
@@ -312,12 +336,11 @@ class CalculatorPolicy:
             follow_up_messages=(),
         )
         executor = SessionTurnExecutor(
-            session=self.session,
+            session=self.execution_session,
             profile=CODING_WORK_PROFILE,
             project_event_facts=project_coding_runtime_event,
             turns=turns,
         )
-        self.prepared[op_id] = WorkExecutionBinding(executor, executor)
         first = turns[0]
         operation = first.to_operation(
             profile=CODING_WORK_PROFILE,
@@ -332,6 +355,8 @@ class CalculatorPolicy:
             scope_event_payload=initial.scope_event_payload,
             steps=tuple(t.to_step_spec(profile=CODING_WORK_PROFILE) for t in turns),
         )
+        operation, executor = self._bind_source(operation, spec, executor)
+        self.prepared[op_id] = WorkExecutionBinding(executor, executor)
         return WorkCandidate(basis, operation, spec, {**common, "phase": "repair"})
 
     def prepare_verification(self, basis: GoalBasis, snapshot, source, tests, code):
@@ -399,6 +424,10 @@ class CalculatorPolicy:
 
     def confirm_candidate(self, candidate: WorkCandidate) -> bool:
         try:
+            if CONTRACT_KEY in candidate.operation.payload:
+                if self.transcript_source is None:
+                    return False
+                self.transcript_source.check()
             snapshot, _, _, _ = self._current_inputs(candidate.basis)
             return not self.session.pending_message_count and snapshot == plain(
                 candidate.source["inventory"]

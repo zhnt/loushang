@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import replace
 
 import pytest
@@ -20,6 +21,10 @@ from tests.harness.worker.test_product_activation import (
     _ATTEMPT_A,
     _coordinator,
     _receipt,
+)
+
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux", reason="Linux rooted Worker activation journal"
 )
 
 

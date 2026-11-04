@@ -76,7 +76,7 @@ class ConversationInputHandled:
     """An input event changed local interaction state and needs a render."""
 
     kind: Literal["handled"] = field(default="handled", init=False)
-    render_requested: bool = field(default=True, init=False)
+    render_requested: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,6 +249,7 @@ class ConversationInputRouter:
     height: int = 12
     prompt_image_stager: PromptImageAttachmentStager | None = None
     clipboard_outcome_presenter: ClipboardOutcomePresenter | None = None
+    transcript_scroll_handler: Callable[[int], bool] | None = None
     # Deferred is a text-only intent port: its caller accepts the action before
     # clearing/history presentation. It never consumes remote display queues.
     submission_presentation: Literal["optimistic", "deferred"] = "optimistic"
@@ -295,6 +296,9 @@ class ConversationInputRouter:
         """Map terminal mouse rows onto the committed logical conversation frame."""
 
         self._transcript_viewport_top = max(0, row)
+
+    def set_transcript_scroll_handler(self, handler: Callable[[int], bool]) -> None:
+        self.transcript_scroll_handler = handler
 
     def dispose(self) -> None:
         """Idempotently release draft-owned resources on every runner exit."""
@@ -374,6 +378,15 @@ class ConversationInputRouter:
                 else ConversationInputIgnored()
             )
         if event.kind == "mouse":
+            if event.mouse_action in {"scroll_up", "scroll_down"}:
+                direction = -3 if event.mouse_action == "scroll_up" else 3
+                if self.transcript_scroll_handler is None or not self.transcript_scroll_handler(direction):
+                    return ConversationInputIgnored()
+                request_render = getattr(self.app, "request_render", None)
+                if callable(request_render):
+                    request_render("product")
+                    return ConversationInputHandled(render_requested=False)
+                return ConversationInputHandled()
             handler = getattr(self.app, "handle_transcript_mouse", None)
             if callable(handler):
                 if event.mouse_row is not None and self._transcript_viewport_top:
@@ -385,6 +398,11 @@ class ConversationInputRouter:
                 if copy_text:
                     return ConversationCopyTextResult(copy_text)
                 if handled:
+                    if event.mouse_action == "drag":
+                        request_render = getattr(self.app, "request_render", None)
+                        if callable(request_render):
+                            request_render("product")
+                            return ConversationInputHandled(render_requested=False)
                     return ConversationInputHandled()
             return ConversationInputIgnored()
         if event.kind == "text":
@@ -743,6 +761,7 @@ def bind_clipboard_image_input_router(
     *,
     policy: ConversationInputPolicy = DEFAULT_CONVERSATION_INPUT_POLICY,
     runtime_scope: RuntimeScope | None = None,
+    router_type: type[ConversationInputRouter] = ConversationInputRouter,
 ) -> ClipboardImageInputRouterBuilder:
     """Bind app-aware staging and status presentation to a router builder.
 
@@ -806,7 +825,7 @@ def bind_clipboard_image_input_router(
             if message is not None:
                 current_app().state.set_status(message)
 
-        router = ConversationInputRouter(
+        router = router_type(
             app=app,
             should_exit=should_exit,
             is_local_command=is_local_command,

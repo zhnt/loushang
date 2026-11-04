@@ -1,0 +1,13 @@
+# 查询调用边界与关闭收敛
+
+Authority: descriptive。对象为3079d4c98之后的查询清理收敛，沿已接受Session协同合同，不改变Goal状态、验收或记录格式。
+
+原CodingGoal关闭会cancel并gather查询调用方的整个Task。若调用方在query外层finally中等待同一Goal.close，关闭任务与调用方会循环等待。现由Harness的ExecutionObservations追踪原查询调用的doneFuture：仍在原Task执行，只等待查询自身finally结束。没有新增查询driver、后台模型调用、队列或事实记录。
+
+首次quiesce同步封口并冻结原Future，只cancel一次；waiter取消后保留同Future，后续关闭继续等待。查询cleanup非取消异常仍保留原对象并阻止资源释放，不把未知reader状态解释成已清理。Coding删除原Task集合/gather算法，query/close委托该机制。
+
+三位独立agent分别核查职责/复用、运行/失败及数据/兼容，无剩余阻断；报告保存在产品树外architecture-analysis/goal-refactor-20261103/scope-observation-{ownership,runtime,data}.md。实施负责人依据评审与检查接受此窄切片本地集成。
+
+实际检查：原query cleanup失败合同、query外层finally加入同一close、异步reader finally等待、关闭waiter取消后保留错误，以及原关闭/销毁回归共9 passed、148 deselected，10.93秒。Ruff通过；共享scope文件mypy通过。首轮4项通过时测试调用方未领取原query错误，产生Task exception提示；测试现显式领取同一OSError，未在产品层隐藏错误，复跑无该提示。
+
+这仅关闭查询资源等待边界，不宣称普通Session入口、托管等价或全部S2验收完成。

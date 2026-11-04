@@ -294,6 +294,10 @@
           "category": "contract",
           "assertion": "controlled design session and in-memory log: profile vocabulary, direct/work delivery, prepared-turn validation and ordered plan prompts"
         },
+        "tests/harnesswork/integrations/test_transcript.py": {
+          "category": "contract",
+          "assertion": "controlled session/source reader and in-memory log: frozen prompt handoffs, confirmed cold projection, source identity/digest/expiry validation, append failure and cancellation; no actual Transcript store, Product session, subprocess or live provider"
+        },
         "tests/harnesswork/integrations/test_agent_events.py": {
           "category": "contract",
           "assertion": "controlled agent/AI event objects: projected content/tools/audit/queue metadata, strict JSON/schema rejection, snapshots and custom serializer"

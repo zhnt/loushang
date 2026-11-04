@@ -168,14 +168,18 @@ class MultiAgentControl:
         self._notice_consumers.append(consumer)
         return lambda: _remove_consumer(self._notice_consumers, consumer)
 
-    def spawn(
+    def check_spawn(
         self,
         *,
         caller: ControlCaller,
         parent_path: AgentPath,
-        name: str,
         agent_type: str,
     ) -> AgentRecord:
+        """Read-only policy/capacity observation; spawn rechecks before reserving.
+
+        Returns the admitted parent snapshot, not a reservation or a promise
+        that the same capacity remains available at dispatch.
+        """
         caller_record = self._validate_caller(caller)
         parent = self._require_path(parent_path)
         self._require_control(caller, parent)
@@ -249,6 +253,19 @@ class MultiAgentControl:
                 },
             )
 
+        return parent
+
+    def spawn(
+        self,
+        *,
+        caller: ControlCaller,
+        parent_path: AgentPath,
+        name: str,
+        agent_type: str,
+    ) -> AgentRecord:
+        parent = self.check_spawn(
+            caller=caller, parent_path=parent_path, agent_type=agent_type
+        )
         with self._registry.reserve(
             parent_ref=parent.ref,
             name=name,

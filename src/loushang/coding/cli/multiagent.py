@@ -211,12 +211,14 @@ async def run_coding_multiagent_command(
             output_format=command.output_format,
         )
         exit_code = 0 if result.status == "completed" else 1
-    except TimeoutError:
+    except TimeoutError as error:
         stderr.write(
             f"Error: collaboration recipe timed out after {command.timeout:g}s\n"
         )
+        _write_error_notes(stderr, error)
     except Exception as error:
         stderr.write(f"Error: {error}\n")
+        _write_error_notes(stderr, error)
     finally:
         if runtime is not None:
             try:
@@ -225,8 +227,14 @@ async def run_coding_multiagent_command(
                 )
             except Exception as error:
                 stderr.write(f"Error: failed to release recipe runtime: {error}\n")
+                _write_error_notes(stderr, error)
                 exit_code = 1
     return exit_code
+
+
+def _write_error_notes(stderr: TextIO, error: BaseException) -> None:
+    for note in getattr(error, "__notes__", ()):
+        stderr.write(f"{note}\n")
 
 
 def _resolve_default_model(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import nullcontext
 from dataclasses import replace
 from typing import Any
 
@@ -20,10 +21,12 @@ from loushang.agent.types import (
     AgentLoopConfig,
     AgentMessage,
     AgentOptions,
+    AgentRunOptions,
     AgentState,
     AgentTool,
     BeforeToolCallContext,
     BeforeToolCallResult,
+    StreamFn,
     ThinkingLevel,
     ToolExecutionMode,
 )
@@ -530,6 +533,7 @@ class Agent:
         images: list[ImagePart] | None = None,
         *,
         model_call_purpose: str = "main",
+        run_options: AgentRunOptions | None = None,
     ) -> None:
         if self._active_run_task is not None:
             raise AgentStateError(
@@ -539,12 +543,14 @@ class Agent:
         await self._run_prompt_messages(
             messages,
             model_call_purpose=model_call_purpose,
+            run_options=run_options,
         )
 
     async def continue_run(
         self,
         *,
         model_call_purpose: str = "continuation",
+        run_options: AgentRunOptions | None = None,
     ) -> None:
         if self._active_run_task is not None:
             raise AgentStateError(
@@ -556,28 +562,31 @@ class Agent:
             raise RuntimeError("No messages to continue from")
 
         if getattr(last_message, "role", None) == "assistant":
-            queued_mailbox = self.mailbox_queue.drain()
-            if queued_mailbox:
+            if (run_options is None or run_options.deliver_queued_input) and self.mailbox_queue.has_items():
                 await self._run_prompt_messages(
-                    queued_mailbox,
+                    [],
+                    take_queued_input=self.mailbox_queue.drain,
                     model_call_purpose=model_call_purpose,
+                    run_options=run_options,
                 )
                 return
 
-            queued_steering = self.steering_queue.drain()
-            if queued_steering:
+            if (run_options is None or run_options.deliver_queued_input) and self.steering_queue.has_items():
                 await self._run_prompt_messages(
-                    queued_steering,
+                    [],
+                    take_queued_input=self.steering_queue.drain,
                     skip_initial_steering_poll=True,
                     model_call_purpose=model_call_purpose,
+                    run_options=run_options,
                 )
                 return
 
-            queued_follow_ups = self.follow_up_queue.drain()
-            if queued_follow_ups:
+            if (run_options is None or run_options.deliver_queued_input) and self.follow_up_queue.has_items():
                 await self._run_prompt_messages(
-                    queued_follow_ups,
+                    [],
+                    take_queued_input=self.follow_up_queue.drain,
                     model_call_purpose=model_call_purpose,
+                    run_options=run_options,
                 )
                 return
 
@@ -585,12 +594,13 @@ class Agent:
                 await self._run_continuation(
                     model_call_purpose=model_call_purpose,
                     drop_terminal_error=True,
+                    run_options=run_options,
                 )
                 return
 
             raise RuntimeError("Cannot continue from message role: assistant")
 
-        await self._run_continuation(model_call_purpose=model_call_purpose)
+        await self._run_continuation(model_call_purpose=model_call_purpose, run_options=run_options)
 
     async def _run_prompt_messages(
         self,
@@ -598,30 +608,49 @@ class Agent:
         skip_initial_steering_poll: bool = False,
         *,
         model_call_purpose: str = "main",
+        run_options: AgentRunOptions | None = None,
+        take_queued_input: Callable[[], list[AgentMessage]] | None = None,
     ) -> None:
+        if run_options is not None and not isinstance(run_options, AgentRunOptions):
+            raise TypeError("Agent invocation requires AgentRunOptions")
+
         async def executor(signal: AbortSignal) -> None:
+            if run_options is not None and run_options.checkpoint is not None:
+                run_options.checkpoint()
+            pending = list(messages)
+            context = self._create_context_snapshot(run_options=run_options)
+            config = self._create_loop_config(
+                skip_initial_steering_poll=skip_initial_steering_poll,
+                run_options=run_options,
+            )
+            selected_stream = self._invocation_stream(run_options)
+            # Consume the original queue only after admission and invocation
+            # setup succeed. A clear during scope entry must remain effective.
+            if take_queued_input is not None:
+                pending = take_queued_input()
+                if not pending:
+                    return
             await run_agent_loop(
-                list(messages),
-                self._create_context_snapshot(),
-                self._create_loop_config(
-                    skip_initial_steering_poll=skip_initial_steering_poll
-                ),
+                pending,
+                context,
+                config,
                 self._process_event,
                 signal=signal,
-                stream_fn=self.stream_fn,
+                stream_fn=selected_stream,
                 model_call_purpose=model_call_purpose,
             )
 
-        await self._run_with_lifecycle(executor)
+        await self._run_with_lifecycle(executor, run_options=run_options)
 
     async def _run_continuation(
         self,
         *,
         model_call_purpose: str = "continuation",
         drop_terminal_error: bool = False,
+        run_options: AgentRunOptions | None = None,
     ) -> None:
         async def executor(signal: AbortSignal) -> None:
-            context = self._create_context_snapshot()
+            context = self._create_context_snapshot(run_options=run_options)
             if drop_terminal_error:
                 last_message = context.messages[-1] if context.messages else None
                 if (
@@ -631,45 +660,73 @@ class Agent:
                     context.messages.pop()
             await run_agent_loop_continue(
                 context,
-                self._create_loop_config(),
+                self._create_loop_config(run_options=run_options),
                 self._process_event,
                 signal=signal,
-                stream_fn=self.stream_fn,
+                stream_fn=self._invocation_stream(run_options),
                 model_call_purpose=model_call_purpose,
             )
 
-        await self._run_with_lifecycle(executor)
+        await self._run_with_lifecycle(executor, run_options=run_options)
 
-    def _create_context_snapshot(self) -> AgentContext:
+    def _invocation_stream(self, run_options: AgentRunOptions | None) -> StreamFn:
+        selected = (
+            run_options.stream_fn
+            if run_options is not None and run_options.stream_fn is not None
+            else self.stream_fn
+        )
+        if (
+            run_options is not None and run_options.stream_fn is not None
+            and self.prepare_model_call is not None
+            and selected is not stream
+            and not is_prepared_request_conformant(selected)
+            and not is_synthetic_model_transport(selected)
+        ):
+            raise ValueError(
+                "invocation transport requires its own prepared-request or synthetic declaration"
+            )
+        return selected
+
+    def _create_context_snapshot(self, *, run_options: AgentRunOptions | None = None) -> AgentContext:
         return AgentContext(
             system_prompt=(
                 None
                 if self._state.provider_window is not None
+                else run_options.system_prompt if run_options is not None and run_options.system_prompt is not None
                 else self._state.system_prompt
             ),
             messages=[
                 canonicalize_user_message(message) for message in self._state.messages
             ],
-            tools=list(self._state.tools),
+            tools=[tool for tool in self._state.tools if (
+                run_options is None or run_options.tool_names is None or tool.name in run_options.tool_names
+            )],
             provider_window=self._state.provider_window,
         )
 
     def _create_loop_config(
-        self, *, skip_initial_steering_poll: bool = False
+        self, *, skip_initial_steering_poll: bool = False,
+        run_options: AgentRunOptions | None = None,
     ) -> AgentLoopConfig:
         local_skip = skip_initial_steering_poll
 
         async def get_mailbox_messages() -> list[AgentMessage]:
+            if run_options is not None and not run_options.deliver_queued_input:
+                return []
             return self.mailbox_queue.drain()
 
         async def get_steering_messages() -> list[AgentMessage]:
             nonlocal local_skip
+            if run_options is not None and not run_options.deliver_queued_input:
+                return []
             if local_skip:
                 local_skip = False
                 return []
             return self.steering_queue.drain()
 
         async def get_follow_up_messages() -> list[AgentMessage]:
+            if run_options is not None and not run_options.deliver_queued_input:
+                return []
             return self.follow_up_queue.drain()
 
         call_options = self.get_effective_call_options()
@@ -688,6 +745,8 @@ class Agent:
             get_mailbox_messages=get_mailbox_messages,
             get_steering_messages=get_steering_messages,
             get_follow_up_messages=get_follow_up_messages,
+            execution_scope=run_options.execution_scope if run_options is not None else None,
+            checkpoint=run_options.checkpoint if run_options is not None else None,
         )
 
     def _normalize_prompt_input(
@@ -705,10 +764,17 @@ class Agent:
         return [UserMessage(role="user", content=content, timestamp=time.time() * 1000)]
 
     async def _run_with_lifecycle(
-        self, executor: Callable[[AbortSignal], Awaitable[None]]
+        self, executor: Callable[[AbortSignal], Awaitable[None]], *,
+        run_options: AgentRunOptions | None = None,
     ) -> None:
         if self._active_run_task is not None:
             raise AgentStateError("Agent is already processing.")
+
+        scope = (
+            run_options.execution_scope()
+            if run_options is not None and run_options.execution_scope is not None
+            else nullcontext()
+        )
 
         abort_controller = AbortController()
         self._active_abort_controller = abort_controller
@@ -717,16 +783,30 @@ class Agent:
         self._state.error_message = None
 
         async def runner() -> None:
-            try:
-                await executor(abort_controller.signal)
-            except asyncio.CancelledError:
-                if abort_controller.signal.aborted:
+            async def execute() -> None:
+                try:
+                    await executor(abort_controller.signal)
+                except asyncio.CancelledError:
+                    if not abort_controller.signal.aborted:
+                        raise
                     await self._handle_run_failure(
                         RuntimeError("Request aborted by user"), aborted=True
                     )
-                    return
-                raise
+                except Exception as error:
+                    await self._handle_run_failure(
+                        error, aborted=abort_controller.signal.aborted
+                    )
+
+            entered = False
+            try:
+                with scope:
+                    entered = True
+                    await execute()
             except Exception as error:
+                if entered:
+                    raise
+                # Failed publication still produces the original failure event,
+                # but no execution authority was acquired by this task.
                 await self._handle_run_failure(
                     error, aborted=abort_controller.signal.aborted
                 )

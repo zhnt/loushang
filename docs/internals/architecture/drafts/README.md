@@ -33,6 +33,7 @@ Standalone drafts:
 
 - [GUI 原生开发交接：Windows / macOS](gui-native-development-handoff.md)
 - [Loushang GUI Requirements](gui-requirements.md)
+- [HarnessGUI Interface Specification](gui-interface-specification.md)
 - [GUI 系统上下文与边界合同](gui-system-context-and-boundary-contract.md)
 - [Loushang GUI Reference System Inventory](gui-reference-system-inventory.md)
 - [Loushang GUI Engineering Bootstrap Plan](gui-engineering-bootstrap-plan.md)

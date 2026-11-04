@@ -28,6 +28,15 @@ typed result 或 crash recovery 当作现有能力。
 
 ## Definition
 
+已接受的新设计：[HW-KD-003：Work 事实留存、重放与 Transcript 共享合同](key-designs/fact-retention-replay.md)。
+R3.1 于 2026-10-29 获用户接受：HarnessWork 提供默认处理、Product 按需配置策略，事实权威与三种读取用途明确；跨 scope 决定见
+[ARD-019](../decisions/accepted/ARD-019-work-facts-and-transcript-sharing.md)。第一切片已实施显式启用的默认记录合同与确认查询，见[实施记录](../../plans/2026-10-29-work-recording-defaults.md)，已本地合入 main。
+第二切片已实现增量来源引用，见 [HW-KD-004](key-designs/transcript-references.md) 与[交付记录](../../plans/2026-10-29-work-transcript-references.md)。真实 Coding SDK 的三次 prompt 已交接，另进程可冷读原记录；未裁剪旧正文。
+Coding Goal 对该机制的接入见 [GMW-KD-SESSION-01](../goal-method-work/session-execution-recording.md)：复用 Session 集成的准备/交接和原记录读取，不向 Goal core 添加 Session 或子 agent 调度职责；R2.1 经三视角及用户评审后，同 Session 切片已实现并完成离线验证，子执行接入仍属后续范围。
+旧默认捕获、Product 保留策略 owner 和已接受 Goal 组件保持原合同；来源交接等剩余差异见专项 §9/§11。
+独立三视角及两项运行语义问题的关闭复核见[评审记录](key-designs/fact-retention-replay-review.md)；
+无剩余架构语义阻断，格式兼容与持久绑定等实施前条件仍保留。
+
 第一阶段独立增量候选：[HW-KD-001：取消结果记录、查询与回放](key-designs/cancellation-observation.md)
 及[专项评审](key-designs/cancellation-observation-review.md)。观察切片已实施，范围、验证与
 集成授权见[实施记录](key-designs/cancellation-observation-implementation.md)。
@@ -174,6 +183,9 @@ Method 完全脱离 Harness，必须先下沉该 owner 并增加单独 import ga
 | Ontology | schema/fact/query/decision/action/outcome 语义，ActionPlan/MutationPlan | Work lifecycle、审批队列、tool/sandbox 实现 |
 | Product | 用户意图、领域 payload、capability binding、具体 artifact、错误解释、最终 UI | 通用 Work/Harness 机制 |
 | Harnesstui | 中立运行/Work presentation 的终端交互 | Work authority、领域状态解释 |
+
+ARD-019 已接受的 Target 补充：HarnessWork 拥有通用默认记录/映射/确认/读取机制，Product 选择场景策略并绑定资源。
+上表的“产品 policy/default”指产品策略选择，不排除共享库提供无需自定义策略的缺省行为；新增机制尚未实现。
 
 ## Core Model
 

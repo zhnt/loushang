@@ -1726,7 +1726,7 @@ def test_embedded_screen_projection_accepts_existing_keyboard_and_cell_queries()
     assert embedded_main_frame(queries + frame, after=len(queries))
 
 
-def recovery_seed(root, scope_name):
+def recovery_seed(root, scope_name, *, lsp_mode="on_demand"):
     from loushang.appserver.protocol import SessionIdentityV1, SessionScopeV1
     from loushang.appservice.continuity import (
         ApplicationContinuityRecordV1,
@@ -1739,6 +1739,10 @@ def recovery_seed(root, scope_name):
     from tests.coding._hosted_composition_seed import seed_hosted_history
     from tests.coding.test_hosted_catalog import _intent
     from tests.coding.test_hosted_client import _launch
+
+    settings = root / ".loushang/settings.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(json.dumps({"capabilities": {"coding.lsp": lsp_mode}}))
 
     scope = next(
         item for item in _launch(root).scopes if item.scope.value == scope_name
@@ -1804,7 +1808,9 @@ def _recovery_cwd_template(tmp_path_factory):
     parent = tmp_path_factory.mktemp("g18-recovery-cwd")
     root = parent / "active"
     root.mkdir()
-    recovery_seed(root, "cwd")
+    # Keep the existing missing/extra decision fault cases on real eager
+    # startup. Default dormant startup is covered independently below.
+    recovery_seed(root, "cwd", lsp_mode="always")
     snapshot = parent / "snapshot"
     shutil.copytree(root, snapshot)
     return root, snapshot
@@ -1824,12 +1830,13 @@ def recovery_cwd_seed(_recovery_cwd_template):
 
 
 @pytest.mark.parametrize("scope_name", ["cwd", "user_home"])
+@pytest.mark.parametrize("lsp_mode", ["on_demand", "always"])
 def test_recovery_seed_validates_linked_state_without_mutating_files(
-    tmp_path, scope_name
+    tmp_path, scope_name, lsp_mode
 ):
     from tests.coding._g18_native_probe import validate_recovery_seed
 
-    recovery_seed(tmp_path, scope_name)
+    recovery_seed(tmp_path, scope_name, lsp_mode=lsp_mode)
     before = {
         str(path.relative_to(tmp_path)): path.read_bytes()
         for path in tmp_path.rglob("*")
@@ -1837,6 +1844,9 @@ def test_recovery_seed_validates_linked_state_without_mutating_files(
     }
     seed = validate_recovery_seed(tmp_path, scope_name)
     assert seed["scope"] == scope_name
+    assert seed["shape"]["capability_decisions"] == (
+        "dormant" if lsp_mode == "on_demand" else "eager"
+    )
     assert seed["shape"]["record_revision"] == 5
     assert seed["shape"]["muxes"] == [["main", 3, 0], ["picker", 2, 1]]
     assert seed["shape"]["record_kinds"] == ["extension.data", "agent.message"]

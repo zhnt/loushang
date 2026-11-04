@@ -1,0 +1,965 @@
+{
+  "consumed_not_submitted": {
+    "candidate": {
+      "basis": {
+        "epoch": 1,
+        "goal_id": "g",
+        "policy_id": "coding-calculator-model-planning/v1",
+        "policy_version": 1,
+        "revision": 1,
+        "scope_id": "batch-session",
+        "sequence": 5,
+        "session_id": "batch-session"
+      },
+      "operation": {
+        "domain": "test",
+        "id": "action-op",
+        "kind": "DomainAction",
+        "payload": {},
+        "session_id": "batch-session",
+        "source": {}
+      },
+      "source": {
+        "action": {
+          "name": "domain-action"
+        },
+        "inventory": {
+          "source.py": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "parent_proposal_id": null,
+        "phase": "repair",
+        "planning_basis": {
+          "epoch": 1,
+          "goal_id": "g",
+          "policy_id": "coding-calculator-model-planning/v1",
+          "policy_version": 1,
+          "revision": 1,
+          "scope_id": "batch-session",
+          "sequence": 1,
+          "session_id": "batch-session"
+        },
+        "proposal_id": "proposal-op"
+      },
+      "spec": {
+        "method_id": null,
+        "plan_id": "action-plan",
+        "recording_policy": null,
+        "run_event_payload": {},
+        "run_id": null,
+        "scope_event_payload": {},
+        "step_id": null,
+        "steps": [
+          {
+            "id": "act",
+            "payload": {}
+          }
+        ]
+      }
+    },
+    "confirm": [
+      true,
+      false
+    ],
+    "input_samples": 1,
+    "next_inputs": {},
+    "parent_checks": 2,
+    "prepared_keys": [],
+    "trace": {
+      "batches": [
+        {
+          "admission": "admitted",
+          "intent_sequence": 2,
+          "operation_id": "proposal-op",
+          "phase": "planning",
+          "proposal_id": null,
+          "run_id": "proposal-run",
+          "work_status": "completed"
+        },
+        {
+          "admission": "not_submitted",
+          "intent_sequence": 6,
+          "operation_id": "other-action",
+          "phase": null,
+          "proposal_id": "proposal-op",
+          "run_id": null,
+          "work_status": null
+        }
+      ],
+      "consecutive_invalid": 0,
+      "consecutive_no_progress": 0,
+      "evidence": [
+        {
+          "id": "e1",
+          "result": "known"
+        }
+      ],
+      "planning_intents": 1,
+      "rejections": [],
+      "routes": [
+        {
+          "consumed_by": [
+            "other-action"
+          ],
+          "input_ref": {
+            "reference": "original-input"
+          },
+          "proposal_id": "proposal-op",
+          "response_proof": {
+            "proof": "original"
+          },
+          "response_ref": {
+            "reference": "response"
+          },
+          "route": [
+            {
+              "id": "r1",
+              "text": "do the work"
+            }
+          ]
+        }
+      ],
+      "status": "known"
+    }
+  },
+  "initial": {
+    "candidate": {
+      "basis": {
+        "epoch": 1,
+        "goal_id": "g",
+        "policy_id": "coding-calculator-model-planning/v1",
+        "policy_version": 1,
+        "revision": 1,
+        "scope_id": "batch-session",
+        "sequence": 1,
+        "session_id": "batch-session"
+      },
+      "operation": {
+        "domain": "coding",
+        "id": "goal-op-dddddddddddddddddddddddddddddddd",
+        "kind": "SubmitCodingTurn",
+        "payload": {
+          "plan_id": "planning:goal-op-dddddddddddddddddddddddddddddddd",
+          "step_id": "planning",
+          "text": "Choose the next action and a revisable remaining route from current evidence. Do not change the goal, tests, Method, permissions or limits. Return exactly one JSON object, no fences or commentary. Keys: next_action, targets, requirement_ids, rationale, expected_evidence, remaining_route, change_reason, evidence_refs. remaining_route is 1-6 objects with action and targets, beginning with the selected action; its tail is not authorized. rationale and change_reason are strings (each <=2048 UTF-8 bytes); other fields except next_action are arrays. evidence_refs must use supplied evidence IDs. Explain route changes using newly observed facts. inspect/check take nonempty targets from subtraction/clamp. check always runs all fixed tests and reveals the full result; targets are focus labels. repair targets must be [calculator], requires a current failing check or verify_all report, and runs the fixed Method over the whole calculator. verify_all/stop take []; stop explains its reason in rationale. repair/verify_all must cover R-SUB,R-CLAMP,R-FILES; inspect/check cover R-SUB for subtraction and R-CLAMP for clamp. Model claims never complete the Goal. expected_evidence must match this action table: {\"check\":[\"report\",\"validation\"],\"inspect\":[\"goal_inspection_report\"],\"repair\":[\"method_execution\"],\"stop\":[],\"verify_all\":[\"report\",\"validation\"]}. method_execution means the original Work/Method execution facts, not a new artifact or proof that tests pass. Response limit: 16 KiB.\nTrusted planning operation: goal-op-dddddddddddddddddddddddddddddddd; input sha256: 85c30698b46832e186200a07d286b514b88c2c238f0c38a117ffe3141ce5e9f0\n{\"basis\":{\"epoch\":1,\"goal_id\":\"g\",\"policy_id\":\"coding-calculator-model-planning/v1\",\"policy_version\":1,\"revision\":1,\"scope_id\":\"batch-session\",\"sequence\":1,\"session_id\":\"batch-session\"},\"evidence\":[{\"id\":\"e1\",\"result\":\"known\"}],\"inventory\":{\"source.py\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"limits\":{\"invalid_proposals\":3,\"no_progress\":2,\"planning_calls\":1,\"planning_intents\":10,\"provider_attempts\":3,\"repair_calls\":12,\"work_intents\":20},\"material\":{\"task\":\"domain-owned material\"},\"rejections\":[],\"remaining\":{\"planning_intents_including_this_planning\":10,\"work_intents_including_this_planning\":6},\"requirements\":[{\"id\":\"R1\",\"text\":\"Preserve the frozen requirement\"}],\"routes\":[],\"version\":1}"
+        },
+        "session_id": "batch-session",
+        "source": {}
+      },
+      "source": {
+        "basis": {
+          "epoch": 1,
+          "goal_id": "g",
+          "policy_id": "coding-calculator-model-planning/v1",
+          "policy_version": 1,
+          "revision": 1,
+          "scope_id": "batch-session",
+          "sequence": 1,
+          "session_id": "batch-session"
+        },
+        "input_ref": {
+          "blobId": "85c30698b46832e186200a07d286b514b88c2c238f0c38a117ffe3141ce5e9f0",
+          "createdAt": 0,
+          "disclosure": "private",
+          "kind": "coding-goal-input",
+          "logicalName": "goal/goal-op-dddddddddddddddddddddddddddddddd/planning-input.json",
+          "mediaType": "application/octet-stream",
+          "sessionId": "batch-session",
+          "sha256": "85c30698b46832e186200a07d286b514b88c2c238f0c38a117ffe3141ce5e9f0",
+          "sizeBytes": 724,
+          "source": "coding-goal:trusted-input"
+        },
+        "input_sha256": "85c30698b46832e186200a07d286b514b88c2c238f0c38a117ffe3141ce5e9f0",
+        "inventory": {
+          "source.py": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "phase": "planning"
+      },
+      "spec": {
+        "method_id": null,
+        "plan_id": "planning:goal-op-dddddddddddddddddddddddddddddddd",
+        "recording_policy": null,
+        "run_event_payload": {},
+        "run_id": null,
+        "scope_event_payload": {},
+        "step_id": null,
+        "steps": [
+          {
+            "id": "planning",
+            "payload": {}
+          }
+        ]
+      }
+    },
+    "confirm": [
+      true,
+      true
+    ],
+    "input_samples": 1,
+    "next_inputs": {
+      "goal/goal-op-dddddddddddddddddddddddddddddddd/planning-input.json": "{\"basis\":{\"epoch\":1,\"goal_id\":\"g\",\"policy_id\":\"coding-calculator-model-planning/v1\",\"policy_version\":1,\"revision\":1,\"scope_id\":\"batch-session\",\"sequence\":1,\"session_id\":\"batch-session\"},\"evidence\":[{\"id\":\"e1\",\"result\":\"known\"}],\"inventory\":{\"source.py\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"limits\":{\"invalid_proposals\":3,\"no_progress\":2,\"planning_calls\":1,\"planning_intents\":10,\"provider_attempts\":3,\"repair_calls\":12,\"work_intents\":20},\"material\":{\"task\":\"domain-owned material\"},\"rejections\":[],\"remaining\":{\"planning_intents_including_this_planning\":10,\"work_intents_including_this_planning\":6},\"requirements\":[{\"id\":\"R1\",\"text\":\"Preserve the frozen requirement\"}],\"routes\":[],\"version\":1}"
+    },
+    "parent_checks": 2,
+    "prepared_keys": [
+      "goal-op-dddddddddddddddddddddddddddddddd"
+    ],
+    "trace": {
+      "batches": [],
+      "consecutive_invalid": 0,
+      "consecutive_no_progress": 0,
+      "evidence": [
+        {
+          "id": "e1",
+          "result": "known"
+        }
+      ],
+      "planning_intents": 0,
+      "rejections": [],
+      "routes": [],
+      "status": "known"
+    }
+  },
+  "initial_budget": {
+    "candidate": {
+      "basis": {
+        "epoch": 1,
+        "goal_id": "g",
+        "policy_id": "coding-calculator-model-planning/v1",
+        "policy_version": 1,
+        "revision": 1,
+        "scope_id": "batch-session",
+        "sequence": 1,
+        "session_id": "batch-session"
+      },
+      "operation": {
+        "domain": "coding",
+        "id": "goal-op-dddddddddddddddddddddddddddddddd",
+        "kind": "SubmitCodingTurn",
+        "payload": {
+          "plan_id": "planning:goal-op-dddddddddddddddddddddddddddddddd",
+          "step_id": "planning",
+          "text": "Choose the next action and a revisable remaining route from current evidence. Do not change the goal, tests, Method, permissions or limits. Return exactly one JSON object, no fences or commentary. Keys: next_action, targets, requirement_ids, rationale, expected_evidence, remaining_route, change_reason, evidence_refs. remaining_route is 1-6 objects with action and targets, beginning with the selected action; its tail is not authorized. rationale and change_reason are strings (each <=2048 UTF-8 bytes); other fields except next_action are arrays. evidence_refs must use supplied evidence IDs. Explain route changes using newly observed facts. inspect/check take nonempty targets from subtraction/clamp. check always runs all fixed tests and reveals the full result; targets are focus labels. repair targets must be [calculator], requires a current failing check or verify_all report, and runs the fixed Method over the whole calculator. verify_all/stop take []; stop explains its reason in rationale. repair/verify_all must cover R-SUB,R-CLAMP,R-FILES; inspect/check cover R-SUB for subtraction and R-CLAMP for clamp. Model claims never complete the Goal. expected_evidence must match this action table: {\"check\":[\"report\",\"validation\"],\"inspect\":[\"goal_inspection_report\"],\"repair\":[\"method_execution\"],\"stop\":[],\"verify_all\":[\"report\",\"validation\"]}. method_execution means the original Work/Method execution facts, not a new artifact or proof that tests pass. Response limit: 16 KiB.\nTrusted planning operation: goal-op-dddddddddddddddddddddddddddddddd; input sha256: 05556687a7476b6f8c3979ac6095e5ef9b972c206efc8b42bc48b44f116cd8e3\n{\"basis\":{\"epoch\":1,\"goal_id\":\"g\",\"policy_id\":\"coding-calculator-model-planning/v1\",\"policy_version\":1,\"revision\":1,\"scope_id\":\"batch-session\",\"sequence\":1,\"session_id\":\"batch-session\"},\"evidence\":[{\"id\":\"e1\",\"result\":\"known\"}],\"hosted_budget\":{\"advances_including_current_command\":1,\"max_advances\":3,\"model_calls_remaining_including_next_call\":2},\"inventory\":{\"source.py\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"limits\":{\"invalid_proposals\":3,\"no_progress\":2,\"planning_calls\":1,\"planning_intents\":10,\"provider_attempts\":1,\"repair_calls\":12,\"work_intents\":20},\"material\":{\"task\":\"domain-owned material\"},\"rejections\":[],\"remaining\":{\"model_calls_remaining_including_next_call\":2,\"planning_intents_including_this_planning\":10,\"work_intents_including_this_planning\":3},\"requirements\":[{\"id\":\"R1\",\"text\":\"Preserve the frozen requirement\"}],\"routes\":[],\"version\":1}"
+        },
+        "session_id": "batch-session",
+        "source": {}
+      },
+      "source": {
+        "basis": {
+          "epoch": 1,
+          "goal_id": "g",
+          "policy_id": "coding-calculator-model-planning/v1",
+          "policy_version": 1,
+          "revision": 1,
+          "scope_id": "batch-session",
+          "sequence": 1,
+          "session_id": "batch-session"
+        },
+        "input_ref": {
+          "blobId": "05556687a7476b6f8c3979ac6095e5ef9b972c206efc8b42bc48b44f116cd8e3",
+          "createdAt": 0,
+          "disclosure": "private",
+          "kind": "coding-goal-input",
+          "logicalName": "goal/goal-op-dddddddddddddddddddddddddddddddd/planning-input.json",
+          "mediaType": "application/octet-stream",
+          "sessionId": "batch-session",
+          "sha256": "05556687a7476b6f8c3979ac6095e5ef9b972c206efc8b42bc48b44f116cd8e3",
+          "sizeBytes": 890,
+          "source": "coding-goal:trusted-input"
+        },
+        "input_sha256": "05556687a7476b6f8c3979ac6095e5ef9b972c206efc8b42bc48b44f116cd8e3",
+        "inventory": {
+          "source.py": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "phase": "planning"
+      },
+      "spec": {
+        "method_id": null,
+        "plan_id": "planning:goal-op-dddddddddddddddddddddddddddddddd",
+        "recording_policy": null,
+        "run_event_payload": {},
+        "run_id": null,
+        "scope_event_payload": {},
+        "step_id": null,
+        "steps": [
+          {
+            "id": "planning",
+            "payload": {}
+          }
+        ]
+      }
+    },
+    "confirm": [
+      true,
+      true
+    ],
+    "input_samples": 1,
+    "next_inputs": {
+      "goal/goal-op-dddddddddddddddddddddddddddddddd/planning-input.json": "{\"basis\":{\"epoch\":1,\"goal_id\":\"g\",\"policy_id\":\"coding-calculator-model-planning/v1\",\"policy_version\":1,\"revision\":1,\"scope_id\":\"batch-session\",\"sequence\":1,\"session_id\":\"batch-session\"},\"evidence\":[{\"id\":\"e1\",\"result\":\"known\"}],\"hosted_budget\":{\"advances_including_current_command\":1,\"max_advances\":3,\"model_calls_remaining_including_next_call\":2},\"inventory\":{\"source.py\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"limits\":{\"invalid_proposals\":3,\"no_progress\":2,\"planning_calls\":1,\"planning_intents\":10,\"provider_attempts\":1,\"repair_calls\":12,\"work_intents\":20},\"material\":{\"task\":\"domain-owned material\"},\"rejections\":[],\"remaining\":{\"model_calls_remaining_including_next_call\":2,\"planning_intents_including_this_planning\":10,\"work_intents_including_this_planning\":3},\"requirements\":[{\"id\":\"R1\",\"text\":\"Preserve the frozen requirement\"}],\"routes\":[],\"version\":1}"
+    },
+    "parent_checks": 2,
+    "prepared_keys": [
+      "goal-op-dddddddddddddddddddddddddddddddd"
+    ],
+    "trace": {
+      "batches": [],
+      "consecutive_invalid": 0,
+      "consecutive_no_progress": 0,
+      "evidence": [
+        {
+          "id": "e1",
+          "result": "known"
+        }
+      ],
+      "planning_intents": 0,
+      "rejections": [],
+      "routes": [],
+      "status": "known"
+    }
+  },
+  "intent_limit": {
+    "candidate": {
+      "stop": "planning_intent_limit"
+    },
+    "confirm": [
+      null,
+      null
+    ],
+    "input_samples": 1,
+    "next_inputs": {},
+    "parent_checks": 0,
+    "prepared_keys": [],
+    "trace": {
+      "batches": [],
+      "consecutive_invalid": 0,
+      "consecutive_no_progress": 0,
+      "evidence": [
+        {
+          "id": "e1",
+          "result": "known"
+        }
+      ],
+      "planning_intents": 10,
+      "rejections": [],
+      "routes": [],
+      "status": "known"
+    }
+  },
+  "no_progress": {
+    "candidate": {
+      "stop": "planning_no_progress_limit"
+    },
+    "confirm": [
+      null,
+      null
+    ],
+    "input_samples": 1,
+    "next_inputs": {},
+    "parent_checks": 0,
+    "prepared_keys": [],
+    "trace": {
+      "batches": [],
+      "consecutive_invalid": 0,
+      "consecutive_no_progress": 2,
+      "evidence": [
+        {
+          "id": "e1",
+          "result": "known"
+        }
+      ],
+      "planning_intents": 0,
+      "rejections": [],
+      "routes": [],
+      "status": "known"
+    }
+  },
+  "own_intent": {
+    "candidate": {
+      "basis": {
+        "epoch": 1,
+        "goal_id": "g",
+        "policy_id": "coding-calculator-model-planning/v1",
+        "policy_version": 1,
+        "revision": 1,
+        "scope_id": "batch-session",
+        "sequence": 5,
+        "session_id": "batch-session"
+      },
+      "operation": {
+        "domain": "test",
+        "id": "action-op",
+        "kind": "DomainAction",
+        "payload": {},
+        "session_id": "batch-session",
+        "source": {}
+      },
+      "source": {
+        "action": {
+          "name": "domain-action"
+        },
+        "inventory": {
+          "source.py": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "parent_proposal_id": null,
+        "phase": "repair",
+        "planning_basis": {
+          "epoch": 1,
+          "goal_id": "g",
+          "policy_id": "coding-calculator-model-planning/v1",
+          "policy_version": 1,
+          "revision": 1,
+          "scope_id": "batch-session",
+          "sequence": 1,
+          "session_id": "batch-session"
+        },
+        "proposal_id": "proposal-op"
+      },
+      "spec": {
+        "method_id": null,
+        "plan_id": "action-plan",
+        "recording_policy": null,
+        "run_event_payload": {},
+        "run_id": null,
+        "scope_event_payload": {},
+        "step_id": null,
+        "steps": [
+          {
+            "id": "act",
+            "payload": {}
+          }
+        ]
+      }
+    },
+    "confirm": [
+      true,
+      true
+    ],
+    "input_samples": 1,
+    "next_inputs": {},
+    "parent_checks": 2,
+    "prepared_keys": [],
+    "trace": {
+      "reason": "planning Work association unknown",
+      "status": "unknown"
+    }
+  },
+  "parent_refuses": {
+    "candidate": {
+      "basis": {
+        "epoch": 1,
+        "goal_id": "g",
+        "policy_id": "coding-calculator-model-planning/v1",
+        "policy_version": 1,
+        "revision": 1,
+        "scope_id": "batch-session",
+        "sequence": 5,
+        "session_id": "batch-session"
+      },
+      "operation": {
+        "domain": "test",
+        "id": "action-op",
+        "kind": "DomainAction",
+        "payload": {},
+        "session_id": "batch-session",
+        "source": {}
+      },
+      "source": {
+        "action": {
+          "name": "domain-action"
+        },
+        "inventory": {
+          "source.py": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "parent_proposal_id": null,
+        "phase": "repair",
+        "planning_basis": {
+          "epoch": 1,
+          "goal_id": "g",
+          "policy_id": "coding-calculator-model-planning/v1",
+          "policy_version": 1,
+          "revision": 1,
+          "scope_id": "batch-session",
+          "sequence": 1,
+          "session_id": "batch-session"
+        },
+        "proposal_id": "proposal-op"
+      },
+      "spec": {
+        "method_id": null,
+        "plan_id": "action-plan",
+        "recording_policy": null,
+        "run_event_payload": {},
+        "run_id": null,
+        "scope_event_payload": {},
+        "step_id": null,
+        "steps": [
+          {
+            "id": "act",
+            "payload": {}
+          }
+        ]
+      }
+    },
+    "confirm": [
+      false,
+      false
+    ],
+    "input_samples": 1,
+    "next_inputs": {},
+    "parent_checks": 2,
+    "prepared_keys": [],
+    "trace": {
+      "batches": [
+        {
+          "admission": "admitted",
+          "intent_sequence": 2,
+          "operation_id": "proposal-op",
+          "phase": "planning",
+          "proposal_id": null,
+          "run_id": "proposal-run",
+          "work_status": "completed"
+        }
+      ],
+      "consecutive_invalid": 0,
+      "consecutive_no_progress": 0,
+      "evidence": [
+        {
+          "id": "e1",
+          "result": "known"
+        }
+      ],
+      "planning_intents": 1,
+      "rejections": [],
+      "routes": [
+        {
+          "consumed_by": [],
+          "input_ref": {
+            "reference": "original-input"
+          },
+          "proposal_id": "proposal-op",
+          "response_proof": {
+            "proof": "original"
+          },
+          "response_ref": {
+            "reference": "response"
+          },
+          "route": [
+            {
+              "id": "r1",
+              "text": "do the work"
+            }
+          ]
+        }
+      ],
+      "status": "known"
+    }
+  },
+  "pending_input": {
+    "candidate": {
+      "stop": "pending_input"
+    },
+    "confirm": [
+      null,
+      null
+    ],
+    "input_samples": 0,
+    "next_inputs": {},
+    "parent_checks": 0,
+    "prepared_keys": [],
+    "trace": {
+      "batches": [],
+      "consecutive_invalid": 0,
+      "consecutive_no_progress": 0,
+      "evidence": [
+        {
+          "id": "e1",
+          "result": "known"
+        }
+      ],
+      "planning_intents": 0,
+      "rejections": [],
+      "routes": [],
+      "status": "known"
+    }
+  },
+  "proposal": {
+    "candidate": {
+      "basis": {
+        "epoch": 1,
+        "goal_id": "g",
+        "policy_id": "coding-calculator-model-planning/v1",
+        "policy_version": 1,
+        "revision": 1,
+        "scope_id": "batch-session",
+        "sequence": 5,
+        "session_id": "batch-session"
+      },
+      "operation": {
+        "domain": "test",
+        "id": "action-op",
+        "kind": "DomainAction",
+        "payload": {},
+        "session_id": "batch-session",
+        "source": {}
+      },
+      "source": {
+        "action": {
+          "name": "domain-action"
+        },
+        "inventory": {
+          "source.py": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "parent_proposal_id": null,
+        "phase": "repair",
+        "planning_basis": {
+          "epoch": 1,
+          "goal_id": "g",
+          "policy_id": "coding-calculator-model-planning/v1",
+          "policy_version": 1,
+          "revision": 1,
+          "scope_id": "batch-session",
+          "sequence": 1,
+          "session_id": "batch-session"
+        },
+        "proposal_id": "proposal-op"
+      },
+      "spec": {
+        "method_id": null,
+        "plan_id": "action-plan",
+        "recording_policy": null,
+        "run_event_payload": {},
+        "run_id": null,
+        "scope_event_payload": {},
+        "step_id": null,
+        "steps": [
+          {
+            "id": "act",
+            "payload": {}
+          }
+        ]
+      }
+    },
+    "confirm": [
+      true,
+      true
+    ],
+    "input_samples": 1,
+    "next_inputs": {},
+    "parent_checks": 2,
+    "prepared_keys": [],
+    "trace": {
+      "batches": [
+        {
+          "admission": "admitted",
+          "intent_sequence": 2,
+          "operation_id": "proposal-op",
+          "phase": "planning",
+          "proposal_id": null,
+          "run_id": "proposal-run",
+          "work_status": "completed"
+        }
+      ],
+      "consecutive_invalid": 0,
+      "consecutive_no_progress": 0,
+      "evidence": [
+        {
+          "id": "e1",
+          "result": "known"
+        }
+      ],
+      "planning_intents": 1,
+      "rejections": [],
+      "routes": [
+        {
+          "consumed_by": [],
+          "input_ref": {
+            "reference": "original-input"
+          },
+          "proposal_id": "proposal-op",
+          "response_proof": {
+            "proof": "original"
+          },
+          "response_ref": {
+            "reference": "response"
+          },
+          "route": [
+            {
+              "id": "r1",
+              "text": "do the work"
+            }
+          ]
+        }
+      ],
+      "status": "known"
+    }
+  },
+  "report_rejection": {
+    "candidate": {
+      "basis": {
+        "epoch": 1,
+        "goal_id": "g",
+        "policy_id": "coding-calculator-model-planning/v1",
+        "policy_version": 1,
+        "revision": 1,
+        "scope_id": "batch-session",
+        "sequence": 5,
+        "session_id": "batch-session"
+      },
+      "operation": {
+        "domain": "coding",
+        "id": "goal-op-dddddddddddddddddddddddddddddddd",
+        "kind": "SubmitCodingTurn",
+        "payload": {
+          "plan_id": "planning:goal-op-dddddddddddddddddddddddddddddddd",
+          "step_id": "planning",
+          "text": "Choose the next action and a revisable remaining route from current evidence. Do not change the goal, tests, Method, permissions or limits. Return exactly one JSON object, no fences or commentary. Keys: next_action, targets, requirement_ids, rationale, expected_evidence, remaining_route, change_reason, evidence_refs. remaining_route is 1-6 objects with action and targets, beginning with the selected action; its tail is not authorized. rationale and change_reason are strings (each <=2048 UTF-8 bytes); other fields except next_action are arrays. evidence_refs must use supplied evidence IDs. Explain route changes using newly observed facts. inspect/check take nonempty targets from subtraction/clamp. check always runs all fixed tests and reveals the full result; targets are focus labels. repair targets must be [calculator], requires a current failing check or verify_all report, and runs the fixed Method over the whole calculator. verify_all/stop take []; stop explains its reason in rationale. repair/verify_all must cover R-SUB,R-CLAMP,R-FILES; inspect/check cover R-SUB for subtraction and R-CLAMP for clamp. Model claims never complete the Goal. expected_evidence must match this action table: {\"check\":[\"report\",\"validation\"],\"inspect\":[\"goal_inspection_report\"],\"repair\":[\"method_execution\"],\"stop\":[],\"verify_all\":[\"report\",\"validation\"]}. method_execution means the original Work/Method execution facts, not a new artifact or proof that tests pass. Response limit: 16 KiB.\nTrusted planning operation: goal-op-dddddddddddddddddddddddddddddddd; input sha256: d1fc4a99fbe00ddd1bcc2765b6c61966a45d02d9f47bd3a853f777f9fa1213fc\n{\"basis\":{\"epoch\":1,\"goal_id\":\"g\",\"policy_id\":\"coding-calculator-model-planning/v1\",\"policy_version\":1,\"revision\":1,\"scope_id\":\"batch-session\",\"sequence\":5,\"session_id\":\"batch-session\"},\"evidence\":[{\"id\":\"e1\",\"result\":\"known\"}],\"inventory\":{\"source.py\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"limits\":{\"invalid_proposals\":3,\"no_progress\":2,\"planning_calls\":1,\"planning_intents\":10,\"provider_attempts\":3,\"repair_calls\":12,\"work_intents\":20},\"material\":{\"task\":\"domain-owned material\"},\"rejections\":[{\"proposal_id\":\"proposal-op\",\"reason\":\"original report rejected\"}],\"remaining\":{\"planning_intents_including_this_planning\":9,\"work_intents_including_this_planning\":5},\"requirements\":[{\"id\":\"R1\",\"text\":\"Preserve the frozen requirement\"}],\"routes\":[{\"proposal_id\":\"proposal-op\",\"route\":[{\"id\":\"r1\",\"text\":\"do the work\"}]}],\"version\":1}"
+        },
+        "session_id": "batch-session",
+        "source": {}
+      },
+      "source": {
+        "basis": {
+          "epoch": 1,
+          "goal_id": "g",
+          "policy_id": "coding-calculator-model-planning/v1",
+          "policy_version": 1,
+          "revision": 1,
+          "scope_id": "batch-session",
+          "sequence": 5,
+          "session_id": "batch-session"
+        },
+        "input_ref": {
+          "blobId": "d1fc4a99fbe00ddd1bcc2765b6c61966a45d02d9f47bd3a853f777f9fa1213fc",
+          "createdAt": 0,
+          "disclosure": "private",
+          "kind": "coding-goal-input",
+          "logicalName": "goal/goal-op-dddddddddddddddddddddddddddddddd/planning-input.json",
+          "mediaType": "application/octet-stream",
+          "sessionId": "batch-session",
+          "sha256": "d1fc4a99fbe00ddd1bcc2765b6c61966a45d02d9f47bd3a853f777f9fa1213fc",
+          "sizeBytes": 860,
+          "source": "coding-goal:trusted-input"
+        },
+        "input_sha256": "d1fc4a99fbe00ddd1bcc2765b6c61966a45d02d9f47bd3a853f777f9fa1213fc",
+        "inventory": {
+          "source.py": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "phase": "planning"
+      },
+      "spec": {
+        "method_id": null,
+        "plan_id": "planning:goal-op-dddddddddddddddddddddddddddddddd",
+        "recording_policy": null,
+        "run_event_payload": {},
+        "run_id": null,
+        "scope_event_payload": {},
+        "step_id": null,
+        "steps": [
+          {
+            "id": "planning",
+            "payload": {}
+          }
+        ]
+      }
+    },
+    "confirm": [
+      true,
+      true
+    ],
+    "input_samples": 1,
+    "next_inputs": {
+      "goal/goal-op-dddddddddddddddddddddddddddddddd/planning-input.json": "{\"basis\":{\"epoch\":1,\"goal_id\":\"g\",\"policy_id\":\"coding-calculator-model-planning/v1\",\"policy_version\":1,\"revision\":1,\"scope_id\":\"batch-session\",\"sequence\":5,\"session_id\":\"batch-session\"},\"evidence\":[{\"id\":\"e1\",\"result\":\"known\"}],\"inventory\":{\"source.py\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"limits\":{\"invalid_proposals\":3,\"no_progress\":2,\"planning_calls\":1,\"planning_intents\":10,\"provider_attempts\":3,\"repair_calls\":12,\"work_intents\":20},\"material\":{\"task\":\"domain-owned material\"},\"rejections\":[{\"proposal_id\":\"proposal-op\",\"reason\":\"original report rejected\"}],\"remaining\":{\"planning_intents_including_this_planning\":9,\"work_intents_including_this_planning\":5},\"requirements\":[{\"id\":\"R1\",\"text\":\"Preserve the frozen requirement\"}],\"routes\":[{\"proposal_id\":\"proposal-op\",\"route\":[{\"id\":\"r1\",\"text\":\"do the work\"}]}],\"version\":1}"
+    },
+    "parent_checks": 2,
+    "prepared_keys": [
+      "goal-op-dddddddddddddddddddddddddddddddd"
+    ],
+    "trace": {
+      "batches": [
+        {
+          "admission": "admitted",
+          "intent_sequence": 2,
+          "operation_id": "proposal-op",
+          "phase": "planning",
+          "proposal_id": null,
+          "run_id": "proposal-run",
+          "work_status": "completed"
+        }
+      ],
+      "consecutive_invalid": 0,
+      "consecutive_no_progress": 0,
+      "evidence": [
+        {
+          "id": "e1",
+          "result": "known"
+        }
+      ],
+      "planning_intents": 1,
+      "rejections": [],
+      "routes": [
+        {
+          "consumed_by": [],
+          "input_ref": {
+            "reference": "original-input"
+          },
+          "proposal_id": "proposal-op",
+          "response_proof": {
+            "proof": "original"
+          },
+          "response_ref": {
+            "reference": "response"
+          },
+          "route": [
+            {
+              "id": "r1",
+              "text": "do the work"
+            }
+          ]
+        }
+      ],
+      "status": "known"
+    }
+  },
+  "semantic_rejection": {
+    "candidate": {
+      "basis": {
+        "epoch": 1,
+        "goal_id": "g",
+        "policy_id": "coding-calculator-model-planning/v1",
+        "policy_version": 1,
+        "revision": 1,
+        "scope_id": "batch-session",
+        "sequence": 5,
+        "session_id": "batch-session"
+      },
+      "operation": {
+        "domain": "coding",
+        "id": "goal-op-dddddddddddddddddddddddddddddddd",
+        "kind": "SubmitCodingTurn",
+        "payload": {
+          "plan_id": "planning:goal-op-dddddddddddddddddddddddddddddddd",
+          "step_id": "planning",
+          "text": "Choose the next action and a revisable remaining route from current evidence. Do not change the goal, tests, Method, permissions or limits. Return exactly one JSON object, no fences or commentary. Keys: next_action, targets, requirement_ids, rationale, expected_evidence, remaining_route, change_reason, evidence_refs. remaining_route is 1-6 objects with action and targets, beginning with the selected action; its tail is not authorized. rationale and change_reason are strings (each <=2048 UTF-8 bytes); other fields except next_action are arrays. evidence_refs must use supplied evidence IDs. Explain route changes using newly observed facts. inspect/check take nonempty targets from subtraction/clamp. check always runs all fixed tests and reveals the full result; targets are focus labels. repair targets must be [calculator], requires a current failing check or verify_all report, and runs the fixed Method over the whole calculator. verify_all/stop take []; stop explains its reason in rationale. repair/verify_all must cover R-SUB,R-CLAMP,R-FILES; inspect/check cover R-SUB for subtraction and R-CLAMP for clamp. Model claims never complete the Goal. expected_evidence must match this action table: {\"check\":[\"report\",\"validation\"],\"inspect\":[\"goal_inspection_report\"],\"repair\":[\"method_execution\"],\"stop\":[],\"verify_all\":[\"report\",\"validation\"]}. method_execution means the original Work/Method execution facts, not a new artifact or proof that tests pass. Response limit: 16 KiB.\nTrusted planning operation: goal-op-dddddddddddddddddddddddddddddddd; input sha256: 4d021115fee735b2263a6032011364effc8887e042259bafbfcff19435f25ea3\n{\"basis\":{\"epoch\":1,\"goal_id\":\"g\",\"policy_id\":\"coding-calculator-model-planning/v1\",\"policy_version\":1,\"revision\":1,\"scope_id\":\"batch-session\",\"sequence\":5,\"session_id\":\"batch-session\"},\"evidence\":[{\"id\":\"e1\",\"result\":\"known\"}],\"inventory\":{\"source.py\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"limits\":{\"invalid_proposals\":3,\"no_progress\":2,\"planning_calls\":1,\"planning_intents\":10,\"provider_attempts\":3,\"repair_calls\":12,\"work_intents\":20},\"material\":{\"task\":\"domain-owned material\"},\"rejections\":[{\"proposal_id\":\"proposal-op\",\"reason\":\"domain action rejected\"}],\"remaining\":{\"planning_intents_including_this_planning\":9,\"work_intents_including_this_planning\":5},\"requirements\":[{\"id\":\"R1\",\"text\":\"Preserve the frozen requirement\"}],\"routes\":[{\"proposal_id\":\"proposal-op\",\"route\":[{\"id\":\"r1\",\"text\":\"do the work\"}]}],\"version\":1}"
+        },
+        "session_id": "batch-session",
+        "source": {}
+      },
+      "source": {
+        "basis": {
+          "epoch": 1,
+          "goal_id": "g",
+          "policy_id": "coding-calculator-model-planning/v1",
+          "policy_version": 1,
+          "revision": 1,
+          "scope_id": "batch-session",
+          "sequence": 5,
+          "session_id": "batch-session"
+        },
+        "input_ref": {
+          "blobId": "4d021115fee735b2263a6032011364effc8887e042259bafbfcff19435f25ea3",
+          "createdAt": 0,
+          "disclosure": "private",
+          "kind": "coding-goal-input",
+          "logicalName": "goal/goal-op-dddddddddddddddddddddddddddddddd/planning-input.json",
+          "mediaType": "application/octet-stream",
+          "sessionId": "batch-session",
+          "sha256": "4d021115fee735b2263a6032011364effc8887e042259bafbfcff19435f25ea3",
+          "sizeBytes": 858,
+          "source": "coding-goal:trusted-input"
+        },
+        "input_sha256": "4d021115fee735b2263a6032011364effc8887e042259bafbfcff19435f25ea3",
+        "inventory": {
+          "source.py": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "phase": "planning"
+      },
+      "spec": {
+        "method_id": null,
+        "plan_id": "planning:goal-op-dddddddddddddddddddddddddddddddd",
+        "recording_policy": null,
+        "run_event_payload": {},
+        "run_id": null,
+        "scope_event_payload": {},
+        "step_id": null,
+        "steps": [
+          {
+            "id": "planning",
+            "payload": {}
+          }
+        ]
+      }
+    },
+    "confirm": [
+      true,
+      true
+    ],
+    "input_samples": 1,
+    "next_inputs": {
+      "goal/goal-op-dddddddddddddddddddddddddddddddd/planning-input.json": "{\"basis\":{\"epoch\":1,\"goal_id\":\"g\",\"policy_id\":\"coding-calculator-model-planning/v1\",\"policy_version\":1,\"revision\":1,\"scope_id\":\"batch-session\",\"sequence\":5,\"session_id\":\"batch-session\"},\"evidence\":[{\"id\":\"e1\",\"result\":\"known\"}],\"inventory\":{\"source.py\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"limits\":{\"invalid_proposals\":3,\"no_progress\":2,\"planning_calls\":1,\"planning_intents\":10,\"provider_attempts\":3,\"repair_calls\":12,\"work_intents\":20},\"material\":{\"task\":\"domain-owned material\"},\"rejections\":[{\"proposal_id\":\"proposal-op\",\"reason\":\"domain action rejected\"}],\"remaining\":{\"planning_intents_including_this_planning\":9,\"work_intents_including_this_planning\":5},\"requirements\":[{\"id\":\"R1\",\"text\":\"Preserve the frozen requirement\"}],\"routes\":[{\"proposal_id\":\"proposal-op\",\"route\":[{\"id\":\"r1\",\"text\":\"do the work\"}]}],\"version\":1}"
+    },
+    "parent_checks": 2,
+    "prepared_keys": [
+      "goal-op-dddddddddddddddddddddddddddddddd"
+    ],
+    "trace": {
+      "batches": [
+        {
+          "admission": "admitted",
+          "intent_sequence": 2,
+          "operation_id": "proposal-op",
+          "phase": "planning",
+          "proposal_id": null,
+          "run_id": "proposal-run",
+          "work_status": "completed"
+        }
+      ],
+      "consecutive_invalid": 0,
+      "consecutive_no_progress": 0,
+      "evidence": [
+        {
+          "id": "e1",
+          "result": "known"
+        }
+      ],
+      "planning_intents": 1,
+      "rejections": [],
+      "routes": [
+        {
+          "consumed_by": [],
+          "input_ref": {
+            "reference": "original-input"
+          },
+          "proposal_id": "proposal-op",
+          "response_proof": {
+            "proof": "original"
+          },
+          "response_ref": {
+            "reference": "response"
+          },
+          "route": [
+            {
+              "id": "r1",
+              "text": "do the work"
+            }
+          ]
+        }
+      ],
+      "status": "known"
+    }
+  },
+  "source_failure": {
+    "candidate": {
+      "stop": "planning_evidence_or_contract:original planning response evidence unavailable or inconsistent"
+    },
+    "confirm": [
+      null,
+      null
+    ],
+    "input_samples": 1,
+    "next_inputs": {},
+    "parent_checks": 0,
+    "prepared_keys": [],
+    "trace": {
+      "reason": "original planning response evidence unavailable or inconsistent",
+      "status": "unknown"
+    }
+  }
+}

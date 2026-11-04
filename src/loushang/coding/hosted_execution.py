@@ -82,7 +82,14 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
         self._truncated = False
         self._closing = False
         self._execution_close_task: asyncio.Task[None] | None = None
-        super().__init__(binding if owner is None else owner, execution_submission=type(binding) is CodingDeferredHostedSessionV1)
+        if type(binding) is CodingRealHostedSessionV1:
+            binding.claim_execution()
+        try:
+            super().__init__(binding if owner is None else owner, execution_submission=type(binding) is CodingDeferredHostedSessionV1)
+        except BaseException:
+            if type(binding) is CodingRealHostedSessionV1:
+                binding.release_failed_execution_claim()
+            raise
         self._projection = binding.project_snapshot()
         self._guard = ExecutionGuardV1(source_cursor=self._complete_source)
 

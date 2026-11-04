@@ -66,6 +66,7 @@ class AgentEventRouter:
     complete_queued_message: QueuedMessageCompleter | None = None
     discard_in_flight_messages: InFlightMessageDiscarder | None = None
     allow_automatic_recovery: Callable[[], bool] = lambda: True
+    capture_continue_run: Callable[[], ContinueRun] | None = None
     _committed_messages: dict[int, tuple[object, str]] = field(
         default_factory=dict,
         init=False,
@@ -120,7 +121,11 @@ class AgentEventRouter:
                     last_assistant_message
                 )
                 if outcome.should_continue:
-                    self.retry_controller.continue_retry(self.schedule_continue_run)
+                    continuation = (
+                        self.capture_continue_run() if self.capture_continue_run is not None
+                        else self.schedule_continue_run
+                    )
+                    self.retry_controller.continue_retry(continuation)
                     return
             await self.check_auto_compaction(last_assistant_message)
         if committed_message is not None:

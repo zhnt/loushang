@@ -40,6 +40,8 @@ from loushang.appserver.protocol import (
     MuxSpaceV1,
     SessionEventV1,
     SessionIdentityV1,
+    SessionModelSelectV1,
+    SessionModelsV1,
     SessionSnapshotRequestV1,
     SessionSnapshotV1,
     TurnInterruptV1,
@@ -267,6 +269,27 @@ class _SessionOwner:
         if type(value) is not SessionSnapshotV1 or value.identity != self.identity:
             raise _error(AppErrorCodeV1.SESSION_UNAVAILABLE)
         self._latest_cursor = max(self._latest_cursor, value.cursor)
+        return value
+
+    async def list_models(self) -> SessionModelsV1:
+        callback = getattr(self._port, "list_models", None)
+        if not callable(callback):
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        value = await self._invoke_async(callback)
+        if type(value) is not SessionModelsV1:
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return value
+
+    async def select_model(self, model_id: str) -> SessionModelsV1:
+        callback = getattr(self._port, "select_model", None)
+        if not callable(callback):
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        snapshot = await self.snapshot()
+        if snapshot.running:
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        value = await self._invoke_async(callback, model_id)
+        if type(value) is not SessionModelsV1 or value.current_id != model_id:
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return value
 
     async def lookup_resume_input(
@@ -552,6 +575,11 @@ class AppServiceV1:
     @property
     def continuity_enabled(self) -> bool:
         return self._continuity_lease is not None
+
+    def _require_legacy_input(self) -> None:
+        config = self._execution_config
+        if config is not None and (config.select_work_port is not None or config.select_goal_port is not None):
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
 
     def _execution_binding(self, session: _SessionOwner) -> ExecutionBindingV1:
         config, registry = self._execution_config, self._execution_registry
@@ -1181,8 +1209,27 @@ class AppServiceV1:
         )
         return await session.snapshot()
 
+    async def list_session_models(
+        self, request: SessionSnapshotRequestV1,
+    ) -> SessionModelsV1:
+        self._require_request(request, SessionSnapshotRequestV1)
+        session = await self._resolve_member_session(
+            request.attachment_id, request.controller_generation, request.member_id
+        )
+        return await session.list_models()
+
+    async def select_session_model(
+        self, request: SessionModelSelectV1,
+    ) -> SessionModelsV1:
+        self._require_request(request, SessionModelSelectV1)
+        session = await self._resolve_member_session(
+            request.attachment_id, request.controller_generation, request.member_id
+        )
+        return await session.select_model(request.model_id)
+
     async def start_turn(self, request: TurnTextV1) -> AckV1:
         self._require_request(request, TurnTextV1)
+        self._require_legacy_input()
         session = await self._resolve_text_session(request)
         if self._execution_registry is not None:
             try:
@@ -1198,18 +1245,21 @@ class AppServiceV1:
 
     async def steer_turn(self, request: TurnTextV1) -> AckV1:
         self._require_request(request, TurnTextV1)
+        self._require_legacy_input()
         session = await self._resolve_text_session(request)
         session.steer_turn(request.text)
         return AckV1()
 
     async def follow_up_turn(self, request: TurnTextV1) -> AckV1:
         self._require_request(request, TurnTextV1)
+        self._require_legacy_input()
         session = await self._resolve_text_session(request)
         session.follow_up_turn(request.text)
         return AckV1()
 
     async def interrupt_turn(self, request: TurnInterruptV1) -> AckV1:
         self._require_request(request, TurnInterruptV1)
+        self._require_legacy_input()
         session = await self._resolve_member_session(
             request.attachment_id,
             request.controller_generation,

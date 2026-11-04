@@ -711,6 +711,11 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
                 foundation.diagnostics_bridge.record_assistant_response_error
             ),
             check_auto_compaction=check_auto_compaction,
+            recovery_pending=lambda: (
+                maintenance.retry_runtime.is_retrying
+                or maintenance.compaction_runtime.is_compacting
+                or foundation.navigation_runtime.is_summarizing
+            ),
         ),
         request_evidence=ports.foundation.request_evidence,
     )

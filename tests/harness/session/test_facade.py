@@ -39,6 +39,13 @@ class _Queue:
 
 class _Runtime:
     def __init__(self) -> None:
+        from loushang.harness.session.execution_admission import (
+            SessionExecutionAdmission,
+        )
+
+        self.execution_admission = SessionExecutionAdmission(
+            busy=lambda: False, pending=lambda: False, delivery_released=lambda: None,
+        )
         self.queue = _Queue()
         self.prompt_calls: list[tuple[str, str | None]] = []
         self.steer_calls: list[str] = []
