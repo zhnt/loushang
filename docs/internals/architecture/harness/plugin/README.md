@@ -96,6 +96,13 @@ with their existing owners. This slice is locally implemented and independently
 code-reviewed; focused offline verification is recorded in its review. It does
 not complete the wider D1 convergence work.
 
+The accepted [D1 Session owner retirement handoff](session-owner-retirement-handoff.md)
+implements a bounded follow-on: the existing exact-owner reporting algorithm
+now lives in an internal Harness Session integration module. Coding evidence,
+Product labels and locks, Graph cleanup, family release and fenced runtime
+leases keep their existing owners. Focused regression, local differential and
+journal reentry validation, and independent code reviews are complete.
+
 ## Authority Order
 
 When documents disagree, use this order:
