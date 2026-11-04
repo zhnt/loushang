@@ -1,5 +1,7 @@
 # Goal 批次执行 Session：集成准备与实施检查点
 
+> 后续交付：R3 实现已由 PR #832 合入 main。本文的在线暂停结果保持不变；后来的零模型收尾与新任务成功不改写该旧 Goal。当前能力与证据边界见[统一盘点](../architecture/goal-method-work/capability-status.md)。
+
 - Authority: descriptive；状态：R3 独立三视角设计评审完成，用户已明确授权实施 R3；实现与离线验证完成，实施后三视角代码评审及修正复核均已完成；真实任务已按原规划额度暂停；在线完整验收未通过。
 - 设计：[GMW-KD-SESSION-02 R3](../architecture/goal-method-work/delegated-session-execution.md)；[三视角关闭记录](../architecture/goal-method-work/delegated-session-execution-review.md)。
 - 工作分支：feat/goal-child-session；代码 lane：.worktrees/code。未修改有历史脏资料的 Harness lane。
