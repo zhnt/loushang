@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import os
 import subprocess
@@ -15,6 +16,22 @@ import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.harness.runtime import SessionOperationResult
+
+
+def test_lazy_plain_prompt_runners_preserve_keyword_contract() -> None:
+    from loushang.coding import prompt_command
+    from loushang.coding.cli import application
+
+    for name in ("run_prompt_command", "run_prompt_plan_command"):
+        wrapper = inspect.signature(getattr(application, name))
+        implementation = inspect.signature(getattr(prompt_command, name))
+        assert tuple(
+            (parameter.name, parameter.kind, parameter.default)
+            for parameter in wrapper.parameters.values()
+        ) == tuple(
+            (parameter.name, parameter.kind, parameter.default)
+            for parameter in implementation.parameters.values()
+        )
 
 
 def _model() -> Model:

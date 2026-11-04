@@ -10,11 +10,13 @@ _MODULE_EXPORTS = {
         "ArtifactStatus",
         "DeliveryHint",
         "WorkCancellationOutcome",
+        "WorkCancellationRecord",
         "WorkCancellationStatus",
         "WorkEvent",
         "WorkEventFact",
         "WorkOperation",
         "WorkPlanRun",
+        "WorkRecordingPolicy",
         "WorkRun",
         "WorkRunSpec",
         "WorkRunStatus",
@@ -47,6 +49,7 @@ _MODULE_EXPORTS = {
         "DuplicateWorkOperationError",
         "UnknownWorkRunError",
         "WorkCancellationFailedError",
+        "WorkCancellationObservationUnavailable",
         "WorkCancellationTimeoutError",
         "WorkLifecycleOwnershipError",
         "WorkRunTerminalError",
@@ -54,6 +57,10 @@ _MODULE_EXPORTS = {
         "WorkRuntimeError",
     ),
     "run_projection": ("WorkRunReplayError", "project_work_runs"),
+    "cancellation_projection": (
+        "WorkCancellationReplayError",
+        "project_work_cancellations",
+    ),
     "plan_projection": ("project_work_plan_runs",),
     "cli": (
         "WorkLogInspectionError",
@@ -103,6 +110,7 @@ _INTEGRATION_FORWARDERS = {
 
 def test_harnesswork_public_api_is_the_product_neutral_work_kernel() -> None:
     import loushang.harnesswork as harnesswork
+    from loushang.harnesswork import recording
 
     expected = {
         symbol
@@ -110,7 +118,9 @@ def test_harnesswork_public_api_is_the_product_neutral_work_kernel() -> None:
         for symbol in module_exports
     }
 
-    assert set(harnesswork.__all__) == expected
+    assert set(harnesswork.__all__) == expected | set(recording.__all__)
+    for symbol in recording.__all__:
+        assert getattr(harnesswork, symbol) is getattr(recording, symbol)
     assert not hasattr(harnesswork, "AgentWorkFactProjectionContext")
     assert not hasattr(harnesswork, "SessionWorkRuntime")
     assert hasattr(harnesswork, "project_work_plan_runs")

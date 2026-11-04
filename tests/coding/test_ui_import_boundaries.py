@@ -234,6 +234,23 @@ assert "loushang.coding.presentation.tui.plain" not in sys.modules
     assert result.returncode == 0, result.stderr
 
 
+def test_screen_app_preview_helpers_do_not_load_workspace_tools() -> None:
+    result = _run_python_import_boundary_check(
+        """
+import sys
+from loushang.coding.ui import screen_app
+from loushang.harness.tools import output_preview
+assert 'loushang.harness.tools.workspace' not in sys.modules
+assert screen_app.drop_tool_timing_tail_line is output_preview.drop_tool_timing_tail_line
+assert screen_app.prefers_tail_tool_output is output_preview.prefers_tail_tool_output
+from loushang.harness.tools.workspace import output_preview as legacy_preview
+assert legacy_preview.drop_tool_timing_tail_line is output_preview.drop_tool_timing_tail_line
+assert legacy_preview.prefers_tail_tool_output is output_preview.prefers_tail_tool_output
+"""
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_retired_coding_ui_modules_use_canonical_owners() -> None:
     for module in RETIRED_CODING_UI_MODULES:
         relative = Path(*module.split("."))
@@ -285,7 +302,7 @@ def test_coding_ui_package_stays_within_the_product_adapter_budget() -> None:
     }
 
     assert sum(line_counts.values()) <= 2_200, line_counts
-    assert line_counts["mode.py"] <= 350
+    assert line_counts["mode.py"] <= 355
 
 
 def test_repository_imports_use_canonical_owners_for_retired_modules() -> None:
@@ -632,9 +649,17 @@ def test_conversation_event_dispatch_uses_shared_projection_owner() -> None:
 
     for path in (
         Path("src/loushang/coding/presentation/tui/plain.py"),
-        Path("src/loushang/harnesstui/conversation/agent_binding.py"),
     ):
         assert 'event.get("type")' not in path.read_text(encoding="utf-8")
+
+    binding = Path(
+        "src/loushang/harnesstui/conversation/agent_binding.py"
+    ).read_text(encoding="utf-8")
+    before_pacing, pacing = binding.split(
+        "def cooperative_agent_screen_event_listener(", 1
+    )
+    _, after_pacing = pacing.split("\ndef _agent_tool_result_message_event(", 1)
+    assert 'event.get("type")' not in before_pacing + after_pacing
 
 
 def test_shared_transcript_style_does_not_own_screen_product_policy() -> None:

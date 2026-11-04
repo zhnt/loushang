@@ -7,14 +7,11 @@ import time
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
-from typing import NoReturn
+from typing import TYPE_CHECKING, NoReturn
 
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
     ResourceContributionSpec,
-)
-from loushang.harness.package_product.product_local_wheel_runtime import (
-    PackageProductSelectedPluginManifestV1,
 )
 from loushang.harness.resources._catalog_package_source import (
     PackageResourceDiscoveryRequest,
@@ -47,6 +44,11 @@ from loushang.harness.resources.types import (
     ThemeDescriptor,
 )
 
+if TYPE_CHECKING:
+    from loushang.harness.package_product.product_local_wheel_runtime import (
+        PackageProductSelectedPluginManifestV1,
+    )
+
 
 class ProductSnapshotResourceSourceError(RuntimeError):
     def __init__(self, *, code: str, reason: str) -> None:
@@ -68,6 +70,12 @@ class ProductSelectedResourceInput:
     _body: bytes = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        # Selected Store evidence is only constructed after Package selection;
+        # importing its runtime for an empty Catalog would load Wheel ownership.
+        from loushang.harness.package_product.product_local_wheel_runtime import (
+            PackageProductSelectedPluginManifestV1,
+        )
+
         if not isinstance(self.admission, OwnerContributionAdmissionRecord):
             raise TypeError("Product Resource requires an owner admission")
         resource = self.admission.candidate.contribution

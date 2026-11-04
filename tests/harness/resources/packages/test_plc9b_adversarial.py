@@ -8431,17 +8431,14 @@ while True:
                                 asyncio.run(
                                     default_builtin_session.prepare_model_call_runtime()
                                 )
-                                assert not (
-                                    default_builtin_session._coding_capability_plugin_assembly.state_root.exists()
-                                )
+                            assert default_builtin_session._coding_capability_plugin_assembly is None
+                            assert default_builtin_session._deferred_lsp_slot is not None
+                            assert default_builtin_session._deferred_lsp_slot.state == "dormant"
                             assert (
                                 default_builtin_session._coding_base_product_compilation.plan.selected_plugin_ids
-                                == ("coding.base", "coding.lsp.default")
+                                == ("coding.base",)
                             )
-                            assert (
-                                default_builtin_session._coding_capability_plugin_assembly.session_inputs.product_composition
-                                is default_builtin_session._coding_base_product_compilation.product_composition
-                            )
+                            assert default_builtin_session._coding_base_product_compilation.product_composition is not None
                             assert (
                                 default_builtin_session._package_controller.get_package_materializer()
                                 is None
@@ -8497,7 +8494,9 @@ while True:
                                     ),
                                     services=create_services(
                                         settings_manager=SettingsManager(
-                                            ControlConfig()
+                                            ControlConfig(
+                                                capabilities={"coding.lsp": "always"}
+                                            )
                                         )
                                     ),
                                     package_product_runtime_factory=(
@@ -8568,12 +8567,13 @@ while True:
                                 architecture_session._coding_base_product_compilation.plan.selected_plugin_ids
                             ) == {
                                 "coding.base",
-                                "coding.lsp.default",
                                 "coding.arch.default",
                             }
                             assert set(
                                 architecture_session._coding_capability_plugin_assembly.tool_owners
-                            ) == {"coding.lsp.default", "coding.arch.default"}
+                            ) == {"coding.arch.default"}
+                            assert architecture_session._deferred_lsp_slot is not None
+                            assert architecture_session._deferred_lsp_slot.state == "dormant"
                         finally:
                             if architecture_session is not None:
                                 asyncio.run(architecture_session.dispose())
@@ -8649,7 +8649,7 @@ while True:
                                 )
                                 assert (
                                     selected._coding_base_product_compilation.plan.selected_plugin_ids
-                                    == ("coding.base", "coding.lsp.default")
+                                    == ("coding.base",)
                                 )
                             finally:
                                 await standalone.dispose_session_runtime()
@@ -8719,7 +8719,7 @@ while True:
                                 )
                                 assert (
                                     direct_session._coding_base_product_compilation.plan.selected_plugin_ids
-                                    == ("coding.base", "coding.lsp.default")
+                                    == ("coding.base",)
                                 )
                                 before_transports = len(
                                     PackageLifecycleJournal(
@@ -9028,9 +9028,20 @@ while True:
                     assert (
                         closed_manifest.value.code == "package_product_runtime_inactive"
                     )
-                with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as released:
-                    registry.snapshot(store_id=store_id)
-                assert released.value.code == "package_epoch_lease_absent"
+                try:
+                    unexpected = registry.snapshot(store_id=store_id)
+                except PackageEpochRuntimeLeaseRegistryError as released:
+                    assert released.code == "package_epoch_lease_absent"
+                else:
+                    scope = locals()
+                    owner_ids = {
+                        name: sha256(value.get_header().conversation_id.encode()).hexdigest()
+                        for name, value in scope.items()
+                        if isinstance(value, SessionManager)
+                    }
+                    raise AssertionError(
+                        f"unexpected live epoch leases: {unexpected!r}; owners={owner_ids!r}"
+                    )
             if not runtime_lease_released:
                 runtime_lease.release()
         assert pre_b_tree() == frozen_pre_b_tree

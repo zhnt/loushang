@@ -539,6 +539,32 @@ def test_screen_coding_tui_cache_distinguishes_expanded_commands() -> None:
     assert "  │ beta" in plain
 
 
+def test_screen_coding_tui_shows_completed_user_shell_result() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.harness.conversation import CommandExecutionRecord
+    from loushang.tui.transcript import ToolExecutionRecord
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd1234",
+        now=lambda: 1.0,
+    )
+    app.append_command_execution_record(
+        CommandExecutionRecord(
+            command="printf hello",
+            output="hello\n",
+            exit_code=0,
+            cancelled=False,
+            exclude_from_context=False,
+        )
+    )
+
+    assert isinstance(app.state.records[-1], ToolExecutionRecord)
+    assert app.state.records[-1].output == "hello\n"
+
+
 def test_screen_coding_tui_previews_materialized_multiline_command() -> None:
     from types import SimpleNamespace
 
@@ -608,6 +634,131 @@ def test_screen_coding_tui_caps_wrapped_tool_preview_by_screen_rows(
     assert len(command_lines) <= 7
     command_payload = "".join(line[len("  │ ") :] for line in command_lines)
     assert "ctrl+t" in command_payload.replace(" ", "")
+
+
+@pytest.mark.parametrize(
+    ("source", "width", "rows"),
+    (
+        ("", 8, 3),
+        ("abc\n\nxyz", 4, 3),
+        ("a" * 40 + "\n" + "b" * 17, 7, 5),
+        ("汉字🙂e\u0301\n\x1b[31mred\x1b[0m\tend", 8, 5),
+        ("one\r\ntwo\u2028three\n", 10, 4),
+    ),
+)
+def test_coding_tool_preview_keeps_wrapped_row_semantics(
+    source: str, width: int, rows: int
+) -> None:
+    from loushang.coding.ui.screen_app import _collapse_coding_tool_preview
+    from loushang.tui.cell_width import TAB_WIDTH, truncate_to_width, wrap_cells
+
+    def original(tail: bool) -> str:
+        wrapped = wrap_cells(source.replace("\t", " " * TAB_WIDTH), width=width)
+        if len(wrapped) <= rows:
+            return "\n".join(wrapped)
+        marker_rows = 1
+        while True:
+            visible_budget = max(0, rows - marker_rows)
+            head_budget = visible_budget if not tail else visible_budget // 2
+            tail_budget = 0 if not tail else visible_budget - head_budget
+            hidden = max(0, len(wrapped) - head_budget - tail_budget)
+            marker = f"… +{hidden} lines (ctrl + t to view transcript)"
+            updated = len(wrap_cells(marker, width=width))
+            if updated <= marker_rows:
+                break
+            marker_rows = updated
+        if marker_rows > rows:
+            compact = truncate_to_width(
+                f"ctrl+t · +{len(wrapped)}", max_width=width * rows, ellipsis="…"
+            )
+            return "\n".join(wrap_cells(compact, width=width))
+        if marker_rows == rows:
+            return "\n".join(wrap_cells(marker, width=width))
+        head = wrapped[:head_budget]
+        end = wrapped[-tail_budget:] if tail_budget else []
+        return "\n".join([*head, *wrap_cells(marker, width=width), *end])
+
+    for tail in (False, True):
+        assert _collapse_coding_tool_preview(
+            source, width=width, max_rows=rows, tail=tail
+        ) == original(tail)
+
+
+def test_coding_tool_preview_does_not_wrap_full_large_ascii_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.ui.screen_app as screen_app
+
+    original_wrap = screen_app.wrap_cells
+
+    def bounded_wrap(value: str, *, width: int) -> list[str]:
+        assert len(value) < 1_000
+        return original_wrap(value, width=width)
+
+    monkeypatch.setattr(screen_app, "wrap_cells", bounded_wrap)
+    output = "a" * 2_000_000
+
+    preview = screen_app._collapse_coding_tool_preview(
+        output, width=80, max_rows=7, tail=True
+    )
+
+    assert "a" * 80 in preview
+    assert "+24994 lines" in preview
+    assert len(preview.splitlines()) <= 7
+
+
+def test_coding_tool_preview_counts_many_short_lines_without_per_line_wrapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.ui.screen_app as screen_app
+
+    def unexpected_strip(_value: str) -> str:
+        raise AssertionError("short printable lines must use the bounded preview path")
+
+    monkeypatch.setattr(screen_app, "strip_control_sequences", unexpected_strip)
+    output = "ok\n" * 100_000
+    count, head, tail = screen_app._preview_wrapped_rows(
+        output, width=80, limit=7
+    )
+
+    assert count == 100_001
+    assert head == ["ok"] * 7
+    assert tail == ["ok"] * 6 + [""]
+
+
+def test_worked_frame_keeps_large_tool_result_out_of_full_wrap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.ui.screen_app as screen_app
+
+    original_wrap = screen_app.wrap_cells
+
+    def bounded_wrap(value: str, *, width: int) -> list[str]:
+        assert len(value) < 1_000
+        return original_wrap(value, width=width)
+
+    monkeypatch.setattr(screen_app, "wrap_cells", bounded_wrap)
+    app = screen_app.ScreenCodingTuiApp(
+        model_label="test", cwd="/repo", branch="main", session_label="session"
+    )
+    app.begin_run(started_at=1.0)
+    app.state.records.append(
+        ToolExecutionRecord(
+            name="bash",
+            tool_name="bash",
+            state="completed",
+            elapsed_seconds=1.0,
+            output="preview",
+            expanded_output="x" * 2_000_000,
+        )
+    )
+    app.state.mark_records_changed()
+    app.complete_run(elapsed_seconds=1.0)
+
+    rendered = "\n".join(_lines(app))
+
+    assert "Worked for" in rendered
+    assert "ctrl+t" in rendered.replace(" ", "")
 
 
 def test_screen_coding_tui_expands_tabs_before_preview_layout() -> None:

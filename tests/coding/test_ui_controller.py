@@ -66,7 +66,12 @@ def test_parse_conversation_intent_routes_bang_bang_to_bash() -> None:
         parse_conversation_intent,
     )
 
-    assert parse_conversation_intent("!!  ls -al") == BashIntent(command="ls -al")
+    assert parse_conversation_intent("!!  ls -al") == BashIntent(
+        command="ls -al", exclude_from_context=False
+    )
+    assert parse_conversation_intent("!  ls -al") == BashIntent(command="ls -al")
+    assert parse_conversation_intent("!") is None
+    assert parse_conversation_intent("!!") is None
 
 
 def test_parse_conversation_intent_routes_quit_command() -> None:
@@ -692,6 +697,46 @@ def test_controller_dispatches_bash_intent_outside_context() -> None:
 
     assert result.error_message is None
     assert session.bash_calls == [("pwd", {"exclude_from_context": True})]
+
+
+def test_controller_dispatches_double_bang_result_into_model_context() -> None:
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import BashIntent
+
+    session = _Session()
+    controller = build_coding_ui_controller(session=session)
+
+    result = asyncio.run(
+        controller.dispatch(BashIntent(command="pwd", exclude_from_context=False))
+    )
+
+    assert result.error_message is None
+    assert session.bash_calls == [("pwd", {"exclude_from_context": False})]
+
+
+def test_controller_presents_completed_shell_result() -> None:
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import BashIntent
+
+    class ShellSession(_Session):
+        async def execute_bash(self, command: str, **kwargs: object) -> dict[str, object]:
+            self.bash_calls.append((command, kwargs))
+            return {"output": "hello\n", "exit_code": 0, "cancelled": False}
+
+    records = []
+    controller = build_coding_ui_controller(
+        session=ShellSession(), on_bash_record=records.append
+    )
+
+    result = asyncio.run(
+        controller.dispatch(BashIntent(command="printf hello", exclude_from_context=False))
+    )
+
+    assert result.error_message is None
+    assert len(records) == 1
+    assert records[0].command == "printf hello"
+    assert records[0].output == "hello\n"
+    assert records[0].exclude_from_context is False
 
 
 def test_controller_does_not_execute_bash_on_a_detached_seed_session() -> None:

@@ -15,15 +15,25 @@ class TerminalQueryResponder:
 
     def feed(self, text: str) -> tuple[str, ...]:
         responses: list[str] = []
-        for character in text:
+        index = 0
+        while index < len(text):
             if not self._control:
-                if character == "\x1b":
-                    self._control = character
+                index = text.find("\x1b", index)
+                if index < 0:
+                    break
+                self._control = "\x1b"
+                index += 1
+                if index == len(text):
+                    break
+            character = text[index]
+            index += 1
+            if character == "\x1b":
+                self._control = "\x1b"
+                continue
+            if self._control == "\x1b" and character != "[":
+                self._control = ""
                 continue
             self._control += character
-            if self._control == "\x1b" and character != "[":
-                self._control = "\x1b" if character == "\x1b" else ""
-                continue
             if not self._control.startswith("\x1b["):
                 continue
             if len(self._control) == 2:

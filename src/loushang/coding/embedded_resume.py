@@ -26,6 +26,7 @@ from loushang.coding.capabilities import (
     CODING_ARCH_CAPABILITY,
     CODING_LSP_CAPABILITY,
     coding_capability_mount_mode,
+    coding_lsp_should_defer,
 )
 from loushang.coding.resume_activation_attempt import (
     CodingActivationAttemptV1,
@@ -168,25 +169,35 @@ def _resume_plugin_state_root(
     )
 
 
-def _capability_plugins_enabled(
+def _resume_capability_plugins_required(
     *,
     plan_set_id: str,
     settings_manager: object | None,
     no_tools: NoToolsMode | bool | None,
+    history: CodingResumeHistoryPreview,
 ) -> bool:
+    """Select owners for this activation, not all enabled capabilities."""
     mode = normalize_no_tools(no_tools)
     if mode == "all":
         return False
     if plan_set_id == "coding-minimal":
         return False
     lsp = coding_capability_mount_mode(settings_manager, CODING_LSP_CAPABILITY)
+    eager_lsp = lsp != "disabled" and not coding_lsp_should_defer(
+        enabled=True,
+        mode=lsp,
+        # Even an empty historical Session gains an activation intent before
+        # bootstrap. Without a startup receipt it follows the legacy route.
+        has_history=True,
+        startup=history.startup,
+    )
     if plan_set_id == "coding-standard":
-        return lsp != "disabled"
+        return eager_lsp
     if plan_set_id == "coding-architecture":
         arch = coding_capability_mount_mode(
             settings_manager, CODING_ARCH_CAPABILITY
         )
-        return lsp != "disabled" or arch != "disabled"
+        return eager_lsp or arch != "disabled"
     raise ValueError("Coding Resume composition set is unsupported")
 
 
@@ -255,10 +266,11 @@ class EmbeddedResumeInputCoordinator:
             workspace,
             settings_manager=self.services.settings_manager,
         )
-        plugins_enabled = _capability_plugins_enabled(
+        plugins_enabled = _resume_capability_plugins_required(
             plan_set_id=plan.composition_comparison.candidate_set_id,
             settings_manager=self.services.settings_manager,
             no_tools=self.no_tools,
+            history=history,
         )
         plugin_state_root = _resume_plugin_state_root(
             self.runtime, session_id=plan.session_id

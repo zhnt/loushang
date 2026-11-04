@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import sys
+import traceback
 from dataclasses import replace
 from datetime import UTC, datetime
 
@@ -97,6 +98,7 @@ def test_resume_publication_requires_exact_commit_current_graph_and_owner_checks
         settlements = []
         requests = []
         failures = []
+        barrier_hits = []
         transport_entered, transport_release = asyncio.Event(), asyncio.Event()
         registry = None
         session = None
@@ -149,6 +151,8 @@ def test_resume_publication_requires_exact_commit_current_graph_and_owner_checks
                 handle_failure = session.agent._handle_run_failure
 
                 async def capture_failure(error, *, aborted):
+                    if isinstance(error, RuntimeError) and str(error) == "no running event loop":
+                        traceback.print_exception(error)
                     failures.append(repr(error))
                     await handle_failure(error, aborted=aborted)
 
@@ -190,15 +194,16 @@ def test_resume_publication_requires_exact_commit_current_graph_and_owner_checks
                 registry = get_default_api_registry()
                 registry.register_api_adapter(Adapter(), source_id="resume-dispatch-test")
                 if mode == "dispatch_revoked_at_barrier":
-                    append_snapshot = manager._transcript.append_model_input_snapshot
+                    append_snapshot = manager._transcript.append_staged_model_input_snapshot
 
                     async def revoke_after_snapshot(*args, **kwargs):
                         nonlocal revoked
                         result = await append_snapshot(*args, **kwargs)
+                        barrier_hits.append(True)
                         revoked = True
                         return result
 
-                    monkeypatch.setattr(manager._transcript, "append_model_input_snapshot", revoke_after_snapshot)
+                    monkeypatch.setattr(manager._transcript, "append_staged_model_input_snapshot", revoke_after_snapshot)
             if mode != "graph_missing":
                 await session._prepare_resume_runtime_graph(
                     attempt_id=attempt.attempt_id, require_current_admission=admit,
@@ -535,6 +540,8 @@ def test_resume_publication_requires_exact_commit_current_graph_and_owner_checks
                                 await asyncio.gather(task, waiting, return_exceptions=True)
                         else:
                             await session._run_published_resume_input(attempt_id=attempt.attempt_id, input_record_id="record-1")
+                        if mode == "dispatch_revoked_at_barrier":
+                            assert barrier_hits == [True]
                         assert len(requests) == (0 if mode == "dispatch_revoked_at_barrier" else 1), failures
                         if requests:
                             messages = [serialize_message(m) for m in requests[0].messages]

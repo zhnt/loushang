@@ -27,7 +27,9 @@ WorkStepStatus: TypeAlias = Literal[
 ]
 
 DeliveryHint: TypeAlias = Literal["immediate", "coalesce", "final_only"]
-ArtifactStatus: TypeAlias = Literal["planned", "created", "updated", "deleted", "failed"]
+ArtifactStatus: TypeAlias = Literal[
+    "planned", "created", "updated", "deleted", "failed"
+]
 
 
 @dataclass(frozen=True)
@@ -94,11 +96,43 @@ class WorkCancellationOutcome:
 
 
 @dataclass(frozen=True)
+class WorkCancellationRecord:
+    """Cancellation observed at a committed terminal, or a conservative snapshot.
+
+    A settled report describes the binding's report, not proof that all external
+    effects were undone. ``basis`` distinguishes journal evidence from live state.
+    """
+
+    operation_id: str
+    run_id: str
+    session_id: str
+    status: Literal[
+        "not_requested", "pending", "settled", "unsupported", "failed", "unknown"
+    ]
+    reason_code: str
+    reported_status: WorkCancellationStatus | None
+    basis: Literal["journal", "live"]
+    observed_sequence: int
+    source_event_id: str | None
+
+
+@dataclass(frozen=True)
 class WorkStepSpec:
     """One Work-owned sequential step in an accepted run."""
 
     step_id: str
     payload: Mapping[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class WorkRecordingPolicy:
+    """Retention requirement; all published facts remain mandatory in v1."""
+
+    require_persistence: bool = False
+
+    def __post_init__(self) -> None:
+        if type(self.require_persistence) is not bool:
+            raise ValueError("require_persistence must be a bool")
 
 
 @dataclass(frozen=True)
@@ -112,6 +146,7 @@ class WorkRunSpec:
     run_event_payload: Mapping[str, object] = field(default_factory=dict)
     scope_event_payload: Mapping[str, object] = field(default_factory=dict)
     steps: tuple[WorkStepSpec, ...] = ()
+    recording_policy: WorkRecordingPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -193,12 +228,14 @@ __all__ = [
     "WorkEvent",
     "WorkEventFact",
     "WorkCancellationOutcome",
+    "WorkCancellationRecord",
     "WorkCancellationStatus",
     "WorkOperation",
     "WorkPlanRun",
     "WorkRun",
     "WorkRunStatus",
     "WorkRunSpec",
+    "WorkRecordingPolicy",
     "WorkStepSpec",
     "WorkStepDeviation",
     "WorkStepRun",

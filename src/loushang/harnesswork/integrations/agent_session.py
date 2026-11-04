@@ -22,7 +22,8 @@ from loushang.harnesswork.integrations.session import (
     SessionWorkProfile,
     SessionWorkRuntime,
 )
-from loushang.harnesswork.types import DeliveryHint, WorkEventFact
+from loushang.harnesswork.integrations.transcript import WorkTranscriptSource
+from loushang.harnesswork.types import DeliveryHint, WorkEventFact, WorkRecordingPolicy
 
 AgentMessageSerializer = Callable[[object], Mapping[str, object]]
 
@@ -63,8 +64,21 @@ def create_agent_session_work_runtime(
     session_id: Callable[[], str] = lambda: "",
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     cancellation_timeout: float | None = 30.0,
+    transcript_source: WorkTranscriptSource | None = None,
+    recording_policy: WorkRecordingPolicy | None = None,
 ) -> SessionWorkRuntime:
     """Bind a Product profile to the existing session Work runtime."""
+
+    existing = getattr(session, "work_execution_backend", None)
+    if existing is not None:
+        if not isinstance(existing, SessionWorkRuntime):
+            raise ValueError("Session already has an incompatible Work backend")
+        existing.require_compatible_configuration(
+            session=session, event_log=event_log, profile=profile, clock=clock,
+            cancellation_timeout=cancellation_timeout, transcript_source=transcript_source,
+            recording_policy=recording_policy,
+        )
+        return existing
 
     return SessionWorkRuntime(
         session=session,
@@ -74,6 +88,8 @@ def create_agent_session_work_runtime(
         session_id=session_id,
         clock=clock,
         cancellation_timeout=cancellation_timeout,
+        transcript_source=transcript_source,
+        recording_policy=recording_policy,
     )
 
 

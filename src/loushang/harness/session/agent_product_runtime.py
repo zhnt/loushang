@@ -132,6 +132,9 @@ def build_agent_session_lifecycle_hooks(
         target_session: object | None,
         transition: SessionLifecycleTransition,
     ) -> None:
+        release_execution = getattr(session, "prepare_execution_release", None)
+        if callable(release_execution):
+            await release_execution()
         event = SessionShutdownEvent(
             reason=transition.reason,
             target_session_file=session_file_from_session(target_session),
@@ -381,6 +384,9 @@ def _bind_session_runtime_host(session: object, runtime_host: object) -> None:
     setter = getattr(session, "set_extension_runtime_host", None)
     if callable(setter):
         setter(runtime_host)
+    bind_execution = getattr(runtime_host, "bind_session_execution_lifecycle", None)
+    if callable(bind_execution):
+        bind_execution(session)
 
 
 def _open_session_approvals(session: object) -> None:

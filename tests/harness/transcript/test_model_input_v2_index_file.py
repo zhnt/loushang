@@ -263,6 +263,63 @@ def test_verified_index_defers_duplicate_model_input_bodies_until_access(
     assert decode_calls == 1
 
 
+def test_unused_deferred_index_does_not_retain_per_node_references_and_callbacks(
+    tmp_path,
+):
+    import gc
+    from functools import partial
+    from types import MethodType
+
+    from loushang.harness.transcript.model_input_v2 import IndexedModelInputNode
+
+    path = tmp_path / "conversation.jsonl"
+    records = _model_input_records()
+    _write_transcript(path, records)
+    load = _indexed_loader(path)
+    load()
+    index = ModelInputV2NodeIndex(load().records)
+
+    def retained():
+        stack, seen, references, callbacks = [index], set(), [], []
+        while stack:
+            value = stack.pop()
+            if id(value) in seen:
+                continue
+            seen.add(id(value))
+            if isinstance(value, ModelInputNodeReference):
+                references.append(value)
+            if isinstance(value, partial | MethodType):
+                callbacks.append(value)
+            if isinstance(
+                value,
+                (
+                    dict,
+                    list,
+                    tuple,
+                    set,
+                    ModelInputV2NodeIndex,
+                    IndexedModelInputNode,
+                    partial,
+                    MethodType,
+                ),
+            ):
+                stack.extend(gc.get_referents(value))
+        return references, callbacks
+
+    assert retained() == ([], []), (
+        "unused historical nodes retained speculative references/callbacks"
+    )
+    node = records[0].payload.nodes[0]
+    indexed = index.find_value(node.value_hash)
+    assert indexed is not None
+    reference = indexed.reference
+    assert reference.record_id == records[0].record_id
+    assert reference.content_hash == node.content_hash
+    assert indexed.reference is reference
+    assert retained() == ([reference], [])
+    assert indexed.node == node
+
+
 def test_invalid_or_structurally_tampered_index_falls_back_and_self_heals(
     tmp_path: Path,
 ) -> None:
@@ -471,3 +528,81 @@ def test_product_store_removes_disposable_index_when_deleting_transcript(
         operation_id="delete:conversation-1",
     )
     assert not _projection_cache_path(path).exists()
+
+
+@pytest.mark.parametrize("field", ["node_kind", "content_hash"])
+def test_index_keeps_published_reference_identity_and_ancestry_checks(tmp_path, field):
+    from dataclasses import replace
+
+    from loushang.harness.transcript.model_input_types import ModelInputIntegrityError
+
+    path = tmp_path / "conversation.jsonl"
+    records = _sequence_records()
+    _write_transcript(path, records)
+    load = _indexed_loader(path)
+    load()
+    index = ModelInputV2NodeIndex(load().records)
+    sequence = records[1].payload.nodes[0]
+    indexed = index.find_sequence_state(
+        sequence.total_item_count, sequence.sequence_hash
+    )
+    assert indexed is not None
+    assert index.find_node(sequence) is indexed
+    assert not indexed.body_is_loaded
+    reference = indexed.reference
+    with pytest.raises(ModelInputIntegrityError, match="outside reference ancestry"):
+        index._resolve_indexed_reference(reference, owner_position=1)
+    assert index._resolve_indexed_reference(reference, owner_position=2) is indexed
+    changed = replace(
+        reference,
+        **{field: "json_chunk" if field == "node_kind" else "sha256:" + "e" * 64},
+    )
+    with pytest.raises(ModelInputIntegrityError, match="reference changed"):
+        index._resolve_indexed_reference(changed, owner_position=2)
+    # A published wrapper remains authoritative to subsequent lookups. An
+    # altered identity must not be hidden by reconstructing an old scalar row.
+    indexed.reference = changed
+    assert (
+        index.find_sequence_state(sequence.total_item_count, sequence.sequence_hash)
+        is indexed
+    )
+    with pytest.raises(ModelInputIntegrityError, match="reference changed"):
+        index._resolve_indexed_reference(reference, owner_position=2)
+    with pytest.raises(ModelInputIntegrityError, match="identity changed"):
+        _ = indexed.node
+
+
+def test_deferred_selected_node_still_validates_unselected_sibling(
+    tmp_path, monkeypatch
+):
+    from dataclasses import replace
+
+    from loushang.harness.transcript import model_input_v2_codec as codec
+
+    selected = create_model_input_json_value({"selected": True})
+    sibling = create_model_input_json_value({"sibling": True})
+    record = replace(
+        _model_input_records()[0], payload=ModelInputNodeBundle((selected, sibling))
+    )
+    path = tmp_path / "conversation.jsonl"
+    _write_transcript(path, (record,))
+    load = _indexed_loader(path)
+    load()
+    bundle = load().records[0].payload
+    decode = codec._decode_node
+    calls = []
+
+    def reject_sibling(raw):
+        calls.append(raw["contentHash"])
+        if raw["contentHash"] == sibling.content_hash:
+            raise ValueError("invalid sibling")
+        return decode(raw)
+
+    monkeypatch.setattr(codec, "_decode_node", reject_sibling)
+    read = bundle.node_at
+    for _ in range(2):
+        with pytest.raises(ValueError, match="deferred Model Input bundle is invalid"):
+            read(0)
+    assert calls == [selected.content_hash, sibling.content_hash] * 2
+    monkeypatch.setattr(codec, "_decode_node", decode)
+    assert bundle.node_at(0) == selected

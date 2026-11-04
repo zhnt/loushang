@@ -10,9 +10,8 @@ from loushang.ai.types import TextPart, ToolCall
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.execution import DirectExecution, DirectToolContext
 
+from ._worker_tool_identity import CODING_WORKER_QUERY_TOOL_NAME
 from .package_product_worker_query_consumer import validate_coding_worker_query_symbol
-
-CODING_WORKER_QUERY_TOOL_NAME = "worker_query_symbol"
 
 
 class _WorkerQuerySession(Protocol):

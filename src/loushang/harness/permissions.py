@@ -29,7 +29,7 @@ PermissionProfileScope = Literal["session", "project", "user"]
 ApprovalBehavior = Literal["cautious", "policy", "allow_optional"]
 WorkspaceAccess = Literal["managed_workspace", "managed_ceiling"]
 NetworkAccess = Literal["policy", "managed_ceiling"]
-SandboxPreference = Literal["configured"]
+SandboxPreference = Literal["configured", "managed_ceiling"]
 
 _PROFILE_ORDER: tuple[PermissionProfileId, ...] = (
     "cautious",
@@ -40,7 +40,7 @@ _PROFILE_ORDER: tuple[PermissionProfileId, ...] = (
 
 @dataclass(frozen=True, slots=True)
 class PermissionProfile:
-    """One user-facing mode without weakening managed Policy or execution limits."""
+    """One user-facing mode within managed and delegated execution ceilings."""
 
     profile_id: PermissionProfileId
     label: str
@@ -105,12 +105,13 @@ BUILTIN_PERMISSION_PROFILES: tuple[PermissionProfile, ...] = (
         profile_id="full_access",
         label="Full Access",
         description=(
-            "Skip discretionary approval prompts; managed denies, delegated "
-            "ceilings, and configured sandbox limits still apply."
+            "Use the full available execution scope without discretionary prompts; "
+            "managed denies, delegated limits, and required sandboxing still apply."
         ),
         approval_behavior="allow_optional",
         workspace_access="managed_ceiling",
         network_access="managed_ceiling",
+        sandbox_preference="managed_ceiling",
     ),
 )
 _PROFILES_BY_ID = {

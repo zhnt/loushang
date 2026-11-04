@@ -73,3 +73,29 @@ def test_truncation_rejects_invalid_limits(
 ) -> None:
     with pytest.raises(error, match=message):
         truncate_head("content", **kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("text", "limit", "expected"),
+    [
+        ("prefix-你好\n", 5, "好\n"),
+        ("prefix-你好\n", 6, "好\n"),
+        ("prefix-😀\n", 4, "\n"),
+        ("prefix-😀\n", 3, "\n"),
+        (
+            b"prefix-\xff\x80abc".decode("utf-8", errors="surrogateescape"),
+            4,
+            "\udc80abc",
+        ),
+    ],
+)
+def test_tail_clipping_keeps_original_character_boundaries_and_raw_byte_counts(
+    text, limit, expected
+):
+    result = truncate_tail(text, max_bytes=limit)
+    assert result.content == expected
+    assert result.output_bytes == len(
+        expected.encode("utf-8", errors="surrogateescape")
+    )
+    assert result.total_bytes == len(text.encode("utf-8", errors="surrogateescape"))
+    assert result.truncated and result.last_line_partial

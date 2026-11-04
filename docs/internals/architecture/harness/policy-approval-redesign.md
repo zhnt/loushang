@@ -1265,10 +1265,12 @@ The first shared implementation exposes three user-facing permission modes:
 | `cautious` | Also ask before direct workspace writes and edits |
 | `full_access` | Skip discretionary `ask` results after explicit confirmation |
 
-These modes are a live Policy preference, not an enforcement profile.
-`full_access` cannot turn a managed deny into allow and cannot widen the
-effective sandbox, filesystem/network execution profile, Product ceiling,
-parent delegation, or `AgentTypeSpec` limits. A managed
+These modes are live Product preferences, not frozen per-action enforcement
+profiles. Coding selects workspace execution authority for Standard/Cautious
+and host execution authority for Full Access before authorizing each new action.
+`full_access` cannot turn a managed deny into allow or exceed an explicit
+executor ceiling, required workspace sandbox, parent delegation, or
+`AgentTypeSpec` limits. A managed
 `PermissionProfileCeiling` may disable modes; a disabled mode remains visible
 with its reason but cannot be selected.
 
@@ -1368,6 +1370,57 @@ applies the same selection semantics without granting Resume admission. Git sema
 owned by Policy, not by the presenter or approval broker. This revises local
 interaction and classification only; it does not select a new sandbox mode or
 replay persisted approval receipts as authority.
+
+#### Full Access execution selection (2026-10-18)
+
+Accepted contract: a root Coding session's Full Access selection applies to
+filesystem tools, shell commands and hosted process starts immediately, without
+restarting the session or rebuilding the capability graph. Standard/Cautious
+select the workspace profile; Full selects the host profile, intersected with
+the immutable Product, injected executor and delegated ceilings. Host access
+means POSIX `/`, or Windows drive roots and the workspace UNC share, under the
+existing OS account. It does not grant OS privileges or bypass managed denies.
+A `required` sandbox retains the workspace ceiling and its existing fail-closed
+backend behavior. An enabled `best_effort` sandbox receives the selected scope
+through its existing backend; changing modes does not disable the backend.
+
+Coding owns live selection through `CodingExecutionAuthority`. Harness provides
+`ExecutionProfileProvider` and `select_execution_profile` to intersect that
+selection with the immutable ceiling. ExecService, workspace operations and
+the hosted-process gateway consult the same owner. Standard/Cautious file
+tools remain confined to the workspace itself; the extra shared Git metadata
+roots needed by linked-worktree processes do not grant file-tool access.
+The persistent output
+adapter forwards the delegate's current profile instead of copying its startup
+value. Settings precedence, user-default persistence and Resume admission
+remain unchanged.
+
+Process and Exec gateways freeze selection before their asynchronous Policy
+and Approval work; switching to Full cannot widen that pending authorization.
+Graph-owned filesystem facets read the live selection at their own path
+admission boundary. Switching back to Standard/Cautious restricts new
+operations; it does not terminate an already running process. The sandbox
+scope also intersects any supplied frozen action profile, so an intervening
+mode change cannot expand that action's containment scope. No model tool
+argument selects the trusted provider or raises its maximum.
+
+Decision and review: accepted by Codex as the implementing agent responsible
+for Coding/Harness integration and the common architecture boundary, within
+the authorized Full execution task. Reviewed alternatives were changing only
+approval prompts (leaves execution blocked), rebuilding the session on every
+mode change (disrupts owned resources), and disabling sandbox enforcement
+(would bypass required containment). The selected approach retains the owned
+execution path, immutable maximum and existing per-action audit profile.
+Review used local method revision
+`0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`.
+
+Verification: `tests/coding/test_bootstrap.py` exercises live switching and a
+saved user Full default through real file tools, shell authorization and a
+hosted Python process; it also checks a read-only/network-denied executor.
+`tests/coding/test_sandbox.py` covers scope selection, required/managed/delegated
+ceilings and downgrade. Existing authorization, process-hosting and persistent
+output tests verify non-widening selection, pending-action freezing and live
+forwarding. No new PR gate or workflow route is introduced.
 
 Review basis: local architecture method master
 `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`. Verification belongs to the existing

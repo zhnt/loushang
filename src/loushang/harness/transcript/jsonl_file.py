@@ -641,6 +641,7 @@ def create_agent_transcript_file_store(
         read_only=read_only,
         operation_scope=operation_scope,
         file_io=layout.file_io,
+        background_head_updates=not read_only,
     )
 
 

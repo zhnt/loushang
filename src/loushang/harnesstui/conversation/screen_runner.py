@@ -27,6 +27,7 @@ from loushang.harnesstui.conversation.input import (
     ConversationLocalResult,
     ConversationPromptResult,
     ConversationScreenInputPort,
+    ConversationShellResult,
     ConversationSteerResult,
     ConversationSurfaceResult,
 )
@@ -56,6 +57,7 @@ from loushang.tui.terminal_diagnostics import format_terminal_diagnostics
 from loushang.tui.terminal_input import (
     ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS,
     InputChunkReader,
+    read_input_chunk,
     read_input_chunk_or_render_tick,
 )
 from loushang.tui.terminal_session import TerminalSession
@@ -120,6 +122,8 @@ class ConversationScreenPort(ConversationScreenInputPort, Protocol):
     def start_pending_prompt(self, text: str) -> None: ...
 
     def add_error(self, summary: str, diagnostics: str = "") -> None: ...
+
+    def set_status(self, message: str | None) -> None: ...
 
     def complete_run(self, *, elapsed_seconds: float | None = None) -> None: ...
 
@@ -202,8 +206,19 @@ async def run_conversation_screen(
             )
         continuation.claim(app)
         input_chunk_reader = continuation.input_chunk_reader
+    read_chunk = input_chunk_reader or read_input_chunk
+    input_ready_at: float | None = None
+
+    async def read_timestamped(stream: TextIO) -> str:
+        nonlocal input_ready_at
+        data = await read_chunk(stream)
+        input_ready_at = time.monotonic()
+        return data
+
     router: ConversationInputRouterPort | None = None
     active_task: asyncio.Task[int | None] | None = None
+    aborting_task: asyncio.Task[None] | None = None
+    interrupt_pending_steer: str | None = None
     active_prompt_started_at: float | None = None
     previous_surface_host = app.surface_host
     previous_render_requester = app.render_requester
@@ -218,6 +233,19 @@ async def run_conversation_screen(
         nonlocal screen_exit_code
         screen_exit_code = exit_code
         return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=exit_code)
+
+    def start_or_queue_shell(text: str) -> None:
+        nonlocal active_task, active_prompt_started_at
+        if active_task is not None or aborting_task is not None:
+            app.state.queue_shell_command(text)
+            return
+        app.start_pending_prompt(text)
+        active_prompt_started_at = app.state.active_started_at
+        active_task = asyncio.create_task(run_prompt_handler(handle_prompt, text))
+
+    def start_next_queued_shell() -> None:
+        if app.state.pending_shell_commands:
+            start_or_queue_shell(app.state.pending_shell_commands.pop(0))
 
     try:
         reader = continuation.parser if continuation is not None else InputReader()
@@ -247,6 +275,47 @@ async def run_conversation_screen(
                 ),
             )
         )
+        set_scroll_handler = getattr(router, "set_transcript_scroll_handler", None)
+        if callable(set_scroll_handler):
+
+            def scroll_transcript(rows: int) -> bool:
+                if not runtime.render_loop.scroll_viewport(rows):
+                    return False
+                clear_selection = getattr(app, "clear_transcript_selection", None)
+                if callable(clear_selection):
+                    clear_selection()
+                return True
+
+            set_scroll_handler(scroll_transcript)
+
+        async def settle_aborting_task(
+            *, resume_pending: bool = True
+        ) -> ConversationInputResult | None:
+            nonlocal aborting_task, active_task, active_prompt_started_at
+            nonlocal interrupt_pending_steer
+            if aborting_task is None:
+                return None
+            await aborting_task
+            aborting_task = None
+            active_task = None
+            active_prompt_started_at = None
+            runtime.render_now()
+            if resume_pending and interrupt_pending_steer is not None:
+                app.start_pending_prompt(interrupt_pending_steer)
+                active_task = asyncio.create_task(
+                    run_prompt_handler(handle_prompt, interrupt_pending_steer)
+                )
+                active_prompt_started_at = app.state.active_started_at
+                interrupt_pending_steer = None
+                runtime.render_now()
+            resume_submission = getattr(router, "resume_paused_submission", None)
+            if resume_pending and callable(resume_submission):
+                return resume_submission()
+            pause_submissions = getattr(router, "set_submission_paused", None)
+            if callable(pause_submissions):
+                pause_submissions(False)
+            return None
+
         app.surface_host = runtime.overlay_host()
         promote_pending_page_surface(app)
         env_values = dict(os.environ)
@@ -338,7 +407,69 @@ async def run_conversation_screen(
                         return finish(
                             runtime=runtime, stdout=stdout, exit_code=startup_exit
                         )
-                if active_task is not None and active_task.done():
+                if aborting_task is not None and aborting_task.done():
+                    resumed = await settle_aborting_task()
+                    if isinstance(resumed, ConversationPromptResult):
+                        active_prompt_started_at = app.state.active_started_at
+                        active_task = asyncio.create_task(
+                            run_prompt_handler(
+                                handle_prompt,
+                                resumed.text,
+                                attachments=resumed.attachments,
+                            )
+                        )
+                    elif isinstance(resumed, ConversationExitResult):
+                        return finish(
+                            runtime=runtime,
+                            stdout=stdout,
+                            exit_code=resumed.exit_code,
+                        )
+                    elif isinstance(resumed, ConversationShellResult):
+                        start_or_queue_shell(resumed.text)
+                    elif isinstance(resumed, ConversationLocalResult):
+                        if handle_local is not None:
+                            exit_code = await run_text_handler(
+                                handle_local, resumed.text
+                            )
+                            if exit_code is not None:
+                                return finish(
+                                    runtime=runtime,
+                                    stdout=stdout,
+                                    exit_code=exit_code,
+                                )
+                    elif isinstance(resumed, ConversationSteerResult):
+                        if handle_steer is not None:
+                            exit_code = await run_text_handler(
+                                handle_steer,
+                                resumed.text,
+                                attachments=resumed.attachments,
+                            )
+                            if exit_code is not None:
+                                return finish(
+                                    runtime=runtime,
+                                    stdout=stdout,
+                                    exit_code=exit_code,
+                                )
+                    elif isinstance(resumed, ConversationFollowupResult):
+                        if handle_followup is not None:
+                            exit_code = await run_text_handler(
+                                handle_followup,
+                                resumed.text,
+                                attachments=resumed.attachments,
+                            )
+                            if exit_code is not None:
+                                return finish(
+                                    runtime=runtime,
+                                    stdout=stdout,
+                                    exit_code=exit_code,
+                                )
+                    if resumed is not None and resumed.render_requested:
+                        _request_runtime_render(runtime, "input")
+                if (
+                    aborting_task is None
+                    and active_task is not None
+                    and active_task.done()
+                ):
                     exit_code = await finish_active_task(
                         app=app,
                         active_task=active_task,
@@ -354,6 +485,7 @@ async def run_conversation_screen(
                             stdout=stdout,
                             exit_code=exit_code,
                         )
+                    start_next_queued_shell()
 
                 if (
                     continuation is not None
@@ -366,11 +498,15 @@ async def run_conversation_screen(
                     stdin,
                     runtime=runtime,
                     active_task=(
-                        active_task
-                        if active_task is not None or lifecycle is None
+                        aborting_task or active_task
+                        if (
+                            aborting_task is not None
+                            or active_task is not None
+                            or lifecycle is None
+                        )
                         else lifecycle.wait_task
                     ),
-                    input_chunk_reader=input_chunk_reader,
+                    input_chunk_reader=read_timestamped,
                     render_wakeup=render_wakeup,
                     return_on_render_wakeup=(
                         continuation is not None
@@ -412,6 +548,8 @@ async def run_conversation_screen(
                         terminal_context=terminal_context,
                     )
                 elif data == "":
+                    if aborting_task is not None:
+                        await settle_aborting_task()
                     if active_task is not None:
                         exit_code = await finish_active_task(
                             app=app,
@@ -419,12 +557,16 @@ async def run_conversation_screen(
                             started_at=active_prompt_started_at,
                             cancellation_message=cancellation_message,
                         )
+                        active_task = None
+                        active_prompt_started_at = None
                         runtime.render_now()
-                        return finish(
-                            runtime=runtime,
-                            stdout=stdout,
-                            exit_code=exit_code if exit_code is not None else 0,
-                        )
+                        if exit_code is not None:
+                            return finish(
+                                runtime=runtime, stdout=stdout, exit_code=exit_code
+                            )
+                    if app.state.pending_shell_commands:
+                        start_next_queued_shell()
+                        continue
                     runtime.render_now()
                     return finish(
                         runtime=runtime,
@@ -432,7 +574,23 @@ async def run_conversation_screen(
                         exit_code=0,
                     )
                 else:
-                    input_events = _input_events_for_chunk(
+                    expired_events = (
+                        _flush_pending_input(
+                            reader,
+                            terminal_context=terminal_context,
+                        )
+                        if (
+                            reader.has_pending
+                            and pending_idle_deadline is not None
+                            and input_ready_at is not None
+                            and input_ready_at > pending_idle_deadline
+                        )
+                        else ()
+                    )
+                    # A busy turn can delay the idle callback past the next
+                    # read. Honor the old prefix deadline before feeding late
+                    # text, so a standalone Esc cannot swallow it as Alt+key.
+                    input_events = expired_events + _input_events_for_chunk(
                         reader,
                         data,
                         terminal_context=terminal_context,
@@ -452,6 +610,8 @@ async def run_conversation_screen(
                             set_viewport(runtime.render_loop.previous_viewport_top)
                     result = router.handle(event)
                     if isinstance(result, ConversationExitResult):
+                        if aborting_task is not None:
+                            await settle_aborting_task(resume_pending=False)
                         runtime.render_now()
                         return finish(
                             runtime=runtime,
@@ -459,26 +619,31 @@ async def run_conversation_screen(
                             exit_code=result.exit_code,
                         )
                     if isinstance(result, ConversationAbortResult):
+                        if aborting_task is not None:
+                            continue
                         interrupt_pending_steer = pop_interrupt_pending_steer(app)
-                        await abort_active(
-                            app=app,
-                            active_task=active_task,
-                            on_abort=on_abort,
-                            interruption_message=interruption_message,
-                        )
-                        active_task = None
-                        active_prompt_started_at = None
+                        app.state.pending_shell_commands.clear()
+                        # Show acknowledgement before the Product waits for a
+                        # tool process and the active turn to settle.
+                        begin_stopping = getattr(app, "begin_stopping", None)
+                        if callable(begin_stopping):
+                            begin_stopping()
+                        else:
+                            app.set_status("Stopping…")
                         runtime.render_now()
-                        if interrupt_pending_steer is not None:
-                            app.start_pending_prompt(interrupt_pending_steer)
-                            active_task = asyncio.create_task(
-                                run_prompt_handler(
-                                    handle_prompt,
-                                    interrupt_pending_steer,
-                                )
+                        pause_submissions = getattr(
+                            router, "set_submission_paused", None
+                        )
+                        if callable(pause_submissions):
+                            pause_submissions(True)
+                        aborting_task = asyncio.create_task(
+                            abort_active(
+                                app=app,
+                                active_task=active_task,
+                                on_abort=on_abort,
+                                interruption_message=interruption_message,
                             )
-                            active_prompt_started_at = app.state.active_started_at
-                            runtime.render_now()
+                        )
                         continue
                     if isinstance(result, ConversationPromptResult):
                         active_prompt_started_at = app.state.active_started_at
@@ -489,6 +654,8 @@ async def run_conversation_screen(
                                 attachments=result.attachments,
                             )
                         )
+                    elif isinstance(result, ConversationShellResult):
+                        start_or_queue_shell(result.text)
                     elif isinstance(result, ConversationLocalResult):
                         if handle_local is not None:
                             exit_code = await run_text_handler(
@@ -561,22 +728,33 @@ async def run_conversation_screen(
         )
         raise
     finally:
-        if copy_coordinator is not None:
-            await copy_coordinator.close()
-
-        def dispose_router() -> None:
-            dispose = getattr(router, "dispose", None)
-            if callable(dispose):
-                dispose()
-
+        cancel_context_usage_refresh = getattr(
+            app, "cancel_context_usage_refresh", None
+        )
+        if callable(cancel_context_usage_refresh):
+            cancel_context_usage_refresh()
         try:
-            if lifecycle is not None:
-                await lifecycle.settle(screen_exit_code, active_task, dispose_router)
-            else:
-                dispose_router()
+            if aborting_task is not None:
+                await _join_owned_abort(aborting_task)
         finally:
             try:
-                terminal_owner.close()
+                if copy_coordinator is not None:
+                    await copy_coordinator.close()
+
+                def dispose_router() -> None:
+                    dispose = getattr(router, "dispose", None)
+                    if callable(dispose):
+                        dispose()
+
+                try:
+                    if lifecycle is not None:
+                        await lifecycle.settle(
+                            screen_exit_code, active_task, dispose_router
+                        )
+                    else:
+                        dispose_router()
+                finally:
+                    terminal_owner.close()
             finally:
                 app.surface_host = previous_surface_host
                 app.terminal_diagnostics_provider = (
@@ -584,6 +762,20 @@ async def run_conversation_screen(
                 )
                 app.terminal_capabilities = previous_terminal_capabilities
                 app.render_requester = previous_render_requester
+
+
+async def _join_owned_abort(task: asyncio.Task[None]) -> None:
+    """Keep the cancellation owner alive until its cleanup has settled."""
+
+    interrupted: asyncio.CancelledError | None = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as error:
+            interrupted = error
+    task.result()
+    if interrupted is not None:
+        raise interrupted
 
 
 async def finish_active_task(

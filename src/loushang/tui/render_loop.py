@@ -47,6 +47,9 @@ class _SegmentedTextLines(Sequence[str]):
     segments: tuple[_LogicalLineSegment, ...] = ()
     finalized: bool = True
     _segment_ends: tuple[int, ...] = field(init=False, repr=False)
+    _kitty_image_events: tuple[tuple[int, int, str], ...] | None = field(
+        default=None, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         total = 0
@@ -55,6 +58,22 @@ class _SegmentedTextLines(Sequence[str]):
             total += len(self._segment_lines(segment))
             ends.append(total)
         object.__setattr__(self, "_segment_ends", tuple(ends))
+
+    @classmethod
+    def _from_known_ends(
+        cls,
+        segments: tuple[_LogicalLineSegment, ...],
+        *,
+        finalized: bool,
+        ends: tuple[int, ...],
+        kitty_images: tuple[tuple[int, int, str], ...],
+    ) -> _SegmentedTextLines:
+        result = object.__new__(cls)
+        object.__setattr__(result, "segments", segments)
+        object.__setattr__(result, "finalized", finalized)
+        object.__setattr__(result, "_segment_ends", ends)
+        object.__setattr__(result, "_kitty_image_events", kitty_images)
+        return result
 
     def __len__(self) -> int:
         return self._segment_ends[-1] if self._segment_ends else 0
@@ -96,11 +115,19 @@ class _SegmentedTextLines(Sequence[str]):
         return self._segment_ends[index - 1] if index else 0
 
     def iter_kitty_images(self) -> Iterator[tuple[int, int, str]]:
-        row_offset = 0
-        for segment in self.segments:
-            for row, image_id, delete_sequence in segment.kitty_images:
-                yield row_offset + row, image_id, delete_sequence
-            row_offset += len(self._segment_lines(segment))
+        events = self._kitty_image_events
+        if events is None:
+            discovered: list[tuple[int, int, str]] = []
+            row_offset = 0
+            for segment in self.segments:
+                discovered.extend(
+                    (row_offset + row, image_id, delete_sequence)
+                    for row, image_id, delete_sequence in segment.kitty_images
+                )
+                row_offset += len(self._segment_lines(segment))
+            events = tuple(discovered)
+            object.__setattr__(self, "_kitty_image_events", events)
+        yield from events
 
     def _segment_lines(self, segment: _LogicalLineSegment) -> tuple[str, ...]:
         return segment.finalized_lines if self.finalized else segment.raw_lines
@@ -117,6 +144,7 @@ class RenderPlanStrategyKind(Enum):
     BASELINE_RESET = auto()
     RESIZE_REPAINT = auto()
     UNSAFE_VIEWPORT = auto()
+    VIEWPORT_NAVIGATION = auto()
     NO_CHANGE = auto()
     APPEND = auto()
     PROTECTED_APPEND = auto()
@@ -131,6 +159,7 @@ DEFAULT_STRATEGY_ORDER: tuple[RenderPlanStrategyKind, ...] = (
     RenderPlanStrategyKind.FIRST_RENDER,
     RenderPlanStrategyKind.TRANSCRIPT_WINDOW_TRIMMED_RESET,
     RenderPlanStrategyKind.BASELINE_RESET,
+    RenderPlanStrategyKind.VIEWPORT_NAVIGATION,
     RenderPlanStrategyKind.RESIZE_REPAINT,
     RenderPlanStrategyKind.UNSAFE_VIEWPORT,
     RenderPlanStrategyKind.NO_CHANGE,
@@ -180,6 +209,8 @@ class RenderPlanRuntime:
     clear_scrollback_policy: ClearScrollbackPolicy
     baseline_reset: RenderBaselineReset | None
     unsafe_viewport_reason: str | None
+    viewport_navigation_requested: bool
+    manual_viewport_active: bool
     diagnostics: Callable[..., RenderDiagnostics]
     repaint_diagnostics: Callable[..., RenderDiagnostics]
     managed_viewport_repaint_diagnostics: Callable[..., RenderDiagnostics]
@@ -312,6 +343,46 @@ class UnsafeViewportStrategy:
             operation_class="recovery_repaint",
             repaint_kind="recovery",
             repaint_reason=runtime.unsafe_viewport_reason,
+            delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ViewportNavigationStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.VIEWPORT_NAVIGATION
+    name: ClassVar[str] = "viewport_navigation"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        if runtime.unsafe_viewport_reason is not None:
+            return False
+        if runtime.viewport_navigation_requested:
+            return True
+        if not runtime.manual_viewport_active:
+            return False
+        return (
+            context.viewport_top != runtime.previous_viewport_top
+            or context.width_changed
+            or context.height_changed
+            or len(context.current_lines) != len(context.previous_lines)
+            or (context.first_changed is not None and context.first_changed < context.viewport_top)
+            or (
+                context.last_changed is not None
+                and context.last_changed >= context.viewport_top + context.size.rows
+            )
+        )
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        return runtime.managed_viewport_repaint_diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            changed_range=context.changed_range,
+            cursor=context.cursor,
+            declared_cursor=context.declared_cursor,
+            repaint_reason="viewport_navigation",
+            operation_class="viewport_navigation",
+            repaint_kind="interaction",
+            viewport_top=context.viewport_top,
             delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
         )
 
@@ -657,6 +728,7 @@ DEFAULT_STRATEGIES: dict[RenderPlanStrategyKind, RenderPlanStrategy] = {
     RenderPlanStrategyKind.BASELINE_RESET: BaselineResetStrategy(),
     RenderPlanStrategyKind.RESIZE_REPAINT: ResizeRepaintStrategy(),
     RenderPlanStrategyKind.UNSAFE_VIEWPORT: UnsafeViewportStrategy(),
+    RenderPlanStrategyKind.VIEWPORT_NAVIGATION: ViewportNavigationStrategy(),
     RenderPlanStrategyKind.NO_CHANGE: NoChangeStrategy(),
     RenderPlanStrategyKind.APPEND: AppendStrategy(),
     RenderPlanStrategyKind.PROTECTED_APPEND: ProtectedAppendStrategy(),
@@ -676,6 +748,8 @@ class RenderLoop:
     previous_raw_lines: Sequence[str] = ()
     previous_size: TerminalSize | None = None
     previous_viewport_top: int = 0
+    _manual_viewport_top: int | None = None
+    _viewport_navigation_requested: bool = False
     scrollback_viewport_top: int = 0
     hardware_cursor_row: int = 0
     hardware_cursor_column: int = 0
@@ -690,6 +764,25 @@ class RenderLoop:
         init=False,
         repr=False,
     )
+    _previous_render_segments: tuple[RenderLineSegmentLike, ...] = field(
+        default=(), init=False, repr=False
+    )
+    _previous_logical_segments: tuple[_LogicalLineSegment, ...] = field(
+        default=(), init=False, repr=False
+    )
+    _previous_segment_keys: tuple[tuple[object, object] | None, ...] = field(
+        default=(), init=False, repr=False
+    )
+    _previous_segment_ends: tuple[int, ...] = field(
+        default=(), init=False, repr=False
+    )
+    _previous_kitty_images: tuple[tuple[int, int, str], ...] = field(
+        default=(), init=False, repr=False
+    )
+    _previous_key_counts: dict[tuple[object, object], int] = field(
+        default_factory=dict, init=False, repr=False
+    )
+    _previous_first_uncacheable: int = field(default=0, init=False, repr=False)
     _planned_reused_segment_count: int = field(default=0, init=False, repr=False)
     _planned_materialized_line_count: int = field(default=0, init=False, repr=False)
     _planned_flattened_line_count: int = field(default=0, init=False, repr=False)
@@ -701,10 +794,28 @@ class RenderLoop:
     def mark_viewport_unsafe(self, reason: str) -> None:
         self._unsafe_viewport_reason = reason
 
+    def scroll_viewport(self, rows: int) -> bool:
+        """Move the displayed logical frame while mouse input owns scrolling."""
+
+        if rows == 0 or self.previous_size is None:
+            return False
+        last_top = _viewport_top(self.previous_rendered_lines, self.previous_size)
+        current = self._manual_viewport_top
+        if current is None:
+            current = self.previous_viewport_top
+        target = max(0, min(last_top, current + rows))
+        if target == current:
+            return False
+        self._manual_viewport_top = None if target == last_top else target
+        self._viewport_navigation_requested = True
+        return True
+
     def reset_baseline(
         self,
         reset: str | RenderBaselineReset = "baseline_reset",
     ) -> None:
+        self._manual_viewport_top = None
+        self._viewport_navigation_requested = False
         self._baseline_reset = (
             RenderBaselineReset(reason=reset) if isinstance(reset, str) else reset
         )
@@ -757,7 +868,12 @@ class RenderLoop:
                 if appended_lines > 0 and first_changed == len(previous_lines) and first_changed > 0
                 else None
             )
-        viewport_top = _viewport_top(current_lines, size)
+        natural_viewport_top = _viewport_top(current_lines, size)
+        viewport_top = (
+            natural_viewport_top
+            if self._manual_viewport_top is None
+            else min(self._manual_viewport_top, natural_viewport_top)
+        )
         differential_viewport_top = _differential_viewport_top(
             previous_viewport_top=self.previous_viewport_top,
             natural_viewport_top=viewport_top,
@@ -797,19 +913,53 @@ class RenderLoop:
             flat_raw_lines = tuple(line.text for line in result.lines)
             self._planned_flattened_line_count = len(flat_raw_lines)
             self._planned_materialized_line_count = len(flat_raw_lines)
-            return flat_raw_lines, _finalize_rendered_lines(
+            flat_finalized_lines = _finalize_rendered_lines(
                 flat_raw_lines,
                 previous_raw_lines=self.previous_raw_lines,
                 previous_finalized_lines=self.previous_rendered_lines,
             )
+            self._previous_render_segments = ()
+            self._previous_logical_segments = ()
+            self._previous_segment_keys = ()
+            self._previous_segment_ends = ()
+            self._previous_kitty_images = ()
+            self._previous_key_counts = {}
+            self._previous_first_uncacheable = 0
+            return flat_raw_lines, flat_finalized_lines
 
         # Retain only segments from the latest complete segmented materialization.
         # Building off to the side keeps the previous cache intact if finalization fails.
+        rendered_segments = result.lines.segments
+        prefix_count = min(
+            _common_segment_prefix(
+                self._previous_render_segments,
+                rendered_segments,
+            ),
+            self._previous_first_uncacheable,
+        )
         previous_segment_cache = self._finalized_segment_cache
-        current_segment_cache: dict[tuple[object, object], _LogicalLineSegment] = {}
-        segments: list[_LogicalLineSegment] = []
-        for rendered_segment in result.lines.segments:
+        current_segment_cache = (
+            previous_segment_cache.copy() if prefix_count else {}
+        )
+        key_counts = self._previous_key_counts.copy() if prefix_count else {}
+        for key in self._previous_segment_keys[prefix_count:]:
+            if key is None or not prefix_count:
+                continue
+            remaining = key_counts[key] - 1
+            if remaining:
+                key_counts[key] = remaining
+            else:
+                del key_counts[key]
+                current_segment_cache.pop(key, None)
+        segments = list(self._previous_logical_segments[:prefix_count])
+        keys = list(self._previous_segment_keys[:prefix_count])
+        self._planned_reused_segment_count = prefix_count
+        first_uncacheable = len(rendered_segments)
+        for index, rendered_segment in enumerate(rendered_segments[prefix_count:], prefix_count):
             cache_key = _render_segment_cache_key(rendered_segment)
+            keys.append(cache_key)
+            if cache_key is None and first_uncacheable == len(rendered_segments):
+                first_uncacheable = index
             logical_segment = (
                 current_segment_cache.get(cache_key) if cache_key is not None else None
             )
@@ -823,10 +973,38 @@ class RenderLoop:
             segments.append(logical_segment)
             if cache_key is not None:
                 current_segment_cache[cache_key] = logical_segment
+                key_counts[cache_key] = key_counts.get(cache_key, 0) + 1
         logical_segments = tuple(segments)
-        raw_lines = _SegmentedTextLines(logical_segments, finalized=False)
-        finalized_lines = _SegmentedTextLines(logical_segments, finalized=True)
+        ends = list(self._previous_segment_ends[:prefix_count])
+        total = ends[-1] if ends else 0
+        kitty_images = [
+            event for event in self._previous_kitty_images if event[0] < total
+        ]
+        for segment in logical_segments[prefix_count:]:
+            kitty_images.extend(
+                (total + row, image_id, delete_sequence)
+                for row, image_id, delete_sequence in segment.kitty_images
+            )
+            total += len(segment.raw_lines)
+            ends.append(total)
+        segment_ends = tuple(ends)
+        kitty_image_events = tuple(kitty_images)
+        raw_lines = _SegmentedTextLines._from_known_ends(
+            logical_segments, finalized=False, ends=segment_ends,
+            kitty_images=kitty_image_events,
+        )
+        finalized_lines = _SegmentedTextLines._from_known_ends(
+            logical_segments, finalized=True, ends=segment_ends,
+            kitty_images=kitty_image_events,
+        )
         self._finalized_segment_cache = current_segment_cache
+        self._previous_render_segments = rendered_segments
+        self._previous_logical_segments = logical_segments
+        self._previous_segment_keys = tuple(keys)
+        self._previous_segment_ends = segment_ends
+        self._previous_kitty_images = kitty_image_events
+        self._previous_key_counts = key_counts
+        self._previous_first_uncacheable = first_uncacheable
         return raw_lines, finalized_lines
 
     def _plan_runtime(self) -> RenderPlanRuntime:
@@ -841,6 +1019,8 @@ class RenderLoop:
             clear_scrollback_policy=self.clear_scrollback_policy,
             baseline_reset=self._baseline_reset,
             unsafe_viewport_reason=self._unsafe_viewport_reason,
+            viewport_navigation_requested=self._viewport_navigation_requested,
+            manual_viewport_active=self._manual_viewport_top is not None,
             diagnostics=self._diagnostics,
             repaint_diagnostics=self._repaint_diagnostics,
             managed_viewport_repaint_diagnostics=self._managed_viewport_repaint_diagnostics,
@@ -870,8 +1050,9 @@ class RenderLoop:
         append_start: int | None = None,
         scrollback_frontier_rebased: bool = False,
         delete_kitty_image_sequences: tuple[str, ...] = (),
+        viewport_top: int | None = None,
     ) -> RenderDiagnostics:
-        viewport_top = _viewport_top(current_lines, size)
+        viewport_top = _viewport_top(current_lines, size) if viewport_top is None else viewport_top
         return self._diagnostics(
             current_lines=current_lines,
             previous_lines=previous_lines,
@@ -908,6 +1089,11 @@ class RenderLoop:
         self.previous_raw_lines = diagnostics.raw_logical_lines
         self.previous_size = size
         self.previous_viewport_top = diagnostics.viewport_top
+        self._viewport_navigation_requested = False
+        if self._manual_viewport_top is not None:
+            natural_top = _viewport_top(diagnostics.current_logical_lines, size)
+            if self._manual_viewport_top >= natural_top:
+                self._manual_viewport_top = None
         if diagnostics.clear_scrollback_emitted or diagnostics.scrollback_frontier_rebased:
             self.scrollback_viewport_top = diagnostics.viewport_top
         else:
@@ -1041,15 +1227,25 @@ class RenderLoop:
         )
 
 
+def _common_segment_prefix(previous: tuple[object, ...], current: tuple[object, ...]) -> int:
+    limit = min(len(previous), len(current))
+    # Tuple comparison checks the usual unchanged tail in C without calling Python
+    # once per historical segment. Fall back to a walk for edits farther back.
+    for changed_tail in range(min(limit, 2) + 1):
+        prefix = limit - changed_tail
+        if previous[:prefix] == current[:prefix]:
+            return prefix
+    for index in range(limit):
+        if previous[index] != current[index]:
+            return index
+    return limit
+
+
 def _changed_line_range(previous_lines: Sequence[str], current_lines: Sequence[str]) -> tuple[int, int] | None:
     if isinstance(previous_lines, _SegmentedTextLines) and isinstance(current_lines, _SegmentedTextLines):
-        common_segments = 0
-        common_limit = min(len(previous_lines.segments), len(current_lines.segments))
-        while (
-            common_segments < common_limit
-            and previous_lines.segments[common_segments] is current_lines.segments[common_segments]
-        ):
-            common_segments += 1
+        common_segments = _common_segment_prefix(
+            previous_lines.segments, current_lines.segments
+        )
         if common_segments == len(previous_lines.segments) == len(current_lines.segments):
             return None
         prefix_rows = previous_lines.segment_start(common_segments)

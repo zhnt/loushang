@@ -9,11 +9,8 @@ from loushang.coding.continuity_bootstrap import (
     bind_coding_configured_continuity,
     get_coding_configured_continuity_composition,
 )
-from loushang.coding.presentation.tui.plain import (
-    PlainCodingUiRenderer,
-)
+from loushang.coding.interaction.sdk_warmup import CodingSdkWarmup
 from loushang.coding.ui.completion import coding_inline_completion_provider
-from loushang.coding.ui.plain_app import build_plain_coding_tui_app
 from loushang.coding.ui.plugin_theme import apply_coding_plugin_theme_to_screen
 from loushang.coding.ui.product_binding import (
     ScreenCodingDebugBinding,
@@ -42,6 +39,7 @@ from loushang.harnesstui.conversation.host import (
     ConversationScreenRunProfile,
     run_action_host_conversation_screen,
 )
+from loushang.harnesstui.conversation.intents import PromptIntent
 from loushang.harnesstui.conversation.run_context import (
     RebindableEventSource,
     StableEmit,
@@ -182,11 +180,13 @@ async def _run_bound_screen_interactive_tui(
         session=session,
         verbose=verbose,
         plugin_workspace=snapshot.cwd,
+        on_bash_record=app.append_command_execution_record,
     )
 
     def current_session():
         return current_agent_runtime_session(runtime, session)
 
+    sdk_warmup = CodingSdkWarmup.attach(app=app, session_provider=current_session)
     action_host = build_screen_coding_action_host(
         presenter=app,
         controller=controller,
@@ -215,11 +215,13 @@ async def _run_bound_screen_interactive_tui(
             runtime=runtime,
             continuity_reference=continuity_reference,
             status_provider=status_provider,
+            goal_command=lambda text: controller.dispatch(PromptIntent(text)),
             on_approval=lambda event: handle_agent_screen_approval(
                 current_approval_interaction(),
                 event,
             ),
             approval_interaction_provider=current_approval_interaction,
+            on_model_changed=sdk_warmup.observe_current,
         )
 
     def report_rebind_problem(code: str, error: Exception) -> None:
@@ -263,6 +265,7 @@ async def _run_bound_screen_interactive_tui(
         stdout=stdout,
         now=time.monotonic,
         completion_provider=completion_provider,
+        cooperative_large_deltas=True,
         capability_provider=current_capabilities,
         resume_command_prefix=("loushang", "--resume"),
         session_provider=lambda: current_agent_runtime_session(runtime, session),
@@ -274,11 +277,11 @@ async def _run_bound_screen_interactive_tui(
             next_session, base_path=Path(cwd)
         ),
         report_rebind_problem=report_rebind_problem,
+        on_session_rebound=sdk_warmup.observe_current,
     ).prepare()
-    return await run_prepared_screen_conversation(
-        prepared,
-        stdin=stdin,
-        stdout=stdout,
+    return await sdk_warmup.run_prepared(
+        prepared, stdin=stdin, stdout=stdout,
+        run=run_prepared_screen_conversation,
         screen_runner=prepared_screen_runner or run_action_host_conversation_screen,
     )
 
@@ -292,6 +295,9 @@ async def _run_plain_tui(
     stderr: TextIO,
     verbose: bool,
 ) -> int:
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.coding.ui.plain_app import build_plain_coding_tui_app
+
     renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr, verbose=verbose)
     snapshot = await load_coding_tui_startup_view(runtime=runtime, session=session)
 

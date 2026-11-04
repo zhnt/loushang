@@ -18,6 +18,7 @@ class _QueuedInput(Generic[T]):
     snapshot: QueuedMessageSnapshot
     payload: T = field(compare=False, repr=False)
     payload_identity: int = field(compare=False, repr=False)
+    submitted: bool = field(default=True, compare=False, repr=False)
 
 
 class HostInputQueue(Generic[T]):
@@ -33,6 +34,10 @@ class HostInputQueue(Generic[T]):
 
     def has_pending(self) -> bool:
         return self.pending_count > 0
+
+    @property
+    def has_next_turn_messages(self) -> bool:
+        return bool(self._next_turn)
 
     def texts(self, kind: QueueKind) -> list[str]:
         return [item.snapshot.text for item in self._items(kind)]
@@ -74,12 +79,12 @@ class HostInputQueue(Generic[T]):
         payload_identity = id(payload)
         consumed = self._pop_first(
             self._steering,
-            lambda item: item.payload_identity == payload_identity,
+            lambda item: item.submitted and item.payload_identity == payload_identity,
         )
         if consumed is None:
             consumed = self._pop_first(
                 self._follow_up,
-                lambda item: item.payload_identity == payload_identity,
+                lambda item: item.submitted and item.payload_identity == payload_identity,
             )
         if consumed is not None:
             return consumed.snapshot
@@ -87,12 +92,12 @@ class HostInputQueue(Generic[T]):
             return None
         consumed = self._pop_first(
             self._steering,
-            lambda item: item.snapshot.text == fallback_text,
+            lambda item: item.submitted and item.snapshot.text == fallback_text,
         )
         if consumed is None:
             consumed = self._pop_first(
                 self._follow_up,
-                lambda item: item.snapshot.text == fallback_text,
+                lambda item: item.submitted and item.snapshot.text == fallback_text,
             )
         return consumed.snapshot if consumed is not None else None
 

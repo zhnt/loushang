@@ -40,8 +40,10 @@ class ScreenConversationState:
     transcript_window_generation: int = 0
     evicted_prefix_record_count: int = 0
     active_started_at: float | None = None
+    stopping: bool = field(default=False, kw_only=True)
     pending_followups: list[str] = field(default_factory=list)
     pending_steers: list[str] = field(default_factory=list)
+    pending_shell_commands: list[str] = field(default_factory=list)
     input_capabilities: ConversationInputCapabilities = field(
         default_factory=ConversationInputCapabilities
     )
@@ -52,7 +54,9 @@ class ScreenConversationState:
         default=None, kw_only=True
     )
     startup_pending: bool = False
+    sdk_preparing: bool = False
     model_label: str | None = None
+    reasoning_label: str | None = None
     cwd: str = ""
     branch: str | None = None
     session_label: str | None = None
@@ -135,6 +139,7 @@ class ScreenConversationState:
             self.mark_records_changed()
             self._pending_user_echo = stripped
         self.active_started_at = started_at
+        self.stopping = False
         self._assistant_draft_buffer = None
         self.interruption_message = None
         self.status_message = None
@@ -142,6 +147,7 @@ class ScreenConversationState:
 
     def begin_run(self, *, started_at: float) -> None:
         self.active_started_at = started_at
+        self.stopping = False
         self.interruption_message = None
         self.status_message = None
         self._tool_record_indices.clear()
@@ -174,6 +180,7 @@ class ScreenConversationState:
             self.records.append(WorkedDividerRecord(elapsed_seconds))
             self.mark_records_changed()
         self.active_started_at = None
+        self.stopping = False
         self.status_message = None
         self._tool_record_indices.clear()
         self._pending_user_echo = None
@@ -182,6 +189,11 @@ class ScreenConversationState:
         stripped = text.strip()
         if stripped:
             self.pending_followups.append(stripped)
+
+    def queue_shell_command(self, text: str) -> None:
+        stripped = text.strip()
+        if stripped:
+            self.pending_shell_commands.append(stripped)
 
     def queue_steer(self, text: str) -> None:
         stripped = text.strip()
@@ -215,6 +227,7 @@ class ScreenConversationState:
         self.mark_records_changed()
         self.interruption_message = message
         self.active_started_at = None
+        self.stopping = False
         self.status_message = None
         self._tool_record_indices.clear()
         self._pending_user_echo = None

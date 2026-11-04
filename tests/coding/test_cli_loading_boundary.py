@@ -85,6 +85,17 @@ assert not any(name.startswith('loushang.harness') for name in sys.modules)
     )
 
 
+def test_loading_screen_import_defers_action_host_and_command_catalog(tmp_path):
+    _probe(
+        tmp_path,
+        """
+import loushang.coding.cli.screen_startup
+assert 'loushang.harness.commands' not in sys.modules
+assert 'loushang.harnesstui.conversation.host' not in sys.modules
+""",
+    )
+
+
 @pytest.mark.parametrize("invocation", ["explicit", "process-argv", "module"])
 def test_canonical_version_never_loads_application(tmp_path, invocation):
     _probe(
@@ -245,6 +256,31 @@ assert entry.default_runtime_builder is application.default_runtime_builder
 assert entry._help_text is application._help_text
 assert cli.CliArgs is args.CliArgs
 assert cli.parse_args is args.parse_args
+""",
+    )
+
+
+def test_default_application_import_keeps_delegate_tool_dormant(tmp_path):
+    _probe(
+        tmp_path,
+        """
+import loushang.coding.cli.application as application
+import loushang.harness.tools as tools
+assert application.AGENT_DELEGATE_TOOL_NAME == tools.AGENT_DELEGATE_TOOL_NAME
+assert 'loushang.harness.tools.agent_delegate' not in sys.modules
+""",
+    )
+
+
+def test_default_application_import_keeps_worker_session_composition_dormant(
+    tmp_path,
+):
+    _probe(
+        tmp_path,
+        """
+import loushang.coding.cli.application
+assert 'loushang.coding.package_product_worker_session_composition' not in sys.modules
+assert 'loushang.coding.package_product_worker_provider' not in sys.modules
 """,
     )
 

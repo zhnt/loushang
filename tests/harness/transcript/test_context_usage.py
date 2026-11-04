@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import hashlib
+import json
+
 import loushang.harness.transcript.context_usage as context_usage
 import loushang.harness.transcript.maintenance as maintenance
-from loushang.ai.types import UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    TextPart,
+    ToolResultMessage,
+    Usage,
+    UserMessage,
+)
 from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.transcript import (
     ContextUsageSnapshot,
@@ -48,6 +57,27 @@ def test_context_usage_public_exports_keep_their_stable_package_surface() -> Non
         measure_structural_envelope_fingerprint
         is context_usage.measure_structural_envelope_fingerprint
     )
+
+
+def test_threshold_only_snapshot_preserves_budget_without_surface_fingerprint() -> None:
+    messages = [
+        UserMessage(role="user", content="a" * 800, timestamp=0.0),
+    ]
+    model = type("Model", (), {"context_window": 300})()
+    full = build_context_usage_snapshot(messages, [], model, reserve_tokens=50)
+    threshold_only = build_context_usage_snapshot(
+        messages,
+        [],
+        model,
+        reserve_tokens=50,
+        include_surface_fingerprint=False,
+    )
+    assert full.surface_fingerprint is not None
+    assert threshold_only.surface_fingerprint is None
+    assert threshold_only.tokens == full.tokens
+    assert threshold_only.compactable == full.compactable
+    assert threshold_only.threshold_tokens == full.threshold_tokens
+    assert threshold_only.source == full.source
 
 
 def _envelope_fingerprint(*, system_prompt: str = "system") -> str:
@@ -329,3 +359,48 @@ def test_replay_surface_fingerprint_tracks_model_visible_content_only() -> None:
     assert first.message_count == 1
     assert first.surface_fingerprint == timestamp_only.surface_fingerprint
     assert first.surface_fingerprint != changed.surface_fingerprint
+
+
+def test_replay_surface_streaming_hash_matches_canonical_json_array() -> None:
+    for messages in (
+        [],
+        [UserMessage(role="user", content="你好 😀", timestamp=1.0)],
+        [
+            UserMessage(role="user", content="first", timestamp=1.0),
+            UserMessage(role="user", content="second \"quoted\"", timestamp=2.0),
+        ],
+        [
+            AssistantMessage(
+                role="assistant",
+                content=[TextPart(type="text", text="tool next")],
+                api="responses",
+                provider="test",
+                endpoint="test-endpoint",
+                model="test-model",
+                response_id=None,
+                usage=Usage(
+                    input=1, output=1, cache_read=0, cache_write=0,
+                    total_tokens=2, cost=None,
+                ),
+                stop_reason="stop",
+                error_message=None,
+                timestamp=3.0,
+            ),
+            ToolResultMessage(
+                role="toolResult",
+                tool_call_id="call-1",
+                tool_name="bash",
+                content=[TextPart(type="text", text="工具结果\nline 2")],
+                is_error=False,
+                timestamp=4.0,
+            ),
+        ],
+    ):
+        canonical = json.dumps(
+            [context_usage._replay_message_projection(message) for message in messages],
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        expected = "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        assert measure_replay_context_surface(messages).surface_fingerprint == expected

@@ -39,6 +39,7 @@ if TYPE_CHECKING:
         UserCommandHookResult,
         UserCommandRequest,
         bash_result_from_tool_result,
+        command_execution_record_from_result,
         command_result_from_tool_result,
     )
     from loushang.harness.session.bindings import (
@@ -609,6 +610,7 @@ _EXPORT_MODULES = {
     "apply_session_model_selection": "loushang.harness.session.model_selection",
     "command_result_from_tool_result": "loushang.harness.session.bash",
     "bash_result_from_tool_result": "loushang.harness.session.bash",
+    "command_execution_record_from_result": "loushang.harness.session.bash",
     "execute_standard_session_command_async": "loushang.harness.session.commands.execution",
     "ensure_usable_session_model": "loushang.harness.session.model_selection",
     "get_session_model_identity": "loushang.harness.session.model_selection",

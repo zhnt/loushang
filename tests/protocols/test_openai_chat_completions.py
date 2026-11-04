@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import partial
 from types import ModuleType, SimpleNamespace
 
@@ -24,6 +24,7 @@ from loushang.ai.model import (
     Provider,
 )
 from loushang.ai.model.domain import Endpoint
+from loushang.ai.protocols import openai_chat_completions as chat_module
 from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.structured import StructuredOutputOptions
@@ -71,6 +72,132 @@ def _registry_with_endpoint(provider_id: str, endpoint: Endpoint) -> ModelRegist
 _normalized_context = partial(normalized_context_for_test, "openai-completions")
 _invoke_raw_parts = partial(invoke_raw_parts_for_test, "openai-completions")
 _stream = partial(stream_for_test, "openai-completions")
+
+
+def test_chat_preparation_reuses_only_session_certified_user_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class CertifiedCommitter:
+        def __init__(self, previous, count: int, source_count: int) -> None:
+            self.prepared_request_reuse = previous
+            self.certified_provider_prefix_count = count
+            self.current_provider_source_count = source_count
+
+        async def commit_prepared_request(self, _request) -> None:
+            pass
+
+    model = Model(
+        id="gpt-test",
+        provider="openai",
+        endpoint="openai-completions",
+        api="openai-completions",
+        capabilities=Capabilities(stream=True, tool_use=True, max_tokens=128),
+        adapter=OpenAICompletionsConfig(),
+    )
+    user = UserMessage(
+        role="user", content=[TextPart(type="text", text="hello")], timestamp=1.0
+    )
+    first_context = NormalizedContext(
+        system_prompt="system",
+        messages=(user,),
+        tools=(Tool(name="read", description="Read", parameters={"type": "object"}),),
+    )
+    adapter = OpenAIChatCompletionsAdapter()
+    first_request = ProviderRequest(
+        model=model,
+        context=first_context,
+        options=CallOptions(
+            prepared_request_committer=CertifiedCommitter(None, 0, 1)
+        ),
+        base_url="https://example.test/v1",
+        max_output_tokens=16,
+    )
+    previous = adapter.prepare_request(first_request)
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[ToolCall(type="toolCall", id="call-1", name="read", arguments={})],
+        api="openai-completions",
+        provider="openai",
+        endpoint="openai-completions",
+        model="gpt-test",
+        response_id=None,
+        usage=Usage(0, 0, 0, 0, 0, None),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=2.0,
+    )
+    result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call-1",
+        tool_name="read",
+        content=[
+            TextPart(type="text", text="done"),
+            ImagePart(type="image", data="aGVsbG8=", mime_type="image/png"),
+        ],
+        is_error=False,
+        timestamp=3.0,
+    )
+    next_context = replace(
+        first_context, messages=first_context.messages + (assistant, result)
+    )
+    full_request = replace(first_request, context=next_context)
+    expected = adapter.prepare_request(full_request)
+    calls: list[object] = []
+    original_user_projection = chat_module._user_message_payload
+
+    def count_user_projection(message, model, capabilities=None):
+        calls.append(message)
+        return original_user_projection(message, model, capabilities)
+
+    monkeypatch.setattr(chat_module, "_user_message_payload", count_user_projection)
+    certified_request = replace(
+        full_request,
+        options=CallOptions(
+            prepared_request_committer=CertifiedCommitter(previous, 1, 3)
+        ),
+    )
+    reused = adapter.prepare_request(certified_request)
+
+    assert calls == []
+    assert reused.payload["messages"][0] is previous.payload["messages"][0]
+    assert reused.canonical_payload == expected.canonical_payload
+    assert reused.payload_hash == expected.payload_hash
+    assert reused.metrics == expected.metrics
+    assert reused.binary_fields == expected.binary_fields
+    assert reused.payload_for_transport() == expected.payload_for_transport()
+
+    calls.clear()
+    changed_model = replace(model, adapter=OpenAICompletionsConfig(developer_role=False))
+    adapter.prepare_request(replace(certified_request, model=changed_model))
+    assert calls == [user]
+
+    non_user_previous = adapter.prepare_request(
+        replace(
+            first_request,
+            context=next_context,
+            options=CallOptions(
+                prepared_request_committer=CertifiedCommitter(None, 0, 3)
+            ),
+        )
+    )
+    extra_result = replace(result, tool_call_id="call-2", timestamp=4.0)
+    third_context = replace(
+        next_context, messages=next_context.messages + (extra_result,)
+    )
+    third_request = replace(
+        first_request,
+        context=third_context,
+        options=CallOptions(
+            prepared_request_committer=CertifiedCommitter(non_user_previous, 3, 4)
+        ),
+    )
+    calls.clear()
+    boundary_fallback = adapter.prepare_request(third_request)
+    assert calls == [user]
+    full_boundary = adapter.prepare_request(
+        replace(third_request, options=CallOptions())
+    )
+    assert boundary_fallback.payload_for_transport() == full_boundary.payload_for_transport()
 
 
 def _adapter_config_from_compat(

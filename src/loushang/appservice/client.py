@@ -16,6 +16,8 @@ from loushang.appserver.protocol import (
     MuxMemberOpenV1,
     MuxReadV1,
     MuxSpaceV1,
+    SessionModelSelectV1,
+    SessionModelsV1,
     SessionSnapshotRequestV1,
     SessionSnapshotV1,
     TurnInterruptV1,
@@ -69,6 +71,16 @@ class InProcessAppClientV1:
         request: SessionSnapshotRequestV1,
     ) -> SessionSnapshotV1:
         return await self._service.snapshot_session(request)
+
+    async def list_session_models(
+        self, request: SessionSnapshotRequestV1,
+    ) -> SessionModelsV1:
+        return await self._service.list_session_models(request)
+
+    async def select_session_model(
+        self, request: SessionModelSelectV1,
+    ) -> SessionModelsV1:
+        return await self._service.select_session_model(request)
 
     async def start_turn(self, request: TurnTextV1) -> AckV1:
         return await self._service.start_turn(request)

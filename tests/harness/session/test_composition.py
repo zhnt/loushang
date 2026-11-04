@@ -94,6 +94,7 @@ def test_session_composition_ports_are_grouped_by_assembly_phase() -> None:
         "after_compaction",
         "sleep_for_retry",
         "get_compaction_capability",
+        "single_call_capacity_probe",
     }
     assert {field.name for field in fields(SessionProductInputs)}.issuperset(
         {"model_registry", "extension_runner", "command_controller"}
@@ -202,12 +203,13 @@ def test_compaction_policy_applies_only_explicit_product_fields() -> None:
     )
 
     assert _compaction_policy(
-        CompactionSettings(enabled=False), capability
+        CompactionSettings(enabled=False, single_call_early_trigger=True), capability
     ) == TranscriptCompactionPolicy(
         enabled=False,
         reserve_tokens=1_234,
         compact_percent=67,
         keep_recent_tokens=456,
+        single_call_early_trigger=True,
     )
 
 

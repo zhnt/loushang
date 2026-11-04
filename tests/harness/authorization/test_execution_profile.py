@@ -11,8 +11,27 @@ from loushang.harness.authorization import (
     constrain_execution_profile,
     execution_profile_expansion_codes,
     resolve_effective_execution_profile,
+    select_execution_profile,
 )
 from loushang.harness.policy import PolicyDecision
+
+
+def test_live_selection_cannot_widen_or_remove_execution_ceilings(tmp_path: Path) -> None:
+    from loushang.harness.workspace.exec import ExecService
+
+    ceiling = EffectiveExecutionProfile(
+        readable_roots=(tmp_path,), denied_roots=(tmp_path / "secret",), network="denied",
+    )
+    requested = EffectiveExecutionProfile(
+        readable_roots=(tmp_path.parent,), writable_roots=(tmp_path.parent,),
+    )
+    assert select_execution_profile(ceiling, lambda: requested) == ceiling
+    service = ExecService(execution_profile=ceiling, execution_profile_provider=lambda: requested)
+    assert service.execution_profile == ceiling
+    with pytest.raises(AttributeError, match="immutable ceiling"):
+        service.execution_profile = requested
+    with pytest.raises(TypeError, match="provider must return"):
+        select_execution_profile(ceiling, lambda: None)  # type: ignore[arg-type,return-value]
 
 
 @pytest.mark.parametrize("change,expected", [

@@ -12,6 +12,11 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, TextIO, TypeVar
 from uuid import uuid4
 
+from loushang.harness.authorization import (
+    EffectiveExecutionProfile,
+    ExecutionProfileProvider,
+    select_execution_profile,
+)
 from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.workspace._local_process import (
     kill_local_process_tree,
@@ -79,9 +84,28 @@ class ExecService:
         *,
         backend: ExecBackend | None = None,
         execution_profile: object | None = None,
+        execution_profile_provider: ExecutionProfileProvider | None = None,
     ) -> None:
         self._backend = backend if backend is not None else LocalExecBackend()
-        self.execution_profile = execution_profile
+        if execution_profile_provider is not None and not isinstance(
+            execution_profile, EffectiveExecutionProfile,
+        ):
+            raise TypeError("live execution selection requires an EffectiveExecutionProfile ceiling")
+        self._execution_profile = execution_profile
+        self._execution_profile_provider = execution_profile_provider
+
+    @property
+    def execution_profile(self) -> object | None:
+        if self._execution_profile_provider is None:
+            return self._execution_profile
+        assert isinstance(self._execution_profile, EffectiveExecutionProfile)
+        return select_execution_profile(self._execution_profile, self._execution_profile_provider)
+
+    @execution_profile.setter
+    def execution_profile(self, value: object | None) -> None:
+        if self._execution_profile_provider is not None:
+            raise AttributeError("a live execution service has an immutable ceiling")
+        self._execution_profile = value
 
     def capture_executor(self) -> CapturedExecExecutor | None:
         # An execute wrapper must explicitly preserve its own policy. Its
@@ -269,6 +293,10 @@ class LocalExecBackend:
                     activity.mark()
                     for text in decoder.feed(chunk):
                         await _publish(stream_name, sink, text)
+                    # A pipe can remain readable for many consecutive reads.
+                    # Give terminal input and the Working timer a scheduling
+                    # turn even when every read completes from the local buffer.
+                    await asyncio.sleep(0)
             except BaseException:
                 if capture is not None:
                     capture.stop_accepting()

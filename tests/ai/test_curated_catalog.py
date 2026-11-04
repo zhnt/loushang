@@ -84,6 +84,7 @@ def test_curated_catalog_tracks_current_primary_model_roster() -> None:
         ("baidu-qianfan", "openai-completions-cn"): {"ernie-5.1"},
         ("dashscope", "openai-responses"): {"qwen3.7-max", "qwen3.7-plus"},
         ("deepseek", "openai-completions"): {
+            "deepseek-flash",
             "deepseek-v4-flash",
             "deepseek-v4-pro",
         },
@@ -91,25 +92,37 @@ def test_curated_catalog_tracks_current_primary_model_roster() -> None:
         ("moonshot", "openai-completions"): {
             "kimi-k2.6",
             "kimi-k2.7-code",
+            "kimi-k3.1-pro",
+            "kimi-k3.1-pro-highspeed",
             "kimi-k3",
         },
-        ("kimi-code", "kimi-code-openai"): {"k3", "kimi-for-coding"},
-        ("kimi-code", "kimi-code-anthropic"): {"k3", "kimi-for-coding"},
+        ("kimi-code", "kimi-code-openai"): {
+            "k3.1-pro",
+            "k3.1-pro-highspeed",
+            "k3",
+            "kimi-for-coding",
+        },
+        ("kimi-code", "kimi-code-anthropic"): {
+            "k3.1-pro",
+            "k3.1-pro-highspeed",
+            "k3",
+            "kimi-for-coding",
+        },
         ("openai", "openai-responses"): {
             "gpt-5.5",
-            "gpt-5.6-sol",
             "gpt-5.4-mini",
             "gpt-6-sol",
             "gpt-6-astra",
             "gpt-6.1-sol",
+            "gpt-6.1-terra",
             "gpt-6-luna",
         },
         ("openai", "coding-responses"): {
             "gpt-5.5",
-            "gpt-5.6-sol",
             "gpt-6-sol",
             "gpt-6-astra",
             "gpt-6.1-sol",
+            "gpt-6.1-terra",
             "gpt-6-luna",
         },
         ("stepfun", "openai-completions"): {"step-3.7-flash"},
@@ -193,6 +206,46 @@ def test_kimi_code_catalog_uses_its_own_api_key_not_moonshot_platform_key() -> N
         assert model.defaults["reasoningEffort"] == "high"
 
 
+def test_kimi_k31_catalog_uses_distinct_api_ids_and_effort_defaults() -> None:
+    registry = _load_curated_registry()
+
+    for suffix in ("", "-highspeed"):
+        moonshot = registry.get_model(
+            "moonshot", "openai-completions", f"kimi-k3.1-pro{suffix}"
+        )
+        code_openai = registry.get_model(
+            "kimi-code", "kimi-code-openai", f"k3.1-pro{suffix}"
+        )
+        code_anthropic = registry.get_model(
+            "kimi-code", "kimi-code-anthropic", f"k3.1-pro{suffix}"
+        )
+        for model in (moonshot, code_openai, code_anthropic):
+            assert model.capabilities.context_window == 1048576
+            assert model.capabilities.reasoning_efforts == ("low", "high", "max")
+            assert model.capabilities.reasoning is True
+            assert model.capabilities.input == ("text", "image")
+            assert model.capabilities.max_tokens is None
+
+        assert moonshot.defaults["reasoningEffort"] == "max"
+        assert moonshot.pricing is None
+        assert isinstance(moonshot.adapter, OpenAICompletionsConfig)
+        assert moonshot.adapter.reasoning_effort is True
+        assert moonshot.adapter.reasoning_format == "openai"
+        assert moonshot.adapter.assistant_reasoning_content is True
+
+        assert code_openai.defaults["reasoningEffort"] == "high"
+        assert code_anthropic.defaults["reasoningEffort"] == "high"
+        assert code_openai.auth.api_key_env == "KIMI_CODE_API_KEY"
+        assert code_anthropic.auth.api_key_env == "KIMI_CODE_API_KEY"
+        assert isinstance(code_openai.adapter, OpenAICompletionsConfig)
+        assert code_openai.adapter.reasoning_effort is True
+        assert code_openai.adapter.reasoning_format == "openai"
+        assert isinstance(code_anthropic.adapter, AnthropicMessagesConfig)
+        assert code_anthropic.adapter.thinking_mode == "adaptive"
+        assert code_anthropic.adapter.reasoning_effort_map["medium"] == "high"
+        assert code_anthropic.adapter.reasoning_effort_map["xhigh"] == "max"
+
+
 def test_curated_openai_style_custom_base_urls_declare_adapter() -> None:
     raw = _load_curated_raw()
 
@@ -211,9 +264,7 @@ def test_curated_catalog_keeps_key_model_defaults() -> None:
     kimi_code = registry.get_model("moonshot", "openai-completions", "kimi-k2.7-code")
     minimax = registry.get_model("minimax", "anthropic-messages", "MiniMax-M3")
     gpt = registry.get_model("openai", "openai-responses", "gpt-5.5")
-    sol = registry.get_model("openai", "openai-responses", "gpt-5.6-sol")
     coding = registry.get_model("openai", "coding-responses", "gpt-5.5")
-    coding_sol = registry.get_model("openai", "coding-responses", "gpt-5.6-sol")
     claude = registry.get_model("anthropic", "anthropic-messages", "claude-sonnet-5")
 
     assert kimi.supports_temperature is False
@@ -221,13 +272,31 @@ def test_curated_catalog_keeps_key_model_defaults() -> None:
     assert kimi_code.defaults["reasoningEffort"] == "medium"
     assert minimax.pricing is None
     assert gpt.capabilities.context_window == 1050000
-    assert sol.capabilities.context_window == 1050000
     assert coding.capabilities.context_window == 400000
     assert coding.defaults["reasoningEffort"] == "medium"
     assert coding.pricing is None
-    assert coding_sol.pricing is None
     assert claude.pricing is not None
     assert claude.pricing.output == 15
+
+
+def test_deepseek_flash_current_and_legacy_ids_share_vision_capability() -> None:
+    registry = _load_curated_registry()
+    current = registry.get_model("deepseek", "openai-completions", "deepseek-flash")
+    legacy = registry.get_model("deepseek", "openai-completions", "deepseek-v4-flash")
+
+    assert current.alias == "fast-chat"
+    assert legacy.alias is None
+    for model in (current, legacy):
+        assert model.capabilities.context_window == 1048576
+        assert model.capabilities.max_tokens == 393216
+        assert model.capabilities.input == ("text", "image")
+        assert model.capabilities.reasoning_efforts == ("none", "low", "high", "max")
+        assert model.pricing is not None
+        assert (model.pricing.input, model.pricing.output, model.pricing.cache_read) == (
+            0.3,
+            1.2,
+            0.006,
+        )
 
 
 def test_gpt_6_models_resolve_on_both_openai_responses_routes() -> None:
@@ -236,6 +305,7 @@ def test_gpt_6_models_resolve_on_both_openai_responses_routes() -> None:
         "gpt-6-sol": (2, 10, 0.2),
         "gpt-6-astra": (10, 50, 1),
         "gpt-6.1-sol": (2, 10, 0.1),
+        "gpt-6.1-terra": (1, 5, 0.05),
         "gpt-6-luna": (0.1, 0.5, 0.01),
     }
 
@@ -257,6 +327,17 @@ def test_gpt_6_models_resolve_on_both_openai_responses_routes() -> None:
         assert coding.capabilities.context_window == 1050000
         assert coding.pricing is None
         assert coding.adapter.max_output_tokens is False
+
+    terra = registry.get_model("openai", "openai-responses", "gpt-6.1-terra")
+    assert terra.knowledge == "2026-06-01"
+    assert terra.capabilities.reasoning_efforts == (
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    )
 
 
 def test_curated_catalog_keeps_corrected_base_pricing() -> None:

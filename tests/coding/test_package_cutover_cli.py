@@ -6481,7 +6481,9 @@ def test_disabled_only_review_command_reads_frozen_first_b_without_writes(
     try:
         assert session.package_product_lifecycle_mode == "enforced"
         assert session._coding_base_product_compilation is None
-        assert session._coding_lsp_plugin_assembly is not None
+        assert session._coding_lsp_plugin_assembly is None
+        assert session._deferred_lsp_slot is not None
+        assert session._deferred_lsp_slot.state == "dormant"
     finally:
         asyncio.run(session.dispose())
     arch_manager = asyncio.run(

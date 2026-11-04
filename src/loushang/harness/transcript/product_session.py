@@ -679,6 +679,7 @@ class ProductTranscriptSession(
                 for message in context.messages
             ),
             state=context.state,
+            provider_window=context.provider_window,
         )
 
     def _session_blob_store(self, *, file_io: RootedFileIO | None = None) -> SessionBlobStore:
@@ -695,6 +696,20 @@ class ProductTranscriptSession(
     ) -> SessionModelInputBlobCodec | None:
         with self._lifecycle_session.sync_operation_scope():
             return self._build_model_input_binary_codec(active_only=active_only)
+
+    def _model_input_binary_codec_factory(
+        self,
+    ) -> Callable[[], SessionModelInputBlobCodec] | None:
+        if not self.persist:
+            return None
+
+        def open_codec() -> SessionModelInputBlobCodec:
+            codec = self._model_input_binary_codec(active_only=True)
+            if codec is None:
+                raise RuntimeError("persistent Session Model Input lost its blob codec")
+            return codec
+
+        return open_codec
 
     def _build_model_input_binary_codec(
         self, *, active_only: bool,

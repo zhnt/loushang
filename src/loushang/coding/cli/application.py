@@ -25,11 +25,13 @@ from loushang.coding._invocation_product_profile import (
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.coding._worker_tool_identity import (
+    CODING_WORKER_QUERY_TOOL_NAME,
+)
 from loushang.coding.adapters.harnesswork import (
     create_coding_work_runtime,
     run_coding_work_channel,
 )
-from loushang.coding.agent_invocation import register_coding_agent_delegate_tool
 from loushang.coding.bootstrap import (
     BootstrapServices,
     _create_agent_invocation_session_runtime,
@@ -96,9 +98,6 @@ from loushang.coding.package_product_management_cli import (
 from loushang.coding.package_product_runtime import (
     require_fresh_coding_product_inputs_without_writes,
 )
-from loushang.coding.package_product_worker_turn_tool import (
-    CODING_WORKER_QUERY_TOOL_NAME,
-)
 from loushang.coding.plugin_local_discovery import (
     blocked_coding_local_discovery,
     discover_coding_local_plugins,
@@ -122,10 +121,6 @@ from loushang.coding.plugin_management_read_sdk import (
     open_coding_plugin_management_read_client,
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID
-from loushang.coding.prompt_command import (
-    run_prompt_command,
-    run_prompt_plan_command,
-)
 from loushang.coding.resource_runtime import collect_coding_package_entries
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.workflow import run_prompt_steps_workflow
@@ -216,7 +211,7 @@ from loushang.harness.resources.packages import (
 from loushang.harness.resources.packages.security import PackageSecurityPolicy
 from loushang.harness.resources.plugins import is_remote_plugin_source
 from loushang.harness.scenario import run_fake_workflow_cli
-from loushang.harness.tools.agent_delegate import AGENT_DELEGATE_TOOL_NAME
+from loushang.harness.tools import AGENT_DELEGATE_TOOL_NAME
 from loushang.harness.tools.workspace import (
     WorkspaceToolRuntimeSettings,
     workspace_tool_runtime_settings,
@@ -248,6 +243,83 @@ from loushang.method import (
 )
 
 _WORK_LOG_INSPECT_LIMIT = 20
+
+
+async def run_prompt_command(
+    *,
+    runtime: Any,
+    session: Any,
+    prompt: str,
+    stdout: TextIO,
+    stderr: TextIO,
+    images: list[object] | None = None,
+    follow_up_messages: Sequence[str] = (),
+    verbose: bool = False,
+    work_event_log: Any = None,
+    work_runtime: Any = None,
+    method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
+    plan_facts: Mapping[str, object] | None = None,
+    step_facts: Mapping[str, object] | None = None,
+    dispose: bool = True,
+) -> int:
+    """Load plain prompt presentation only for a plain prompt invocation."""
+    from loushang.coding.prompt_command import run_prompt_command as run
+
+    return await run(
+        runtime=runtime,
+        session=session,
+        prompt=prompt,
+        stdout=stdout,
+        stderr=stderr,
+        images=images,
+        follow_up_messages=follow_up_messages,
+        verbose=verbose,
+        work_event_log=work_event_log,
+        work_runtime=work_runtime,
+        method_id=method_id,
+        plan_id=plan_id,
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
+        plan_facts=plan_facts,
+        step_facts=step_facts,
+        dispose=dispose,
+    )
+
+
+async def run_prompt_plan_command(
+    *,
+    runtime: Any,
+    session: Any,
+    turns: Sequence[Any],
+    stdout: TextIO,
+    stderr: TextIO,
+    work_event_log: Any,
+    work_runtime: Any = None,
+    verbose: bool = False,
+    dispose: bool = True,
+) -> int:
+    from loushang.coding.prompt_command import run_prompt_plan_command as run
+
+    return await run(
+        runtime=runtime,
+        session=session,
+        turns=turns,
+        stdout=stdout,
+        stderr=stderr,
+        work_event_log=work_event_log,
+        work_runtime=work_runtime,
+        verbose=verbose,
+        dispose=dispose,
+    )
 
 
 def build_default_services(project_root: Path) -> BootstrapServices:
@@ -329,6 +401,10 @@ def default_runtime_builder(
         and allowed_tool_names is not None
         and AGENT_DELEGATE_TOOL_NAME in allowed_tool_names
     ):
+        from loushang.coding.agent_invocation import (
+            register_coding_agent_delegate_tool,
+        )
+
         registered_parent_tools = tuple(
             definition.name
             for definition in runtime_tool_registry.list_enabled_definitions()

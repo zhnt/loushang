@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from loushang.coding._worker_tool_identity import (
+    CODING_WORKER_QUERY_TOOL_NAME,
+)
 from loushang.coding.arch.tool import INSPECT_IMPORT_GRAPH_TOOL_NAME
 from loushang.coding.lsp.tools import (
     DOCUMENT_OUTLINE_TOOL_NAME,
     INSPECT_SYMBOL_TOOL_NAME,
-)
-from loushang.coding.package_product_worker_turn_tool import (
-    CODING_WORKER_QUERY_TOOL_NAME,
 )
 from loushang.coding.tool_pack import CODING_RESERVED_BASE_TOOL_NAMES
 

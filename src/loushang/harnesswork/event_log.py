@@ -219,11 +219,24 @@ class _EventLogState:
 
 
 class InMemoryEventLogBackend(_EventLogState):
+    @property
+    def recording_retention(self) -> Literal["memory"]:
+        return "memory"
+
     def append(self, entry: EventLogEntry) -> EventPosition:
         return self._append_stored(_normalize_entry(entry))
 
 
 class JsonlEventLogBackend(_EventLogState):
+    @property
+    def storage_path(self) -> Path:
+        return self._path
+
+    @property
+    def recording_retention(self) -> Literal["persistent"]:
+        # Process-local file retention is not an fsync or writer-lock promise.
+        return "persistent"
+
     def __init__(self, path: str | Path) -> None:
         super().__init__()
         self._path = Path(path)

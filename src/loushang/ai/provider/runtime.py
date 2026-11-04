@@ -25,6 +25,7 @@ from loushang.ai.prepared_request import (
     PreparedModelCallAttemptUsageRecorder,
     PreparedModelCallOutcome,
     PreparedModelCallOutcomeRecorder,
+    PreparedModelCallTerminalRecorder,
 )
 from loushang.ai.provider.cancellation import is_signal_cancelled, wait_signal_cancelled
 from loushang.ai.provider.errors import (
@@ -461,6 +462,7 @@ async def _emit_terminal_part_and_record_outcome(
             and isinstance(committer, PreparedModelCallAttemptUsageRecorder)
         )
         or isinstance(committer, PreparedModelCallOutcomeRecorder)
+        or isinstance(committer, PreparedModelCallTerminalRecorder)
     ):
         return
     # Once a terminal provider fact is visible, its durable observation must
@@ -502,6 +504,29 @@ async def _record_terminal_observations(
     model: object,
     call_id: str,
 ) -> None:
+    if isinstance(committer, PreparedModelCallTerminalRecorder):
+        try:
+            await committer.record_terminal_model_call(
+                outcome,
+                usage_observed=usage_observed,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            emit_trace(
+                options,
+                {
+                    "type": "runtime:outcome",
+                    **_runtime_trace_base(
+                        request=request,
+                        model=model,
+                        call_id=call_id,
+                    ),
+                    "reason": "record_failed",
+                    "exceptionType": error.__class__.__name__,
+                },
+            )
+        return
     if usage_observed and isinstance(committer, PreparedModelCallAttemptUsageRecorder):
         await _record_attempt_usage(
             outcome.usage,

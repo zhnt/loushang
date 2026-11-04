@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import random
 from types import MappingProxyType
 
@@ -35,7 +36,7 @@ def _random_value(rng: random.Random, depth: int) -> object:
     if kind == "bool":
         return rng.choice([True, False])
     if kind == "int":
-        return rng.randint(-10**12, 10**12)
+        return rng.randint(-(10**12), 10**12)
     if kind == "float":
         return rng.choice([0.0, -1.5, 3.141592653589793, 1e-300, 1e300, 2.0])
     if kind == "str":
@@ -72,9 +73,19 @@ def test_canonical_encoder_matches_freeze_thaw_dump_pipeline() -> None:
         {"unicode_keys": {"🚀": 1, "a": 2, "中": 3, "é": 4}},
     ]
     for value in samples:
-        assert canonical_model_input_json(value, name="payload") == _legacy_canonical(
-            value, name="payload"
+        expected = _legacy_canonical(value, name="payload")
+        assert canonical_model_input_json(value, name="payload") == expected
+        assert (
+            canonical_model_input_json(json.loads(expected), name="payload") == expected
         )
+
+
+def test_native_canonical_keeps_shared_values_unicode_and_number_boundaries() -> None:
+    shared = {"中文🚀": [-0.0, 5e-324, 1.7976931348623157e308, 2**1024]}
+    value = {"first": shared, "second": shared, "\u0000": '"\\\n'}
+    assert canonical_model_input_json(value, name="payload") == _legacy_canonical(
+        value, name="payload"
+    )
 
 
 def test_canonical_encoder_rejects_the_same_values_with_the_same_errors() -> None:

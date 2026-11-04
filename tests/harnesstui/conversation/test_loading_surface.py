@@ -23,6 +23,7 @@ from loushang.harnesstui.conversation.screen_runner import (
     run_conversation_screen,
 )
 from loushang.harnesstui.conversation.startup_host import ScreenConversationStartup
+from loushang.tui import strip_control_sequences
 from loushang.tui.core import RenderResult
 from loushang.tui.terminal import TerminalSize
 from loushang.tui.terminal_backends.posix import PosixTerminalInputReader
@@ -55,8 +56,9 @@ class Output(StringIO):
 
 
 @contextmanager
-def running_surface():
+def running_surface(phase_provider=None):
     app = Screen(None, "/test", None, None)
+    app.startup_phase_provider = phase_provider
     read_fd, write_fd = os.pipe()
     output = Output()
     reader = PosixTerminalInputReader(read_fd)
@@ -94,6 +96,37 @@ def test_real_screen_echoes_while_main_thread_runs_synchronous_python():
         assert state.app.render_requester is None
         assert state.submission_backlog_pending
         assert "\x1b[?1049l" not in output.getvalue()
+
+
+def test_idle_loading_screen_animates_without_input():
+    with running_surface() as (_, _, _, output):
+        deadline = time.monotonic() + 2
+        visible_frames: set[str] = set()
+        while len(visible_frames) < 2 and time.monotonic() < deadline:
+            visible = strip_control_sequences(output.getvalue())
+            visible_frames.update(
+                frame for frame in "|/-\\" if f"{frame} Loading session" in visible
+            )
+            time.sleep(0.005)
+        assert len(visible_frames) >= 2
+
+
+def test_loading_phase_survives_disabled_enter_and_tracks_real_progress():
+    phase = ["initializing runtime"]
+    with running_surface(lambda: phase[0]) as (worker, _, write_fd, output):
+        deadline = time.monotonic() + 3
+        while "Initializing runtime" not in output.getvalue() and time.monotonic() < deadline:
+            time.sleep(0.005)
+        assert "Initializing runtime" in output.getvalue()
+        os.write(write_fd, b"draft\r")
+        phase[0] = "opening session"
+        deadline = time.monotonic() + 3
+        while "Opening session" not in output.getvalue() and time.monotonic() < deadline:
+            time.sleep(0.005)
+        assert "Opening session" in output.getvalue()
+        worker.request_transfer()
+        transfer = worker.join(5)
+        assert transfer.app.composer.value == "draft"
 
 
 def test_idle_escape_clears_visible_draft_without_another_input():

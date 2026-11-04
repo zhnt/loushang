@@ -20,6 +20,22 @@ class TranscriptWriterError(DirectoryWriterError):
     prefix = "transcript_writer"
 
 
+class TranscriptStoreAdmissionError(TranscriptWriterError):
+    """Local admission diagnostics without changing the bounded error string."""
+
+    def __init__(self, code: str, *, stage: str, record_path: Path) -> None:
+        super().__init__(code)
+        self.stage = stage
+        self.record_path = record_path
+        self.add_note(
+            f"Transcript admission stage={stage}; record={record_path}. "
+            "Keep the original state. A missing committed record can only be "
+            "restored from a matching initialized backup using "
+            "TranscriptStoreAdmission.restore_record_from_backup(). "
+            "Do not substitute a default identity."
+        )
+
+
 class TranscriptWriterLease(DirectoryWriterLease):
     """Root + conversation exclusion, independent of Product identity."""
 

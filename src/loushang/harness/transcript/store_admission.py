@@ -20,7 +20,8 @@ from threading import Event
 from loushang.harness.journal._directory_lease import DirectoryWriterLease
 from loushang.harness.journal._rooted_io import RootedFileIO
 
-from .writer_lease import TranscriptWriterError
+from ._admission_publication import AdmissionWitnessLease as _WitnessLease
+from .writer_lease import TranscriptStoreAdmissionError, TranscriptWriterError
 
 Identity = tuple[int, int]
 _VERSION = "transcript-store-admission/v1"
@@ -33,12 +34,6 @@ class TranscriptStoreBinding:
     family_id: str | None = None
     member_id: str | None = None
     shared_identities: tuple[Identity, Identity, Identity] | None = None
-
-
-class _WitnessLease(DirectoryWriterLease):
-    _error_type = TranscriptWriterError
-    _lock_directory = ".store-admission-locks"
-    _hash_domain = _VERSION
 
 
 class _StoreRoot(DirectoryWriterLease):
@@ -137,13 +132,15 @@ class TranscriptStoreAdmission:
         self._root_observed = root_observed
         self._existing = _WitnessLease(self.witness_root, _VERSION, key, create_lock=False)
         self._fresh = _WitnessLease(self.witness_root, _VERSION, key,
-                                    create_root=True, exclusive_root=True)
+                                    create_root=True, exclusive_root=True,
+                                    initial_record_factory=self._record)
         self._root_existing = _StoreRoot(root, _VERSION, key)
         self._root_fresh = _StoreRoot(root, _VERSION, key, create_root=True, exclusive_root=True)
         self._witness: _WitnessLease | None = None
         self._store: _StoreRoot | None = None
         self._io: RootedFileIO | None = None
         self._binding: TranscriptStoreBinding | None = None
+        self._recovery_record: dict[str, object] | None = None
         self._attempted = self._closed = False
         from ._store_family import _SharedFamily
 
@@ -180,6 +177,45 @@ class TranscriptStoreAdmission:
         finally:
             self._existing._mutex.release()
 
+    def restore_record_from_backup(self, backup: bytes) -> TranscriptStoreBinding:
+        """Restore only a missing v1/v2 member record with the same physical identity.
+
+        This one-shot owner must be retained and closed even on failure. No
+        directory or data is initialized; initialized backup bytes are validated
+        by the original read-only admission chain before exclusive publication.
+        Family-record recovery and unrecorded legacy initialization are excluded.
+        """
+        self._existing._enter()
+        path = self.witness_root / "admission.json"
+        try:
+            if self._attempted or self._closed:
+                raise TranscriptWriterError("closed")
+            if type(backup) is not bytes or len(backup) > 4096:
+                raise TranscriptWriterError("invalid")
+            record = json.loads(backup, object_pairs_hook=_unique)
+            if (type(record) is not dict or record.get("phase") != "initialized"
+                    or record.get("version") not in {_VERSION, "transcript-store-admission/v2"}):
+                raise TranscriptWriterError("invalid")
+            if self._family.present and record["version"] != "transcript-store-admission/v2":
+                raise TranscriptWriterError("conflict")
+            if not _missing(path):
+                raise TranscriptStoreAdmissionError("conflict", stage="restore_existing_record", record_path=path)
+            self._recovery_record = record
+            binding = self._open(inspect_only=True)
+            if binding is None or self._io is None or self._witness is None:
+                raise TranscriptStoreAdmissionError("incomplete", stage="restore_missing_witness", record_path=path)
+            self.check()
+            with self._io.bind(path) as target:
+                target.atomic_write(backup, exclusive=True)
+            self._recovery_record = None
+            self.check()
+            return binding
+        except (OSError, ValueError, RecursionError) as error:
+            raise TranscriptStoreAdmissionError("unavailable", stage="restore_record", record_path=path) from error
+        finally:
+            self._recovery_record = None
+            self._existing._mutex.release()
+
     def _open(self, *, inspect_only: bool = False) -> TranscriptStoreBinding | None:
         if self._attempted or self._closed:
             raise TranscriptWriterError("closed")
@@ -196,8 +232,9 @@ class TranscriptStoreAdmission:
             if existing:
                 # Negative precheck only: do not steal a creator's new lock
                 # before its first flock. Positive data is re-read under lock.
-                if _missing(self.witness_root / "admission.json"):
-                    raise TranscriptWriterError("incomplete")
+                if _missing(self.witness_root / "admission.json") and self._recovery_record is None:
+                    raise TranscriptStoreAdmissionError("incomplete", stage="open_record",
+                                                       record_path=self.witness_root / "admission.json")
                 self._witness = self._existing
             else:
                 if inspect_only:
@@ -241,7 +278,9 @@ class TranscriptStoreAdmission:
                 # Durable lock and intent precede every Session-root creation.
                 self._witness._sync_pending.update(("root", "directory", "lock"))
                 self._witness._sync_root_parents()
-                record = self._record()
+                initial_record = self._fresh.initial_record
+                assert initial_record is not None
+                record = initial_record
                 self._write(record)
                 # Freeze the initial observation: a legacy root disappearing
                 # while intent is published never becomes a creation grant.
@@ -324,9 +363,16 @@ class TranscriptStoreAdmission:
 
     def _record(self) -> dict[str, object]:
         assert self._witness is not None
-        return dict(version=_VERSION, store=self._key, operation=token_hex(16), phase="initializing",
-                    witness=list(_identity(self._witness._fds["root"])),
-                    lock=list(_identity(self._witness._fds["lock"])), root=None, parent=None)
+        record: dict[str, object] = dict(
+            version=_VERSION, store=self._key, operation=token_hex(16), phase="initializing",
+            witness=list(_identity(self._witness._fds["root"])),
+            lock=list(_identity(self._witness._fds["lock"])), root=None, parent=None,
+        )
+        family = self._family._record
+        if family is not None and self._key in family["members"]:
+            record.update(version="transcript-store-admission/v2", family=family["incarnation"],
+                          member=family["members"][self._key]["id"])
+        return record
 
     def _write(self, record: dict[str, object]) -> None:
         assert self._io is not None and self._witness is not None
@@ -337,8 +383,8 @@ class TranscriptStoreAdmission:
     def _read(self) -> dict[str, object]:
         assert self._io is not None and self._witness is not None
         self._witness.check_binding(owner_id=_VERSION, authority_id=self._key)
-        record = json.loads(self._io.read_bytes(self.witness_root / "admission.json", max_bytes=4096),
-                            object_pairs_hook=_unique)
+        record = _read_record(self._io, self.witness_root / "admission.json",
+                              backup=self._recovery_record)
         if type(record) is dict and record.get("version") == "transcript-store-admission/v2":
             return self._family.validate_member(record)
         if (type(record) is not dict
@@ -418,3 +464,19 @@ def _unique(pairs: list[tuple[str, object]]) -> dict[str, object]:
             raise ValueError("duplicate field")
         record[key] = value
     return record
+
+
+def _read_record(port: RootedFileIO, path: Path, *, max_bytes: int = 4096,
+                 backup: dict[str, object] | None = None):
+    try:
+        data = port.read_bytes(path, max_bytes=max_bytes)
+    except FileNotFoundError as error:
+        if backup is not None:
+            return backup
+        raise TranscriptStoreAdmissionError("incomplete", stage="read_record", record_path=path) from error
+    except OSError as error:
+        raise TranscriptStoreAdmissionError("unavailable", stage="read_record", record_path=path) from error
+    try:
+        return json.loads(data, object_pairs_hook=_unique)
+    except (ValueError, RecursionError) as error:
+        raise TranscriptStoreAdmissionError("conflict", stage="decode_record", record_path=path) from error

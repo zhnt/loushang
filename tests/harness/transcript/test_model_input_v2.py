@@ -28,8 +28,13 @@ from loushang.harness.transcript.model_input_types import (
     canonical_model_input_json,
     hash_model_input_json,
 )
-from loushang.harness.transcript.model_input_v2 import ModelInputV2Resolver
+from loushang.harness.transcript.model_input_v2 import (
+    ModelInputV2Resolver,
+    _hash_canonical_mapping_fields,
+    _hash_canonical_mapping_fields_incremental,
+)
 from loushang.harness.transcript.model_input_v2_types import (
+    MODEL_INPUT_V2_CHUNK_CHARACTERS,
     MODEL_INPUT_V2_PAYLOAD_VERSION,
     ModelInputMappingEntry,
     ModelInputNodeBundle,
@@ -79,6 +84,83 @@ def test_inline_model_input_keeps_float_unicode_and_control_canonical_bytes():
     assert replace(node) == node
 
 
+def test_mapping_root_hash_streams_sequence_without_changing_canonical_identity():
+    messages = [
+        {"role": "user", "content": '中\\n"文'},
+        {"role": "assistant", "content": [1e300, -0.0, True, None]},
+    ]
+    mapping = {"messages": messages, "empty": [], "meta": {"z": 2, "a": "🚀"}}
+    fields = {
+        "messages": tuple(
+            canonical_model_input_json(item, name="test message") for item in messages
+        ),
+        "empty": (),
+        "meta": canonical_model_input_json(mapping["meta"], name="test metadata"),
+    }
+
+    assert _hash_canonical_mapping_fields(fields) == hash_model_input_json(
+        mapping, name="test mapping"
+    )
+
+
+def test_mapping_root_hash_reuses_only_verified_append_prefix() -> None:
+    messages = tuple(
+        canonical_model_input_json({"role": "user", "content": index}, name="item")
+        for index in range(50)
+    )
+    first_fields = {"messages": messages, "model": '"test"'}
+    first_hash, first_cache = _hash_canonical_mapping_fields_incremental(
+        first_fields, previous=None, reused_items={}
+    )
+    assert first_hash == _hash_canonical_mapping_fields(first_fields)
+    assert first_cache is not None
+
+    appended_fields = {
+        **first_fields,
+        "messages": (*messages, '{"content":"tail","role":"user"}'),
+    }
+    appended_hash, appended_cache = _hash_canonical_mapping_fields_incremental(
+        appended_fields,
+        previous=first_cache,
+        reused_items={"messages": len(messages)},
+    )
+    assert appended_hash == _hash_canonical_mapping_fields(appended_fields)
+    assert appended_cache is not None
+    assert appended_cache.reused_item_count == len(messages)
+
+    changed_fields = {
+        **appended_fields,
+        "messages": ('{"content":"changed","role":"user"}', *messages[1:]),
+    }
+    changed_hash, changed_cache = _hash_canonical_mapping_fields_incremental(
+        changed_fields,
+        previous=first_cache,
+        reused_items={"messages": 0},
+    )
+    assert changed_hash == _hash_canonical_mapping_fields(changed_fields)
+    assert changed_cache is not None
+    assert changed_cache.reused_item_count == 0
+
+    changed_preceding = {
+        "api": '"changed"',
+        "messages": messages,
+        "model": '"test"',
+    }
+    previous_with_api = {**first_fields, "api": '"original"'}
+    _old_hash, previous_cache = _hash_canonical_mapping_fields_incremental(
+        previous_with_api, previous=None, reused_items={}
+    )
+    assert previous_cache is not None
+    changed_hash, changed_cache = _hash_canonical_mapping_fields_incremental(
+        changed_preceding,
+        previous=previous_cache,
+        reused_items={"messages": len(messages)},
+    )
+    assert changed_hash == _hash_canonical_mapping_fields(changed_preceding)
+    assert changed_cache is not None
+    assert changed_cache.reused_item_count == 0
+
+
 @pytest.mark.parametrize(
     "field,value",
     [
@@ -100,6 +182,44 @@ def _reference(record_id: str, ordinal: int, node) -> ModelInputNodeReference:
         node_kind=node.node_kind,
         content_hash=node.content_hash,
     )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [{"role": "user", "content": "short"}, {"output": "中🚀" * 30_000}],
+)
+def test_planned_value_keeps_exact_inline_and_chunked_node_identity(value) -> None:
+    from loushang.harness.transcript.model_input_v2_types import (
+        _create_model_input_json_value_from_canonical,
+    )
+
+    canonical = canonical_model_input_json(value, name="planned test value")
+    chunks = (
+        tuple(
+            create_model_input_json_chunk(text)
+            for text in split_model_input_canonical_json(canonical)
+        )
+        if len(canonical) > MODEL_INPUT_V2_CHUNK_CHARACTERS
+        else ()
+    )
+    refs = tuple(
+        _reference("chunks", index, chunk) for index, chunk in enumerate(chunks)
+    )
+    expected = create_model_input_json_value(value, chunk_refs=refs)
+    actual = _create_model_input_json_value_from_canonical(
+        canonical,
+        value_hash=hash_model_input_json(value, name="planned test value"),
+        decoded_bytes=len(canonical.encode("utf-8")),
+        chunk_refs=refs,
+    )
+    assert actual == expected
+    with pytest.raises(ValueError, match="planned Model Input JSON value changed"):
+        _create_model_input_json_value_from_canonical(
+            canonical,
+            value_hash="sha256:" + "0" * 64,
+            decoded_bytes=len(canonical.encode("utf-8")),
+            chunk_refs=refs,
+        )
 
 
 def _v2_graph():
@@ -367,6 +487,17 @@ def test_v2_chunking_aligns_identical_large_json_strings_across_shapes() -> None
     assert "".join(second_chunks) == second
 
 
+def test_v2_chunking_preserves_large_escaped_string_boundaries() -> None:
+    content = "x" * (48 * 1024) + '\\"quoted\\" \\\\ slash' + "文" * 1200
+    canonical = canonical_model_input_json(
+        {"content": content}, name="escaped large value"
+    )
+    chunks = split_model_input_canonical_json(canonical)
+    assert len(chunks) > 1
+    assert "".join(chunks) == canonical
+    assert max(map(len, chunks)) <= MODEL_INPUT_V2_CHUNK_CHARACTERS
+
+
 def test_v2_node_hash_is_stable_across_bundle_locations() -> None:
     item = create_model_input_json_value({"value": 1})
     first_ref = _reference("bundle-a", 0, item)
@@ -469,3 +600,86 @@ def test_v2_resolver_rebuilds_a_tail_chain_beyond_python_recursion_depth() -> No
     )
     assert len(values) == 1_100
     assert rebuilt_hash == sequence_hash
+
+
+def test_resolver_extension_reuses_ancestry_without_reindexing_old_ids(monkeypatch):
+    factory = AgentTranscriptRecordFactory()
+    node = create_model_input_json_value({"text": "unchanged"})
+    records = []
+    for _ in range(1_000):
+        records.append(
+            factory.create(
+                MODEL_INPUT_COMPONENT_KIND,
+                ModelInputNodeBundle((node,)),
+                parent_id=records[-1].record_id if records else None,
+                payload_version=MODEL_INPUT_V2_PAYLOAD_VERSION,
+            )
+        )
+    resolver = ModelInputV2Resolver(records)
+    reference = _reference(records[0].record_id, 0, node)
+    assert resolver.resolve_value_reference(reference, owner_position=len(records)) == {
+        "text": "unchanged"
+    }
+    suffix = factory.create(
+        MODEL_INPUT_COMPONENT_KIND,
+        ModelInputNodeBundle((node,)),
+        parent_id=records[-1].record_id,
+        payload_version=MODEL_INPUT_V2_PAYLOAD_VERSION,
+    )
+    record_type = type(records[0])
+    original_getattribute = record_type.__getattribute__
+    old_records = {id(record) for record in records}
+    old_id_reads = []
+
+    def counted_getattribute(record, name):
+        if name == "record_id" and id(record) in old_records:
+            old_id_reads.append(id(record))
+        return original_getattribute(record, name)
+
+    monkeypatch.setattr(record_type, "__getattribute__", counted_getattribute)
+    extended = resolver._with_extended_ancestry((*records, suffix))
+    assert not old_id_reads
+    assert extended._value_cache == {}
+    assert extended._sequence_cache == {}
+    assert extended._mapping_cache == {}
+    assert extended._resolved_nodes == set()
+    assert extended._decoded_bytes == 0
+    assert extended.position_of(suffix.record_id) == len(records)
+    assert resolver.position_of(suffix.record_id) is None
+    assert resolver._value_cache
+    value = extended.resolve_value_reference(reference, owner_position=len(records) + 1)
+    value["text"] = "caller mutation"
+    assert resolver.resolve_value_reference(reference, owner_position=len(records)) == {
+        "text": "unchanged"
+    }
+
+
+@pytest.mark.parametrize(
+    "change", ["shortened", "replaced_prefix", "duplicate_old", "duplicate_suffix"]
+)
+def test_resolver_extension_rejects_changed_ancestry_atomically(change):
+    factory = AgentTranscriptRecordFactory()
+    node = create_model_input_json_value("value")
+    first = factory.create(
+        MODEL_INPUT_COMPONENT_KIND, ModelInputNodeBundle((node,)), parent_id=None
+    )
+    second = factory.create(
+        MODEL_INPUT_COMPONENT_KIND,
+        ModelInputNodeBundle((node,)),
+        parent_id=first.record_id,
+    )
+    resolver = ModelInputV2Resolver((first, second))
+    if change == "shortened":
+        changed = (first,)
+    elif change == "replaced_prefix":
+        changed = (replace(first), second)
+    elif change == "duplicate_old":
+        changed = (first, second, first)
+    else:
+        suffix = replace(second, record_id="suffix")
+        changed = (first, second, suffix, suffix)
+    with pytest.raises(ModelInputIntegrityError):
+        resolver._with_extended_ancestry(changed)
+    assert resolver.position_of(first.record_id) == 0
+    assert resolver.position_of(second.record_id) == 1
+    assert resolver.position_of("suffix") is None

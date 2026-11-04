@@ -46,6 +46,7 @@ from loushang.harnesstui.conversation.agent_application import (
 from loushang.harnesstui.conversation.agent_binding import (
     agent_session_history_records,
     build_agent_screen_conversation_projection,
+    cooperative_agent_screen_event_listener,
 )
 from loushang.harnesstui.conversation.application_host import (
     PreparedScreenConversationRun,
@@ -100,6 +101,7 @@ class _HistoryActions:
             presenter=app,
             controller=build_coding_ui_controller(
                 session=None, runtime=runtime, plugin_workspace=app.state.cwd,
+                on_bash_record=app.append_command_execution_record,
             ), stderr=stderr, verbose=False,
         )
 
@@ -315,7 +317,9 @@ def build_coding_resume_history_screen(
 
     return PreparedScreenConversationRun(
         app=app, action_host=actions, surface=surface, event_source=events,
-        event_listener_factory=lambda: build_agent_screen_conversation_projection(app).handle,
+        event_listener_factory=lambda: cooperative_agent_screen_event_listener(
+            build_agent_screen_conversation_projection(app)
+        ),
         interaction_context=nullcontext(), profile=CODING_SCREEN_RUN_PROFILE,
         should_exit=lambda text: isinstance(parse_conversation_intent(text), QuitIntent),
         trace=lambda name, **data: None,

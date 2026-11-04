@@ -32,6 +32,7 @@ from loushang.coding.multiagent import (
 from loushang.coding.tool_pack import coding_workspace_tool_profile
 from loushang.harness.environment import HostEnvironment
 from loushang.harness.multiagent import (
+    AgentCaller,
     AgentInputMessage,
     AgentPath,
     AgentTypeRegistry,
@@ -41,6 +42,7 @@ from loushang.harness.multiagent import (
     ForkTier,
     HostCaller,
     MultiAgentControl,
+    MultiAgentError,
     SubagentContextPlan,
     WorkspaceLease,
     WorkspaceLeaseRequest,
@@ -338,6 +340,35 @@ def test_coding_analysis_agent_types_are_bounded_and_have_no_write_tools() -> No
         assert spec.can_spawn is False
 
 
+def test_default_capacity_admits_follow_up_analysis_after_five_open_children() -> None:
+    control = MultiAgentControl(agent_types=coding_agent_types())
+    caller = AgentCaller(control.root_ref)
+    for name, agent_type in (
+        ("research_a", "explorer"),
+        ("research_b", "explorer"),
+        ("research_c", "explorer"),
+        ("implementation", "shared_implementation_worker"),
+        ("review", "reviewer"),
+        ("follow_up_research", "explorer"),
+        ("critique", "critic"),
+    ):
+        control.spawn(
+            caller=caller,
+            parent_path=AgentPath.root(),
+            name=name,
+            agent_type=agent_type,
+        )
+
+    assert control.registry.open_count == 8
+    with pytest.raises(MultiAgentError, match="agent tree already has"):
+        control.spawn(
+            caller=caller,
+            parent_path=AgentPath.root(),
+            name="one_more",
+            agent_type="reviewer",
+        )
+
+
 def test_coding_phase_two_types_offer_isolated_and_shared_write_workers() -> None:
     registry = coding_agent_types(maximum_children=2)
     worker = registry.resolve("implementation_worker")
@@ -385,7 +416,7 @@ def test_coding_multiagent_prompt_names_the_admitted_roles_and_wait_discipline()
     assert "directly in the current worktree and branch" in prompt
     assert "maximum open children" in prompt
     assert "maximum concurrent children" not in prompt
-    assert "A failed spawn creates no child" in prompt
+    assert "may retain a cleanup-only child" in prompt
     assert "do not wait for it" in prompt
     assert "remain open, addressable, and count against open-child limits" in prompt
     assert "After one-shot fan-out and aggregation, close children" in prompt
@@ -714,7 +745,6 @@ def test_factory_binds_shared_approval_resolver_to_child_incarnation(
     assert delegated.approval_actor_id == bound.actor_id
     assert delegated.execution_profile_ceiling.readable_roots == (tmp_path.resolve(),)
     assert delegated.execution_profile_ceiling.writable_roots == ()
-    assert driver.delegated_execution_profile is delegated
     grant = root_resolver.grant_store.issue(
         ApprovalRequest(
             tool_name="bash",

@@ -34,6 +34,67 @@ shard_hash = load_script("shard_hash")
 
 
 class ScopeTests(unittest.TestCase):
+    def test_app_protocol_schema_selects_only_direct_consumers(self):
+        path = "docs/internals/architecture/appserver/app-protocol-v1.schema.json"
+        actual = self.selected(path)
+
+        self.assertEqual(
+            actual,
+            {
+                "docs",
+                "gui",
+                "architecture",
+                "coding",
+                "apphost",
+                "appservice",
+                "host_runtime",
+            },
+        )
+        self.assertFalse(
+            {
+                "ai",
+                "agent",
+                "harness",
+                "harness_native",
+                "harnesstui",
+                "coding_ui",
+                "tui_unit",
+                "tui_playback",
+                "tui_native",
+                "hosting",
+                "windows_shell",
+                "install",
+                "lsp",
+                "foundation",
+            }
+            & actual
+        )
+
+    def test_gui_code_and_tooling_select_only_gui_and_docs(self):
+        for path in ("gui/src/App.tsx", "gui/src-tauri/Cargo.lock", "gui/pnpm-lock.yaml", "scripts/gui/run.mjs"):
+            with self.subTest(path=path):
+                self.assertEqual(self.selected(path), {"docs", "gui"})
+                self.assertTrue(selector.select([path])["workflows"]["gui"])
+        self.assertEqual(self.selected("gui/README.md"), {"docs"})
+
+    def test_gui_runner_uses_the_package_check_without_make(self):
+        (command,) = runner.commands("gui")
+        self.assertEqual(command[1:], ["--dir", "gui", "run", "check"])
+        self.assertIn("pnpm", command[0])
+
+    def test_gui_workflow_does_not_select_runtime_suites(self):
+        self.assertEqual(self.selected(".github/workflows/gui-quality.yml"), {"docs", "gui", "ci"})
+
+    def test_gui_does_not_hide_shared_or_mixed_changes(self):
+        self.assertEqual(self.selected("gui/src/App.tsx", "scripts/ci/select_checks.py"), set(selector.select([], full=True)["checks"]))
+        runtime = self.selected("src/loushang/harness/example.py")
+        self.assertEqual(self.selected("gui/src/App.tsx", "src/loushang/harness/example.py"), runtime | {"gui"})
+
+    def test_gui_default_workflow_stays_lightweight(self):
+        workflow = (ROOT / ".github/workflows/gui-quality.yml").read_text()
+        self.assertIn("pnpm --dir gui run check", workflow)
+        for heavy in ("rustup", "test:layout", "build:fixture-native", "check:full"):
+            self.assertNotIn(heavy, workflow)
     def setUp(self):
         # Retain the underlying routing contracts for eventual gate restoration.
         pause = patch.object(selector, "PAUSED_WORKFLOWS", set())
@@ -804,6 +865,7 @@ class ScopeTests(unittest.TestCase):
         ordinary = selector.make_targeted_jobs(cases, full=False)
         self.assertEqual(len(ordinary), 1)
         self.assertEqual(set(ordinary[0]["paths"]), {*heavy, *companions})
+        self.assertEqual(ordinary[0]["timeout_minutes"], 30)
 
     def test_unit_inventory_is_explicit_existing_and_unique(self):
         inventory = json.loads((ROOT / "scripts/ci/unit-tests.json").read_text())
@@ -1395,7 +1457,9 @@ class GitRangeTests(unittest.TestCase):
 
     def test_rename_preserves_both_owners_and_unusual_filenames(self):
         old = "src/loushang/ai/旧 文件.py"
-        new = "docs/new\nname.md"
+        # Windows forbids control characters in filenames; retain spaces and
+        # Unicode there, while POSIX still exercises newline-delimited hazards.
+        new = "docs/new 名称.md" if os.name == "nt" else "docs/new\nname.md"
         self.commit_file(old, "same contents")
         base = self.git("rev-parse", "HEAD")
         (self.root / "docs").mkdir()

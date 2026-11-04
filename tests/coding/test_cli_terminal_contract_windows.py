@@ -28,16 +28,6 @@ def _record_backend(record_testsuite_property) -> None:
 def test_windows_cli_conpty_stream_ends_with_cursor_restoration(tmp_path: Path) -> None:
     """Assert renderer-visible restoration, not raw application VT output."""
     workspace, env = _cli_sandbox(tmp_path)
-    diagnostics = tmp_path / "startup-diagnostics"
-    diagnostics.mkdir()
-    stack_file = diagnostics / "threads.txt"
-    (diagnostics / "sitecustomize.py").write_text(
-        "import faulthandler\n"
-        f"_startup_trace = open({str(stack_file)!r}, 'w')\n"
-        "faulthandler.dump_traceback_later(10, repeat=True, file=_startup_trace)\n",
-        encoding="utf-8",
-    )
-    env["PYTHONPATH"] = os.pathsep.join((str(diagnostics), env.get("PYTHONPATH", "")))
     with spawn_terminal_process(
         [sys.executable, "-m", "loushang.coding.cli", "--tui"],
         cwd=workspace,
@@ -49,18 +39,12 @@ def test_windows_cli_conpty_stream_ends_with_cursor_restoration(tmp_path: Path) 
             lambda output: "Welcome to Loushang CLI" in strip_control_sequences(output),
             timeout=15,
         )
-        try:
-            driver.read_until(
-                lambda output: " | idle" in strip_control_sequences(output),
-                # Match the shared CLI contract: Product admission verifies
-                # builtin Wheels and opens native journals before readiness.
-                timeout=30,
-            )
-        except TimeoutError as error:
-            stacks = (
-                stack_file.read_text(encoding="utf-8") if stack_file.exists() else ""
-            )
-            raise TimeoutError(f"{error}\nCLI thread stacks:\n{stacks}") from error
+        driver.read_until(
+            lambda output: " | idle" in strip_control_sequences(output),
+            # Match the shared CLI contract: Product admission verifies
+            # builtin Wheels and opens native journals before readiness.
+            timeout=30,
+        )
         driver.write("/quit\r")
         assert driver.wait(timeout=15) == 0
         output = driver.raw_output

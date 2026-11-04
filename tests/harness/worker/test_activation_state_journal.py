@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from multiprocessing import get_context
@@ -16,7 +15,9 @@ from loushang.harness.worker.activation_state_journal import (
 )
 from loushang.harness.worker.product_activation import _initial_state
 
-pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX Product state root")
+_LINUX_ROOTED_WORKER = pytest.mark.skipif(
+    sys.platform != "linux", reason="Linux rooted Worker activation journal"
+)
 
 
 def _race_activation_state_cas(path: Path, barrier: Any, results: Any) -> None:
@@ -31,6 +32,7 @@ def _race_activation_state_cas(path: Path, barrier: Any, results: Any) -> None:
     results.put(journal.compare_and_swap(expected_revision=revision, document=updated))
 
 
+@_LINUX_ROOTED_WORKER
 def test_activation_state_cross_process_cas_has_one_winner(tmp_path: Path) -> None:
     root = tmp_path / "product-state"
     root.mkdir(mode=0o700)
@@ -68,6 +70,7 @@ def test_activation_state_cross_process_cas_has_one_winner(tmp_path: Path) -> No
         results.close()
 
 
+@_LINUX_ROOTED_WORKER
 def test_activation_state_reopens_across_process_and_rejects_stale_cas(
     tmp_path: Path,
 ) -> None:
@@ -108,6 +111,7 @@ print(json.dumps(next_state, sort_keys=True))
     assert WorkerActivationStateJournal(path).load() == updated
 
 
+@_LINUX_ROOTED_WORKER
 def test_activation_state_read_only_refuses_orphan_and_changed_history(
     tmp_path: Path,
 ) -> None:
@@ -142,6 +146,7 @@ def test_activation_state_read_only_refuses_orphan_and_changed_history(
     assert path.read_bytes() == damaged
 
 
+@_LINUX_ROOTED_WORKER
 @pytest.mark.parametrize(
     "damage", ["partial_tail", "duplicate_key", "changed_revision"]
 )

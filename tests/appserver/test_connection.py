@@ -38,6 +38,8 @@ from loushang.appserver.protocol import (
     SessionEventKindV1,
     SessionEventV1,
     SessionIdentityV1,
+    SessionModelSelectV1,
+    SessionModelsV1,
     SessionOpenSpecV1,
     SessionScopeV1,
     SessionSnapshotRequestV1,
@@ -150,6 +152,7 @@ def test_G14_WIRE_every_client_method_reaches_its_exact_semantic_target() -> Non
         mux = MuxSpaceV1("mux", "dev", 1, ())
         snapshot = SessionSnapshotV1(identity, "Coding", 0, 0, False)
         attachment = MuxAttachmentV1("a", mux, 1, ())
+        models = SessionModelsV1(None, ())
         event = AttachmentEventV1(
             "a", "m", SessionEventV1("s", 1, SessionEventKindV1.TURN_COMPLETED)
         )
@@ -172,6 +175,16 @@ def test_G14_WIRE_every_client_method_reaches_its_exact_semantic_target() -> Non
             ),
             ("close_member", MuxMemberCloseV1(selector, "m"), mux),
             ("snapshot_session", SessionSnapshotRequestV1("a", 1, "m"), snapshot),
+            (
+                "list_session_models",
+                SessionSnapshotRequestV1("a", 1, "m"),
+                models,
+            ),
+            (
+                "select_session_model",
+                SessionModelSelectV1("a", 1, "m", "provider:model"),
+                models,
+            ),
             ("start_turn", TurnTextV1("a", 1, "m", "start"), AckV1()),
             ("steer_turn", TurnTextV1("a", 1, "m", "steer"), AckV1()),
             ("follow_up_turn", TurnTextV1("a", 1, "m", "follow up"), AckV1()),

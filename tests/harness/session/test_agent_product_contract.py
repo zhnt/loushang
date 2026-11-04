@@ -3215,6 +3215,82 @@ def _append_event(path: Path, event: str) -> None:
         stream.write(event + "\n")
 
 
+@pytest.mark.parametrize("outcome", ["ready", "cancel", "superseded"])
+def test_agent_model_boundary_awaits_evidence_before_binding_current_request(
+    tmp_path, monkeypatch, outcome: str
+) -> None:
+    async def scenario() -> None:
+        disposed = []
+        _bind_transcript_factory(disposed)
+        transcript = await _new_transcript(tmp_path, product_id="evidence-ready")
+        session = _ContractProductSession(
+            product_id="evidence-ready",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("evidence-ready"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        await session.prepare_model_call_runtime()
+        host = SimpleNamespace(current_session=session)
+        session._extension_bridge.set_runtime_host(host)
+        entered, release = asyncio.Event(), asyncio.Event()
+        settled = asyncio.Event()
+
+        async def prepare_evidence():
+            entered.set()
+            try:
+                await release.wait()
+            finally:
+                settled.set()
+
+        monkeypatch.setattr(
+            session._request_evidence_runtime,
+            "prepare_model_input_async",
+            prepare_evidence,
+        )
+        preparation = ModelCallPreparation(
+            purpose="main",
+            sequence=1,
+            model=session.agent.model,
+            context=Context(system_prompt="evidence probe", messages=[]),
+            options=CallOptions(),
+        )
+        existing = asyncio.all_tasks()
+        job = asyncio.create_task(session.agent.prepare_model_call(preparation))
+        started = asyncio.create_task(entered.wait())
+        try:
+            done, _ = await asyncio.wait(
+                {job, started}, return_when=asyncio.FIRST_COMPLETED
+            )
+            assert started in done and not job.done(), (
+                "model request bypassed evidence preparation"
+            )
+            if outcome == "cancel":
+                job.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await job
+            else:
+                if outcome == "superseded":
+                    host.current_session = object()
+                release.set()
+                if outcome == "superseded":
+                    with pytest.raises(RuntimeError, match="current"):
+                        await job
+                else:
+                    options = await job
+                    assert options.prepared_request_committer is not None
+            assert settled.is_set()
+        finally:
+            job.cancel()
+            started.cancel()
+            await asyncio.gather(job, started, return_exceptions=True)
+            session._extension_bridge.set_runtime_host(None)
+            await session.dispose()
+        assert not asyncio.all_tasks() - existing
+
+    asyncio.run(scenario())
+
+
 def _bind_transcript_factory(
     disposed: list[str],
     *,

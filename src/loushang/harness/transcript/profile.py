@@ -148,7 +148,9 @@ class AgentTranscriptProfile:
         )
         _require_standard_payload_codecs(self._payload_codecs)
         self._semantics: dict[str, RecordSemantics] = {}
+        self._replay_revision = 0
         self._register_default_semantics()
+        self._default_replay_semantics = dict(self._semantics)
 
     @classmethod
     def default(cls) -> AgentTranscriptProfile:
@@ -161,6 +163,56 @@ class AgentTranscriptProfile:
     @property
     def semantic_kinds(self) -> tuple[str, ...]:
         return tuple(self._semantics)
+
+    @property
+    def replay_revision(self) -> int:
+        """In-memory semantics generation, independent of wire versions."""
+
+        return self._replay_revision
+
+    @property
+    def has_default_replay_semantics(self) -> bool:
+        """Whether replay uses only the built-in immutable state reducers."""
+
+        return (
+            type(self) is AgentTranscriptProfile
+            and len(self._semantics) == len(self._default_replay_semantics)
+            and all(
+                self._semantics.get(kind) is semantics
+                for kind, semantics in self._default_replay_semantics.items()
+            )
+        )
+
+    def supports_incremental_replay(
+        self, records: Sequence[AgentTranscriptRecord]
+    ) -> bool:
+        if not self.has_default_replay_semantics:
+            return False
+        for record in records:
+            semantics = self._semantics_for(record)
+            if (
+                semantics is not None
+                and (
+                    semantics.project_context is not None
+                    or semantics.reduce_state is not None
+                    or semantics.resolve_checkpoint is not None
+                )
+                and type(record.payload) not in semantics.payload_types
+            ):
+                # A subclass can override frozen field access or projection.
+                return False
+            if isinstance(record.payload, RecordAnnotationPatch) and isinstance(
+                record.payload.value, dict | list
+            ):
+                return False
+            if isinstance(record.payload, ConversationMetadataPatch) and any(
+                isinstance(value, dict | list)
+                for value in record.payload.values.values()
+            ):
+                # These payloads and their projected state expose nested JSON.
+                # Preserve fresh replay rather than sharing a mutable snapshot.
+                return False
+        return True
 
     def register_payload_codec(
         self,
@@ -184,6 +236,7 @@ class AgentTranscriptProfile:
         if kind in self._semantics and not replace:
             raise ValueError(f"record semantics are already registered for {kind!r}")
         self._semantics[kind] = semantics
+        self._replay_revision += 1
 
     def replay_ports(
         self,
@@ -218,6 +271,23 @@ class AgentTranscriptProfile:
         records: Sequence[AgentTranscriptRecord],
     ) -> AgentTranscriptContext:
         projection = self.replay_projection(records)
+        if projection.item_record_ids:
+            first_id = projection.item_record_ids[0]
+            checkpoint = next(
+                (
+                    record.payload
+                    for record in records
+                    if record.record_id == first_id
+                    and isinstance(record.payload, ContextCompactionCheckpoint)
+                ),
+                None,
+            )
+            if checkpoint is not None and checkpoint.provider_window is not None:
+                return AgentTranscriptContext(
+                    messages=projection.items[1:],
+                    state=projection.state,
+                    provider_window=checkpoint.provider_window,
+                )
         return AgentTranscriptContext(
             messages=projection.items,
             state=projection.state,

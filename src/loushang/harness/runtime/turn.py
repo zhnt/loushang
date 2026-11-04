@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Generic, Literal, TypeVar
 
 from loushang.harness.events.session import (
@@ -135,6 +135,7 @@ class TurnInputQueue(HostInputQueue[P], Generic[P]):
         has_delivery_messages: Callable[[], bool],
         notify: QueueNotifier,
         observe: QueueObserver | None = None,
+        delivery_allowed: Callable[[], bool] | None = None,
     ) -> None:
         super().__init__()
         self._submit = submit
@@ -142,6 +143,7 @@ class TurnInputQueue(HostInputQueue[P], Generic[P]):
         self._has_delivery_messages = has_delivery_messages
         self._notify = notify
         self._observe = observe
+        self._delivery_allowed = delivery_allowed or (lambda: True)
 
     def has_pending(self) -> bool:
         return super().has_pending() or self._has_delivery_messages()
@@ -153,11 +155,28 @@ class TurnInputQueue(HostInputQueue[P], Generic[P]):
         text: str,
         payload: P,
     ) -> QueuedMessageSnapshot:
-        delivered = self._submit(kind, payload)
+        submitted = self._delivery_allowed()
+        delivered = self._submit(kind, payload) if submitted else payload
         item = super().enqueue(kind, text=text, payload=delivered)
+        if not submitted:
+            items = self._items(kind)
+            items[-1] = replace(items[-1], submitted=False)
         self._observe_event("queued", item)
         self._notify()
         return item
+
+    def flush_delivery(self) -> None:
+        """Submit held items from the original queue, once, after isolation ends."""
+        if not self._delivery_allowed():
+            return
+        for kind in ("steering", "follow_up"):
+            items = self._items(kind)
+            for index, item in enumerate(items):
+                if item.submitted:
+                    continue
+                delivered = self._submit(kind, item.payload)
+                items[index] = replace(item, payload=delivered,
+                                       payload_identity=id(delivered), submitted=True)
 
     def clear(self) -> QueueSnapshot:
         previous = super().clear()
@@ -182,7 +201,7 @@ class TurnInputQueue(HostInputQueue[P], Generic[P]):
         steering_mode: QueueMode,
         follow_up_mode: QueueMode,
     ) -> bool:
-        if not previous_turn_completed:
+        if not previous_turn_completed or not self._delivery_allowed():
             return False
         if self.texts("steering"):
             self.drain("steering", steering_mode)

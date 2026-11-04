@@ -35,12 +35,14 @@ class StatusLinePreviewSnapshot:
     branch: str | None
     session_label: str | None
     running: bool
+    reasoning_label: str | None = None
     permission_profile: str | None = None
     pending_followups: int = 0
     pending_steers: int = 0
     status_message: str | None = None
     context_usage: object | None = None
     session_id: str | None = None
+    sdk_preparing: bool = False
 
 
 def status_line_fields(
@@ -51,7 +53,7 @@ def status_line_fields(
     if settings.model:
         fields.append(
             StatusField(
-                _status_line_model_label(snapshot.model_label),
+                _status_line_model_label(snapshot.model_label, snapshot.reasoning_label),
                 priority=100,
                 token="model",
             )
@@ -78,8 +80,16 @@ def status_line_fields(
         )
     if settings.runtime:
         runtime_text = "running" if snapshot.running else "idle"
+        if snapshot.sdk_preparing and not snapshot.running:
+            runtime_text += " · preparing model"
         runtime_token = "runtime.running" if snapshot.running else "runtime.idle"
-        fields.append(StatusField(runtime_text, priority=60, token=runtime_token))
+        fields.append(
+            StatusField(
+                runtime_text,
+                priority=75 if snapshot.sdk_preparing and not snapshot.running else 60,
+                token=runtime_token,
+            )
+        )
     if _show_auto_field(settings.queue, snapshot.pending_followups > 0 or snapshot.pending_steers > 0):
         fields.append(
             StatusField(
@@ -153,13 +163,14 @@ def cwd_label(cwd: str) -> str:
     return cwd.rstrip("/").rsplit("/", 1)[-1] or cwd
 
 
-def _status_line_model_label(model_label: str | None) -> str:
+def _status_line_model_label(
+    model_label: str | None, reasoning_label: str | None = None
+) -> str:
     if not model_label:
         return "model"
     identity = model_label.split(":", 2)
-    if len(identity) == 3 and all(identity):
-        return identity[2]
-    return model_label
+    label = identity[2] if len(identity) == 3 and all(identity) else model_label
+    return f"{label} {reasoning_label}" if reasoning_label else label
 
 
 def _setting_value(settings: object, key: str, default: object) -> object:

@@ -26,7 +26,7 @@ from loushang.coding.resume_activation_plan import build_session_activation_plan
 from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.approval import DenyApprovalResolver, InteractiveApprovalResolver
-from loushang.harness.config.agent import SettingsManager
+from loushang.harness.config.agent import ControlConfig, SettingsManager
 from loushang.harness.tools.workspace.factory import workspace_tool_runtime_settings
 from loushang.harnesstui.conversation.control import ConversationTextAction
 
@@ -49,6 +49,8 @@ def test_embedded_permission_default_also_applies_to_current_root(tmp_path):
     assert SettingsManager(global_settings_path=tmp_path / "user.json").get_permission_profile_id() == "full_access"
 
 
+@pytest.mark.parametrize("history_kind", ["legacy", "dormant", "empty"])
+@pytest.mark.parametrize("lsp_mode", ["on_demand", "always", "disabled"])
 @pytest.mark.parametrize(
     ("composition_id", "no_tools", "worker_plugin_id", "expected_owners"),
     [
@@ -79,8 +81,15 @@ def test_embedded_coordinator_prepares_exact_v2_input_from_current_root(
     no_tools,
     worker_plugin_id,
     expected_owners,
+    history_kind,
+    lsp_mode,
 ):
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    dormant_receipt = history_kind == "dormant"
+    if lsp_mode == "disabled" or (dormant_receipt and lsp_mode == "on_demand"):
+        expected_owners = tuple(
+            owner for owner in expected_owners if owner == "harness.worker-activation"
+        )
 
     async def scenario():
         manager = await SessionManager.new(
@@ -88,14 +97,29 @@ def test_embedded_coordinator_prepares_exact_v2_input_from_current_root(
             cwd=str(tmp_path),
             defer_materialization=False,
         )
-        await manager.append_message(
-            UserMessage(role="user", content="history", timestamp=1.0)
-        )
+        if history_kind != "empty":
+            await manager.append_message(
+                UserMessage(role="user", content="history", timestamp=1.0)
+            )
+        if dormant_receipt:
+            await manager.append_custom_entry(
+                "coding.composition-startup/v1",
+                {
+                    "version": 1,
+                    "setId": composition_id,
+                    "planFingerprint": resolve_coding_composition_set(composition_id).fingerprint,
+                    "productPolicyRevision": None,
+                    "catalogSelectionFingerprint": None,
+                    "selectedRevisions": [],
+                    "ownerGenerations": [],
+                },
+            )
         path = manager.session_file
         assert path is not None
         await manager.dispose_runtime_profile()
 
         settings = SettingsManager(
+            ControlConfig(capabilities={"coding.lsp": lsp_mode}),
             global_settings_path=tmp_path / "user.json",
             project_settings_path=tmp_path / "project.json",
         )
@@ -207,11 +231,12 @@ def test_embedded_coordinator_prepares_exact_v2_input_from_current_root(
                 / state_id
             ).exists()
             captured["require_current_admission"](attempt)
-            if not expected_owners:
+            if "harness.plugin-activation" not in expected_owners:
                 captured["require_current_epoch_settlement"](
                     attempt,
                     {"setId": composition_id, "selectedRevisions": []},
                 )
+                assert plugin_settlements == []
             elif worker_plugin_id is not None:
                 captured["require_current_epoch_settlement"](
                     attempt,

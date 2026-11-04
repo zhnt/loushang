@@ -24,8 +24,8 @@
 
 本文档建立在以下输入之上：
 
-- [Loushang-AI Whitebox Candidate Functions](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-whitebox-candidate-functions.md)
-- [Loushang-AI Whitebox Candidate Components](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-whitebox-candidate-components.md)
+- [Loushang-AI Whitebox Candidate Functions](loushang-ai-whitebox-candidate-functions.md)
+- [Loushang-AI Whitebox Candidate Components](loushang-ai-whitebox-candidate-components.md)
 - [Loushang Architecture Governance Profile](../governance-profile.md)
 
 ---

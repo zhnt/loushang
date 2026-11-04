@@ -25,6 +25,9 @@ acceptance does not establish writable release or performance readiness.
 
 ## Start Here
 
+- [Transcript Admission Publication and Recovery](key-designs/transcript-admission-publication.md)
+  defines complete witness publication before data creation, local diagnostics,
+  and identity-checked restoration of a missing record from a retained backup.
 - [Screen-first Session Startup](screen-first-session-startup-plan.md) defines
   the separately reviewed embedded startup successor: first frame before Session
   preparation, same-screen attachment and explicit cleanup ownership. See its

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from io import StringIO
 from types import SimpleNamespace
 
@@ -418,6 +419,314 @@ def test_screen_coding_tui_markdown_assistant_commit_does_not_rewrite_streamed_b
     assert step.diagnostics.changed_line_range[0] > 35
 
 
+def test_screen_coding_tui_unrendered_final_delta_reuses_streamed_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.tui.markdown.renderer as markdown_renderer
+
+    app = _app()
+    runtime, port = _runtime(app, width=100, height=18)
+    app.start_prompt("markdown stream", started_at=0.0)
+    runtime.render_now()
+    app.begin_assistant()
+    app.append_assistant_chunk(
+        "".join(
+            f"- **Line {index}**: [link](https://example.com/{index})\n"
+            for index in range(128)
+        )
+    )
+    runtime.render_now()
+    app.append_assistant_chunk("- **Final line**: [link](https://example.com/final)\n")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            markdown_renderer,
+            "_parse_normalized_markdown_blocks",
+            lambda _source: pytest.fail("completion reparsed the streamed body"),
+        )
+        app.end_assistant()
+        app.complete_run(elapsed_seconds=1.0)
+        step = runtime.render_now()
+
+    assert sum("Worked for 1.00s" in line for line in step.diagnostics.current_logical_lines) == 1
+    assert "Final line" in _visible_text(port)
+
+
+@pytest.mark.parametrize("kind", ("bullets", "paragraphs", "code"))
+def test_large_unrendered_final_markdown_prepares_worked_off_input_loop(
+    kind: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_screen_conversation_projection,
+        cooperative_agent_screen_event_listener,
+    )
+    from loushang.tui.markdown import renderer as markdown_renderer
+
+    async def scenario() -> None:
+        app = _app()
+        runtime, _port = _runtime(app, width=80, height=18)
+        app.start_prompt(kind, started_at=0.0)
+        runtime.render_now()
+        if kind == "bullets":
+            answer = "".join(
+                f"- **Line {index}**: [link](https://example.com/{index})\n"
+                for index in range(512)
+            )
+        elif kind == "paragraphs":
+            answer = "".join(
+                f"Paragraph {index} with **bold** and [link](https://example.com/{index}).\n\n"
+                for index in range(300)
+            )
+        else:
+            answer = "```python\n" + "".join(
+                f'print("line {index}: {"x" * 30}")\n'
+                for index in range(600)
+            ) + "```\n"
+        listener = cooperative_agent_screen_event_listener(
+            build_agent_screen_conversation_projection(app),
+            pause=lambda: asyncio.sleep(0),
+        )
+        listener({"type": "message_start", "message": _assistant()})
+        pending = listener(
+            {
+                "type": "message_update",
+                "message": _assistant(answer),
+                "assistant_message_event": {"type": "text_delta", "delta": answer},
+            }
+        )
+        assert pending is not None
+        await pending
+        assert app._transcript_region.has_prepared_assistant_markdown_render
+
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                markdown_renderer,
+                "_render_markdown_blocks",
+                lambda *_args, **_kwargs: pytest.fail("final markdown rendered on input loop"),
+            )
+            listener({"type": "message_end", "message": _assistant(answer)})
+            app.complete_run(elapsed_seconds=1.0)
+            step = runtime.render_loop.plan(TerminalSize(columns=80, rows=18))
+
+        assert sum("Worked for 1.00s" in line for line in step.current_logical_lines) == 1
+        sentinel = {
+            "bullets": "Line 511",
+            "paragraphs": "Paragraph 299",
+            "code": "line 599",
+        }[kind]
+        assert any(sentinel in line for line in step.current_logical_lines)
+
+    asyncio.run(scenario())
+
+
+def test_many_small_deltas_prepare_worked_off_input_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_screen_conversation_projection,
+        cooperative_agent_screen_event_listener,
+    )
+    from loushang.tui.markdown import renderer as markdown_renderer
+
+    async def scenario() -> None:
+        app = _app()
+        runtime, _port = _runtime(app, width=80, height=18)
+        app.start_prompt("small deltas", started_at=0.0)
+        runtime.render_now()
+        listener = cooperative_agent_screen_event_listener(
+            build_agent_screen_conversation_projection(app)
+        )
+        listener({"type": "message_start", "message": _assistant()})
+        chunks = [
+            f"- **Line {index}**: [link](https://example.com/{index})\n"
+            for index in range(512)
+        ]
+        for chunk in chunks:
+            assert listener(
+                {
+                    "type": "message_update",
+                    "message": _assistant(chunk),
+                    "assistant_message_event": {"type": "text_delta", "delta": chunk},
+                }
+            ) is None
+        answer = "".join(chunks)
+        pending = listener({"type": "message_end", "message": _assistant(answer)})
+        assert pending is not None
+        await pending
+        assert app._transcript_region.has_prepared_assistant_markdown_render
+        app.complete_run(elapsed_seconds=1.0)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                markdown_renderer,
+                "_render_markdown_blocks",
+                lambda *_args, **_kwargs: pytest.fail("final markdown rendered on input loop"),
+            )
+            step = runtime.render_loop.plan(TerminalSize(columns=80, rows=18))
+
+        assert sum("Worked for 1.00s" in line for line in step.current_logical_lines) == 1
+        assert any("Line 511" in line for line in step.current_logical_lines)
+
+    asyncio.run(scenario())
+
+
+def test_screen_coding_tui_paced_large_delta_preserves_terminal_scrollback() -> None:
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_screen_conversation_projection,
+        cooperative_agent_screen_event_listener,
+    )
+
+    async def scenario() -> None:
+        app = _app()
+        runtime, port = _runtime(app, width=100, height=18)
+        app.start_prompt("large answer", started_at=0.0)
+        runtime.render_now()
+        answer = "".join(
+            f"- **Line {index}**: [link](https://example.com/{index})\n"
+            for index in range(500)
+        )
+        projection = build_agent_screen_conversation_projection(app)
+
+        async def render_between_chunks() -> None:
+            step = runtime.render_now()
+            assert any("Working" in line for line in step.diagnostics.current_logical_lines)
+            await asyncio.sleep(0)
+
+        listener = cooperative_agent_screen_event_listener(
+            projection, pause=render_between_chunks
+        )
+        listener({"type": "message_start", "message": _assistant()})
+        pending = listener(
+            {
+                "type": "message_update",
+                "message": _assistant(answer),
+                "assistant_message_event": {"type": "text_delta", "delta": answer},
+            }
+        )
+        assert pending is not None
+        await pending
+        listener({"type": "message_end", "message": _assistant(answer)})
+        app.complete_run(elapsed_seconds=1.0)
+        step = runtime.render_now()
+
+        terminal_text = strip_control_sequences(
+            "\n".join((*port.screen.scrollback_lines, *port.screen.visible_lines))
+        )
+        for index in (0, 100, 250, 499):
+            assert terminal_text.count(f"Line {index}:") == 1
+        assert sum("Worked for 1.00s" in line for line in step.diagnostics.current_logical_lines) == 1
+
+    asyncio.run(scenario())
+
+
+def test_screen_coding_tui_atomic_table_uses_worker_parse_before_worked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_screen_conversation_projection,
+        cooperative_agent_screen_event_listener,
+    )
+    from loushang.tui.markdown import renderer as markdown_renderer
+
+    async def scenario() -> None:
+        app = _app()
+        runtime, port = _runtime(app, width=80, height=18)
+        app.start_prompt("table", started_at=0.0)
+        runtime.render_now()
+        answer = "| Name | Value |\n| --- | --- |\n" + "".join(
+            f"| row {index} | [link](https://example.com/{index}) |\n"
+            for index in range(600)
+        )
+        listener = cooperative_agent_screen_event_listener(
+            build_agent_screen_conversation_projection(app)
+        )
+        listener({"type": "message_start", "message": _assistant()})
+        pending = listener(
+            {
+                "type": "message_update",
+                "message": _assistant(answer),
+                "assistant_message_event": {"type": "text_delta", "delta": answer},
+            }
+        )
+        assert pending is not None
+        await pending
+        listener({"type": "message_end", "message": _assistant(answer)})
+        app.complete_run(elapsed_seconds=1.0)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                markdown_renderer._MARKDOWN_PARSER,
+                "parse",
+                lambda *_args, **_kwargs: pytest.fail("table parsed on input loop"),
+            )
+            patch.setattr(
+                markdown_renderer,
+                "_render_table",
+                lambda *_args, **_kwargs: pytest.fail("table rendered on input loop"),
+            )
+            step = runtime.render_now()
+
+        terminal_text = strip_control_sequences(
+            "\n".join((*port.screen.scrollback_lines, *port.screen.visible_lines))
+        )
+        assert terminal_text.count("row 0") == 1
+        assert terminal_text.count("row 599") == 1
+        assert sum("Worked for 1.00s" in line for line in step.diagnostics.current_logical_lines) == 1
+        step.assert_no_clear_scrollback()
+
+    asyncio.run(scenario())
+
+
+def test_screen_coding_tui_paced_mixed_markdown_preserves_terminal_scrollback() -> None:
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_screen_conversation_projection,
+        cooperative_agent_screen_event_listener,
+    )
+
+    async def scenario() -> None:
+        app = _app()
+        runtime, port = _runtime(app, width=100, height=18)
+        app.start_prompt("large mixed answer", started_at=0.0)
+        runtime.render_now()
+        answer = "".join(
+            f"## Section {index}\n\nParagraph {index} with **bold** and [link](https://example.com/{index}).\n\n"
+            for index in range(300)
+        )
+        projection = build_agent_screen_conversation_projection(app)
+
+        async def render_between_chunks() -> None:
+            runtime.render_now()
+            await asyncio.sleep(0)
+
+        listener = cooperative_agent_screen_event_listener(
+            projection, pause=render_between_chunks
+        )
+        listener({"type": "message_start", "message": _assistant()})
+        pending = listener(
+            {
+                "type": "message_update",
+                "message": _assistant(answer),
+                "assistant_message_event": {"type": "text_delta", "delta": answer},
+            }
+        )
+        assert pending is not None
+        await pending
+        runtime.render_now()
+        listener({"type": "message_end", "message": _assistant(answer)})
+        app.complete_run(elapsed_seconds=1.0)
+        step = runtime.render_now()
+
+        terminal_text = strip_control_sequences(
+            "\n".join((*port.screen.scrollback_lines, *port.screen.visible_lines))
+        )
+        for index in (0, 100, 200, 299):
+            assert terminal_text.count(f"Section {index}") == 1
+            assert terminal_text.count(f"Paragraph {index} with bold") == 1
+        assert sum("Worked for 1.00s" in line for line in step.diagnostics.current_logical_lines) == 1
+
+    asyncio.run(scenario())
+
+
 def test_screen_coding_tui_completion_replaces_working_with_one_worked_divider() -> None:
     app = _app()
     runtime, port = _runtime(app)
@@ -437,6 +746,55 @@ def test_screen_coding_tui_completion_replaces_working_with_one_worked_divider()
     assert visible.count("Worked for 2.32s") == 1
     assert "Working" not in visible[worked_index:]
     assert sum("Worked for 2.32s" in line for line in step.diagnostics.current_logical_lines) == 1
+
+
+def test_worked_frame_reuses_unchanged_history_beyond_stable_cache_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.tui.ui_parts.transcript import TranscriptRegion
+
+    app = ScreenCodingTuiApp(
+        model_label="test",
+        cwd="/repo",
+        branch="main",
+        session_label="history",
+        now=lambda: 3.0,
+        stable_render_cache_entry_limit=2,
+    )
+    history = [
+        ToolExecutionRecord(
+            name=f"tool {index}",
+            state="completed",
+            elapsed_seconds=0.1,
+            output=f"output {index}",
+        )
+        for index in range(30)
+    ]
+    app.state.records.extend(history)
+    app.state.mark_records_changed()
+    runtime, _port = _runtime(app)
+    runtime.render_now()
+    app.begin_run(started_at=1.0)
+    app.begin_assistant()
+    app.append_assistant_chunk("final answer")
+    runtime.render_now()
+
+    old_record_ids = {id(record) for record in history}
+    rebuilt_old_records: list[int] = []
+    original = TranscriptRegion._render_record_uncached
+
+    def tracked(self: TranscriptRegion, record, **kwargs):
+        if id(record) in old_record_ids:
+            rebuilt_old_records.append(id(record))
+        return original(self, record, **kwargs)
+
+    monkeypatch.setattr(TranscriptRegion, "_render_record_uncached", tracked)
+    app.end_assistant()
+    app.complete_run(elapsed_seconds=2.0)
+    step = runtime.render_now()
+
+    assert step.diagnostics.operation_class == "changed_range_update"
+    assert rebuilt_old_records == []
 
 
 def test_screen_coding_tui_keeps_unsubmitted_draft_in_live_composer_only() -> None:

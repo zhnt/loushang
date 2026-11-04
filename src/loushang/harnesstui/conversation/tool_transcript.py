@@ -118,7 +118,7 @@ class ToolTranscriptProjector:
         tool_name = snapshot.tool_name if snapshot is not None else view.tool_name
         args = snapshot.args if snapshot is not None else view.args
         rendered_call = snapshot.rendered_call_text if snapshot is not None else None
-        title = _title(tool_name, args, rendered_call)
+        title = _title(tool_name, args, rendered_call, view.details)
         body_visible = self.body_visibility(tool_name, view.status)
         return ToolTranscriptBlock(
             tool_call_id=view.tool_call_id,
@@ -134,7 +134,9 @@ class ToolTranscriptProjector:
                 max_lines=self.max_body_lines,
             ),
             command=self.command_resolver(tool_name, args, title),
-            expanded_body=_expanded_body(view) if body_visible else None,
+            expanded_body=(
+                _expanded_body(view) if body_visible or view.status == "error" else None
+            ),
             expanded_command=self.expanded_command_resolver(
                 tool_name,
                 args,
@@ -475,11 +477,26 @@ def tool_block_to_record(
     )
 
 
-def _title(tool_name: str, args: object | None, rendered_call: str | None) -> str:
+def _title(
+    tool_name: str,
+    args: object | None,
+    rendered_call: str | None,
+    details: Mapping[str, Any],
+) -> str:
     if tool_name == "spawn_agent" and isinstance(args, Mapping):
         name = args.get("name")
         if isinstance(name, str) and name:
             return f"spawn_agent {name}"
+    if tool_name == "close_agent" and isinstance(args, Mapping):
+        target = args.get("target")
+        if isinstance(target, str) and target:
+            return f"close_agent {target}"
+    if tool_name == "wait_agent":
+        activity = details.get("activity")
+        if isinstance(activity, Mapping):
+            sender_path = activity.get("sender_path")
+            if isinstance(sender_path, str) and sender_path:
+                return f"wait_agent {sender_path}"
     if rendered_call:
         first_line = rendered_call.splitlines()[0].strip()
         if first_line.startswith("$ "):

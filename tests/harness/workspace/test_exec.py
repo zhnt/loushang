@@ -648,3 +648,43 @@ def test_exec_service_task_cancellation_kills_process_tree(tmp_path: Path) -> No
         assert not marker.exists()
 
     asyncio.run(scenario())
+
+
+def test_large_utf8_bash_previews_remain_json_safe_and_retain_exact_output(tmp_path):
+    from loushang.foundation.json import require_json_value
+    from loushang.harness.tools.workspace.bash import (
+        _BashPartialOutput,
+        _exec_result_to_tool_result,
+    )
+
+    async def scenario():
+        partial = _BashPartialOutput()
+        updates = []
+
+        async def update(chunk):
+            preview = partial.append(chunk)
+            require_json_value(preview.content[0].text)
+            updates.append(preview)
+
+        text = "工具输出" * 30000
+        result = await ExecService().execute(
+            ExecRequest(
+                command=(
+                    sys.executable,
+                    "-c",
+                    'import sys; sys.stdout.write("工具输出"*30000)',
+                ),
+                cwd=str(tmp_path),
+                artifact_dir=str(tmp_path),
+            ),
+            on_update=update,
+        )
+        final = _exec_result_to_tool_result(result)
+        require_json_value(final.content[0].text)
+        require_json_value(final.details)
+        assert updates and result.exit_code == 0 and final.details["truncated"]
+        assert final.details["stdout_total_bytes"] == len(text.encode("utf-8"))
+        assert result.stdout_artifact_path is not None
+        assert Path(result.stdout_artifact_path).read_bytes() == text.encode("utf-8")
+
+    asyncio.run(scenario())

@@ -1,0 +1,11 @@
+# 公开取消调用的退出边界
+
+Authority: descriptive。对象为SessionGoalController桥接及原验证取消测试，原GoalController/Work取消算法、事实及结果类型不变。
+
+SessionGoalController现复用Harness ExecutionObservations等待公开request_cancel自身退出，再调用原Core.quiesce。关闭仍取消原调用方，但不join它的外层Task，因而其finally可等待同一owner.close而不构成循环等待。closing/retired仍走原GoalError；append fenced时物理取消保持可用。非取消cleanup异常写回原_quiescence_error，保留原retire阻断，不释放未知依赖。
+
+三个独立视角无阻断；报告在产品树外architecture-analysis/goal-refactor-20261103/cancellation-invocation-{ownership,runtime,data}.md。实施负责人依据源码复核与以下检查接受本地集成。
+
+原验证/Bash owner取消专项两模式通过：2 passed、156 deselected，14.88秒。新增模式await原Work.cancel物理settled后，仅将公开取消调用的返回边界挂起；外部close取消该调用，调用方finally加入同一close，最终退出。execute_definition是受控事件替身，该结果证明原Bash完成屏障与Work取消集成，不是新做OS进程退出实验。首次测试错误地先取消advance并等它退出，原Work.wait按合同等待domain drain，导致试验停滞；已中断该次并改正测试顺序，没有为测试改动产品settlement。Ruff及共享桥接mypy通过。
+
+另将非Coding批次选择测试移入既有tests/work/test_runtime.py，避免新增未分类测试模块使原选择器拒绝。测试主体不变，原路由1项通过；未改变CI分类、触发器、检查或门禁。make plan-checks恢复通过，后续仍执行选择的原检查。

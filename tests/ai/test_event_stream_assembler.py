@@ -142,6 +142,62 @@ def test_raw_assembler_groups_interleaved_tool_calls_by_id_and_index() -> None:
     assert done.content[1].arguments == {"x": 2}
 
 
+def test_raw_assembler_uses_complete_final_arguments_for_parallel_calls() -> None:
+    stream = AssistantMessageEventStream()
+    assembler = RawAssembler(
+        stream=stream,
+        api="openai-responses",
+        provider="openai",
+        endpoint="test-endpoint",
+        model="gpt-test",
+    )
+    assembler.feed({"type": "response_start", "response_id": "resp_1"})
+    for index, name in enumerate(("bash", "read", "spawn_agent")):
+        assembler.feed(
+            {
+                "type": "tool_call_start",
+                "id": f"call_{index}",
+                "name": name,
+                "index": index,
+            }
+        )
+    assembler.feed({"type": "tool_call_args_delta", "index": 1, "delta": '{"path":'})
+    for index, arguments in (
+        (2, '{"task":"inspect"}'),
+        (1, '{"path":"a"}'),
+        (0, '{"cmd":"pwd"}'),
+    ):
+        assembler.feed(
+            {"type": "tool_call_args_final", "index": index, "arguments": arguments}
+        )
+        assembler.feed({"type": "tool_call_done", "index": index})
+    assembler.feed({"type": "response_done"})
+
+    events = asyncio.run(_collect_events(stream))
+    assert [part.arguments for part in events[-1]["message"].content] == [
+        {"cmd": "pwd"},
+        {"path": "a"},
+        {"task": "inspect"},
+    ]
+
+
+def test_raw_assembler_rejects_conflicting_complete_arguments() -> None:
+    stream = AssistantMessageEventStream()
+    assembler = RawAssembler(
+        stream=stream,
+        api="openai-responses",
+        provider="openai",
+        endpoint="test-endpoint",
+        model="gpt-test",
+    )
+    assembler.feed({"type": "tool_call_start", "id": "call_1", "name": "bash"})
+    assembler.feed({"type": "tool_call_args_final", "arguments": '{"cmd":"pwd"}'})
+    with pytest.raises(RuntimeError, match="conflicting final tool-call arguments"):
+        assembler.feed(
+            {"type": "tool_call_args_final", "arguments": '{"cmd":"rm -rf ."}'}
+        )
+
+
 def test_raw_assembler_preserves_content_order_across_block_types() -> None:
     stream = AssistantMessageEventStream()
     assembler = RawAssembler(

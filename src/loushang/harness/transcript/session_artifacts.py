@@ -27,6 +27,14 @@ from loushang.harness.transcript.types import (
 if TYPE_CHECKING:
     from loushang.harness.journal._rooted_io import RootedFileIO
 
+_BLOB_MESSAGE_PAYLOAD_TYPES = (
+    UserMessage,
+    AssistantMessage,
+    ToolResultMessage,
+    ApplicationMessage,
+)
+_BLOB_PAYLOAD_TYPES = (CommandExecutionRecord, *_BLOB_MESSAGE_PAYLOAD_TYPES)
+
 
 class SessionBlobOwnershipError(ValueError):
     """A transcript tried to exercise another Session's blob authority."""
@@ -42,6 +50,8 @@ def collect_agent_transcript_session_blobs(
     selected: list[SessionBlobRef] = []
     seen: set[SessionBlobRef] = set()
     for record in records:
+        if not isinstance(record.payload, _BLOB_PAYLOAD_TYPES):
+            continue
         for reference in _payload_session_blobs(record.payload):
             if (
                 expected_session_id is not None
@@ -168,10 +178,7 @@ def _payload_session_blobs(payload: object) -> tuple[SessionBlobRef, ...]:
     references: list[SessionBlobRef] = []
     if isinstance(payload, CommandExecutionRecord):
         references.extend(payload.output_blobs)
-    if isinstance(
-        payload,
-        UserMessage | AssistantMessage | ToolResultMessage | ApplicationMessage,
-    ):
+    if isinstance(payload, _BLOB_MESSAGE_PAYLOAD_TYPES):
         content = payload.content
         if isinstance(content, list):
             references.extend(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import AsyncIterator, Callable, Mapping
 from copy import deepcopy
 from dataclasses import replace
@@ -11,12 +12,28 @@ import pytest
 from loushang.agent import Agent, ModelCallPreparation
 from loushang.ai import Context, stream
 from loushang.ai.api_registry import get_default_api_registry
+from loushang.ai.context import normalize_context, normalize_context_result
 from loushang.ai.json_codec import serialize_message
-from loushang.ai.model import Auth, Capabilities, Model
+from loushang.ai.model import Auth, Capabilities, Model, OpenAICompletionsConfig
 from loushang.ai.options import CallOptions, RetryOptions
-from loushang.ai.prepared_request import PreparedModelRequest, PreparedRequestLimits
+from loushang.ai.prepared_request import (
+    PreparedModelCallOutcome,
+    PreparedModelRequest,
+    PreparedRequestLimits,
+)
+from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
 from loushang.ai.provider.protocol import ProviderRequest
-from loushang.ai.types import AssistantMessage, UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    Message,
+    ProviderCompactionWindow,
+    TextPart,
+    Tool,
+    ToolCall,
+    ToolResultMessage,
+    Usage,
+    UserMessage,
+)
 from loushang.coding.compaction.profiles import (
     CODING_BRANCH_SUMMARY_PROFILE,
     CODING_COMPACTION_SUMMARY_PROFILE,
@@ -45,6 +62,7 @@ from loushang.harness.conversation import (
 )
 from loushang.harness.runtime import RuntimeProfileResolver
 from loushang.harness.session import AgentSessionInspector
+from loushang.harness.session import model_call as model_call_module
 from loushang.harness.session.model_call import (
     ModelInputTranscriptPort,
     SessionModelCallCapabilityConsumer,
@@ -135,10 +153,12 @@ def _skill_evidence_payload() -> dict[str, JSONValue]:
 
 
 async def _transcript_session(
-    *, message_metadata: Mapping[str, JSONValue] | None = None
+    *,
+    message_metadata: Mapping[str, JSONValue] | None = None,
+    backend: MemoryConversationStore | None = None,
 ) -> AgentTranscriptSession:
     transcript = await AgentTranscriptUnitOfWork.create(
-        MemoryConversationStore(record_id=lambda record: record.record_id),
+        backend or MemoryConversationStore(record_id=lambda record: record.record_id),
         ConversationKey("test", "session-model-call"),
         ConversationHeader(
             conversation_id="session-model-call",
@@ -165,6 +185,7 @@ class _ModelCallTestRoot:
         request_evidence_provider: (
             Callable[[ModelCallPreparation], Mapping[str, object] | None] | None
         ) = None,
+        on_committed_evidence_free_input: Callable[[str], None] | None = None,
     ) -> None:
         self._profile = RuntimeProfileResolver().resolve(
             standard_capability_composition_plan(product_id="coding")
@@ -190,6 +211,7 @@ class _ModelCallTestRoot:
             profile_fingerprint_provider=lambda: self.current_profile_fingerprint,
             turn_performance=turn_performance,
             request_evidence_provider=request_evidence_provider,
+            on_committed_evidence_free_input=on_committed_evidence_free_input,
         )
         self._plan = RuntimeCapabilityGraphPlanner().plan(
             CapabilityGraphPlanRequest(
@@ -248,6 +270,7 @@ def _model_call_runtime(
     request_evidence_provider: (
         Callable[[ModelCallPreparation], Mapping[str, object] | None] | None
     ) = None,
+    on_committed_evidence_free_input: Callable[[str], None] | None = None,
 ) -> _ModelCallTestRoot:
     return _ModelCallTestRoot(
         session,
@@ -255,6 +278,7 @@ def _model_call_runtime(
         registrations=registrations,
         turn_performance=turn_performance,
         request_evidence_provider=request_evidence_provider,
+        on_committed_evidence_free_input=on_committed_evidence_free_input,
     )
 
 
@@ -305,11 +329,13 @@ class _PreparedAdapter:
         retry_first: bool = False,
         terminal_error: bool = False,
         report_usage: bool = False,
+        response_text: str = "done",
     ) -> None:
         self.transport_calls = 0
         self.retry_first = retry_first
         self.terminal_error = terminal_error
         self.report_usage = report_usage
+        self.response_text = response_text
 
     def prepare_request(self, request: ProviderRequest) -> PreparedModelRequest:
         return PreparedModelRequest.from_provider_request(
@@ -377,7 +403,7 @@ class _PreparedAdapter:
             }
             return
         yield {"type": "response_start", "response_id": "response-1"}
-        yield {"type": "text_delta", "text": "done"}
+        yield {"type": "text_delta", "text": self.response_text}
         if self.report_usage:
             yield {
                 "type": "usage_delta",
@@ -401,6 +427,15 @@ class _PreparedAdapter:
 def test_current_session_prepares_and_rebuilds_main_model_call() -> None:
     async def scenario() -> None:
         session = await _transcript_session()
+        certified: list[str] = []
+
+        def certify(snapshot_id: str) -> None:
+            assert (
+                session.rebuild_model_input(snapshot_id).snapshot.snapshot_id
+                == snapshot_id
+            )
+            certified.append(snapshot_id)
+
         supplemental_registration = RegistrationInventoryEntry(
             registration_id="extension-tool-registration",
             surface="tool",
@@ -416,6 +451,7 @@ def test_current_session_prepares_and_rebuilds_main_model_call() -> None:
             session,
             is_current=lambda: True,
             registrations=(supplemental_registration,),
+            on_committed_evidence_free_input=certify,
         )
         adapter = _PreparedAdapter()
         registry = get_default_api_registry()
@@ -441,6 +477,7 @@ def test_current_session_prepares_and_rebuilds_main_model_call() -> None:
             if entry.kind == "model.input.prepared"
         ]
         assert len(snapshot_ids) == 1
+        assert certified == snapshot_ids
         rebuilt = session.rebuild_model_input(snapshot_ids[0])
         assert rebuilt.snapshot.purpose == "main"
         assert rebuilt.logical_input["system_prompt"] == "durable system prompt"
@@ -483,12 +520,934 @@ def test_current_session_prepares_and_rebuilds_main_model_call() -> None:
     asyncio.run(scenario())
 
 
+def test_session_reuses_sealed_text_prefix_and_rechecks_mutated_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        user = UserMessage(role="user", content="stable", timestamp=1.0)
+        tool = ToolResultMessage(
+            role="toolResult",
+            tool_call_id="call-1",
+            tool_name="read",
+            content=[TextPart(type="text", text="before")],
+            is_error=False,
+            timestamp=2.0,
+        )
+        context = Context(system_prompt="prompt", messages=[user, tool])
+        calls: list[object] = []
+        original = model_call_module.serialize_message
+
+        def count_serialization(message):
+            calls.append(message)
+            return original(message)
+
+        monkeypatch.setattr(model_call_module, "serialize_message", count_serialization)
+        for sequence in (1, 2):
+            await runtime.prepare(
+                ModelCallPreparation(
+                    purpose="main",
+                    sequence=sequence,
+                    model=_model(api="session-model-call-test"),
+                    context=context,
+                    options=CallOptions(),
+                )
+            )
+        assert calls == [user, tool]
+
+        tool.content[0] = TextPart(type="text", text="after")
+        await runtime.prepare(
+            ModelCallPreparation(
+                purpose="main",
+                sequence=3,
+                model=_model(api="session-model-call-test"),
+                context=context,
+                options=CallOptions(),
+            )
+        )
+        assert calls == [user, tool, tool]
+        sealed = session._last_model_input_context
+        assert sealed is not None
+        assert sealed.logical_input["messages"][1]["content"][0]["text"] == "after"
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_session_rechecks_nested_tool_details(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        details = {"nested": ["before"]}
+        tool = ToolResultMessage(
+            role="toolResult",
+            tool_call_id="call-1",
+            tool_name="read",
+            content=[TextPart(type="text", text="done")],
+            is_error=False,
+            timestamp=2.0,
+            details=details,
+        )
+        context = Context(messages=[tool])
+        calls = 0
+        original = model_call_module.serialize_message
+
+        def count_serialization(message):
+            nonlocal calls
+            calls += 1
+            return original(message)
+
+        monkeypatch.setattr(model_call_module, "serialize_message", count_serialization)
+        for sequence in (1, 2):
+            await runtime.prepare(
+                ModelCallPreparation(
+                    purpose="main",
+                    sequence=sequence,
+                    model=_model(api="session-model-call-test"),
+                    context=context,
+                    options=CallOptions(),
+                )
+            )
+        assert calls == 1
+        details["nested"][0] = "after"
+        await runtime.prepare(
+            ModelCallPreparation(
+                purpose="main",
+                sequence=3,
+                model=_model(api="session-model-call-test"),
+                context=context,
+                options=CallOptions(),
+            )
+        )
+        assert calls == 2
+        sealed = session._last_model_input_context
+        assert sealed is not None
+        assert sealed.logical_input["messages"][0]["details"]["nested"][0] == "after"
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_session_rechecks_assistant_tool_arguments_and_usage_cost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        arguments = {"path": ["before"]}
+        cost = {
+            "input": 0.0,
+            "output": 0.0,
+            "cacheRead": 0.0,
+            "cacheWrite": 0.0,
+            "total": 0.0,
+        }
+        assistant = AssistantMessage(
+            role="assistant",
+            content=[
+                ToolCall(type="toolCall", id="call-1", name="read", arguments=arguments)
+            ],
+            api="test-api",
+            provider="test-provider",
+            endpoint="test-endpoint",
+            model="test-model",
+            response_id=None,
+            usage=Usage(0, 0, 0, 0, 0, cost),
+            stop_reason="toolUse",
+            error_message=None,
+            timestamp=1.0,
+        )
+        context = Context(messages=[assistant])
+        calls = 0
+        original = model_call_module.serialize_message
+
+        def count_serialization(message):
+            nonlocal calls
+            calls += 1
+            return original(message)
+
+        monkeypatch.setattr(model_call_module, "serialize_message", count_serialization)
+        for sequence in (1, 2):
+            await runtime.prepare(
+                ModelCallPreparation(
+                    purpose="main",
+                    sequence=sequence,
+                    model=_model(api="session-model-call-test"),
+                    context=context,
+                    options=CallOptions(),
+                )
+            )
+        assert calls == 1
+        arguments["path"][0] = "after"
+        cost["total"] = 1.0
+        await runtime.prepare(
+            ModelCallPreparation(
+                purpose="main",
+                sequence=3,
+                model=_model(api="session-model-call-test"),
+                context=context,
+                options=CallOptions(),
+            )
+        )
+        assert calls == 2
+        sealed = session._last_model_input_context
+        assert sealed is not None
+        wire = sealed.logical_input["messages"][0]
+        assert wire["content"][0]["arguments"]["path"][0] == "after"
+        assert wire["usage"]["cost"]["total"] == 1.0
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_session_does_not_reuse_oversized_mutable_tool_details(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        tool = ToolResultMessage(
+            role="toolResult",
+            tool_call_id="call-1",
+            tool_name="read",
+            content=[TextPart(type="text", text="done")],
+            is_error=False,
+            timestamp=2.0,
+            details={"values": list(range(128))},
+        )
+        calls = 0
+        original = model_call_module.serialize_message
+
+        def count_serialization(message):
+            nonlocal calls
+            calls += 1
+            return original(message)
+
+        monkeypatch.setattr(model_call_module, "serialize_message", count_serialization)
+        for sequence in (1, 2):
+            await runtime.prepare(
+                ModelCallPreparation(
+                    purpose="main",
+                    sequence=sequence,
+                    model=_model(api="session-model-call-test"),
+                    context=Context(messages=[tool]),
+                    options=CallOptions(),
+                )
+            )
+        assert calls == 2
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("change", ["content", "details", "append"])
+def test_sealed_prefix_is_rechecked_before_model_input_capture(
+    monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        tool = ToolResultMessage(
+            role="toolResult",
+            tool_call_id="call-1",
+            tool_name="read",
+            content=[TextPart(type="text", text="before")],
+            is_error=False,
+            timestamp=2.0,
+            details={"nested": ["before"]},
+        )
+        context = Context(messages=[tool])
+        preparation = ModelCallPreparation(
+            purpose="main",
+            sequence=1,
+            model=_model(api="session-model-call-test"),
+            context=context,
+            options=CallOptions(),
+        )
+        await runtime.prepare(preparation)
+        original = model_call_module.SessionModelCallPreparer._project_logical_messages
+
+        def change_after_projection(self, messages):
+            result = original(self, messages)
+            if change == "content":
+                tool.content[0] = TextPart(type="text", text="after")
+            elif change == "details":
+                tool.details["nested"][0] = "after"
+            else:
+                context.messages.append(
+                    UserMessage(role="user", content="after", timestamp=3.0)
+                )
+            return result
+
+        monkeypatch.setattr(
+            model_call_module.SessionModelCallPreparer,
+            "_project_logical_messages",
+            change_after_projection,
+        )
+        await runtime.prepare(replace(preparation, sequence=2))
+        sealed = session._last_model_input_context
+        assert sealed is not None
+        messages = sealed.logical_input["messages"]
+        if change == "content":
+            assert messages[0]["content"][0]["text"] == "after"
+        elif change == "details":
+            assert messages[0]["details"]["nested"][0] == "after"
+        else:
+            assert len(messages) == 2
+            assert messages[1]["content"] == "after"
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_session_reuses_only_a_committed_prepared_request_prefix() -> None:
+    class ReusingAdapter(_PreparedAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self.prepared: list[PreparedModelRequest] = []
+            self.candidates: list[PreparedModelRequest | None] = []
+            self.certified_prefixes: list[int] = []
+            self.source_counts: list[int] = []
+
+        def prepare_request(self, request: ProviderRequest) -> PreparedModelRequest:
+            candidate = getattr(
+                request.options.prepared_request_committer
+                if request.options is not None
+                else None,
+                "prepared_request_reuse",
+                None,
+            )
+            self.candidates.append(candidate)
+            committer = request.options.prepared_request_committer
+            self.certified_prefixes.append(
+                getattr(committer, "certified_provider_prefix_count", -1)
+            )
+            self.source_counts.append(
+                getattr(committer, "current_provider_source_count", -1)
+            )
+            prepared = PreparedModelRequest.from_provider_request(
+                request,
+                payload={
+                    "model": request.model.id,
+                    "messages": [
+                        serialize_message(message)
+                        for message in request.context.messages
+                    ],
+                },
+            )
+            self.prepared.append(prepared)
+            return prepared
+
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        adapter = ReusingAdapter()
+        registry = get_default_api_registry()
+        source_id = "session-prefix-reuse-test"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "durable system prompt",
+                "model": _model(api=adapter.api),
+                "thinking_level": "off",
+            },
+            prepare_model_call=runtime.prepare,
+        )
+        try:
+            await agent.prompt("first")
+            await agent.prompt("second")
+            first_user = agent.state.messages[0]
+            assert isinstance(first_user, UserMessage)
+            agent.state.messages[0] = replace(first_user, content="changed")
+            await agent.prompt("third")
+        finally:
+            registry.unregister_api_adapters(source_id)
+        assert adapter.transport_calls == 3
+        assert adapter.candidates == [None, adapter.prepared[0], adapter.prepared[1]]
+        assert adapter.certified_prefixes == [0, 1, 0]
+        assert adapter.source_counts == [1, 3, 5]
+        first_messages = adapter.prepared[0].payload["messages"]
+        second_messages = adapter.prepared[1].payload["messages"]
+        assert second_messages[0] is first_messages[0]
+        snapshot_ids = [
+            entry.payload.snapshot_id
+            for entry in session.get_entries()
+            if entry.kind == "model.input.prepared"
+        ]
+        assert len(snapshot_ids) == 3
+        for snapshot_id, prepared in zip(snapshot_ids, adapter.prepared, strict=True):
+            rebuilt = session.rebuild_model_input(snapshot_id)
+            assert rebuilt.prepared_payload == prepared.payload_for_transport()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_session_certificate_reuses_exact_builtin_chat_payload() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        model = replace(
+            _model(api="openai-completions"),
+            capabilities=Capabilities(stream=True, tool_use=True, max_tokens=128),
+            adapter=OpenAICompletionsConfig(),
+        )
+        adapter = OpenAIChatCompletionsAdapter()
+        tool = Tool(name="read", description="Read", parameters={"type": "object"})
+        user = UserMessage(role="user", content="hello", timestamp=1.0)
+        first_context = Context(messages=[user], tools=[tool])
+
+        async def prepare(
+            context: Context, sequence: int
+        ) -> tuple[CallOptions, ProviderRequest]:
+            options = await runtime.prepare(
+                ModelCallPreparation(
+                    purpose="main",
+                    sequence=sequence,
+                    model=model,
+                    context=context,
+                    options=CallOptions(),
+                )
+            )
+            return options, ProviderRequest(
+                model=model,
+                context=normalize_context(
+                    context, model=model, pairing_mode=options.pairing_mode
+                ),
+                options=options,
+                base_url="https://provider.test/v1",
+                max_output_tokens=16,
+            )
+
+        first_options, first_request = await prepare(first_context, 1)
+        first_prepared = adapter.prepare_request(first_request)
+        assert first_options.prepared_request_committer is not None
+        await first_options.prepared_request_committer.commit_prepared_request(
+            first_prepared
+        )
+
+        assistant = AssistantMessage(
+            role="assistant",
+            content=[ToolCall(type="toolCall", id="call-1", name="read", arguments={})],
+            api="openai-completions",
+            provider=model.provider_id,
+            endpoint=model.endpoint_id,
+            model=model.id,
+            response_id=None,
+            usage=Usage(0, 0, 0, 0, 0, None),
+            stop_reason="toolUse",
+            error_message=None,
+            timestamp=2.0,
+        )
+        result = ToolResultMessage(
+            role="toolResult",
+            tool_call_id="call-1",
+            tool_name="read",
+            content=[TextPart(type="text", text="done")],
+            is_error=False,
+            timestamp=3.0,
+        )
+        second_context = Context(messages=[user, assistant, result], tools=[tool])
+        second_options, second_request = await prepare(second_context, 2)
+        assert second_options.prepared_request_committer is not None
+        assert (
+            second_options.prepared_request_committer.certified_provider_prefix_count
+            == 1
+        )
+        expected = adapter.prepare_request(
+            replace(second_request, options=CallOptions())
+        )
+        second_prepared = adapter.prepare_request(second_request)
+        assert second_prepared._reused_message_prefix_count > 0
+        assert (
+            second_prepared.payload["messages"][0]
+            is first_prepared.payload["messages"][0]
+        )
+        assert second_prepared.canonical_payload == expected.canonical_payload
+        assert second_prepared.payload_hash == expected.payload_hash
+        assert second_prepared.metrics == expected.metrics
+        assert (
+            second_prepared.payload_for_transport() == expected.payload_for_transport()
+        )
+        await second_options.prepared_request_committer.commit_prepared_request(
+            second_prepared
+        )
+
+        snapshot_ids = [
+            entry.payload.snapshot_id
+            for entry in session.get_entries()
+            if entry.kind == "model.input.prepared"
+        ]
+        assert len(snapshot_ids) == 2
+        for snapshot_id, prepared in zip(
+            snapshot_ids, (first_prepared, second_prepared), strict=True
+        ):
+            rebuilt = session.rebuild_model_input(snapshot_id)
+            assert rebuilt.prepared_payload == prepared.payload_for_transport()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_session_sealed_context_rejects_mutation_before_provider_normalization() -> (
+    None
+):
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        user = UserMessage(
+            role="user",
+            content=[TextPart(type="text", text="sealed")],
+            timestamp=1.0,
+        )
+        tool = Tool(
+            name="read",
+            description="Read",
+            parameters={"type": "object", "properties": {"path": {"type": "string"}}},
+        )
+        context = Context(messages=[user], tools=[tool])
+        options = await runtime.prepare(
+            ModelCallPreparation(
+                purpose="main",
+                sequence=1,
+                model=_model(api="openai-completions"),
+                context=context,
+                options=CallOptions(),
+            )
+        )
+        committer = options.prepared_request_committer
+        assert committer is not None
+        committer.verify_sealed_context(context)
+        user.content[0] = TextPart(type="text", text="changed")
+        with pytest.raises(RuntimeError, match="sealed Model Input context changed"):
+            committer.verify_sealed_context(context)
+        user.content[0] = TextPart(type="text", text="sealed")
+        context.messages.append(
+            UserMessage(role="user", content="extra", timestamp=2.0)
+        )
+        with pytest.raises(RuntimeError, match="sealed Model Input context changed"):
+            committer.verify_sealed_context(context)
+        context.messages.pop()
+        with pytest.raises(RuntimeError, match="sealed Model Input context changed"):
+            committer.verify_sealed_context(replace(context, system_prompt="changed"))
+        tool.parameters["properties"]["path"]["type"] = "integer"
+        with pytest.raises(RuntimeError, match="sealed Model Input context changed"):
+            committer.verify_sealed_context(context)
+        committer.start_sealed_context_verification(context)
+        prepared = PreparedModelRequest.from_provider_request(
+            ProviderRequest(
+                model=_model(api="openai-completions"),
+                context=normalize_context(context),
+                options=options,
+                base_url="https://provider.test/v1",
+                max_output_tokens=16,
+            ),
+            payload={"messages": []},
+        )
+        with pytest.raises(RuntimeError, match="sealed Model Input context changed"):
+            await committer.commit_prepared_request(prepared)
+        assert not any(
+            entry.kind == "model.input.prepared" for entry in session.get_entries()
+        )
+        user.content[0] = TextPart(type="text", text="changed again")
+        owned = committer.owned_sealed_context(context)
+        assert owned.messages[0].content[0].text == "sealed"
+        assert owned.tools[0].parameters["properties"]["path"]["type"] == "string"
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_provider_window_is_owned_by_sealed_model_input() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        window = ProviderCompactionWindow.from_items(
+            provider="test-provider",
+            endpoint="test-endpoint",
+            model="model-call-test",
+            items=[{"type": "compaction", "encrypted_content": "sealed"}],
+        )
+        context = Context(
+            messages=[UserMessage(role="user", content="continue", timestamp=1.0)],
+            provider_window=window,
+        )
+        options = await runtime.prepare(
+            ModelCallPreparation(
+                purpose="main",
+                sequence=1,
+                model=_model(api="openai-responses"),
+                context=context,
+                options=CallOptions(),
+            )
+        )
+        committer = options.prepared_request_committer
+        assert committer is not None
+        assert committer.owned_sealed_context(context).provider_window == window
+        committer.verify_sealed_context(context)
+        changed = ProviderCompactionWindow.from_items(
+            provider="test-provider",
+            endpoint="test-endpoint",
+            model="model-call-test",
+            items=[{"type": "compaction", "encrypted_content": "changed"}],
+        )
+        with pytest.raises(RuntimeError, match="sealed Model Input context changed"):
+            committer.verify_sealed_context(replace(context, provider_window=changed))
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_strict_message_snapshot_detects_nested_json_and_number_type_changes() -> None:
+    original = UserMessage(
+        role="user",
+        content=[
+            TextPart(
+                type="text",
+                text="sealed",
+                text_signature={"nested": [0.0, 1]},
+            )
+        ],
+        timestamp=1.0,
+    )
+    snapshot = deepcopy(original)
+    assert model_call_module._strict_message_equal(original, snapshot)
+    original.content[0].text_signature["nested"][0] = -0.0
+    assert not model_call_module._strict_message_equal(original, snapshot)
+    original.content[0].text_signature["nested"][0] = 0.0
+    original.content[0].text_signature["nested"][1] = 1.0
+    assert not model_call_module._strict_message_equal(original, snapshot)
+    original.content[0].text_signature["nested"][1] = 1
+
+    class EqualString(str):
+        pass
+
+    original.content[0] = replace(original.content[0], text=EqualString("sealed"))
+    assert not model_call_module._strict_message_equal(original, snapshot)
+
+
+def test_committed_strict_snapshot_skips_historical_shape_walk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        model = _model(api="openai-completions")
+        user = UserMessage(
+            role="user", content=[TextPart(type="text", text="sealed")], timestamp=1.0
+        )
+        first_context = Context(messages=[user])
+        first_options = await runtime.prepare(
+            ModelCallPreparation(
+                purpose="main",
+                sequence=1,
+                model=model,
+                context=first_context,
+                options=CallOptions(),
+            )
+        )
+        first_committer = first_options.prepared_request_committer
+        assert first_committer is not None
+        first_committer.normalize_owned_context(
+            first_committer.owned_sealed_context(first_context),
+            model=model,
+            pairing_mode="repair",
+        )
+        first_prepared = PreparedModelRequest.from_provider_request(
+            ProviderRequest(
+                model=model,
+                context=normalize_context(first_context),
+                options=first_options,
+                base_url="https://provider.test/v1",
+                max_output_tokens=16,
+            ),
+            payload={"messages": []},
+        )
+        await first_committer.commit_prepared_request(first_prepared)
+        assert runtime._consumer is not None
+        preparer = runtime._consumer.facets.require(
+            model_call_module.MODEL_INPUT_PREPARATION_FACET
+        )
+        assert preparer._strict_snapshot_task is None
+        await first_committer.record_terminal_model_call(
+            PreparedModelCallOutcome(
+                invocation_id=first_prepared.invocation_id,
+                disposition="completed",
+                stop_reason="toolUse",
+                usage=Usage(0, 0, 0, 0, 0, None),
+            ),
+            usage_observed=False,
+        )
+        assert preparer._strict_snapshot_task is not None
+        await preparer._strict_snapshot_task
+        assert preparer._strict_message_snapshots[0] is not None
+        assert preparer._strict_prefix_encoded is not None
+
+        observed: list[Message] = []
+        original = model_call_module._sealed_message_shape
+        matches: list[Message] = []
+        original_match = model_call_module._strict_snapshot_matches
+
+        def count_match(message, snapshot):
+            matches.append(message)
+            return original_match(message, snapshot)
+
+        monkeypatch.setattr(model_call_module, "_strict_snapshot_matches", count_match)
+
+        def count_shape(message):
+            observed.append(message)
+            return original(message)
+
+        monkeypatch.setattr(model_call_module, "_sealed_message_shape", count_shape)
+        second_context = Context(
+            messages=[
+                user,
+                UserMessage(role="user", content="next", timestamp=2.0),
+            ]
+        )
+        second_options = await runtime.prepare(
+            ModelCallPreparation(
+                purpose="main",
+                sequence=2,
+                model=model,
+                context=second_context,
+                options=CallOptions(),
+            )
+        )
+        assert second_options.prepared_request_committer is not None
+        assert matches == []
+        second_options.prepared_request_committer.verify_sealed_context(second_context)
+        owned = second_options.prepared_request_committer.owned_sealed_context(
+            second_context
+        )
+        assert owned.messages[0] is preparer._strict_message_snapshots[0].message
+        assert user not in observed
+        user.content[0] = TextPart(type="text", text="changed")
+        third_options = await runtime.prepare(
+            ModelCallPreparation(
+                purpose="main",
+                sequence=3,
+                model=model,
+                context=second_context,
+                options=CallOptions(),
+            )
+        )
+        assert matches and all(message is user for message in matches)
+        assert third_options.prepared_request_committer is not None
+        assert (
+            third_options.prepared_request_committer.certified_provider_prefix_count
+            == 0
+        )
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_session_incremental_normalization_matches_full_after_user_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        model = replace(
+            _model(api="openai-completions"),
+            capabilities=Capabilities(stream=True, tool_use=True, max_tokens=128),
+            adapter=OpenAICompletionsConfig(),
+        )
+        user = UserMessage(role="user", content="first", timestamp=1.0)
+        tool = Tool(name="read", description="Read", parameters={"type": "object"})
+        first_context = Context(messages=[user], tools=[tool])
+        first_options = await runtime.prepare(
+            ModelCallPreparation(
+                purpose="main",
+                sequence=1,
+                model=model,
+                context=first_context,
+                options=CallOptions(),
+            )
+        )
+        first_committer = first_options.prepared_request_committer
+        assert first_committer is not None
+        first_owned = first_committer.owned_sealed_context(first_context)
+        first_result = first_committer.normalize_owned_context(
+            first_owned, model=model, pairing_mode="repair"
+        )
+        first_request = ProviderRequest(
+            model=model,
+            context=first_result.context,
+            options=first_options,
+            base_url="https://provider.test/v1",
+            max_output_tokens=16,
+        )
+        first_prepared = OpenAIChatCompletionsAdapter().prepare_request(first_request)
+        await first_committer.commit_prepared_request(first_prepared)
+        assert runtime._consumer is not None
+        preparer = runtime._consumer.facets.require(
+            model_call_module.MODEL_INPUT_PREPARATION_FACET
+        )
+        assert preparer._normalized_cache_task is None
+        assert preparer._strict_snapshot_task is None
+        await first_committer.record_terminal_model_call(
+            PreparedModelCallOutcome(
+                invocation_id=first_prepared.invocation_id,
+                disposition="completed",
+                stop_reason="toolUse",
+                usage=Usage(0, 0, 0, 0, 0, None),
+            ),
+            usage_observed=False,
+        )
+        assert preparer._normalized_cache_task is not None
+        await preparer._normalized_cache_task
+        assert preparer._normalized_cache is not None
+
+        assistant = AssistantMessage(
+            role="assistant",
+            content=[ToolCall(type="toolCall", id="fresh", name="read", arguments={})],
+            api="openai-completions",
+            provider=model.provider_id,
+            endpoint=model.endpoint_id,
+            model=model.id,
+            response_id=None,
+            usage=Usage(0, 0, 0, 0, 0, None),
+            stop_reason="toolUse",
+            error_message=None,
+            timestamp=2.0,
+        )
+        result = ToolResultMessage(
+            role="toolResult",
+            tool_call_id="fresh",
+            tool_name="read",
+            content=[TextPart(type="text", text="done")],
+            is_error=False,
+            timestamp=3.0,
+        )
+        second_context = Context(messages=[user, assistant, result], tools=[tool])
+        second_options = await runtime.prepare(
+            ModelCallPreparation(
+                purpose="main",
+                sequence=2,
+                model=model,
+                context=second_context,
+                options=CallOptions(),
+            )
+        )
+        second_committer = second_options.prepared_request_committer
+        assert second_committer is not None
+        second_owned = second_committer.owned_sealed_context(second_context)
+        expected = normalize_context_result(
+            second_owned, model=model, pairing_mode="repair"
+        )
+        lengths: list[int] = []
+        original = model_call_module.normalize_context_result
+
+        def count_normalization(context, **kwargs):
+            lengths.append(len(context.messages))
+            return original(context, **kwargs)
+
+        monkeypatch.setattr(
+            model_call_module, "normalize_context_result", count_normalization
+        )
+        actual = second_committer.normalize_owned_context(
+            second_owned, model=model, pairing_mode="repair"
+        )
+        assert actual == expected
+        assert lengths == [2]
+
+        lengths.clear()
+        changed_model = replace(model, id="different-model")
+        second_committer.normalize_owned_context(
+            second_owned, model=changed_model, pairing_mode="repair"
+        )
+        assert lengths == [3]
+
+        lengths.clear()
+        second_committer.normalize_owned_context(
+            second_owned, model=model, pairing_mode="strict"
+        )
+        assert lengths == [3]
+
+        lengths.clear()
+        cached_user = preparer._normalized_cache.result.context.messages[0]
+        assert isinstance(cached_user, UserMessage)
+        cached_user.content[0] = TextPart(type="text", text="tampered")
+        assert (
+            second_committer.normalize_owned_context(
+                second_owned, model=model, pairing_mode="repair"
+            )
+            == expected
+        )
+        assert lengths == [3]
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_terminal_model_call_skips_unneeded_normalization_prewarm() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        model = replace(
+            _model(api="openai-completions"),
+            capabilities=Capabilities(stream=True, tool_use=True, max_tokens=128),
+            adapter=OpenAICompletionsConfig(),
+        )
+        context = Context(
+            messages=[UserMessage(role="user", content="done", timestamp=1.0)]
+        )
+        options = await runtime.prepare(
+            ModelCallPreparation(
+                purpose="main",
+                sequence=1,
+                model=model,
+                context=context,
+                options=CallOptions(),
+            )
+        )
+        committer = options.prepared_request_committer
+        assert committer is not None
+        result = committer.normalize_owned_context(
+            committer.owned_sealed_context(context), model=model, pairing_mode="repair"
+        )
+        prepared = OpenAIChatCompletionsAdapter().prepare_request(
+            ProviderRequest(
+                model=model,
+                context=result.context,
+                options=options,
+                base_url="https://provider.test/v1",
+                max_output_tokens=16,
+            )
+        )
+        await committer.commit_prepared_request(prepared)
+        await committer.record_terminal_model_call(
+            PreparedModelCallOutcome(
+                invocation_id=prepared.invocation_id,
+                disposition="completed",
+                stop_reason="stop",
+                usage=Usage(0, 0, 0, 0, 0, None),
+            ),
+            usage_observed=False,
+        )
+        assert runtime._consumer is not None
+        preparer = runtime._consumer.facets.require(
+            model_call_module.MODEL_INPUT_PREPARATION_FACET
+        )
+        assert preparer._normalized_cache_task is None
+        assert preparer._strict_snapshot_task is None
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_resource_evidence_is_request_bound_durable_and_resumable() -> None:
     async def scenario() -> None:
         session = await _transcript_session()
-        message_record_id, transcript_message = (
-            session.get_context_message_bindings()[0]
-        )
+        certified: list[str] = []
+        message_record_id, transcript_message = session.get_context_message_bindings()[
+            0
+        ]
         evidence = PreparedResourceEvidence(
             model_visible_text="hello",
             skills=(_skill_evidence_payload(),),
@@ -509,6 +1468,7 @@ def test_resource_evidence_is_request_bound_durable_and_resumable() -> None:
             session,
             is_current=lambda: True,
             request_evidence_provider=evidence_runtime.project_model_input,
+            on_committed_evidence_free_input=certified.append,
         )
         adapter = _PreparedAdapter()
         registry = get_default_api_registry()
@@ -526,6 +1486,7 @@ def test_resource_evidence_is_request_bound_durable_and_resumable() -> None:
             await agent.prompt("hello")
         finally:
             registry.unregister_api_adapters(source_id)
+        assert certified == []
 
         snapshot_id = next(
             entry.payload.snapshot_id
@@ -559,9 +1520,7 @@ def test_resource_evidence_is_request_bound_durable_and_resumable() -> None:
                 model=_model(api=adapter.api),
                 context=Context(
                     system_prompt="durable system prompt",
-                    messages=[
-                        UserMessage(role="user", content="hello", timestamp=1.0)
-                    ],
+                    messages=[UserMessage(role="user", content="hello", timestamp=1.0)],
                 ),
                 options=CallOptions(),
             )
@@ -587,9 +1546,7 @@ def test_resource_evidence_is_request_bound_durable_and_resumable() -> None:
 
         compacted = SessionRequestEvidenceRuntime(
             get_context_message_bindings=lambda records=None: (
-                ()
-                if records is None
-                else session.get_context_message_bindings(records)
+                () if records is None else session.get_context_message_bindings(records)
             ),
             get_active_records=session.get_active_entries,
             rebuild_model_input=session.rebuild_model_input,
@@ -693,9 +1650,9 @@ def test_anchored_resource_evidence_resume_skips_snapshot_rebuild() -> None:
 def test_resource_evidence_recovery_is_strict_and_transactional() -> None:
     async def scenario() -> None:
         session = await _transcript_session()
-        message_record_id, transcript_message = (
-            session.get_context_message_bindings()[0]
-        )
+        message_record_id, transcript_message = session.get_context_message_bindings()[
+            0
+        ]
         evidence = PreparedResourceEvidence(
             model_visible_text="hello",
             skills=(_skill_evidence_payload(),),
@@ -753,12 +1710,19 @@ def test_resource_evidence_recovery_is_strict_and_transactional() -> None:
             for entry in session.get_active_entries()
             if entry.kind == "model.input.prepared"
         )
-        assert session.rebuild_model_input(snapshot_id).logical_input[
-            RESOURCE_EVIDENCE_COMPONENT
-        ] == component
-        with pytest.raises(RequestEvidenceIntegrityError, match="repeats a message index"):
+        assert (
+            session.rebuild_model_input(snapshot_id).logical_input[
+                RESOURCE_EVIDENCE_COMPONENT
+            ]
+            == component
+        )
+        with pytest.raises(
+            RequestEvidenceIntegrityError, match="repeats a message index"
+        ):
             resumed.audit_snapshot_resource_evidence(snapshot_id)
-        with pytest.raises(RequestEvidenceIntegrityError, match="repeats a message index"):
+        with pytest.raises(
+            RequestEvidenceIntegrityError, match="repeats a message index"
+        ):
             resumed.project_model_input(preparation)
 
         session.branch(message_record_id)
@@ -771,7 +1735,24 @@ def test_resource_evidence_recovery_is_strict_and_transactional() -> None:
 
 def test_current_session_persists_observed_attempt_usage_before_outcome() -> None:
     async def scenario() -> None:
-        session = await _transcript_session()
+        class CountingBatchStore(MemoryConversationStore):
+            def __init__(self) -> None:
+                super().__init__(record_id=lambda record: record.record_id)
+                self.batch_sizes: list[int] = []
+
+            async def append_batch(
+                self, key, records, *, expected_revision, operation_ids
+            ):
+                self.batch_sizes.append(len(records))
+                return await super().append_batch(
+                    key,
+                    records,
+                    expected_revision=expected_revision,
+                    operation_ids=operation_ids,
+                )
+
+        backend = CountingBatchStore()
+        session = await _transcript_session(backend=backend)
         runtime = _model_call_runtime(session, is_current=lambda: True)
         adapter = _PreparedAdapter(report_usage=True)
         registry = get_default_api_registry()
@@ -814,6 +1795,7 @@ def test_current_session_persists_observed_attempt_usage_before_outcome() -> Non
         assert usage.total_tokens == 15
         assert usage.terminal is True
         assert entries.index(usage_entries[0]) < outcome_index
+        assert backend.batch_sizes[-1] == 2
         inspector = AgentSessionInspector(
             agent=agent,
             session=session,
@@ -1252,6 +2234,125 @@ def test_concurrent_session_model_inputs_allow_only_one_transport() -> None:
     asyncio.run(scenario())
 
 
+def test_worker_preparation_uses_the_transcript_owner_loop_for_owned_operations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        owner_loop = asyncio.get_running_loop()
+        current_checked = []
+        projected = []
+        created = []
+        create_committer = session.create_model_input_committer
+
+        def observe_create_committer(**kwargs: object):
+            assert asyncio.get_running_loop() is owner_loop
+            created.append(True)
+            return create_committer(**kwargs)
+
+        monkeypatch.setattr(
+            session, "create_model_input_committer", observe_create_committer
+        )
+
+        def is_current() -> bool:
+            assert asyncio.get_running_loop() is owner_loop
+            current_checked.append(True)
+            return True
+
+        def project_evidence(preparation: ModelCallPreparation) -> None:
+            assert preparation.purpose == "main"
+            assert asyncio.get_running_loop() is owner_loop
+            projected.append(True)
+            return None
+
+        runtime = _model_call_runtime(
+            session,
+            is_current=is_current,
+            request_evidence_provider=project_evidence,
+        )
+        try:
+            options = await runtime.prepare(
+                ModelCallPreparation(
+                    purpose="main",
+                    sequence=1,
+                    model=_model(api="test-api"),
+                    context=Context(
+                        messages=[
+                            UserMessage(role="user", content="hello", timestamp=1.0)
+                        ]
+                    ),
+                    options=CallOptions(),
+                )
+            )
+            assert options.prepared_request_committer is not None
+            assert current_checked == [True]
+            assert projected == [True]
+            assert created == [True]
+        finally:
+            await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_cancelled_model_preparation_keeps_input_responsive_and_serializes_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    calls = 0
+    original = SessionModelCallCapabilityConsumer.prepare
+
+    def slow_prepare(
+        consumer: SessionModelCallCapabilityConsumer,
+        preparation: ModelCallPreparation,
+        *,
+        owner_loop: asyncio.AbstractEventLoop | None = None,
+    ) -> CallOptions:
+        nonlocal calls
+        calls += 1
+        entered.set()
+        assert release.wait(1)
+        return original(consumer, preparation, owner_loop=owner_loop)
+
+    monkeypatch.setattr(SessionModelCallCapabilityConsumer, "prepare", slow_prepare)
+
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        preparation = ModelCallPreparation(
+            purpose="main",
+            sequence=1,
+            model=_model(api="test-api"),
+            context=Context(
+                system_prompt="system",
+                messages=[UserMessage(role="user", content="hello", timestamp=1.0)],
+            ),
+            options=CallOptions(),
+        )
+        try:
+            first = asyncio.create_task(runtime.prepare(preparation))
+            assert await asyncio.wait_for(asyncio.to_thread(entered.wait), 0.5)
+            first.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(first, 0.1)
+            settling = asyncio.create_task(runtime._runtime.settle())
+            await asyncio.sleep(0)
+            assert not settling.done()
+            second = asyncio.create_task(runtime.prepare(preparation))
+            await asyncio.sleep(0)
+            assert calls == 1
+            release.set()
+            await asyncio.wait_for(settling, 2)
+            options = await asyncio.wait_for(second, 2)
+            assert options.prepared_request_committer is not None
+            assert calls == 2
+        finally:
+            release.set()
+            await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_non_current_session_fails_before_model_transport() -> None:
     async def scenario() -> None:
         session = await _transcript_session()
@@ -1489,12 +2590,22 @@ def test_batched_compaction_records_ordered_history_and_merge_lineage() -> None:
     asyncio.run(scenario())
 
 
-def test_split_turn_compaction_retains_both_ordered_model_inputs() -> None:
+def test_split_turn_compaction_retains_single_ordered_model_input() -> None:
     async def scenario() -> None:
         session = await _transcript_session()
         source_id = session.get_entries()[0].record_id
         runtime = _model_call_runtime(session, is_current=lambda: True)
-        adapter = _PreparedAdapter()
+        adapter = _PreparedAdapter(
+            response_text=(
+                "## Goal\nContinue the task\n## Constraints & Preferences\n- c\n"
+                "## Progress\n### Done\n- [x] d\n### In Progress\n- [ ] i\n"
+                "### Blocked\n- none\n## Key Decisions\n- k\n"
+                "## Next Steps\n1. n\n## Critical Context\n- x\n\n---\n\n"
+                "**Turn Context (split turn):**\n\n"
+                "## Original Request\ncurrent turn\n## Early Progress\n- e\n"
+                "## Context for Suffix\n- s"
+            )
+        )
         registry = get_default_api_registry()
         adapter_source = "session-model-call-split-compaction-test"
         registry.register_api_adapter(adapter, source_id=adapter_source)
@@ -1515,16 +2626,17 @@ def test_split_turn_compaction_retains_both_ordered_model_inputs() -> None:
                 compaction_profile=CODING_COMPACTION_SUMMARY_PROFILE,
                 turn_prefix_profile=CODING_TURN_PREFIX_SUMMARY_PROFILE,
                 prepare_model_call=runtime.prepare,
+                strategy="local_combined",
             )
         finally:
             registry.unregister_api_adapters(adapter_source)
 
-        assert adapter.transport_calls == 2
-        assert len(result.model_input_snapshot_ids) == 2
+        assert adapter.transport_calls == 1
+        assert len(result.model_input_snapshot_ids) == 1
         assert [
             session.rebuild_model_input(snapshot_id).snapshot.purpose
             for snapshot_id in result.model_input_snapshot_ids
-        ] == ["compaction_history", "compaction_turn_prefix"]
+        ] == ["compaction_history"]
         await runtime.dispose()
 
     asyncio.run(scenario())

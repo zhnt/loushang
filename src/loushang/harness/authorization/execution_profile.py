@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol
 
 from loushang.harness.approval import ApprovalDecision
 from loushang.harness.policy import PolicyDecision
@@ -53,6 +53,26 @@ class EffectiveExecutionProfile:
 
 class ExecutionAuthorizationError(PermissionError):
     pass
+
+
+class ExecutionProfileProvider(Protocol):
+    """Trusted owner selection for the next action, before authority is frozen."""
+
+    def __call__(self) -> EffectiveExecutionProfile: ...
+
+
+def select_execution_profile(
+    ceiling: EffectiveExecutionProfile,
+    provider: ExecutionProfileProvider | None = None,
+) -> EffectiveExecutionProfile:
+    """Read live owner selection without exceeding a frozen deployment ceiling."""
+
+    if provider is None:
+        return ceiling
+    selected = provider()
+    if not isinstance(selected, EffectiveExecutionProfile):
+        raise TypeError("execution profile provider must return an EffectiveExecutionProfile")
+    return constrain_execution_profile(ceiling, selected)
 
 
 def execution_profile_expansion_codes(

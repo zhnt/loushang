@@ -287,7 +287,7 @@ class PermissionsCenterSurface:
             RenderLine(""),
             RenderLine(
                 self._styled(
-                    "Managed denies, delegated ceilings, and configured sandbox "
+                    "Managed denies, delegated ceilings, and required sandbox "
                     "limits will remain enforced.",
                     "permissions.warning",
                 )

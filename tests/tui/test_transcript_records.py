@@ -30,6 +30,26 @@ def rendered_text(view: TranscriptView, *, width: int = 60, height: int = 20) ->
     return tuple(line.text for line in result.lines)
 
 
+def test_streaming_assistant_prefix_preserves_fitted_styled_lines() -> None:
+    lines = (
+        "short",
+        "",
+        "\x1b[32mgreen\x1b[0m",
+        "┌──────────┐",
+        "中 text",
+    )
+    for width in (2, 30):
+        target = transcript_module.autowrap_safe_width(width)
+        expected = tuple(
+            transcript_module._prefixed_rendered_lines(
+                "* ", "  ", lines, width=target
+            )
+        )
+        assert transcript_module._prefix_streaming_assistant_segment(
+            lines, width=width, use_first_prefix=True
+        ) == expected
+
+
 def test_assistant_streaming_chunks_update_one_draft_until_commit() -> None:
     transcript = TranscriptBuffer()
     transcript.append(UserPromptRecord(text="hello"))

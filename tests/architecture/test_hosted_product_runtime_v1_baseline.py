@@ -587,6 +587,9 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "execution/recovery.py",
         "managed_mux.py",
         "managed_mux_wire.py",
+        # Application-local typed Method observations, no wire activation.
+        "method_work.py",
+        "goal.py",  # COD-KD-HG-001: local SDK data/bridge, no wire activation.
         "managed_mux_close.py",
     }
     assert {
@@ -609,6 +612,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "execution_notifications.py",
         "execution_registry.py",
         "execution_service.py",
+        "method_work.py",
+        "goal.py",  # COD-KD-HG-001: local SDK data/bridge, no wire activation.
         "managed_mux.py",
         "session_discovery.py",
         "managed_mux_close.py",
@@ -662,6 +667,10 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path("src/loushang/coding/apphost_product.py"),
         Path("src/loushang/coding/appservice_adapter.py"),
         Path("src/loushang/coding/hosted_application.py"),
+        # COD-KD-HMW-001: explicitly selected Method application composition.
+        Path("src/loushang/coding/hosted_method_application.py"),
+        # COD-KD-HG-001: opt-in Goal application on the same AppHost owner.
+        Path("src/loushang/coding/hosted_goal_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
         Path("src/loushang/coding/hosted_catalog.py"),
         Path("src/loushang/coding/hosted_session.py"),

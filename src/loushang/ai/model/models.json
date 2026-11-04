@@ -166,20 +166,27 @@
           "preferred": true,
           "docs": "https://api-docs.deepseek.com/",
           "models": {
-            "deepseek-v4-flash": {
-              "displayName": "DeepSeek V4 Flash",
-              "family": "deepseek-v4",
+            "deepseek-flash": {
+              "displayName": "DeepSeek V4.1 Flash",
+              "family": "deepseek-v4.1",
               "alias": "fast-chat",
               "capabilities": {
-                "contextWindow": 1000000,
-                "maxTokens": 384000,
+                "contextWindow": 1048576,
+                "maxTokens": 393216,
                 "input": [
-                  "text"
+                  "text",
+                  "image"
                 ],
                 "output": [
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -188,9 +195,42 @@
               },
               "pricing": {
                 "currency": "USD",
-                "input": 0.14,
-                "output": 0.28,
-                "cacheRead": 0.0028
+                "input": 0.3,
+                "output": 1.2,
+                "cacheRead": 0.006
+              }
+            },
+            "deepseek-v4-flash": {
+              "displayName": "DeepSeek V4.1 Flash (legacy ID)",
+              "family": "deepseek-v4.1",
+              "capabilities": {
+                "contextWindow": 1048576,
+                "maxTokens": 393216,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.3,
+                "output": 1.2,
+                "cacheRead": 0.006
               }
             },
             "deepseek-v4-pro": {
@@ -207,6 +247,12 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -385,6 +431,90 @@
                 "cacheRead": 1.3
               }
             },
+            "kimi-k3.1-pro": {
+              "displayName": "Kimi K3.1 Pro",
+              "family": "kimi-k3.1",
+              "defaults": {
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "max"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false,
+                "reasoningRequired": true
+              },
+              "adapter": {
+                "reasoningEffort": true,
+                "assistantReasoningContent": true,
+                "reasoningFormat": "openai",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
+              }
+            },
+            "kimi-k3.1-pro-highspeed": {
+              "displayName": "Kimi K3.1 Pro Highspeed",
+              "family": "kimi-k3.1",
+              "defaults": {
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "max"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false,
+                "reasoningRequired": true
+              },
+              "adapter": {
+                "reasoningEffort": true,
+                "assistantReasoningContent": true,
+                "reasoningFormat": "openai",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
+              }
+            },
             "kimi-k3": {
               "displayName": "Kimi K3",
               "family": "kimi-k3",
@@ -404,6 +534,11 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -467,6 +602,11 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -477,6 +617,92 @@
                 "streamingUsage": false,
                 "reasoningEffort": false,
                 "strictSchema": true
+              }
+            },
+            "k3.1-pro": {
+              "displayName": "Kimi Code K3.1 Pro",
+              "family": "kimi-k3.1",
+              "defaults": {
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "high"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false,
+                "reasoningRequired": true
+              },
+              "adapter": {
+                "reasoningEffort": true,
+                "maxOutputTokensField": "max_completion_tokens",
+                "assistantReasoningContent": true,
+                "reasoningFormat": "openai",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
+              }
+            },
+            "k3.1-pro-highspeed": {
+              "displayName": "Kimi Code K3.1 Pro Highspeed",
+              "family": "kimi-k3.1",
+              "defaults": {
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "high"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false,
+                "reasoningRequired": true
+              },
+              "adapter": {
+                "reasoningEffort": true,
+                "maxOutputTokensField": "max_completion_tokens",
+                "assistantReasoningContent": true,
+                "reasoningFormat": "openai",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
               }
             },
             "k3": {
@@ -498,6 +724,11 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -508,7 +739,14 @@
                 "reasoningEffort": true,
                 "maxOutputTokensField": "max_completion_tokens",
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai"
+                "reasoningFormat": "openai",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
               }
             }
           },
@@ -545,11 +783,96 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": false,
                 "attachment": false,
                 "temperature": false
+              }
+            },
+            "k3.1-pro": {
+              "displayName": "Kimi Code K3.1 Pro",
+              "family": "kimi-k3.1",
+              "defaults": {
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "high"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false,
+                "reasoningRequired": true
+              },
+              "adapter": {
+                "thinkingMode": "adaptive",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
+              }
+            },
+            "k3.1-pro-highspeed": {
+              "displayName": "Kimi Code K3.1 Pro Highspeed",
+              "family": "kimi-k3.1",
+              "defaults": {
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "high"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false,
+                "reasoningRequired": true
+              },
+              "adapter": {
+                "thinkingMode": "adaptive",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
               }
             },
             "k3": {
@@ -571,6 +894,11 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": false,
@@ -582,7 +910,7 @@
                 "reasoningEffortMap": {
                   "minimal": "low",
                   "low": "low",
-                  "medium": "medium",
+                  "medium": "high",
                   "high": "high",
                   "xhigh": "max"
                 }
@@ -631,43 +959,19 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
-              },
-              "pricing": {
-                "currency": "USD",
-                "input": 5,
-                "output": 30,
-                "cacheRead": 0.5
-              }
-            },
-            "gpt-5.6-sol": {
-              "displayName": "GPT-5.6 Sol",
-              "family": "gpt-5.6",
-              "knowledge": "2026-02-16",
-              "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
-              },
-              "capabilities": {
-                "contextWindow": 1050000,
-                "maxTokens": 128000,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "providerCompaction": "openai-responses"
               },
               "pricing": {
                 "currency": "USD",
@@ -695,11 +999,20 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "providerCompaction": "openai-responses"
               },
               "pricing": {
                 "currency": "USD",
@@ -727,11 +1040,19 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "providerCompaction": "openai-responses"
               },
               "pricing": {
                 "currency": "USD",
@@ -759,17 +1080,66 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "providerCompaction": "openai-responses"
               },
               "pricing": {
                 "currency": "USD",
                 "input": 2,
                 "output": 10,
                 "cacheRead": 0.1
+              }
+            },
+            "gpt-6.1-terra": {
+              "displayName": "GPT-6.1 Terra",
+              "family": "gpt-6.1",
+              "knowledge": "2026-06-01",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1050000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false,
+                "providerCompaction": "openai-responses"
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 1,
+                "output": 5,
+                "cacheRead": 0.05
               }
             },
             "gpt-6-luna": {
@@ -791,11 +1161,20 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "providerCompaction": "openai-responses"
               },
               "pricing": {
                 "currency": "USD",
@@ -823,11 +1202,19 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "providerCompaction": "openai-responses"
               },
               "pricing": {
                 "currency": "USD",
@@ -874,31 +1261,13 @@
                   "text"
                 ],
                 "reasoning": true,
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": true
-              }
-            },
-            "gpt-5.6-sol": {
-              "displayName": "GPT-5.6 Sol oauth",
-              "family": "gpt-5.6",
-              "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
-              },
-              "capabilities": {
-                "contextWindow": 1050000,
-                "maxTokens": 128000,
-                "input": [
-                  "text",
-                  "image"
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
                 ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -924,6 +1293,14 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -949,6 +1326,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -974,6 +1358,46 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              }
+            },
+            "gpt-6.1-terra": {
+              "displayName": "GPT-6.1 Terra oauth",
+              "family": "gpt-6.1",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1050000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -999,6 +1423,14 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -1055,6 +1487,11 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -1122,6 +1559,11 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "high"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -1385,6 +1827,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": false,
@@ -1426,6 +1875,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": false,
@@ -1467,6 +1923,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": false,
@@ -1508,6 +1971,7 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": false,

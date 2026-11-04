@@ -11,6 +11,7 @@ import pytest
 from loushang.harnesstui.conversation.host import ConversationScreenRunProfile
 from loushang.harnesstui.conversation.input import (
     ConversationInputHandled,
+    ConversationInputIgnored,
     ConversationInputRouter,
     ConversationPromptResult,
 )
@@ -35,6 +36,10 @@ def test_attached_product_keeps_loading_gate_until_complete_input_boundary():
                 if event.kind == "resize":
                     assert product_context.get() == "product"
                 return super().handle(event)
+
+            def resume_paused_submission(self):
+                assert product_context.get() == "product"
+                return super().resume_paused_submission()
 
         async def prepare():
             return 0
@@ -90,19 +95,124 @@ def test_attached_product_keeps_loading_gate_until_complete_input_boundary():
                 ConversationInputHandled,
             )
             assert screen.composer.value == "draft"
+            assert router.resume_paused_submission() is None
+            assert not screen.state.running
             empty = True
             startup.before_input_read(True)
             assert boundary_calls == [False], "pending parser blocks admission"
             startup.before_input_read(False)
             assert startup.submission_armed and not screen.state.startup_pending
-            result = router.handle(InputEvent(kind="key", key="enter"))
+            router.set_submission_paused(True)
+            assert isinstance(
+                router.handle(InputEvent(kind="key", key="enter")),
+                ConversationInputIgnored,
+            )
+            assert screen.composer.value == "draft"
+            result = router.resume_paused_submission()
             assert isinstance(result, ConversationPromptResult)
             assert result.text == "draft"
+            assert router.resume_paused_submission() is None
         finally:
             await startup.settle(0, None, router.dispose)
             assert await attach == 0
 
     asyncio.run(scenario())
+
+
+def test_startup_screen_submits_enter_once_after_escape_cleanup():
+    async def scenario():
+        screen = app()
+        queue = asyncio.Queue()
+        terminal_events, submissions = [], []
+        ready, started, aborting, deferred, cleanup_release, turn_finished, second = (
+            asyncio.Event() for _ in range(7)
+        )
+        context = ContextVar("cancel_product", default="outside")
+
+        class Router(ConversationInputRouter):
+            def __post_init__(self):
+                super().__post_init__()
+                asyncio.get_running_loop().call_soon(ready.set)
+
+            def handle(self, event):
+                assert context.get() == "product"
+                result = super().handle(event)
+                if (
+                    event.kind == "key"
+                    and event.key == "enter"
+                    and self._submission_paused
+                    and screen.composer.value == "after cancel"
+                ):
+                    deferred.set()
+                return result
+
+        class Host:
+            async def submit(self, action):
+                assert context.get() == "product"
+                submissions.append(action.text)
+                if action.text == "first":
+                    started.set()
+                    await turn_finished.wait()
+                else:
+                    second.set()
+
+            async def abort(self):
+                assert context.get() == "product"
+                aborting.set()
+                await cleanup_release.wait()
+                turn_finished.set()
+
+            async def steer(self, _action):
+                raise AssertionError("retiring turn must not receive another action")
+
+            follow_up = steer
+
+        async def prepare():
+            token = context.set("product")
+            try:
+                return await startup.attach(
+                    app=screen,
+                    stdin=StringIO(),
+                    stdout=StringIO(),
+                    action_host=Host(),
+                    profile=ConversationScreenRunProfile(
+                        Router, "Interrupted", "Cancelled"
+                    ),
+                    should_exit=lambda text: text == "/quit",
+                )
+            finally:
+                context.reset(token)
+
+        startup = ScreenConversationStartup(screen, prepare)
+
+        async def drive():
+            await ready.wait()
+            queue.put_nowait("first\r")
+            await started.wait()
+            queue.put_nowait("\x1b")
+            await aborting.wait()
+            queue.put_nowait("after cancel\r")
+            await deferred.wait()
+            assert submissions == ["first"]
+            cleanup_release.set()
+            await second.wait()
+            queue.put_nowait("/quit\r")
+
+        driver = asyncio.create_task(drive())
+        try:
+            assert await startup.run(**options(terminal_events, queue)) == 0
+            await driver
+        finally:
+            cleanup_release.set()
+            turn_finished.set()
+            driver.cancel()
+            await asyncio.gather(driver, return_exceptions=True)
+        assert submissions == ["first", "after cancel"]
+        assert terminal_events == ["terminal.enter", "terminal.exit"]
+        assert context.get() == "outside"
+        assert startup.router.resume_paused_submission() is None
+
+    asyncio.run(asyncio.wait_for(scenario(), 5))
 
 
 class App(ScreenConversationApp):

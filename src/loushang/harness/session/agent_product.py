@@ -10,12 +10,14 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 if TYPE_CHECKING:
     from loushang.harness.session.prompt_execution import PromptExecutionResult
 
-from loushang.agent import Agent
+from loushang.agent import Agent, ModelCallPreparation
 from loushang.ai.api_registry import (
     APIRegistry,
     get_default_api_registry,
 )
 from loushang.ai.model import ModelSelection
+from loushang.ai.options import CallOptions
+from loushang.ai.prepared_request import PreparedRequestLimits
 from loushang.ai.types import ImagePart
 from loushang.foundation.json import JSONValue
 from loushang.foundation.platform_paths import resolve_platform_paths
@@ -231,6 +233,7 @@ from loushang.harness.transcript import (
     BranchSummaryOutput,
     CompactionHookDecision,
     CompactionHookRequest,
+    CompactionPreparation,
     CompactionResult,
     ProductTranscriptSession,
 )
@@ -285,18 +288,35 @@ class AgentProductSession(AgentSessionAdapterMixin):
     ) -> None:
         """Publish the Session composition before command/model visibility."""
 
+        ticket = self.runtime.execution_admission.begin_input()
+        try:
+            await self.prepare_model_call_runtime()
+            ticket.check()
+            await super().prompt(
+                user_input, images=images, streaming_behavior=streaming_behavior,
+                source=source, preflight_result=preflight_result,
+            )
+        finally:
+            ticket.close()
+
+    async def prompt_in_execution(
+        self, execution, text: str, *, images: list[ImagePart] | None = None,
+        source: str | None = None,
+    ) -> None:
+        self.runtime.execution_admission.check_execution(execution)
         await self.prepare_model_call_runtime()
-        await super().prompt(
-            user_input,
-            images=images,
-            streaming_behavior=streaming_behavior,
-            source=source,
-            preflight_result=preflight_result,
-        )
+        self.runtime.execution_admission.check_execution(execution)
+        await super().prompt_in_execution(execution, text, images=images, source=source)
 
     async def continue_run(self) -> None:
-        await self.prepare_model_call_runtime()
-        await super().continue_run()
+        self.runtime.execution_admission.require_unbound_run()
+        ticket = self.runtime.execution_admission.begin_input()
+        try:
+            await self.prepare_model_call_runtime()
+            ticket.check()
+            await super().continue_run()
+        finally:
+            ticket.close()
 
     async def execute_prompt(
         self,
@@ -308,27 +328,42 @@ class AgentProductSession(AgentSessionAdapterMixin):
         """Opt-in full invocation input result, retaining the legacy prompt API."""
         from loushang.harness.session.prompt_execution import execute_prompt
 
-        if not self.execution_available:
-            raise RuntimeError(
-                "failed execution preparation requires Session retirement"
+        ticket = self.runtime.execution_admission.begin_input()
+        try:
+            await self.prepare_execution()
+            ticket.check()
+            if check_cancelled is not None:
+                check_cancelled()
+            result = await execute_prompt(
+                self._composition.session_runtime.prompt_controller,
+                self._composition.command_controller.dispatch_command_async,
+                text,
+                source=source,
+                check_cancelled=check_cancelled,
             )
+            await self._composition.retry_runtime.settle()
+            await self._composition.session_runtime.host_runtime.settle_runs()
+            return result
+        finally:
+            ticket.close()
+
+    async def prepare_execution(self, *, start_extensions: bool = False) -> None:
+        """Prepare original owners; failed setup is retired by settle_execution.
+
+        Optional startup matches the SDK's prepare/activate order for a retained
+        borrowed Session. Ordinary prompt execution keeps its existing lifecycle.
+        """
+        if type(start_extensions) is not bool:
+            raise TypeError("explicit startup selection required")
+        if not self.execution_available:
+            raise RuntimeError("failed execution preparation requires Session retirement")
         try:
             await self.prepare_model_call_runtime()
+            if start_extensions:
+                await self.start_extension_runtime(reason="startup")
         except BaseException:
             self._execution_preparation_failed = True
             raise
-        if check_cancelled is not None:
-            check_cancelled()
-        result = await execute_prompt(
-            self._composition.session_runtime.prompt_controller,
-            self._composition.command_controller.dispatch_command_async,
-            text,
-            source=source,
-            check_cancelled=check_cancelled,
-        )
-        await self._composition.retry_runtime.settle()
-        await self._composition.session_runtime.host_runtime.settle_runs()
-        return result
 
     @property
     def execution_available(self) -> bool:
@@ -349,6 +384,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
         if interrupted:
             await self._composition.compaction_runtime.cancel_and_wait()
             await self._composition.navigation_runtime.cancel_and_wait()
+        await self.settle_command_execution(interrupted=interrupted)
+        await self._model_call_runtime.settle()
         if not self.execution_available:
             # Failed preparation may retain staged component/Plugin rollback
             # debt. The existing retryable owner cleanup must settle it before
@@ -373,6 +410,10 @@ class AgentProductSession(AgentSessionAdapterMixin):
         session_manager: ProductTranscriptSession[Any, Any],
         capability_runtime: StagedResourceCompositionCandidate,
         execute_compaction: ProductCompactionExecutor,
+        single_call_capacity_probe: (
+            Callable[[CompactionPreparation, object, PreparedRequestLimits | None], bool]
+            | None
+        ) = None,
         execute_branch_summary: BranchSummaryExecutor,
         get_changelog: ChangelogProvider,
         copy_to_clipboard: ClipboardWriter,
@@ -532,6 +573,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 self.session_manager.get_context_message_bindings
             ),
             get_active_records=self.session_manager.get_active_entries,
+            get_append_only_records_since=(
+                self.session_manager.get_append_only_entries_since
+            ),
             rebuild_model_input=self.session_manager.rebuild_model_input,
         )
         if (
@@ -646,6 +690,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 turn_performance=self._turn_start_performance,
                 request_evidence_provider=(
                     self._request_evidence_runtime.project_model_input
+                ),
+                on_committed_evidence_free_input=lambda snapshot_id: (
+                    self._request_evidence_runtime.note_committed_model_input(
+                        snapshot_id, has_resource_evidence=False
+                    )
                 ),
             )
         )
@@ -821,6 +870,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             base_prompt if base_prompt is not None else self.agent.system_prompt
         )
         self._execute_product_compaction = execute_compaction
+        self._single_call_capacity_probe = single_call_capacity_probe
         self._execute_product_branch_summary = execute_branch_summary
         self._get_product_changelog = get_changelog
         self._copy_product_text = copy_to_clipboard
@@ -1236,6 +1286,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 get_compaction_capability=(
                     self._transcript_capability_ports.compaction_capability
                 ),
+                single_call_capacity_probe=self._single_call_capacity_probe,
             ),
             product=SessionProductInputs(
                 model_registry=self.model_registry,
@@ -1286,11 +1337,17 @@ class AgentProductSession(AgentSessionAdapterMixin):
         *,
         on_update: SideQuestionUpdate | None = None,
     ) -> SideQuestionAnswer:
-        await self._ensure_session_graph_prepared()
-        consumer = self._side_question_consumer
-        if consumer is None:
-            raise RuntimeError("Session side-question Capability was not mounted")
-        return await consumer.ask(question, on_update=on_update)
+        self.runtime.execution_admission.require_unbound_run()
+        ticket = self.runtime.execution_admission.begin_input()
+        try:
+            await self._ensure_session_graph_prepared()
+            self.runtime.execution_admission.require_unbound_run()
+            consumer = self._side_question_consumer
+            if consumer is None:
+                raise RuntimeError("Session side-question Capability was not mounted")
+            return await consumer.ask(question, on_update=on_update)
+        finally:
+            ticket.close()
 
     def create_side_question_provider(self) -> AgentSideQuestionProvider:
         return AgentSideQuestionProvider(
@@ -1313,13 +1370,17 @@ class AgentProductSession(AgentSessionAdapterMixin):
         session_shutdown_event: SessionShutdownEvent | None = None,
     ) -> None:
         self._require_external_dispose_task()
+        await self.prepare_execution_release()
         await super().dispose(session_shutdown_event)
         self._release_package_product_runtime()
+        await self.finalize_execution_release()
 
     async def _dispose_after_session_shutdown(self) -> None:
         self._require_external_dispose_task()
+        await self.prepare_execution_release()
         await super()._dispose_after_session_shutdown()
         self._release_package_product_runtime()
+        await self.finalize_execution_release()
 
     def _require_external_dispose_task(self) -> None:
         owner: str | None = None
@@ -1427,6 +1488,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         # Graph disposal can release the transcript writer too. Settle output
         # before entering that path, without holding the model-call bind lock.
         await self._close_output_captures()
+        await self._model_call_runtime.settle()
         self._restore_agent_model_call_boundary()
         owner_cleanup_failed = False
         async with self._model_call_bind_lock:
@@ -1557,7 +1619,28 @@ class AgentProductSession(AgentSessionAdapterMixin):
             raise primary
 
     def _install_agent_model_call_boundary(self) -> None:
-        prepare = self._model_call_runtime.prepare
+        async def prepare(preparation: ModelCallPreparation) -> CallOptions:
+            if (
+                not isinstance(preparation, ModelCallPreparation)
+                or preparation.options.prepared_request_committer is not None
+                or self._is_current_model_call_session() is not True
+            ):
+                return await self._model_call_runtime.prepare(preparation)
+            await self._ensure_session_graph_prepared()
+            # Include cooperative recovery in the existing first-start timing.
+            # Its milestone is idempotent when the synchronous preparer marks it.
+            self._turn_start_performance.model_call_prepare_started(preparation)
+            try:
+                await self._request_evidence_runtime.prepare_model_input_async()
+            except asyncio.CancelledError:
+                raise
+            except BaseException:
+                self._turn_start_performance.model_call_prepare_failed()
+                raise
+            # This boundary still checks current Session ownership and rebuilds
+            # the evidence projection against the current path before binding.
+            return await self._model_call_runtime.prepare(preparation)
+
         self.agent.prepare_model_call = prepare
         self._installed_agent_prepare_model_call = prepare
         requirement = self._previous_transport_requirement or bool(

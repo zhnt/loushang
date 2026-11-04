@@ -63,7 +63,8 @@ SCOPED_WORKFLOWS = {
     **{
         f".github/workflows/{filename}.yml": (scope,)
         for filename, scope in (
-            ("architecture-quality", "architecture"), ("ai-quality", "ai"),
+            ("architecture-quality", "architecture"), ("gui-quality", "gui"),
+            ("ai-quality", "ai"),
             ("harness-quality", "harness"),
             ("harnesstui-quality", "harnesstui"), ("tui-render-contract", "tui"),
             ("hosting-quality", "hosting"), ("apphost-quality", "apphost"),
@@ -96,7 +97,8 @@ FULL_TARGETED_SHARDS = {
     "macos-15": 1,
 }
 # Full validation keeps these measured heavyweight files alone in three of the
-# existing Ubuntu integration buckets. PR test-only routing remains unchanged.
+# existing Ubuntu integration buckets. Ordinary PR batches containing them
+# need the same runtime allowance when several files share one bucket.
 FULL_TARGETED_EXCLUSIVE_PATHS = {
     ("ubuntu-24.04", "integration"): {
         "tests/coding/test_package_cutover_cli.py",
@@ -246,7 +248,15 @@ def make_targeted_jobs(
             "paths": sorted(paths),
             "os": platform,
             "category": category,
-            "timeout_minutes": 30 if full else 15,
+            "timeout_minutes": (
+                30
+                if full
+                or any(
+                    path in FULL_TARGETED_EXCLUSIVE_PATHS.get((platform, category), ())
+                    for path in paths
+                )
+                else 15
+            ),
         }
         for index, ((platform, category, _), paths) in enumerate(
             sorted(buckets.items())
@@ -424,6 +434,8 @@ def select(
                     continue
         matched = False
         for rule in rules["rules"]:
+            if any(fnmatch.fnmatchcase(path, pattern) for pattern in rule.get("exclude_paths", [])):
+                continue
             if any(fnmatch.fnmatchcase(path, pattern) for pattern in rule["paths"]):
                 enable(rule["checks"], f"{path}: {rule['reason']}")
                 if (

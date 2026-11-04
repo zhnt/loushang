@@ -614,6 +614,64 @@ def test_product_base_lsp_and_arch_share_one_session_runtime_lease(
     asyncio.run(scenario())
 
 
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux Product route")
+def test_product_on_demand_lsp_activates_after_dormant_startup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.lsp import INSPECT_SYMBOL_TOOL_NAME
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=True,
+        )
+        session = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(
+                        capabilities={
+                            "coding.arch": "disabled",
+                            "coding.lsp": "on_demand",
+                        }
+                    )
+                )
+            ),
+            composition_set="coding-standard",
+        )
+        try:
+            assert session._coding_base_product_compilation is not None
+            assert session._coding_capability_plugin_assembly is None
+            slot = session._deferred_lsp_slot
+            assert slot is not None and slot.state == "dormant"
+            await session.prepare_model_call_runtime()
+            assert slot.state == "dormant"
+            assert INSPECT_SYMBOL_TOOL_NAME not in {
+                tool.name for tool in session.get_all_tools()
+            }
+
+            await session.set_active_tools([INSPECT_SYMBOL_TOOL_NAME])
+            assert slot.state == "active"
+            assert slot.active is not None
+            assert slot.active.current_selection_check is not None
+            assert INSPECT_SYMBOL_TOOL_NAME in session.get_active_tool_names()
+            await session.prepare_model_call_runtime()
+        finally:
+            await session.dispose()
+
+    asyncio.run(scenario())
+
+
 def _managed_base(
     root: Path,
     *,

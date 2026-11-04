@@ -22,6 +22,17 @@ acceptance does not establish writable release or performance readiness.
 
 ## Scope
 
+Implemented and offline-verified local SDK integration (same-Session slice):
+[Goal execution context and Work source recording](../goal-method-work/session-execution-recording.md).
+It reuses the existing Session, Work and Multiagent boundaries; its first slice
+only connects the local Coding Goal to shared recording and Transcript sources.
+It does not enable child execution or change normal CLI/TUI defaults.
+
+The [shared child Session composition](../harness/multiagent/child-session-composition.md)
+moves child creation, round adaptation and cleanup into Harness. Coding keeps
+roles, model/tool selection, sandbox configuration and its current non-persistent
+child policy; the existing Coding factory entrypoint delegates to that mechanism.
+
 Coding is the installed Loushang Product composition root. It turns Harness,
 Agent, AI, Method, HarnessWork, Channel, HarnessTUI and TUI contracts into a
 coding-specific CLI, SDK and terminal experience.
@@ -70,6 +81,15 @@ mandatory UI dependencies.
 
 ## Target
 
+Accepted #824 first slice: [hosted Method execution and Work queries](key-designs/hosted-method-work.md).
+Accepted #824 second slice: [hosted Goal minimum loop](key-designs/hosted-goal-loop.md),
+with [three-view review](key-designs/hosted-goal-loop-review.md); the user accepted
+R2 on 2026-11-02. Implementation reuses the canonical Session and Goal/Work authorities.
+See the [Goal delivery evidence](../../plans/2026-11-02-hosted-goal-loop.md).
+The user accepted Method R2 after three-view review on 2026-11-01. That implementation
+connects one authorized application-local SDK entry to the original AppHost
+Session and HarnessWork execution; see the [delivery evidence](../../plans/2026-11-01-hosted-method-work.md).
+
 Coding remains a thin but real Product, not an empty facade. It retains domain
 policy, Product resources and final composition while shared mechanisms move
 behind stable owner contracts.
@@ -81,6 +101,25 @@ owns the implemented Capability Planner/Binder/Runtime/Projector substrate;
 `coding.lsp.default` and `coding.arch.default` now share one Product Plugin
 composition and one Session graph. Arch remains independently mountable when
 LSP is disabled.
+
+## Hosted Repository Goal Slice
+
+The [hosted repository Goal design](key-designs/hosted-repository-goal.md) specifies
+reusing the existing bounded repository task, Method, verification and trusted
+review through the application-local hosted Goal entry. Its R2.1
+[three-view technical review](key-designs/hosted-repository-goal-review.md)
+closed its findings; the user accepted R2.1 on 2026-11-02. The local slice is implemented and
+[verified offline](key-designs/hosted-repository-goal-implementation.md): 35 new
+checks and 126 compatibility checks passed. The pre-existing G16 line-budget
+failure was closed after responsibility review; its architecture/scope regression
+passed 35 checks. Earlier broad runs remain partial. Calculator and local
+repository contracts remain effective.
+
+The accepted [hosted Goal budget and observation design](key-designs/hosted-goal-budget-observation.md)
+and [ARD-020](../decisions/accepted/ARD-020-hosted-goal-budget-and-observation.md)
+address effective model budgets and an optional lightweight progress view.
+The user accepted R1 on 2026-11-02. [Local implementation and validation](key-designs/hosted-goal-budget-observation-implementation.md)
+retain full query/wait and completion validation; no online trial is implied.
 
 ## Direct Architecture Children
 
@@ -164,7 +203,26 @@ Older candidate component inventories and pre-Harness component maps are
 historical design inputs when their status points to the Harness owner map.
 They are not a second Current Coding topology.
 
+## Low-Token Closeout Slice
+
+The [low-token Goal closeout design](key-designs/goal-low-token-closeout.md)
+was accepted by the user on 2026-11-01: a trusted host requests existing full verification without another
+model planning call, followed by the original independent review. The bounded
+validation target is zero new model calls and at most two Work executions.
+It does not reinterpret the prior paused run as completed.
+The [three-view design review](key-designs/goal-low-token-closeout-review.md)
+closed its design findings. The local implementation passed the repository Goal
+regression and a real frozen-candidate closeout: 21 contract and 318 regression
+checks, independent approval, then completed/current cold read, with zero new
+model calls and two Work executions. The prior paused Goal remains unchanged.
+
 ## Current-To-Target Gaps
+
+The [repository Goal review-feedback design](key-designs/goal-review-feedback.md)
+is an accepted local SDK slice (user confirmation, 2026-10-28), with focused offline
+implementation checks passing. Coding interprets trusted
+review findings through existing Goal-linked Work and Blob evidence; it does not
+add a shared execution loop or establish generic repository Goal availability.
 
 - `coding.lsp` and `coding.arch` are production-mounted live Graph nodes when
   their selected composition and mount policy enable them;

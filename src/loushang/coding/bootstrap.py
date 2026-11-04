@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import secrets
 import sys
@@ -31,6 +32,7 @@ from loushang.coding._base_product_composition import (
     extend_coding_base_product_data_resources,
 )
 from loushang.coding._capability_plugin_composition import (
+    CodingCapabilityPluginCompositionAssembly,
     CodingCapabilityPluginCompositionError,
     CodingResumePluginParents,
     coding_capability_plugin_failure_custodian,
@@ -83,10 +85,12 @@ from loushang.coding.capabilities import (
     CODING_ARCH_CAPABILITY,
     CODING_LSP_CAPABILITY,
     coding_capability_mount_mode,
+    coding_lsp_should_defer,
 )
 from loushang.coding.composition_provenance import (
     composition_header_metadata,
     historical_composition_provenance,
+    historical_startup_composition_record,
 )
 from loushang.coding.composition_sets import (
     CODING_KERNEL_PROMPT_REVISION,
@@ -100,7 +104,11 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.diagnostics.profile import coding_runtime_identity
-from loushang.coding.lsp._provider_api import CodingLspPluginConfigV1
+from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
+from loushang.coding.lsp._provider_api import (
+    CODING_LSP_CAPABILITY_DEFINITION,
+    CodingLspPluginConfigV1,
+)
 from loushang.coding.lsp.discovery import (
     coding_lsp_config_paths,
     default_lsp_environment,
@@ -141,7 +149,9 @@ from loushang.coding.runtime_capability_admission import (
     resolve_coding_capability_profile,
 )
 from loushang.coding.sandbox import (
+    CodingExecutionAuthority,
     bind_coding_sandbox_runtime,
+    coding_host_execution_profile,
     coding_workspace_execution_profile,
 )
 from loushang.coding.session import AgentSession
@@ -163,6 +173,10 @@ from loushang.harness.bootstrap import (
 from loushang.harness.capabilities import (
     StagedResourceCompositionCandidate,
     stage_resource_composition_candidate,
+)
+from loushang.harness.capabilities.deferred_slot import (
+    DeferredCapabilityDeclaration,
+    DeferredCapabilitySlot,
 )
 from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.capabilities.workspace_provider import (
@@ -207,6 +221,7 @@ from loushang.harness.resources.packages.product_contract import (
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
+from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.session import (
     AgentProductConstructionBinding,
     AgentSessionServices,
@@ -837,6 +852,7 @@ def _create_agent_session(
         if lsp_baseline_environment is not None
         else default_lsp_environment()
     )
+    explicit_lsp_definitions = tuple(lsp_definitions)
     lsp_enabled_for_session = (
         "coding.lsp.default" in requested_plugin_ids
         and (
@@ -851,6 +867,25 @@ def _create_agent_session(
         and arch_mode != "disabled"
         and session_no_tools_mode != "all"
     )
+    historical_entries = session_manager.get_entries()
+    historical_startup = (
+        historical_startup_composition_record(historical_entries)
+        if historical_entries and lsp_enabled_for_session and lsp_mode == "on_demand"
+        else None
+    )
+    defer_lsp_for_session = coding_lsp_should_defer(
+        enabled=lsp_enabled_for_session,
+        mode=lsp_mode,
+        has_history=bool(historical_entries),
+        startup=historical_startup,
+        legacy_disabled="coding.lsp.default" in legacy_disabled_plugin_ids,
+    )
+    eager_lsp_enabled_for_session = (
+        lsp_enabled_for_session and not defer_lsp_for_session
+    )
+    eager_capability_plugins_enabled_for_session = (
+        eager_lsp_enabled_for_session or arch_enabled_for_session
+    )
     capability_plugins_enabled_for_session = (
         lsp_enabled_for_session or arch_enabled_for_session
     )
@@ -862,7 +897,7 @@ def _create_agent_session(
                     "harness.plugin-activation",
                 }
             )
-            if capability_plugins_enabled_for_session
+            if eager_capability_plugins_enabled_for_session
             else frozenset()
         )
         if worker_candidate_plugin_id is not None:
@@ -871,7 +906,7 @@ def _create_agent_session(
             raise CodingResourceCatalogAdmissionError(
                 ("resume_plugin_participation_changed",)
             )
-    if _resume_plugin_parents is not None and not capability_plugins_enabled_for_session:
+    if _resume_plugin_parents is not None and not eager_capability_plugins_enabled_for_session:
         raise ValueError(
             "Coding Resume Plugin parents require selected capability Plugins"
         )
@@ -885,11 +920,11 @@ def _create_agent_session(
         discover_lsp_catalog(
             workspace_root=session_manager.get_cwd(),
             baseline_environment=resolved_lsp_environment,
-            explicit_definitions=tuple(lsp_definitions),
+            explicit_definitions=explicit_lsp_definitions,
             global_config_path=global_lsp_config,
             project_config_path=project_lsp_config,
         ).definitions
-        if lsp_enabled_for_session
+        if eager_lsp_enabled_for_session
         else ()
     )
     # Restored sessions carry historical transcript.  A previous run may have
@@ -898,7 +933,7 @@ def _create_agent_session(
     # resume recovers automatically instead of raising
     # "Missing tool results before next message".  New sessions have no
     # history and stay on the (global) default.
-    if len(session_manager.get_entries()) > 0:
+    if historical_entries:
         base_factory = agent_factory
 
         def _resume_agent_factory(**kwargs: object) -> Agent:
@@ -967,6 +1002,7 @@ def _create_agent_session(
     base_ephemeral_state = None
     base_state_cleanup: Callable[[], None] | None = None
     capability_management_state_cleanup: Callable[[], None] | None = None
+    deferred_lsp_management_state_cleanup: Callable[[], None] | None = None
     coding_plugin_lifecycle: CodingPluginLifecycle | None = None
     coding_plugin_package_materializer: PackageMaterializer | None = None
     if (
@@ -1036,7 +1072,9 @@ def _create_agent_session(
                 ephemeral_state = base_ephemeral_state
                 cleanup_claims_remaining = int(
                     "coding.base" in requested_plugin_ids
-                ) + int(capability_plugins_enabled_for_session)
+                ) + int(eager_capability_plugins_enabled_for_session) + int(
+                    defer_lsp_for_session
+                )
                 cleanup_claims_done = False
 
                 def create_lifecycle_cleanup_claim() -> Callable[[], None]:
@@ -1058,8 +1096,12 @@ def _create_agent_session(
 
                 if "coding.base" in requested_plugin_ids:
                     base_state_cleanup = create_lifecycle_cleanup_claim()
-                if capability_plugins_enabled_for_session:
+                if eager_capability_plugins_enabled_for_session:
                     capability_management_state_cleanup = (
+                        create_lifecycle_cleanup_claim()
+                    )
+                if defer_lsp_for_session:
+                    deferred_lsp_management_state_cleanup = (
                         create_lifecycle_cleanup_claim()
                     )
             lifecycle.reconcile_retirements()
@@ -1132,6 +1174,8 @@ def _create_agent_session(
                 base_state_cleanup()
             if capability_management_state_cleanup is not None:
                 capability_management_state_cleanup()
+            if deferred_lsp_management_state_cleanup is not None:
+                deferred_lsp_management_state_cleanup()
             if coding_plugin_lifecycle is not None:
                 coding_plugin_lifecycle.release_owned_process_startup_lease()
             if (
@@ -1197,7 +1241,7 @@ def _create_agent_session(
         )
         plugin_ids = frozenset(
             {
-                *(("coding.lsp.default",) if lsp_enabled_for_session else ()),
+                *(("coding.lsp.default",) if eager_lsp_enabled_for_session else ()),
                 *(("coding.arch.default",) if arch_enabled_for_session else ()),
             }
         )
@@ -1217,7 +1261,7 @@ def _create_agent_session(
             str,
             CodingLspPluginConfigV1 | CodingArchPluginConfigV1,
         ] = {}
-        if lsp_enabled_for_session:
+        if eager_lsp_enabled_for_session:
             configurations["coding.lsp.default"] = (
                 CodingLspPluginConfigV1.from_runtime_inputs(
                     workspace_root=session_manager.get_cwd(),
@@ -1333,13 +1377,13 @@ def _create_agent_session(
                 ("product_selected_package_missing",)
             )
         if catalog_product_composition_assembly is not None:
-            if capability_plugins_enabled_for_session:
+            if eager_capability_plugins_enabled_for_session:
                 raise CodingResourceCatalogAdmissionError(("peer_product_compilation",))
             product_composition = assemble_product_composition(
                 catalog_product_composition_assembly,
                 evaluated_at=evaluated_at,
             )
-        elif capability_plugins_enabled_for_session:
+        elif eager_capability_plugins_enabled_for_session:
             capability_plugin_preparation = prepare_capability_plugins(plan_seed)
             if capability_plugin_preparation is not None:
                 product_composition = capability_plugin_preparation.product_composition
@@ -1463,7 +1507,7 @@ def _create_agent_session(
             enabled_capability_ids: list[str] = []
             observed_capabilities: list[PackageProductPluginDesiredSelectionV1] = []
             requested_capabilities = (
-                ("coding.lsp.default", lsp_enabled_for_session),
+                ("coding.lsp.default", eager_lsp_enabled_for_session),
                 ("coding.arch.default", arch_enabled_for_session),
             )
             for plugin_id, requested in requested_capabilities:
@@ -1657,7 +1701,7 @@ def _create_agent_session(
         enabled_capability_ids = []
         observed_capabilities = []
         for plugin_id, requested in (
-            ("coding.lsp.default", lsp_enabled_for_session),
+            ("coding.lsp.default", eager_lsp_enabled_for_session),
             ("coding.arch.default", arch_enabled_for_session),
         ):
             if not requested:
@@ -1822,14 +1866,19 @@ def _create_agent_session(
             return _prepare_package_product_catalog_projection(
                 loader, resolved_cwd, product_runtime
             )
-        except CodingResourceCatalogAdmissionError as error:
-            services.diagnostics_service.capture_failure(
-                code=error.code,
-                error=str(error),
-                phase="startup",
-                source="bootstrap",
-                session_id=session_id,
-                details={"reasons": list(error.reasons)},
+        except BaseException as error:
+            if isinstance(error, CodingResourceCatalogAdmissionError):
+                services.diagnostics_service.capture_failure(
+                    code=error.code,
+                    error=str(error),
+                    phase="startup",
+                    source="bootstrap",
+                    session_id=session_id,
+                    details={"reasons": list(error.reasons)},
+                )
+            run_cleanup_steps(
+                error,
+                (("Coding Product runtime bootstrap cleanup", product_runtime.dispose_runtime),),
             )
             raise
 
@@ -2087,6 +2136,12 @@ def _create_agent_session(
                 network="allowed",
             )
         )
+        sandbox_settings = services.settings_manager.get_sandbox_settings()
+        execution_ceiling = (
+            workspace_execution_profile
+            if sandbox_settings.requirement == "required"
+            else coding_host_execution_profile(workspace_root_path, writable=sandbox_workspace_writable)
+        )
         requested_profiles = (
             getattr(base_exec_service, "execution_profile", None),
             (
@@ -2103,18 +2158,25 @@ def _create_agent_session(
                     "Coding workspace execution ceiling must be an "
                     "EffectiveExecutionProfile"
                 )
-            workspace_execution_profile = constrain_execution_profile(
-                workspace_execution_profile,
+            execution_ceiling = constrain_execution_profile(
+                execution_ceiling,
                 requested_profile,
             )
+        execution_authority = CodingExecutionAuthority(
+            workspace_root=workspace_root_path,
+            workspace_profile=workspace_execution_profile,
+            ceiling=execution_ceiling,
+            permission_snapshot=services.settings_manager.get_permission_profile_snapshot,
+        )
         sandbox_runtime = bind_coding_sandbox_runtime(
             workspace_root=session_manager.get_cwd(),
             writable_workspace=sandbox_workspace_writable,
-            settings=services.settings_manager.get_sandbox_settings(),
+            settings=sandbox_settings,
             base_exec_service=base_exec_service,
             diagnostics_service=services.diagnostics_service,
             session_id=session_id,
-            execution_profile=workspace_execution_profile,
+            execution_profile=execution_ceiling,
+            execution_profile_provider=execution_authority,
         )
         process_session: AgentSession | None = None
 
@@ -2128,7 +2190,8 @@ def _create_agent_session(
                 policy_evaluator=tool_policy_evaluator,
                 approval_resolver=approval_resolver,
                 audit_sink=emit_process_audit_event,
-                execution_profile_ceiling=workspace_execution_profile,
+                execution_profile_ceiling=execution_ceiling,
+                execution_profile_provider=execution_authority,
             )
         )
         workspace_root = str(workspace_root_path)
@@ -2136,12 +2199,12 @@ def _create_agent_session(
             "\0".join(
                 (
                     "coding.workspace.standard.v1",
-                    *(str(path) for path in workspace_execution_profile.readable_roots),
+                    *(str(path) for path in execution_ceiling.readable_roots),
                     "--writable--",
-                    *(str(path) for path in workspace_execution_profile.writable_roots),
+                    *(str(path) for path in execution_ceiling.writable_roots),
                     "--denied--",
-                    *(str(path) for path in workspace_execution_profile.denied_roots),
-                    f"network:{workspace_execution_profile.network}",
+                    *(str(path) for path in execution_ceiling.denied_roots),
+                    f"network:{execution_ceiling.network}",
                 )
             ).encode("utf-8")
         ).hexdigest()
@@ -2149,7 +2212,8 @@ def _create_agent_session(
             operations=CodingWorkspaceOperations(
                 root=workspace_root_path,
                 operations=LOCAL_TOOL_OPERATIONS,
-                execution_profile=workspace_execution_profile,
+                execution_profile=execution_ceiling,
+                execution_profile_provider=execution_authority.for_workspace_operation,
             ),
             process_launcher=authorized_process_launcher,
             scope_instance_id=f"workspace:{workspace_root}",
@@ -2359,6 +2423,167 @@ def _create_agent_session(
                 ),
                 resource_catalog_refresh_lock=(services.resource_catalog_refresh_lock),
             )
+            if defer_lsp_for_session:
+                product_lsp_available = (
+                    product_base_runtime is None
+                    or product_base_runtime.capture_plugin_desired_selection_for(
+                        "coding.lsp.default"
+                    ).desired_state
+                    == "installed_enabled"
+                )
+                if product_lsp_available:
+
+                    def build_deferred_lsp_assembly() -> tuple[
+                        CodingCapabilityPluginCompositionAssembly,
+                        Callable[[], None] | None,
+                    ]:
+                        temporary_state = (
+                            _ExplicitTemporaryDirectory(
+                                prefix="loushang-coding-deferred-lsp-"
+                            )
+                            if not session_manager.persist
+                            else None
+                        )
+                        state_root = (
+                            Path(temporary_state.name)
+                            if temporary_state is not None
+                            else _coding_capability_plugin_state_root(
+                                session_manager, session_id=session_id
+                            )
+                            / "deferred-lsp"
+                        )
+                        preparation = None
+                        current_selection_check: Callable[[], None] | None = None
+                        try:
+                            global_config, project_config = coding_lsp_config_paths(
+                                services.settings_manager,
+                                workspace_root=session_manager.get_cwd(),
+                            )
+                            definitions = discover_lsp_catalog(
+                                workspace_root=session_manager.get_cwd(),
+                                baseline_environment=resolved_lsp_environment,
+                                explicit_definitions=explicit_lsp_definitions,
+                                global_config_path=global_config,
+                                project_config_path=project_config,
+                            ).definitions
+                            config = CodingLspPluginConfigV1.from_runtime_inputs(
+                                workspace_root=session_manager.get_cwd(),
+                                definitions=definitions,
+                                baseline_environment=resolved_lsp_environment,
+                            )
+                            if product_base_runtime is not None:
+                                selection = (
+                                    product_base_runtime.capture_plugin_desired_selection_for(
+                                        "coding.lsp.default"
+                                    )
+                                )
+                                if selection.desired_state != "installed_enabled":
+                                    raise CodingResourceCatalogAdmissionError(
+                                        ("product_requested_capability_not_installed",)
+                                    )
+                                selected_manifest = (
+                                    product_base_runtime.capture_selected_plugin_manifest_for(
+                                        "coding.lsp.default",
+                                        max_files=64,
+                                        max_total_bytes=1024 * 1024,
+                                    )
+                                )
+
+                                def check_product_lsp_selection() -> None:
+                                    product_base_runtime.assert_plugin_desired_selection_current(
+                                        selection
+                                    )
+                                    product_base_runtime.assert_selected_plugin_manifest_current(
+                                        selected_manifest
+                                    )
+
+                                current_selection_check = check_product_lsp_selection
+                                preparation = (
+                                    prepare_coding_product_capability_plugin_composition(
+                                        product_base_runtime,
+                                        session_id=session_id,
+                                        configurations={"coding.lsp.default": config},
+                                        state_root=state_root,
+                                        clock=coding_plugin_clock,
+                                    )
+                                )
+                                if temporary_state is not None:
+                                    preparation.state_cleanup = temporary_state.cleanup
+                            else:
+                                assert coding_plugin_package_materializer is not None
+                                assert coding_plugin_lifecycle is not None
+                                preparation = prepare_coding_capability_plugin_composition(
+                                    create_coding_capability_plugin_composition_request(
+                                        clock=coding_plugin_clock,
+                                        plugin_ids=frozenset({"coding.lsp.default"}),
+                                    ),
+                                    session_id=session_id,
+                                    configurations={"coding.lsp.default": config},
+                                    package_materializer=coding_plugin_package_materializer,
+                                    lifecycle=coding_plugin_lifecycle,
+                                    legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
+                                    session_owner_id=_session_manager_plugin_owner_id(
+                                        session_manager
+                                    ),
+                                    management_state_cleanup=(
+                                        deferred_lsp_management_state_cleanup
+                                    ),
+                                    state_root=state_root,
+                                    clock=coding_plugin_clock,
+                                    state_cleanup=(
+                                        temporary_state.cleanup
+                                        if temporary_state is not None
+                                        else None
+                                    ),
+                                )
+                            assembly = preparation.bind_workspace(
+                                workspace_binding,
+                                host_boot_id=_CODING_PLUGIN_HOST_BOOT_ID,
+                                tool_modes={CODING_LSP_CAPABILITY: "on_demand"},
+                                clock=coding_plugin_clock,
+                            )
+                            return assembly, current_selection_check
+                        except BaseException:
+                            if preparation is not None:
+                                preparation.close()
+                            if temporary_state is not None:
+                                temporary_state.cleanup()
+                            raise
+
+                    def create_deferred_lsp_generation() -> CodingDeferredLspGeneration:
+                        async def assemble_deferred_lsp(
+                        ) -> CodingCapabilityPluginCompositionAssembly:
+                            task = asyncio.create_task(
+                                asyncio.to_thread(build_deferred_lsp_assembly)
+                            )
+                            assembly, check = await _await_cancellation_atomic(task)
+                            generation.current_selection_check = check
+                            return assembly
+
+                        generation = CodingDeferredLspGeneration(
+                            session_id=session_id,
+                            profile_fingerprint=(
+                                session._capability_graph_runtime.profile_fingerprint
+                            ),
+                            workspace_binding=workspace_binding,
+                            registration=session._composition.tool_controller,
+                            assembly_factory=assemble_deferred_lsp,
+                        )
+                        return generation
+
+                    session.install_deferred_lsp_slot(
+                        DeferredCapabilitySlot(
+                            DeferredCapabilityDeclaration(
+                                capability_id=CODING_LSP_CAPABILITY,
+                                facet_ids=CODING_LSP_CAPABILITY_DEFINITION.facets,
+                                tool_names=CODING_LSP_EXACT_OWNER_TOOL_NAMES,
+                            ),
+                            create_deferred_lsp_generation,
+                        ),
+                        management_cleanup=deferred_lsp_management_state_cleanup,
+                    )
+                elif deferred_lsp_management_state_cleanup is not None:
+                    deferred_lsp_management_state_cleanup()
             if worker_turn_tool is not None:
                 worker_turn_tool.bind_session(session)
             return session
@@ -2476,6 +2701,13 @@ def _create_agent_session(
                 else None
             )
         cleanup_steps = []
+        if deferred_lsp_management_state_cleanup is not None:
+            cleanup_steps.append(
+                (
+                    "Deferred Coding LSP management-state cleanup",
+                    deferred_lsp_management_state_cleanup,
+                )
+            )
         if capability_management_cleanup is not None:
             cleanup_steps.append(
                 (

@@ -14,7 +14,12 @@ from dataclasses import dataclass, field
 from typing import Protocol, cast
 
 from loushang.agent.types import AgentMessage, ThinkingLevel
-from loushang.ai.model import Model, ModelSelection
+from loushang.ai.model import (
+    Model,
+    ModelSelection,
+    available_thinking_levels,
+    preferred_thinking_level,
+)
 from loushang.ai.types import (
     AssistantMessage,
     TextPart,
@@ -272,6 +277,10 @@ class AgentTranscriptSelectionRuntime:
             endpoint_id=endpoint_id,
         )
         self.set_model(validated)
+        if self.get_thinking_level() not in self.get_available_thinking_levels():
+            preferred = preferred_thinking_level(validated)
+            if preferred is not None:
+                await self.set_thinking_level(cast(ThinkingLevel, preferred))
 
     def cycle_model_selection(
         self, direction: str = "forward"
@@ -352,17 +361,20 @@ class AgentTranscriptSelectionRuntime:
 
     async def set_thinking_level(self, level: ThinkingLevel) -> None:
         available = self.get_available_thinking_levels()
-        effective = level if level in available else available[-1]
-        if effective == self.get_thinking_level():
+        if level not in available:
+            raise ValueError(f"Thinking level {level!r} is not available for this model")
+        if level == self.get_thinking_level():
             return
-        await self.session.append_thinking_level_change(effective)
-        self.set_thinking_level_value(effective)
+        await self.session.append_thinking_level_change(level)
+        self.set_thinking_level_value(level)
 
     async def cycle_thinking_level(self) -> ThinkingLevel | None:
         if not self.supports_thinking():
             await self.set_thinking_level("off")
             return None
         levels = self.get_available_thinking_levels()
+        if not levels:
+            return None
         current = self.get_thinking_level()
         index = levels.index(current) if current in levels else 0
         next_level = levels[(index + 1) % len(levels)]
@@ -373,7 +385,10 @@ class AgentTranscriptSelectionRuntime:
         return bool(getattr(self.get_model(), "reasoning", False))
 
     def get_available_thinking_levels(self) -> list[ThinkingLevel]:
-        return list(_THINKING_LEVEL_ORDER) if self.supports_thinking() else ["off"]
+        return [
+            cast(ThinkingLevel, level)
+            for level in available_thinking_levels(self.get_model())
+        ]
 
 
 @dataclass

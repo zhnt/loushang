@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
-from typing import cast
+import json
+import math
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import InitVar, dataclass, field, replace
+from types import MappingProxyType
+from typing import Protocol, cast
 from uuid import uuid4
 
 from loushang.ai.prepared_request import (
@@ -17,7 +20,7 @@ from loushang.ai.prepared_request import (
     PreparedRequestCommitter,
     PreparedRequestMetrics,
 )
-from loushang.foundation.json import JSONValue
+from loushang.foundation.json import JSONValue, validate_json_value
 from loushang.foundation.observability import get_log
 from loushang.harness.capabilities import (
     MountGraphSnapshot,
@@ -62,6 +65,19 @@ from loushang.harness.transcript.unit_of_work import AgentTranscriptUnitOfWork
 
 ModelInputLogicalProjection = dict[str, object]
 _MODEL_INPUT_PERFORMANCE_LOG = get_log(__name__).bind(component="ModelInputCommit")
+_LOGICAL_BINARY_MARKERS = (
+    '"$loushang.sessionBlob"',
+    '"$loushang.literal"',
+    '"type":"image"',
+)
+
+
+class _DigestState(Protocol):
+    def copy(self) -> _DigestState: ...
+
+    def update(self, data: bytes) -> None: ...
+
+    def hexdigest(self) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -72,18 +88,51 @@ class ModelInputCommitContext:
     source_leaf_id: str
     source_revision: int
     logical_input: Mapping[str, object] = field(repr=False)
+    reuse_from: InitVar[ModelInputCommitContext | None] = None
+    _message_canonical_prefix: tuple[str, ...] = field(
+        default=(), init=False, repr=False, compare=False
+    )
+    _message_canonical_parts: tuple[str, ...] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _reused_message_prefix_count: int = field(
+        default=0, init=False, repr=False, compare=False
+    )
+    _owned_reuse_from: ModelInputCommitContext | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _owned_canonical: str | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _owned_digest: str | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _owned_message_offset: int | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _owned_prefix_digest: _DigestState | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _owned_prefix_hash: str | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _owned_other_fields: Mapping[str, str] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _owned_tail: str | None = field(default=None, init=False, repr=False, compare=False)
+    _owned_prefix_tail: str = field(default="", init=False, repr=False, compare=False)
+    _owned_binary_markers: frozenset[str] = field(
+        default=frozenset(), init=False, repr=False, compare=False
+    )
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, reuse_from: ModelInputCommitContext | None) -> None:
         _require_text(self.purpose, name="Model Input purpose")
         _require_text(self.source_leaf_id, name="Model Input source leaf id")
         _require_non_negative_int(
             self.source_revision,
             name="Model Input source revision",
         )
-        frozen = freeze_model_input_json(
-            self.logical_input,
-            name="Model Input logical projection",
-        )
+        frozen = _freeze_logical_input_with_prefix(self.logical_input, reuse_from)
         if not isinstance(frozen, Mapping):
             raise TypeError("Model Input logical projection must be a mapping")
         required = {"system_prompt", "messages", "tools", "request_options"}
@@ -99,6 +148,324 @@ class ModelInputCommitContext:
         if not isinstance(frozen["request_options"], Mapping):
             raise TypeError("Model Input request options must be an object")
         object.__setattr__(self, "logical_input", frozen)
+        if reuse_from is not None:
+            previous_messages = reuse_from.logical_input.get("messages")
+            if isinstance(previous_messages, tuple):
+                reused = 0
+                for current, prior in zip(
+                    frozen["messages"], previous_messages, strict=False
+                ):
+                    if current is not prior:
+                        break
+                    reused += 1
+                object.__setattr__(self, "_reused_message_prefix_count", reused)
+                if reused == len(previous_messages):
+                    object.__setattr__(self, "_owned_reuse_from", reuse_from)
+                if reuse_from._message_canonical_parts is not None:
+                    object.__setattr__(
+                        self,
+                        "_message_canonical_prefix",
+                        reuse_from._message_canonical_parts[:reused],
+                    )
+
+    def _canonical_logical_input_json(self, value: dict[str, JSONValue]) -> str:
+        """Encode an owned thaw, reusing only the freeze-proven message prefix."""
+
+        name = "logical Model Input"
+        prefix = self._message_canonical_prefix
+        frozen_messages = self.logical_input["messages"]
+        if (
+            not prefix
+            or not isinstance(frozen_messages, tuple)
+            or len(prefix) > len(frozen_messages)
+            or any(type(key) is not str for key in self.logical_input)
+        ):
+            canonical = canonical_model_input_json(value, name=name)
+            messages = value["messages"]
+            if isinstance(messages, list):
+                parts = tuple(
+                    canonical_model_input_json(
+                        message,
+                        name=f"{name}.messages[{index}]",
+                    )
+                    for index, message in enumerate(messages)
+                )
+                object.__setattr__(self, "_message_canonical_parts", parts)
+            return canonical
+
+        parts = prefix + tuple(
+            canonical_model_input_json(message, name=f"{name}.messages[{index}]")
+            for index, message in enumerate(frozen_messages[len(prefix) :], len(prefix))
+        )
+        fields = []
+        for key in sorted(self.logical_input):
+            encoded = (
+                "[" + ",".join(parts) + "]"
+                if key == "messages"
+                else canonical_model_input_json(
+                    self.logical_input[key], name=f"{name}.{key}"
+                )
+            )
+            fields.append(json.dumps(key, ensure_ascii=False) + ":" + encoded)
+        canonical = "{" + ",".join(fields) + "}"
+        object.__setattr__(self, "_message_canonical_parts", parts)
+        return canonical
+
+    def _canonical_owned_logical_input(
+        self, value: dict[str, JSONValue]
+    ) -> tuple[str | None, str]:
+        """Hash an exact sealed append without materializing historical text."""
+
+        previous = self._owned_reuse_from
+        messages = self.logical_input["messages"]
+        assert isinstance(messages, tuple)
+        other_fields = {
+            name: canonical_model_input_json(item, name=f"logical Model Input.{name}")
+            for name, item in self.logical_input.items()
+            if name != "messages"
+        }
+        if (
+            previous is not None
+            and previous._owned_tail is not None
+            and previous._owned_other_fields == other_fields
+            and previous._owned_message_offset is not None
+            and previous._owned_prefix_digest is not None
+            and previous._owned_prefix_digest.copy().hexdigest()
+            == previous._owned_prefix_hash
+            and previous._message_canonical_parts is not None
+            and len(previous._message_canonical_parts)
+            == self._reused_message_prefix_count
+            and previous._owned_tail.startswith("]")
+        ):
+            suffix = tuple(
+                canonical_model_input_json(
+                    message,
+                    name=f"logical Model Input.messages[{index}]",
+                )
+                for index, message in enumerate(
+                    messages[self._reused_message_prefix_count :],
+                    self._reused_message_prefix_count,
+                )
+            )
+            added = (
+                "," if self._reused_message_prefix_count and suffix else ""
+            ) + ",".join(suffix)
+            prefix_digest = previous._owned_prefix_digest.copy()
+            prefix_digest.update(added.encode("utf-8"))
+            full_digest = prefix_digest.copy()
+            full_digest.update(previous._owned_tail.encode("utf-8"))
+            digest = "sha256:" + full_digest.hexdigest()
+            object.__setattr__(
+                self,
+                "_message_canonical_parts",
+                previous._message_canonical_parts + suffix,
+            )
+            self._retain_owned_canonical(
+                None,
+                digest,
+                previous._owned_message_offset + len(added),
+                prefix_digest,
+                other_fields,
+                tail=previous._owned_tail,
+                prefix_tail=(previous._owned_prefix_tail + added)[-32:],
+                binary_markers=previous._owned_binary_markers.union(
+                    marker
+                    for marker in _LOGICAL_BINARY_MARKERS
+                    if marker in added
+                    or marker in previous._owned_prefix_tail + added[:32]
+                    or marker in added[-32:] + previous._owned_tail[:32]
+                ),
+            )
+            object.__setattr__(self, "_owned_reuse_from", None)
+            return None, digest
+
+        canonical = self._canonical_logical_input_json(value)
+        digest = "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        parts = self._message_canonical_parts
+        fallback_offset: int | None = None
+        if parts is not None:
+            position = 1
+            for index, name in enumerate(sorted(self.logical_input)):
+                if index:
+                    position += 1
+                position += len(json.dumps(name, ensure_ascii=False)) + 1
+                if name == "messages":
+                    fallback_offset = (
+                        position + 1 + sum(map(len, parts)) + max(0, len(parts) - 1)
+                    )
+                    break
+                position += len(other_fields[name])
+        fallback_prefix_digest = (
+            hashlib.sha256(canonical[:fallback_offset].encode("utf-8"))
+            if fallback_offset is not None
+            and canonical[fallback_offset : fallback_offset + 1] == "]"
+            else None
+        )
+        self._retain_owned_canonical(
+            canonical,
+            digest,
+            fallback_offset if fallback_prefix_digest is not None else None,
+            fallback_prefix_digest,
+            other_fields,
+            tail=canonical[fallback_offset:]
+            if fallback_prefix_digest is not None
+            else None,
+            prefix_tail=canonical[max(0, fallback_offset - 32) : fallback_offset]
+            if fallback_prefix_digest is not None and fallback_offset is not None
+            else "",
+            binary_markers=frozenset(
+                marker for marker in _LOGICAL_BINARY_MARKERS if marker in canonical
+            ),
+        )
+        object.__setattr__(self, "_owned_reuse_from", None)
+        return canonical, digest
+
+    def _retain_owned_canonical(
+        self,
+        canonical: str | None,
+        digest: str,
+        offset: int | None,
+        prefix_digest: _DigestState | None,
+        other_fields: Mapping[str, str],
+        *,
+        tail: str | None,
+        prefix_tail: str,
+        binary_markers: frozenset[str],
+    ) -> None:
+        object.__setattr__(self, "_owned_canonical", canonical)
+        object.__setattr__(self, "_owned_digest", digest)
+        object.__setattr__(self, "_owned_message_offset", offset)
+        object.__setattr__(self, "_owned_prefix_digest", prefix_digest)
+        object.__setattr__(
+            self,
+            "_owned_prefix_hash",
+            prefix_digest.hexdigest() if prefix_digest is not None else None,
+        )
+        object.__setattr__(
+            self, "_owned_other_fields", MappingProxyType(dict(other_fields))
+        )
+        object.__setattr__(self, "_owned_tail", tail)
+        object.__setattr__(self, "_owned_prefix_tail", prefix_tail)
+        object.__setattr__(self, "_owned_binary_markers", frozenset(binary_markers))
+
+
+def _freeze_logical_input_with_prefix(
+    value: Mapping[str, object],
+    previous: ModelInputCommitContext | None,
+) -> object:
+    name = "Model Input logical projection"
+    if previous is None or not isinstance(value, Mapping):
+        return freeze_model_input_json(value, name=name)
+    raw_messages = value.get("messages")
+    old_messages = previous.logical_input.get("messages")
+    if (
+        not isinstance(raw_messages, Sequence)
+        or isinstance(raw_messages, str | bytes | bytearray)
+        or not isinstance(old_messages, tuple)
+    ):
+        return freeze_model_input_json(value, name=name)
+    reused = 0
+    for raw, frozen in zip(raw_messages, old_messages, strict=False):
+        if not _raw_matches_frozen_json(raw, frozen, seen=set()):
+            break
+        reused += 1
+    fields: dict[str, object] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise TypeError(f"{name} keys must be strings")
+        if key == "messages":
+            fields[key] = old_messages[:reused] + tuple(
+                freeze_model_input_json(
+                    raw,
+                    name=f"{name}.messages[{index}]",
+                )
+                for index, raw in enumerate(raw_messages[reused:], reused)
+            )
+        else:
+            fields[key] = freeze_model_input_json(item, name=f"{name}.{key}")
+    return MappingProxyType(fields)
+
+
+def _logical_input_for_materialization(
+    frozen: Mapping[str, object],
+) -> dict[str, JSONValue]:
+    """Reuse sealed message values until the writer needs a changed item.
+
+    The v2 writer checks the immutable message source against its verified
+    sequence prefix and canonicalizes any unmatched values itself. Only the
+    top-level array must be mutable for sequence planning.
+    """
+
+    projected: dict[str, JSONValue] = {}
+    for name, value in frozen.items():
+        if name == "messages" and isinstance(value, tuple):
+            projected[name] = cast(JSONValue, list(value))
+        else:
+            projected[name] = thaw_model_input_json(value)
+    return projected
+
+
+def _prepared_payload_for_materialization(
+    frozen: Mapping[str, FrozenJSONValue],
+) -> dict[str, JSONValue]:
+    # PreparedModelRequest owns recursively frozen JSON and its canonical
+    # digest. The writer accepts sealed values; only its top-level sequence
+    # planner needs native lists.
+    return {
+        name: cast(JSONValue, list(value) if isinstance(value, tuple) else value)
+        for name, value in frozen.items()
+    }
+
+
+def _raw_matches_frozen_json(
+    raw: object,
+    frozen: object,
+    *,
+    seen: set[int],
+) -> bool:
+    if raw is frozen:
+        # Only the previous owned, recursively frozen context can supply this
+        # object. Identity proves the complete value without walking it again.
+        return True
+    if isinstance(frozen, Mapping):
+        if not isinstance(raw, Mapping) or len(raw) != len(frozen):
+            return False
+        identity = id(raw)
+        if identity in seen:
+            return False
+        seen.add(identity)
+        try:
+            return all(
+                type(key) is str
+                and key in frozen
+                and _raw_matches_frozen_json(item, frozen[key], seen=seen)
+                for key, item in raw.items()
+            )
+        finally:
+            seen.remove(identity)
+    if isinstance(frozen, tuple):
+        if (
+            not isinstance(raw, Sequence)
+            or isinstance(raw, str | bytes | bytearray)
+            or len(raw) != len(frozen)
+        ):
+            return False
+        identity = id(raw)
+        if identity in seen:
+            return False
+        seen.add(identity)
+        try:
+            return all(
+                _raw_matches_frozen_json(item, old, seen=seen)
+                for item, old in zip(raw, frozen, strict=True)
+            )
+        finally:
+            seen.remove(identity)
+    if type(raw) is not type(frozen):
+        return False
+    if type(raw) is float and raw == frozen == 0.0:
+        return math.copysign(1.0, raw) == math.copysign(1.0, frozen)
+    return raw == frozen
 
 
 @dataclass(frozen=True)
@@ -207,6 +574,7 @@ class ModelInputTranscriptCommitter(
         runtime_references: ModelInputRuntimeReferences,
         max_encoded_record_bytes: int = MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
         binary_codec: SessionModelInputBlobCodec | None = None,
+        binary_codec_factory: Callable[[], SessionModelInputBlobCodec] | None = None,
     ) -> None:
         if not isinstance(transcript, AgentTranscriptUnitOfWork):
             raise TypeError("Model Input committer requires AgentTranscriptUnitOfWork")
@@ -242,7 +610,10 @@ class ModelInputTranscriptCommitter(
             raise TypeError(
                 "Model Input binary codec must be SessionModelInputBlobCodec"
             )
+        if binary_codec is not None and binary_codec_factory is not None:
+            raise ValueError("Model Input binary codec and factory are exclusive")
         self._binary_codec = binary_codec
+        self._binary_codec_factory = binary_codec_factory
         self._max_encoded_record_bytes = max_encoded_record_bytes
         self._expected_revision = transcript.revision
         self._expected_leaf_id = transcript.leaf_id
@@ -253,10 +624,62 @@ class ModelInputTranscriptCommitter(
         self._attempt_usage_observations: set[ModelCallAttemptUsage] = set()
         self._terminal_attempt_usage_keys: set[tuple[str, int, str]] = set()
         self._lock = asyncio.Lock()
+        self._logical_prewarm_task: asyncio.Task[tuple[str | None, str]] | None = None
+        self._prewarmed_logical_canonical: tuple[str | None, str] | None = None
 
     @property
     def commits(self) -> tuple[ModelInputCommitResult, ...]:
         return tuple(self._commits)
+
+    @property
+    def sealed_logical_messages(self) -> tuple[object, ...]:
+        """Expose owned, immutable message values for same-Session reuse."""
+
+        messages = self._context.logical_input["messages"]
+        if not isinstance(messages, tuple):
+            raise ModelInputIntegrityError("sealed Model Input messages are invalid")
+        return messages
+
+    @property
+    def sealed_logical_input(self) -> Mapping[str, object]:
+        """Expose the same owned values used by the durable commit."""
+
+        return self._context.logical_input
+
+    def _prepare_logical_canonical(self) -> tuple[str | None, str]:
+        frozen = self._context.logical_input
+        logical = cast(
+            dict[str, JSONValue],
+            (
+                _logical_input_for_materialization(frozen)
+                if self._context._reused_message_prefix_count
+                else thaw_model_input_json(frozen)
+            ),
+        )
+        return self._context._canonical_owned_logical_input(logical)
+
+    async def prewarm_logical_input(self) -> None:
+        """Prepare the sealed logical hash while provider payloads are built."""
+
+        self._require_current_transcript()
+        if self._prewarmed_logical_canonical is not None:
+            return
+        task = self._logical_prewarm_task
+        if task is None:
+            task = asyncio.create_task(
+                asyncio.to_thread(self._prepare_logical_canonical)
+            )
+            self._logical_prewarm_task = task
+            task.add_done_callback(self._finish_logical_prewarm)
+        prepared = await asyncio.shield(task)
+        self._require_current_transcript()
+        self._prewarmed_logical_canonical = prepared
+
+    def _finish_logical_prewarm(
+        self, task: asyncio.Task[tuple[str | None, str]]
+    ) -> None:
+        if not task.cancelled():
+            task.exception()
 
     async def commit_prepared_request(
         self,
@@ -282,20 +705,135 @@ class ModelInputTranscriptCommitter(
                         raise ModelInputIntegrityError(
                             "Model Input attempts changed logical invocation identity"
                         )
+                if self._logical_prewarm_task is not None:
+                    with timer.phase("join_logical_prewarm"):
+                        self._prewarmed_logical_canonical = await asyncio.shield(
+                            self._logical_prewarm_task
+                        )
+                    self._require_current_transcript()
                 with timer.phase("validate_prepared_request"):
-                    prepared_payload, model_visible_headers, canonical = (
-                        _validate_prepared_request(request)
-                    )
+                    if (
+                        type(request) is PreparedModelRequest
+                        and request._owned_envelope_is_current()
+                    ):
+                        # The exact built-in envelope is recursively frozen.
+                        # Copy it off-loop so a long request cannot stall input.
+                        (
+                            prepared_payload,
+                            model_visible_headers,
+                            canonical,
+                        ) = await asyncio.to_thread(_validate_prepared_request, request)
+                    else:
+                        prepared_payload, model_visible_headers, canonical = (
+                            _validate_prepared_request(request)
+                        )
+                # Validation can consume an entire input frame on a long
+                # request. Service cancellation before allocating or writing
+                # its durable graph, and reject a Session changed meanwhile.
+                with timer.phase("post_validation_yield"):
+                    await _yield_preparation()
+                self._require_current_transcript()
                 self._latest_metrics = request.metrics
+                logical_shared_prefix = bool(self._context._reused_message_prefix_count)
+                prepared_shared_prefix = (
+                    type(request) is PreparedModelRequest
+                    and request._reused_message_prefix_count > 0
+                    and request._owned_envelope_is_current()
+                )
                 with timer.phase("logical_input_thaw"):
                     logical_input = cast(
                         dict[str, JSONValue],
-                        thaw_model_input_json(self._context.logical_input),
+                        await asyncio.to_thread(
+                            (
+                                _logical_input_for_materialization
+                                if logical_shared_prefix
+                                else thaw_model_input_json
+                            ),
+                            self._context.logical_input,
+                        ),
                     )
                 stored_logical_input = logical_input
                 stored_prepared_payload = prepared_payload
                 binary_projection_version = 0
-                if self._binary_codec is not None:
+                logical_input_hash: str | None = None
+                needs_binary_projection = self._binary_codec is not None
+                if (
+                    type(self._binary_codec) is SessionModelInputBlobCodec
+                    or self._binary_codec_factory is not None
+                ):
+                    # The built-in codec only changes declared prepared images,
+                    # logical image objects, and reserved literal marker keys.
+                    # A plain request needs its canonical logical encoding for
+                    # the snapshot hash anyway; use that immutable text to avoid
+                    # two more full-tree copies and an avoidable GC pause.
+                    with timer.phase("logical_canonical"):
+                        if self._prewarmed_logical_canonical is not None:
+                            logical_canonical, logical_input_hash = (
+                                self._prewarmed_logical_canonical
+                            )
+                        else:
+                            logical_canonical = await asyncio.to_thread(
+                                self._context._canonical_logical_input_json,
+                                logical_input,
+                            )
+                            logical_input_hash = (
+                                "sha256:"
+                                + hashlib.sha256(
+                                    logical_canonical.encode("utf-8")
+                                ).hexdigest()
+                            )
+                    needs_binary_projection = (
+                        bool(request.binary_fields)
+                        or any(
+                            marker in canonical
+                            or (
+                                marker in logical_canonical
+                                if logical_canonical is not None
+                                else marker in self._context._owned_binary_markers
+                            )
+                            for marker in (
+                                '"$loushang.sessionBlob"',
+                                '"$loushang.literal"',
+                            )
+                        )
+                        or (
+                            '"type":"image"' in logical_canonical
+                            if logical_canonical is not None
+                            else '"type":"image"' in self._context._owned_binary_markers
+                        )
+                    )
+                    if (
+                        needs_binary_projection
+                        and self._binary_codec_factory is not None
+                    ):
+                        codec = self._binary_codec_factory()
+                        if type(codec) is not SessionModelInputBlobCodec:
+                            raise TypeError(
+                                "deferred Model Input codec must be the built-in codec"
+                            )
+                        self._binary_codec = codec
+                        self._binary_codec_factory = None
+                if needs_binary_projection and self._binary_codec is not None:
+                    # Blob rewriting may inspect and replace any nested JSON
+                    # node, so give that path a fully detached native tree.
+                    if logical_shared_prefix:
+                        logical_input = cast(
+                            dict[str, JSONValue],
+                            await asyncio.to_thread(
+                                thaw_model_input_json,
+                                self._context.logical_input,
+                            ),
+                        )
+                        stored_logical_input = logical_input
+                    if prepared_shared_prefix:
+                        prepared_payload = cast(
+                            dict[str, JSONValue],
+                            await asyncio.to_thread(
+                                thaw_model_input_json,
+                                prepared_payload,
+                            ),
+                        )
+                        stored_prepared_payload = prepared_payload
                     with timer.phase("binary_externalize"):
                         projected_logical = self._binary_codec.externalize_mapping(
                             logical_input
@@ -313,11 +851,27 @@ class ModelInputTranscriptCommitter(
                         binary_projection_version = (
                             MODEL_INPUT_BINARY_PROJECTION_VERSION
                         )
-                logical_input_hash = hash_model_input_json(
-                    logical_input,
-                    name="logical Model Input",
-                )
-                writer = ModelInputV2Writer(
+                    # Zero-replacement projections are unused full tree copies.
+                    # Release them before indexing; changed trees remain owned
+                    # by stored_logical_input/stored_prepared_payload above.
+                    del projected_logical, projected_prepared
+                if logical_input_hash is None:
+                    if (
+                        self._prewarmed_logical_canonical is not None
+                        and self._binary_codec is None
+                        and self._binary_codec_factory is None
+                    ):
+                        logical_input_hash = self._prewarmed_logical_canonical[1]
+                    else:
+                        logical_input_hash = await asyncio.to_thread(
+                            hash_model_input_json,
+                            logical_input,
+                            name="logical Model Input",
+                        )
+                with timer.phase("pre_writer_yield"):
+                    await _yield_preparation()
+                self._require_current_transcript()
+                writer = await ModelInputV2Writer.prepare(
                     transcript=self._transcript,
                     expected_revision=self._expected_revision,
                     expected_leaf_id=self._expected_leaf_id,
@@ -330,11 +884,21 @@ class ModelInputTranscriptCommitter(
                         logical_input=stored_logical_input,
                         prepared_payload=stored_prepared_payload,
                         model_visible_headers=model_visible_headers,
+                        logical_source=(
+                            self._context.logical_input
+                            if stored_logical_input is logical_input
+                            else None
+                        ),
+                        prepared_source=(
+                            request.payload
+                            if type(request) is PreparedModelRequest
+                            and stored_prepared_payload is prepared_payload
+                            and request._owned_envelope_is_current()
+                            else None
+                        ),
                     )
                 materialization_timing = writer.materialization_timing
                 materialization_stats = writer.materialization_stats
-                self._expected_revision = materialization.expected_revision
-                self._expected_leaf_id = materialization.expected_leaf_id
                 with timer.phase("snapshot_build"):
                     snapshot = ModelInputSnapshotV2(
                         snapshot_id=str(uuid4()),
@@ -349,7 +913,7 @@ class ModelInputTranscriptCommitter(
                         conversation_id=self._transcript.header.conversation_id,
                         source_leaf_id=self._context.source_leaf_id,
                         source_revision=self._context.source_revision,
-                        commit_revision=self._expected_revision + 1,
+                        commit_revision=materialization.expected_revision + 1,
                         provider_id=_prepared_text(request, "provider_id"),
                         model_id=_prepared_text(request, "model_id"),
                         api_id=_prepared_text(request, "api"),
@@ -372,12 +936,14 @@ class ModelInputTranscriptCommitter(
                             "during commit"
                         )
                 with timer.phase("append_snapshot"):
-                    commit = await self._transcript.append_model_input_snapshot(
+                    batch = await self._transcript.append_staged_model_input_snapshot(
+                        writer.staged_records,
                         snapshot,
                         max_encoded_record_bytes=self._max_encoded_record_bytes,
                         expected_revision=self._expected_revision,
                         expected_leaf_id=self._expected_leaf_id,
                     )
+                    commit = batch[-1]
                 receipt = commit.receipt
                 if receipt is None:
                     raise ModelInputIntegrityError(
@@ -416,15 +982,17 @@ class ModelInputTranscriptCommitter(
                             raise ModelInputIntegrityError(
                                 "committed Model Input v2 prepared payload changed"
                             )
-                self._advance(commit.record.record_id, receipt.revision)
-                self._commits.append(
-                    ModelInputCommitResult(
-                        snapshot_id=snapshot.snapshot_id,
-                        record_id=commit.record.record_id,
-                        source_revision=self._context.source_revision,
-                        commit_revision=receipt.revision,
+                with timer.phase("publish_commit"):
+                    writer.publish_committed_graph()
+                    self._advance(commit.record.record_id, receipt.revision)
+                    self._commits.append(
+                        ModelInputCommitResult(
+                            snapshot_id=snapshot.snapshot_id,
+                            record_id=commit.record.record_id,
+                            source_revision=self._context.source_revision,
+                            commit_revision=receipt.revision,
+                        )
                     )
-                )
             outcome = "completed"
         finally:
             _emit_model_input_commit_timing(
@@ -487,33 +1055,9 @@ class ModelInputTranscriptCommitter(
                     "model call attempt usage cannot follow its terminal outcome"
                 )
             self._require_current_transcript()
-            if self._invocation_id != usage.invocation_id:
-                raise ModelInputIntegrityError(
-                    "model call attempt usage changed logical invocation identity"
-                )
-            matching_snapshots = [
-                record.payload
-                for record in self._transcript.active_path()
-                if isinstance(record.payload, ModelInputSnapshot | ModelInputSnapshotV2)
-                and record.payload.snapshot_id == usage.model_input_snapshot_id
-                and record.payload.invocation_id == usage.invocation_id
-                and record.payload.attempt == usage.attempt
-            ]
-            committed_snapshot_ids = {commit.snapshot_id for commit in self._commits}
-            if (
-                len(matching_snapshots) != 1
-                or usage.model_input_snapshot_id not in committed_snapshot_ids
-            ):
-                raise ModelInputIntegrityError(
-                    "model call attempt usage does not match a committed attempt"
-                )
+            key = self._require_attempt_usage_identity(usage)
             if usage in self._attempt_usage_observations:
                 return False
-            key = (
-                usage.invocation_id,
-                usage.attempt,
-                usage.model_input_snapshot_id,
-            )
             if key in self._terminal_attempt_usage_keys:
                 raise ModelInputIntegrityError(
                     "model call attempt usage cannot follow its terminal observation"
@@ -535,6 +1079,123 @@ class ModelInputTranscriptCommitter(
                 self._terminal_attempt_usage_keys.add(key)
             return True
 
+    async def record_terminal_model_call(
+        self,
+        outcome: PreparedModelCallOutcome,
+        *,
+        usage: ModelCallAttemptUsage | None,
+    ) -> None:
+        """Commit terminal usage and outcome together once both are known."""
+
+        if usage is None:
+            await self.record_model_call_outcome(outcome)
+            return
+        if not isinstance(usage, ModelCallAttemptUsage) or not usage.terminal:
+            raise TypeError("terminal model call requires terminal attempt usage")
+        async with self._lock:
+            if self._outcome_recorded:
+                raise ModelInputIntegrityError(
+                    "model call invocation already has a terminal outcome"
+                )
+            self._require_current_transcript()
+            if self._invocation_id != outcome.invocation_id:
+                raise ModelInputIntegrityError(
+                    "model call outcome changed logical invocation identity"
+                )
+            key = self._require_attempt_usage_identity(usage)
+            if (
+                usage in self._attempt_usage_observations
+                or key in self._terminal_attempt_usage_keys
+            ):
+                # A provider may already have reported the same terminal usage.
+                # A conflicting terminal observation cannot replace it, but
+                # the independently known outcome must still be recorded.
+                fact = ModelCallOutcome.from_prepared_outcome(
+                    _outcome_with_request_metrics(outcome, self._latest_metrics),
+                    model_input_snapshot_ids=tuple(
+                        commit.snapshot_id for commit in self._commits
+                    ),
+                )
+                commit = await self._transcript.append_model_call_outcome(
+                    fact,
+                    expected_revision=self._expected_revision,
+                    expected_leaf_id=self._expected_leaf_id,
+                )
+                receipt = commit.receipt
+                if receipt is None:
+                    raise ModelInputIntegrityError(
+                        "model call outcome did not reach the authoritative Store"
+                    )
+                self._advance(commit.record.record_id, receipt.revision)
+                self._outcome_recorded = True
+                return
+            fact = ModelCallOutcome.from_prepared_outcome(
+                _outcome_with_request_metrics(outcome, self._latest_metrics),
+                model_input_snapshot_ids=tuple(
+                    commit.snapshot_id for commit in self._commits
+                ),
+            )
+            (
+                usage_commit,
+                outcome_commit,
+            ) = await self._transcript._append_model_call_terminal_batch(
+                usage,
+                fact,
+                max_encoded_record_bytes=self._max_encoded_record_bytes,
+                expected_revision=self._expected_revision,
+                expected_leaf_id=self._expected_leaf_id,
+            )
+            if usage_commit.receipt is None or outcome_commit.receipt is None:
+                raise ModelInputIntegrityError(
+                    "terminal model call did not reach the authoritative Store"
+                )
+            self._advance(
+                outcome_commit.record.record_id,
+                outcome_commit.receipt.revision,
+            )
+            self._attempt_usage_observations.add(usage)
+            self._terminal_attempt_usage_keys.add(key)
+            self._outcome_recorded = True
+
+    def _require_attempt_usage_identity(
+        self,
+        usage: ModelCallAttemptUsage,
+    ) -> tuple[str, int, str]:
+        if self._invocation_id != usage.invocation_id:
+            raise ModelInputIntegrityError(
+                "model call attempt usage changed logical invocation identity"
+            )
+        # A receipt for the current append chain proves ancestry without
+        # rescanning the full historical path for every usage observation.
+        snapshot_commit = next(
+            (
+                commit
+                for commit in self._commits
+                if commit.snapshot_id == usage.model_input_snapshot_id
+            ),
+            None,
+        )
+        snapshot_record = (
+            self._transcript.get(snapshot_commit.record_id)
+            if snapshot_commit is not None
+            else None
+        )
+        snapshot = snapshot_record.payload if snapshot_record is not None else None
+        if (
+            not isinstance(snapshot, ModelInputSnapshot | ModelInputSnapshotV2)
+            or snapshot.snapshot_id != usage.model_input_snapshot_id
+            or snapshot.invocation_id != usage.invocation_id
+            or snapshot.attempt != usage.attempt
+        ):
+            raise ModelInputIntegrityError(
+                "model call attempt usage does not match a committed attempt"
+            )
+        return (
+            usage.invocation_id,
+            usage.attempt,
+            usage.model_input_snapshot_id,
+        )
+
     def _require_current_transcript(self) -> None:
         if (
             self._transcript.revision != self._expected_revision
@@ -547,6 +1208,12 @@ class ModelInputTranscriptCommitter(
     def _advance(self, record_id: str, revision: int) -> None:
         self._expected_leaf_id = record_id
         self._expected_revision = revision
+
+
+async def _yield_preparation() -> None:
+    # Service the queued reader/consumer chain before another full projection.
+    for _ in range(3):
+        await asyncio.sleep(0)
 
 
 def _emit_model_input_commit_timing(
@@ -858,6 +1525,16 @@ def _validate_rebuilt_logical_input(value: Mapping[str, JSONValue]) -> None:
 def _validate_prepared_request(
     request: PreparedModelRequest,
 ) -> tuple[dict[str, JSONValue], dict[str, str], str]:
+    if type(request) is PreparedModelRequest and request._owned_envelope_is_current():
+        if request._reused_message_prefix_count:
+            return (
+                _prepared_payload_for_materialization(request.payload),
+                dict(request.model_visible_headers),
+                request.canonical_payload,
+            )
+        owned = request.owned_commit_projection()
+        if owned is not None:
+            return owned
     payload = _prepared_json_mapping(request, "payload")
     raw_headers = getattr(request, "model_visible_headers", None)
     if not isinstance(raw_headers, Mapping) or any(
@@ -889,11 +1566,19 @@ def _prepared_json_mapping(
     value = getattr(request, attribute, None)
     if not isinstance(value, Mapping):
         raise ModelInputIntegrityError(f"prepared request {attribute} is not a mapping")
-    thawed = thaw_model_input_json(
-        freeze_model_input_json(value, name=f"prepared request {attribute}")
-    )
+    try:
+        thawed = thaw_model_input_json(value)
+    except RecursionError:
+        # Retain the original cycle/depth rejection contract on malformed
+        # inputs, without building a frozen intermediate for valid requests.
+        try:
+            freeze_model_input_json(value, name=f"prepared request {attribute}")
+        except (TypeError, ValueError, RecursionError) as error:
+            raise error from None
+        raise
     if not isinstance(thawed, dict):
         raise ModelInputIntegrityError(f"prepared request {attribute} is not an object")
+    validate_json_value(thawed, name=f"prepared request {attribute}")
     return thawed
 
 

@@ -1495,7 +1495,7 @@ def test_anthropic_forwards_authoritative_auth_headers(
 
     headers = _last_anthropic_request_headers()
     assert _FakeAsyncAnthropic.last_init_kwargs["api_key"] == ""
-    assert _FakeAsyncAnthropic.last_init_kwargs["auth_token"] == ""
+    assert "auth_token" not in _FakeAsyncAnthropic.last_init_kwargs
     if not expected_headers:
         assert isinstance(headers["Authorization"], _FakeOmit)
         assert isinstance(headers["X-Api-Key"], _FakeOmit)

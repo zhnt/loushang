@@ -8,9 +8,9 @@
 它建立在以下输入之上：
 
 - [Loushang Architecture Governance Profile](../governance-profile.md)
-- [Reference AI SDK Whitebox Candidate Components](/home/dev/workspace/loushang/docs/architecture/ai/reference/reference-ai-sdk/reference-ai-sdk-whitebox-candidate-components.md)
-- [Kimi-CLI AI Whitebox Candidate Components](/home/dev/workspace/loushang/docs/architecture/ai/reference/kimi-cli/kimi-cli-ai-whitebox-candidate-components.md)
-- [Loushang-AI Whitebox Candidate Functions](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-whitebox-candidate-functions.md)
+- [Reference AI SDK Whitebox Candidate Components](reference/reference-ai-sdk/reference-ai-sdk-whitebox-candidate-components.md)
+- [Kimi-CLI AI Whitebox Candidate Components](reference/kimi-cli/kimi-cli-ai-whitebox-candidate-components.md)
+- [Loushang-AI Whitebox Candidate Functions](loushang-ai-whitebox-candidate-functions.md)
 
 本文档只讨论：
 
@@ -58,7 +58,7 @@
 
 **主要来源：**
 
-- [loushang-ai-top-level-api-signatures.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-top-level-api-signatures.md)
+- [loushang-ai-top-level-api-signatures.md](loushang-ai-top-level-api-signatures.md)
 - `reference AI SDK` 顶层 API
 
 **作用：**
@@ -92,7 +92,7 @@
 
 - glossary 中 `Model`
 - `reference AI SDK` model registry 经验
-- [loushang-ai-system-context.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-system-context.md)
+- [loushang-ai-system-context.md](loushang-ai-system-context.md)
 
 **作用：**
 
@@ -121,7 +121,7 @@
 
 **主要来源：**
 
-- [loushang-ai-api-adapter-registry.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-api-adapter-registry.md)
+- [loushang-ai-api-adapter-registry.md](loushang-ai-api-adapter-registry.md)
 - `reference AI SDK` api registry 经验
 
 **作用：**
@@ -153,7 +153,7 @@
 **主要来源：**
 
 - glossary 中 `Context`
-- [loushang-ai-system-context.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-system-context.md)
+- [loushang-ai-system-context.md](loushang-ai-system-context.md)
 - `kimi-cli` message/context intake 经验
 
 **作用：**
@@ -184,7 +184,7 @@
 
 **主要来源：**
 
-- [loushang-ai-api-adapter-registry.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-api-adapter-registry.md)
+- [loushang-ai-api-adapter-registry.md](loushang-ai-api-adapter-registry.md)
 - `reference AI SDK` 的 `APIAdapter`
 - `kimi-cli` 的 `ChatProvider` protocol
 
@@ -214,8 +214,8 @@
 
 **主要来源：**
 
-- [loushang-ai-provider-adapter-strategy.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-provider-adapter-strategy.md)
-- [loushang-ai-physical-system-context.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-physical-system-context.md)
+- [loushang-ai-provider-adapter-strategy.md](loushang-ai-provider-adapter-strategy.md)
+- [loushang-ai-physical-system-context.md](loushang-ai-physical-system-context.md)
 - `kimi-cli` provider adapter 经验
 
 **作用：**
@@ -279,7 +279,7 @@
 
 **主要来源：**
 
-- [loushang-ai-physical-system-context.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-physical-system-context.md)
+- [loushang-ai-physical-system-context.md](loushang-ai-physical-system-context.md)
 - spike 验证结果
 - `kimi-cli` client/carrier management 经验
 
@@ -338,7 +338,7 @@
 
 **主要来源：**
 
-- [loushang-ai-streaming-and-cancellation.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-streaming-and-cancellation.md)
+- [loushang-ai-streaming-and-cancellation.md](loushang-ai-streaming-and-cancellation.md)
 - `kimi-cli` stream merge / message assembly 经验
 
 **作用：**
@@ -369,7 +369,7 @@
 
 **主要来源：**
 
-- [loushang-ai-streaming-and-cancellation.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-streaming-and-cancellation.md)
+- [loushang-ai-streaming-and-cancellation.md](loushang-ai-streaming-and-cancellation.md)
 - `reference AI SDK` event stream 经验
 
 **作用：**
@@ -457,7 +457,7 @@
 
 **主要来源：**
 
-- [loushang-ai-system-context.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-system-context.md)
+- [loushang-ai-system-context.md](loushang-ai-system-context.md)
 - `reference AI SDK` / `kimi-cli` tool support 经验
 
 **作用：**
@@ -603,7 +603,7 @@
 
 **主要来源：**
 
-- [loushang-ai-streaming-and-cancellation.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-streaming-and-cancellation.md)
+- [loushang-ai-streaming-and-cancellation.md](loushang-ai-streaming-and-cancellation.md)
 - provider adapter validation spike
 
 **作用：**
@@ -691,7 +691,7 @@
 
 **主要来源：**
 
-- [loushang-ai-system-context.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-system-context.md)
+- [loushang-ai-system-context.md](loushang-ai-system-context.md)
 
 **作用：**
 

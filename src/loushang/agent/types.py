@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import (
@@ -37,6 +38,7 @@ from loushang.ai.types import (
     Context,
     ImagePart,
     Message,
+    ProviderCompactionWindow,
     TextPart,
     ToolCall,
     ToolResultMessage,
@@ -550,9 +552,10 @@ def normalize_agent_tools(
 
 @dataclass(frozen=True)
 class AgentContext:
-    system_prompt: str
+    system_prompt: str | None
     messages: list[AgentMessage] = field(default_factory=list)
     tools: list[AgentTool[Any]] | None = None
+    provider_window: ProviderCompactionWindow | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tools", normalize_agent_tools(self.tools))
@@ -602,6 +605,8 @@ class AgentLoopConfig:
     ) = None
     prepare_model_call: PrepareModelCallFn | None = None
     require_prepared_request_conformance: bool = False
+    execution_scope: Callable[[], AbstractContextManager[None]] | None = None
+    checkpoint: Callable[[], None] | None = None
 
 
 class AgentState:
@@ -627,6 +632,7 @@ class AgentState:
         streaming_message: AgentMessage | None = None,
         pending_tool_calls: set[str] | None = None,
         error_message: str | None = None,
+        provider_window: ProviderCompactionWindow | None = None,
     ) -> None:
         self.system_prompt = system_prompt
         self.model = model
@@ -637,6 +643,7 @@ class AgentState:
         self.streaming_message = streaming_message
         self.pending_tool_calls = set(pending_tool_calls or set())
         self.error_message = error_message
+        self.provider_window = provider_window
 
     @property
     def tools(self) -> list[AgentTool[Any]]:
@@ -653,6 +660,22 @@ class AgentState:
     def set_messages(self, messages: list[AgentMessage]) -> None:
         """Replace the messages list, copying the top-level container."""
         self._messages = list(messages)
+
+
+@dataclass(frozen=True)
+class AgentRunOptions:
+    """Invocation-local restrictions; never mutate the Agent's baseline.
+
+    The caller owns the lifetime and authority of injected callbacks. Tool
+    selection only filters the existing snapshot; input queues remain intact.
+    """
+
+    stream_fn: StreamFn | None = None
+    tool_names: frozenset[str] | None = None
+    system_prompt: str | None = None
+    deliver_queued_input: bool = True
+    execution_scope: Callable[[], AbstractContextManager[None]] | None = None
+    checkpoint: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True)

@@ -5,6 +5,72 @@ from contextlib import nullcontext
 from io import StringIO
 from types import SimpleNamespace
 
+import pytest
+
+
+@pytest.mark.parametrize("delay", [0.01, 0.1])
+@pytest.mark.parametrize("busy_after_read", [False, True])
+def test_escape_expiry_precedes_late_text_after_a_busy_turn(
+    monkeypatch, delay, busy_after_read
+):
+    import loushang.harnesstui.conversation.screen_runner as runner
+    from loushang.harnesstui.conversation.input import ConversationInputIgnored
+    from loushang.tui.terminal import TerminalSize
+
+    clock = [10.0]
+    monkeypatch.setattr(runner, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    events = []
+
+    class Router:
+        def __init__(self, **_kwargs):
+            pass
+
+        def handle(self, event):
+            events.append((event.kind, event.key, event.text))
+            return ConversationInputIgnored()
+
+        def dispose(self):
+            pass
+
+    async def scenario():
+        chunks = iter(["\x1b", "z", ""])
+
+        async def read(_stdin):
+            chunk = next(chunks)
+            if chunk == "z":
+                # The next character becomes readable after CPU work. An
+                # expired standalone Escape must not turn it into Alt+z.
+                clock[0] += delay
+                if busy_after_read:
+                    # Timely tails remain valid even when their consumer
+                    # resumes after the deadline. Use read readiness time.
+                    asyncio.get_running_loop().call_soon(
+                        lambda: clock.__setitem__(0, clock[0] + 0.1)
+                    )
+            return chunk
+
+        return await runner.run_conversation_screen(
+            app=_RunnerApp(),
+            stdin=StringIO(),
+            stdout=StringIO(),
+            handle_prompt=lambda _: None,
+            on_abort=lambda: None,
+            should_exit=lambda _: False,
+            terminal_mode_factory=lambda *_: nullcontext(object()),
+            terminal_size_provider=lambda: TerminalSize(columns=80, rows=24),
+            input_router_factory=Router,
+            input_chunk_reader=read,
+            interruption_message="interrupted",
+            cancellation_message="cancelled",
+        )
+
+    assert asyncio.run(scenario()) == 0
+    if delay < 0.03:
+        assert [event[1] for event in events] == ["alt+z"]
+    else:
+        assert [event[1] for event in events] == ["escape", ""]
+        assert events[-1][2] == "z"
+
 
 def test_prompt_handler_forwards_neutral_attachments() -> None:
     from loushang.harnesstui.conversation.screen_runner import run_prompt_handler
@@ -249,6 +315,7 @@ class _RunnerState:
         self.records: list[object] = []
         self.active_started_at: float | None = None
         self.pending_steers: list[str] = []
+        self.pending_shell_commands: list[str] = []
         self.assistant_draft_buffer = None
         self.aborts: list[tuple[str, float]] = []
         self._calls = calls

@@ -162,6 +162,55 @@ def test_provider_runtime_records_only_observed_terminal_attempt_usage() -> None
     assert absent == []
 
 
+def test_provider_runtime_uses_one_terminal_recording_call_when_supported() -> None:
+    class CombinedRecorder:
+        def __init__(self) -> None:
+            self.calls: list[tuple[PreparedModelCallOutcome, bool]] = []
+
+        async def commit_prepared_request(self, request: object) -> None:
+            del request
+
+        async def record_terminal_model_call(
+            self, outcome: PreparedModelCallOutcome, *, usage_observed: bool
+        ) -> None:
+            self.calls.append((outcome, usage_observed))
+
+        async def record_prepared_model_call_attempt_usage(
+            self, usage: PreparedModelCallAttemptUsage
+        ) -> bool:
+            raise AssertionError("terminal usage must be part of the combined call")
+
+        async def record_model_call_outcome(
+            self, outcome: PreparedModelCallOutcome
+        ) -> None:
+            raise AssertionError("outcome must be part of the combined call")
+
+    async def scenario(include_usage: bool) -> CombinedRecorder:
+        recorder = CombinedRecorder()
+
+        async def parts():
+            yield {"type": "response_start", "response_id": "combined-response"}
+            if include_usage:
+                yield {"type": "usage_delta", "input": 10, "output": 2}
+            yield {"type": "response_done"}
+
+        stream = start_provider_runtime(
+            parts,
+            options=CallOptions(prepared_request_committer=recorder),
+            request=_request(),
+            invocation_id="combined-invocation",
+        )
+        await stream.result()
+        return recorder
+
+    with_usage = asyncio.run(scenario(True))
+    without_usage = asyncio.run(scenario(False))
+    assert len(with_usage.calls) == len(without_usage.calls) == 1
+    assert with_usage.calls[0][1] is True
+    assert without_usage.calls[0][1] is False
+    assert with_usage.calls[0][0].invocation_id == "combined-invocation"
+
+
 def test_provider_runtime_rejects_source_without_terminal_part() -> None:
     async def _parts():
         yield {"type": "response_start", "response_id": "resp_missing_done"}
@@ -244,8 +293,8 @@ def test_provider_runtime_converts_adapter_exceptions_to_error_events() -> None:
     events = asyncio.run(_run())
 
     assert [event["type"] for event in events] == ["error"]
-    assert events[0]["error"].error_message == "Provider request failed."
-    assert events[0]["error_info"]["message"] == "Provider request failed."
+    assert events[0]["error"].error_message == "Provider request failed (RuntimeError)."
+    assert events[0]["error_info"]["message"] == "Provider request failed (RuntimeError)."
     assert events[0]["error_info"]["provider"] == "provider-a"
     assert events[0]["error_info"]["endpoint"] == "openai-responses"
     assert events[0]["error_info"]["model"] == "model-a"
@@ -834,9 +883,19 @@ def test_provider_runtime_cancellation_signal_aborts_and_closes_source() -> None
     }
 
 
-def test_terminal_outcome_recording_survives_consumer_cancellation() -> None:
+@pytest.mark.parametrize("combined", [False, True])
+def test_terminal_outcome_recording_survives_consumer_cancellation(
+    combined: bool,
+) -> None:
+    class CombinedBlockingRecorder(_BlockingOutcomeRecorder):
+        async def record_terminal_model_call(
+            self, outcome: PreparedModelCallOutcome, *, usage_observed: bool
+        ) -> None:
+            assert usage_observed is False
+            await self.record_model_call_outcome(outcome)
+
     source = _BlockingRawSource()
-    recorder = _BlockingOutcomeRecorder()
+    recorder = CombinedBlockingRecorder() if combined else _BlockingOutcomeRecorder()
 
     async def _run() -> None:
         signal = asyncio.Event()

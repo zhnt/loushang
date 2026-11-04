@@ -14,6 +14,7 @@ from loushang.harness.events.session import (
 from loushang.harness.runtime.input_queue import HostInputQueue
 from loushang.harness.runtime.turn import TurnInputQueue
 from loushang.harness.runtime.types import QueueMode
+from loushang.harness.session.execution_admission import SessionExecutionAdmission
 from loushang.harness.session.request_evidence import RequestEvidenceRuntimePort
 
 PreflightUserInput = Callable[[str], object]
@@ -21,6 +22,14 @@ RejectExtensionCommand = Callable[[str], None]
 QueueUpdateEmitter = Callable[[], None]
 
 log = get_log(__name__).bind(component="QueueController")
+
+
+@dataclass
+class _SubmissionEvidence:
+    message: object
+    evidence: object
+    delivered: object | None = None
+    owner: object = field(default_factory=object)
 
 
 class AgentQueueStatePort(Protocol):
@@ -50,8 +59,9 @@ class QueueController:
     reject_extension_command: RejectExtensionCommand
     emit_queue_update: QueueUpdateEmitter
     request_evidence: RequestEvidenceRuntimePort | None = None
+    admission: SessionExecutionAdmission | None = None
     _queue: TurnInputQueue[object] = field(init=False, repr=False)
-    _pending_submission_evidence: dict[int, tuple[object, object]] = field(
+    _pending_submission_evidence: dict[int, _SubmissionEvidence] = field(
         default_factory=dict,
         init=False,
         repr=False,
@@ -74,6 +84,7 @@ class QueueController:
             has_delivery_messages=self.agent.has_queued_messages,
             notify=self.emit_queue_update,
             observe=self._observe_queue_event,
+            delivery_allowed=lambda: self.admission is None or not self.admission.delivery_held,
         )
 
     @property
@@ -96,13 +107,23 @@ class QueueController:
         return self._queue.snapshot()
 
     def append_next_turn_message(self, message: object) -> None:
+        if self.admission is not None:
+            self.admission.input_arrived()
         self._queue.append_next_turn(message)
 
     def drain_next_turn_messages(self) -> list[object]:
+        if self.admission is not None and self.admission.delivery_held:
+            return []
         return self._queue.drain_next_turn()
+
+    def flush_delivery(self) -> None:
+        self._queue.flush_delivery()
 
     def has_pending_messages(self) -> bool:
         return self._queue.has_pending()
+
+    def has_pending_execution_input(self) -> bool:
+        return self._queue.has_pending() or self._queue.has_next_turn_messages
 
     def steer(self, user_input: str, images: list[ImagePart] | None = None) -> None:
         self.reject_extension_command(user_input)
@@ -175,9 +196,13 @@ class QueueController:
     def queue_mailbox_message(self, message: object) -> None:
         """Deliver system input without creating an editable queue snapshot."""
 
+        if self.admission is not None:
+            self.admission.input_arrived()
         self.agent.enqueue_mailbox(message)
 
     def clear_queue(self) -> dict[str, list[str]]:
+        if self.admission is not None:
+            self.admission.clear_inputs()
         steering = self.get_steering_messages()
         follow_up = self.get_follow_up_messages()
         queued_owners = tuple(
@@ -188,6 +213,7 @@ class QueueController:
             for owner in queued_owners:
                 self.request_evidence.discard_owner(owner)
         self._queued_evidence_owners.clear()
+        self._pending_submission_evidence.clear()
         log.debug_event(
             "agent", "queue.cleared", steering=len(steering), follow_up=len(follow_up)
         )
@@ -239,21 +265,28 @@ class QueueController:
         )
 
     def _submit(self, kind: QueueKind, message: object) -> object:
-        if kind == "steering":
+        pending = self._pending_submission_evidence.get(id(message))
+        retry_binding = pending is not None and pending.delivered is not None
+        if retry_binding:
+            assert pending is not None
+            delivered = pending.delivered
+        elif kind == "steering":
             delivered = self.agent.steer(message)
         else:
             delivered = self.agent.follow_up(message)
-        pending = self._pending_submission_evidence.get(id(message))
-        if pending is not None and pending[0] is message:
+        if pending is not None and pending.message is message:
             if self.request_evidence is None:
                 raise RuntimeError("queued request evidence has no Session runtime")
-            owner = object()
+            pending.delivered = delivered
+            self._queued_evidence_owners[id(delivered)] = (delivered, pending.owner)
+            if retry_binding:
+                self.request_evidence.discard_owner(pending.owner)
             self.request_evidence.bind(
                 delivered,
-                pending[1],
-                owner=owner,
+                pending.evidence,
+                owner=pending.owner,
             )
-            self._queued_evidence_owners[id(delivered)] = (delivered, owner)
+            self._pending_submission_evidence.pop(id(message), None)
         return delivered
 
     def _enqueue(
@@ -264,20 +297,22 @@ class QueueController:
         message: object,
         request_evidence: object | None,
     ) -> None:
+        if self.admission is not None:
+            self.admission.input_arrived()
         identity = id(message)
         if request_evidence is not None:
-            self._pending_submission_evidence[identity] = (
-                message,
-                request_evidence,
-            )
+            self._pending_submission_evidence[identity] = _SubmissionEvidence(message, request_evidence)
         try:
             self._queue.enqueue(
                 kind,
                 text=visible_text,
                 payload=message,
             )
-        finally:
-            self._pending_submission_evidence.pop(identity, None)
+        except BaseException:
+            pending = self._pending_submission_evidence.get(identity)
+            if pending is not None and pending.delivered is None:
+                self._pending_submission_evidence.pop(identity, None)
+            raise
 
     @staticmethod
     def _observe_queue_event(event: str, item: QueuedMessageSnapshot) -> None:

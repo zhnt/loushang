@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import importlib.metadata
 import importlib.util
 import json
@@ -10,7 +11,7 @@ import stat
 import sys
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from importlib.machinery import ModuleSpec, PathFinder
 from pathlib import Path
@@ -311,7 +312,18 @@ class InstalledPythonDistributionEvidenceResolver:
                 _editable_origins=origins,
             )
 
-        files = getattr(installed, "files", None)
+        try:
+            record = (
+                installed.read_text("RECORD")
+                if type(installed) is importlib.metadata.PathDistribution
+                else None
+            )
+        except Exception as exc:
+            raise _evidence_error(
+                "A locked Plugin dependency origin is unverifiable",
+                code="plugin_dependency_distribution_origin_unverifiable",
+            ) from exc
+        files = () if record else getattr(installed, "files", None)
         if files is None:
             raise _evidence_error(
                 "A locked Plugin dependency origin is unverifiable",
@@ -324,16 +336,8 @@ class InstalledPythonDistributionEvidenceResolver:
                 code="plugin_dependency_distribution_origin_unverifiable",
             )
         try:
-            # Cache only lexical prefix strings, never filesystem evidence.
-            prefixes: dict[Path, tuple[str, ...]] = {}
-            recorded_paths = tuple(
-                sorted(
-                    {
-                        _resolve_record_path(Path(str(locate_file(item))), prefixes)
-                        for item in tuple(files)
-                    },
-                    key=str,
-                )
+            recorded_paths = _resolved_record_paths(
+                locate_file, files, record=record
             )
         except Exception as exc:
             raise _evidence_error(
@@ -346,6 +350,53 @@ class InstalledPythonDistributionEvidenceResolver:
             top_level_packages=packages,
             _recorded_paths=recorded_paths,
         )
+
+
+def _resolved_record_paths(
+    locate_file: Callable[[object], object],
+    files: Iterable[object],
+    *,
+    record: str | None,
+) -> tuple[Path, ...]:
+    if record:
+        # PathDistribution.files reads RECORD and stats every entry before
+        # the resolver walks the same paths again. Resolve each entry once,
+        # strictly: missing paths stay excluded and no origin is cached.
+        names = _record_names(record)
+        paths: set[Path] = set()
+        for name in names:
+            try:
+                paths.add(Path(str(locate_file(name))).resolve(strict=True))
+            except (FileNotFoundError, NotADirectoryError):
+                continue
+        return tuple(sorted(paths, key=str))
+
+    # Custom distributions and egg-info retain their original files protocol.
+    # Cache only lexical prefix strings, never filesystem evidence.
+    prefixes: dict[Path, tuple[str, ...]] = {}
+    return tuple(
+        sorted(
+            {
+                _resolve_record_path(Path(str(locate_file(item))), prefixes)
+                for item in tuple(files)
+            },
+            key=str,
+        )
+    )
+
+
+def _record_names(record: str) -> tuple[str, ...]:
+    names: list[str] = []
+    for columns in csv.reader(record.splitlines()):
+        if not 1 <= len(columns) <= 3:
+            raise ValueError("Invalid installed distribution RECORD entry")
+        name = importlib.metadata.PackagePath(columns[0])
+        if len(columns) > 1 and columns[1]:
+            importlib.metadata.FileHash(columns[1])
+        if len(columns) > 2 and columns[2]:
+            int(columns[2])
+        names.append(str(name))
+    return tuple(names)
 
 
 def _resolve_record_path(path: Path, prefixes: dict[Path, tuple[str, ...]]) -> Path:

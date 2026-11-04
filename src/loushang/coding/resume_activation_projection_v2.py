@@ -5,9 +5,11 @@ No projection result establishes present admission or native effect settlement.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
-from collections.abc import Iterable, Mapping
+import time
+from collections.abc import Generator, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -55,6 +57,45 @@ def project_coding_activation_attempt_path_v2(
     *,
     current_session_id: str,
 ) -> CodingActivationAttemptProjectionV2:
+    steps = _project_coding_activation_attempt_path_v2_steps(
+        records, current_session_id=current_session_id
+    )
+    while True:
+        try:
+            next(steps)
+        except StopIteration as complete:
+            return complete.value
+
+
+async def project_coding_activation_attempt_path_v2_async(
+    records: Iterable[AgentTranscriptRecord],
+    *,
+    current_session_id: str,
+) -> CodingActivationAttemptProjectionV2:
+    """Perform the same complete historical check while allowing UI work."""
+
+    steps = _project_coding_activation_attempt_path_v2_steps(
+        records, current_session_id=current_session_id
+    )
+    deadline = time.monotonic() + 0.008
+    try:
+        while True:
+            try:
+                next(steps)
+            except StopIteration as complete:
+                return complete.value
+            if time.monotonic() >= deadline:
+                await asyncio.sleep(0)
+                deadline = time.monotonic() + 0.008
+    finally:
+        steps.close()
+
+
+def _project_coding_activation_attempt_path_v2_steps(
+    records: Iterable[AgentTranscriptRecord],
+    *,
+    current_session_id: str,
+) -> Generator[None, None, CodingActivationAttemptProjectionV2]:
     if (
         type(current_session_id) is not str
         or re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", current_session_id) is None
@@ -158,6 +199,7 @@ def project_coding_activation_attempt_path_v2(
         ancestry.update(len(identity).to_bytes(4, "big"))
         ancestry.update(identity)
         previous_id = record.record_id
+        yield
     ancestry_digest = ancestry.hexdigest()
     if unknown:
         return CodingActivationAttemptProjectionV2(

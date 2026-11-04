@@ -14,6 +14,8 @@ from loushang.harness.approval import ApprovalResolver, approval_actor_id
 from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     ExecutionAuthorizationError,
+    ExecutionProfileProvider,
+    select_execution_profile,
 )
 from loushang.harness.effects import (
     FilesystemEffect,
@@ -64,6 +66,7 @@ class ProcessExecutionScope:
     audit_sink: ProcessAuditSink | None = field(default=None, repr=False)
     execution_profile_ceiling: EffectiveExecutionProfile | None = None
     require_approval: bool = False
+    execution_profile_provider: ExecutionProfileProvider | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if self.audit_sink is not None and not callable(self.audit_sink):
@@ -77,6 +80,13 @@ class ProcessExecutionScope:
             )
         if type(self.require_approval) is not bool:
             raise TypeError("process execution scope require_approval must be a bool")
+        if self.execution_profile_provider is not None and self.execution_profile_ceiling is None:
+            raise ValueError("live process selection requires an execution ceiling")
+
+    def effective_execution_profile(self) -> EffectiveExecutionProfile | None:
+        if self.execution_profile_ceiling is None:
+            return None
+        return select_execution_profile(self.execution_profile_ceiling, self.execution_profile_provider)
 
     @property
     def actor_id(self) -> str:
@@ -235,13 +245,13 @@ class ScopeBoundProcessLauncher:
 
     @property
     def execution_profile_ceiling(self) -> EffectiveExecutionProfile | None:
-        """Observe the original gateway ceiling without borrowing authority.
+        """Observe the current gateway selection without borrowing authority.
 
-        This frozen data does not assert OS containment, current admission or
+        This data does not assert OS containment, current admission or
         permission to start a process. Original authorization remains required.
         """
 
-        return self._scope.execution_profile_ceiling
+        return self._scope.effective_execution_profile()
 
     async def start(
         self,
@@ -323,7 +333,7 @@ class ScopeBoundProcessLauncher:
             signal=signal,
             event_sink=self._scope.audit_sink,
             exec_service=_ExecutionProfileCarrier(
-                self._scope.execution_profile_ceiling
+                self._scope.effective_execution_profile()
             ),
         )
 

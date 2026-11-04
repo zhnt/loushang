@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "milestone": "GUI-B1-workspace-task-review-slice",
+  "cases": [
+    {
+      "id": "GUI-B1-L1-BROWSER-LAYOUT",
+      "level": "L1",
+      "command": "pnpm run test:layout",
+      "requiredOn": ["windows"],
+      "intent": "Measure reading-column alignment, right-panel separation, sidebar dragging and action hit targets in real Chromium; retain screenshots and failure traces. Not native window or Windows display-scaling evidence."
+    },
+    {
+      "id": "GUI-B1-L0-STATE",
+      "level": "L0",
+      "command": "pnpm run test",
+      "requiredOn": ["linux", "macos", "windows"],
+      "intent": "Project Workspace, Session, Run, Task, Activity, AgentRun and ChangeSet fixtures without local-state leakage; reject duplicate, invalid, gapped and stale event sequences."
+    },
+    {
+      "id": "GUI-B1-L1-WORKSPACE-TASK-REVIEW",
+      "level": "L1",
+      "command": "pnpm run test",
+      "requiredOn": ["linux", "macos", "windows"],
+      "intent": "Drive three Workspace kinds through Session draft isolation, active Run progress, expandable activities, Task/AgentRun cross-navigation and Quick Look to read-only Review."
+    },
+    {
+      "id": "GUI-B1-L2-FIXTURE-BRIDGE",
+      "level": "L2",
+      "command": "pnpm run dev:fixture-native",
+      "requiredOn": ["windows"],
+      "passText": "Rust invoke + event verified",
+      "intent": "Cross the real React to Rust invoke/event boundary while the Rust AppClient side remains a fixed fixture."
+    },
+    {
+      "id": "GUI-B1-L2-DEFAULT-BRIDGE-LOCKED",
+      "level": "L2",
+      "command": "pnpm run dev",
+      "requiredOn": ["windows"],
+      "passText": "Native bridge locked",
+      "intent": "Prove the fixture IPC command is unavailable in the default native build."
+    }
+  ]
+}

@@ -33,6 +33,7 @@ class ScreenFrameCopy:
     followup_label: str
     followup_hint: str
     interruption_marker: str = "■"
+    stopping_label: str = "Stopping…"
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +47,7 @@ class ScreenFramePresentation:
     ) -> StatusLinePreviewSnapshot:
         return StatusLinePreviewSnapshot(
             model_label=state.model_label,
+            reasoning_label=state.reasoning_label,
             cwd=state.cwd,
             branch=state.branch,
             session_label=state.session_label,
@@ -56,6 +58,7 @@ class ScreenFramePresentation:
             pending_steers=len(state.pending_steers),
             status_message=state.presentation_status_message,
             context_usage=state.context_usage,
+            sdk_preparing=state.sdk_preparing,
         )
 
     def expanded_bottom_frame(
@@ -69,6 +72,7 @@ class ScreenFramePresentation:
             or state.running
             or bool(state.pending_steers)
             or bool(state.pending_followups)
+            or bool(state.pending_shell_commands)
             or bool(state.interruption_message)
         )
 
@@ -95,6 +99,8 @@ class ScreenFramePresentation:
         state: ScreenConversationState,
         active_surface: Any | None,
         elapsed_seconds: float,
+        loading_indicator: str | None = None,
+        loading_phase: str | None = None,
     ) -> BottomFrame:
         component.composer = composer
         component.surface = active_surface
@@ -104,7 +110,11 @@ class ScreenFramePresentation:
         )
         component.pending_queue = self.pending_queue(state)
         component.status_bar = (
-            self.status_bar(state)
+            self.status_bar(
+                state,
+                loading_indicator=loading_indicator,
+                loading_phase=loading_phase,
+            )
             if state.statusline_visible or state.startup_pending
             else None
         )
@@ -119,7 +129,9 @@ class ScreenFramePresentation:
         if not state.running:
             return None
         return WorkingLine(
-            label=self.copy.working_label,
+            label=(
+                self.copy.stopping_label if state.stopping else self.copy.working_label
+            ),
             elapsed_seconds=elapsed_seconds,
         )
 
@@ -150,16 +162,34 @@ class ScreenFramePresentation:
                     hint=self.copy.followup_hint,
                 )
             )
+        if state.pending_shell_commands:
+            sections.append(
+                PendingSection(
+                    label="Queued shell commands",
+                    items=tuple(state.pending_shell_commands),
+                )
+            )
         if not sections:
             return None
         return PendingQueueView(sections=tuple(sections))
 
-    def status_bar(self, state: ScreenConversationState) -> StatusBar:
+    def status_bar(
+        self,
+        state: ScreenConversationState,
+        *,
+        loading_indicator: str | None = None,
+        loading_phase: str | None = None,
+    ) -> StatusBar:
         if state.startup_pending:
+            message = state.status_message or "Loading session"
+            if loading_phase and message.startswith("Loading session"):
+                message = f"{loading_phase.capitalize()}{message[len('Loading session'):]}"
+            if loading_indicator is not None:
+                message = f"{loading_indicator} {message}"
             return StatusBar(
                 (
                     StatusField(
-                        state.status_message or "Loading session",
+                        message,
                         priority=100,
                         token="message",
                     ),

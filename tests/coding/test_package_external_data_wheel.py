@@ -5872,7 +5872,9 @@ def test_external_data_skill_survives_disabled_base_product_session(
     session = _p2_session(workspace, settings, tmp_path / "no-base-sessions")
     try:
         assert session._coding_base_product_compilation is None
-        assert session._coding_lsp_plugin_assembly is not None
+        assert session._coding_lsp_plugin_assembly is None
+        assert session._deferred_lsp_slot is not None
+        assert session._deferred_lsp_slot.state == "dormant"
         assert session.resource_bundle is not None
         external = {
             item.name: item

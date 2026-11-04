@@ -226,6 +226,8 @@ def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None
         ),
         harness_root / "session": (
             "loushang.ai.api_registry",
+            # Session prepares a sealed provider context using AI's normalization contract.
+            "loushang.ai.context",
             "loushang.ai.json_codec",
             "loushang.ai.model",
             "loushang.ai.options",

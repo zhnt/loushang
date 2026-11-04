@@ -8,6 +8,7 @@ recording.  Historical command-execution names remain compatibility aliases.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
@@ -77,6 +78,7 @@ class BashCommandExecutionRuntime:
     before_execute: BashCommandHook | None = None
     operations: object | None = None
     _abort_controller: AbortController | None = field(default=None, init=False)
+    _completion: asyncio.Future[BaseException | None] | None = field(default=None, init=False)
 
     @property
     def is_running(self) -> bool:
@@ -101,6 +103,8 @@ class BashCommandExecutionRuntime:
 
         controller = AbortController()
         self._abort_controller = controller
+        completion = self._completion = asyncio.get_running_loop().create_future()
+        failure: BaseException | None = None
         streamed_chunks: list[str] = []
         try:
             effective_cwd = cwd or self.get_cwd()
@@ -217,13 +221,31 @@ class BashCommandExecutionRuntime:
                 exclude_from_context=exclude_from_context,
             )
             return result
+        except BaseException as error:
+            failure = error
+            raise
         finally:
             if self._abort_controller is controller:
                 self._abort_controller = None
+                self._completion = None
+            completion.set_result(failure)
 
     def abort(self) -> None:
         if self._abort_controller is not None:
             self._abort_controller.abort()
+
+    async def wait_for_idle(self) -> None:
+        """Join this command invocation, including native cleanup and recording.
+
+        Waiting does not join its caller's entire task, which can itself be
+        awaiting Session cleanup. Cancellation of a waiter leaves the original
+        command owner and completion handle intact.
+        """
+        completion = self._completion
+        if completion is not None:
+            error = await asyncio.shield(completion)
+            if error is not None and not isinstance(error, asyncio.CancelledError):
+                raise error
 
     async def record_result(
         self,
@@ -232,36 +254,49 @@ class BashCommandExecutionRuntime:
         result: Mapping[str, object],
         exclude_from_context: bool,
     ) -> None:
-        exit_code = result.get("exit_code")
-        stdout_blob = _session_blob_from_result(result.get("stdout_blob"))
-        stderr_blob = _session_blob_from_result(result.get("stderr_blob"))
-        retention_error = result.get("artifact_retention_error")
         await self.append_record(
-            CommandExecutionRecord(
-                command=command,
-                output=str(result.get("output") or ""),
-                exit_code=exit_code if type(exit_code) is int else None,
-                cancelled=bool(result.get("cancelled", False)),
-                truncated=bool(result.get("truncated", False)),
-                full_output_path=(
-                    str(result["full_output_path"])
-                    if isinstance(result.get("full_output_path"), str)
-                    and result.get("full_output_path")
-                    and stdout_blob is None
-                    and stderr_blob is None
-                    else None
-                ),
-                stdout_blob=stdout_blob,
-                stderr_blob=stderr_blob,
-                exclude_from_context=exclude_from_context,
-                metadata=(
-                    {"artifactRetentionError": retention_error}
-                    if isinstance(retention_error, str) and retention_error
-                    else {}
-                ),
+            command_execution_record_from_result(
+                command, result, exclude_from_context=exclude_from_context
             )
         )
         self.refresh_context()
+
+
+def command_execution_record_from_result(
+    command: str,
+    result: Mapping[str, object],
+    *,
+    exclude_from_context: bool,
+) -> CommandExecutionRecord:
+    """Build the same portable record for persistence and live presentation."""
+
+    exit_code = result.get("exit_code")
+    stdout_blob = _session_blob_from_result(result.get("stdout_blob"))
+    stderr_blob = _session_blob_from_result(result.get("stderr_blob"))
+    retention_error = result.get("artifact_retention_error")
+    return CommandExecutionRecord(
+        command=command,
+        output=str(result.get("output") or ""),
+        exit_code=exit_code if type(exit_code) is int else None,
+        cancelled=bool(result.get("cancelled", False)),
+        truncated=bool(result.get("truncated", False)),
+        full_output_path=(
+            str(result["full_output_path"])
+            if isinstance(result.get("full_output_path"), str)
+            and result.get("full_output_path")
+            and stdout_blob is None
+            and stderr_blob is None
+            else None
+        ),
+        stdout_blob=stdout_blob,
+        stderr_blob=stderr_blob,
+        exclude_from_context=exclude_from_context,
+        metadata=(
+            {"artifactRetentionError": retention_error}
+            if isinstance(retention_error, str) and retention_error
+            else {}
+        ),
+    )
 
 
 def bash_result_from_tool_result(tool_result: object) -> dict[str, object]:
@@ -290,6 +325,12 @@ def bash_result_from_tool_result(tool_result: object) -> dict[str, object]:
     }
     for key in ("stdout_blob", "stderr_blob", "artifact_retention_error"):
         if details.get(key) is not None:
+            result[key] = details[key]
+    # Preserve existing execution diagnostics. Preview truncation alone cannot
+    # establish that stdout/stderr drained completely; do not invent defaults
+    # for extension results that did not report these fields.
+    for key in ("stdio_complete", "stdio_drain_reason"):
+        if key in details:
             result[key] = details[key]
     cleanup = artifact_cleanup_diagnostic(details)
     if cleanup is not None:
@@ -387,6 +428,9 @@ class BashExecutionRuntime:
     def abort(self) -> None:
         self._runtime.abort()
 
+    async def wait_for_idle(self) -> None:
+        await self._runtime.wait_for_idle()
+
 
 def _default_execution_params(shell_path: str) -> CommandParametersBuilder:
     def build(command: str, cwd: str) -> Mapping[str, object]:
@@ -422,5 +466,6 @@ __all__ = [
     "UserCommandHookResult",
     "UserCommandRequest",
     "bash_result_from_tool_result",
+    "command_execution_record_from_result",
     "command_result_from_tool_result",
 ]

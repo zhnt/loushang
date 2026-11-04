@@ -99,6 +99,7 @@ def test_root_first_input_uses_native_model_transport_once(tmp_path, monkeypatch
         root._bind_embedded_resume_approval_owner(issuer)
         registry = get_default_api_registry()
         requests = []
+        barrier_hits = []
         entered, release = asyncio.Event(), asyncio.Event()
         task = None
         barrier_target = None
@@ -230,13 +231,14 @@ def test_root_first_input_uses_native_model_transport_once(tmp_path, monkeypatch
                 await root.new_session(cwd=str(tmp_path))
             elif mode in {"revoked_at_barrier", "epoch_control_at_barrier", "policy_at_barrier"}:
                 transcript = candidate.session_manager._transcript
-                append_snapshot = transcript.append_model_input_snapshot
+                append_snapshot = transcript.append_staged_model_input_snapshot
                 if mode == "epoch_control_at_barrier":
                     barrier_target = selection._owners[workspace].epoch_runtime.control_root
                     barrier_retained = barrier_target.with_name(barrier_target.name + "-retained")
 
                 async def revoke_after_snapshot(*args, **kwargs):
                     result = await append_snapshot(*args, **kwargs)
+                    barrier_hits.append(True)
                     if mode == "revoked_at_barrier":
                         issuer.release_confirmation(fact)
                     elif mode == "policy_at_barrier":
@@ -247,7 +249,7 @@ def test_root_first_input_uses_native_model_transport_once(tmp_path, monkeypatch
                         barrier_target.mkdir(mode=0o700)
                     return result
 
-                monkeypatch.setattr(transcript, "append_model_input_snapshot", revoke_after_snapshot)
+                monkeypatch.setattr(transcript, "append_staged_model_input_snapshot", revoke_after_snapshot)
             if mode in {"revoked", "policy_changed"}:
                 with pytest.raises(PermissionError):
                     await prepared.run_first_input()
@@ -314,6 +316,8 @@ def test_root_first_input_uses_native_model_transport_once(tmp_path, monkeypatch
                 assert binding.actual_fingerprint == selection.resume_epoch_fingerprint(workspace)
             assert coding_resume_input_record_digest(committed_input) == prepared.continuation.input_lookup_query.record_digest
             expected_calls = int(mode in {"completed", "skill_changed", "agents_changed", "unknown_transport", "cancelled"})
+            if mode in {"revoked_at_barrier", "epoch_control_at_barrier", "policy_at_barrier"}:
+                assert barrier_hits == [True]
             assert len(requests) == expected_calls
             if requests:
                 user_inputs = [serialize_message(message) for message in requests[0].messages if getattr(message, "role", None) == "user"]

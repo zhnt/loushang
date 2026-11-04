@@ -168,14 +168,18 @@ class MultiAgentControl:
         self._notice_consumers.append(consumer)
         return lambda: _remove_consumer(self._notice_consumers, consumer)
 
-    def spawn(
+    def check_spawn(
         self,
         *,
         caller: ControlCaller,
         parent_path: AgentPath,
-        name: str,
         agent_type: str,
     ) -> AgentRecord:
+        """Read-only policy/capacity observation; spawn rechecks before reserving.
+
+        Returns the admitted parent snapshot, not a reservation or a promise
+        that the same capacity remains available at dispatch.
+        """
         caller_record = self._validate_caller(caller)
         parent = self._require_path(parent_path)
         self._require_control(caller, parent)
@@ -211,9 +215,9 @@ class MultiAgentControl:
                     "limit": self._limits.max_open_agents,
                     "open_count": self._registry.open_count,
                     "reserved_count": self._registry.reserved_count,
-                    "open_agents": tuple(
+                    "open_agents": [
                         _capacity_occupant(record) for record in open_agents
-                    ),
+                    ],
                     "recovery": (
                         "Use list_agents, then reuse an existing child with "
                         "send_message or close an unneeded child before retrying "
@@ -238,9 +242,9 @@ class MultiAgentControl:
                     "agent_type": agent_type,
                     "limit": spec.maximum_children,
                     "open_count": len(same_type_children),
-                    "open_children": tuple(
+                    "open_children": [
                         _capacity_occupant(record) for record in same_type_children
-                    ),
+                    ],
                     "recovery": (
                         "Use list_agents, then reuse an existing child with "
                         "send_message or close an unneeded child before retrying "
@@ -249,6 +253,19 @@ class MultiAgentControl:
                 },
             )
 
+        return parent
+
+    def spawn(
+        self,
+        *,
+        caller: ControlCaller,
+        parent_path: AgentPath,
+        name: str,
+        agent_type: str,
+    ) -> AgentRecord:
+        parent = self.check_spawn(
+            caller=caller, parent_path=parent_path, agent_type=agent_type
+        )
         with self._registry.reserve(
             parent_ref=parent.ref,
             name=name,

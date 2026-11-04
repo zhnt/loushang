@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -314,6 +317,25 @@ def test_product_snapshot_resource_refuses_unverified_caller_bytes(
             )
     finally:
         handle.close()
+
+
+def test_importing_product_snapshot_source_does_not_load_wheel_runtime() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import loushang.harness.resource_catalog.product_snapshot_source; "
+            "assert 'loushang.harness.package_product.product_local_wheel_runtime' "
+            "not in sys.modules",
+        ],
+        env={**os.environ, "PYTHONPATH": str(repo_root / "src")},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_catalog_bootstrap_disabled_skill_retains_only_precedence_winner(
