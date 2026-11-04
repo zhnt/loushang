@@ -78,8 +78,15 @@ The [M1c tree validation design](materialization-tree-validation.md)
 separates one shared traversal/verification algorithm from native rooted reads,
 including the existing partial-delete GC observation path. The shared scanner
 and both platform readers are locally implemented and code-reviewed; Windows
-native validation remains pending. File writing and deletion remain separate
-follow-on concerns.
+native validation remains pending. File writing has its own accepted slice
+below; tree deletion remains a follow-on concern.
+
+The accepted [M1c file sink design](materialization-file-sinks.md) follows that
+read/validation slice. It separates shared file consumption and completion
+rules from native writes and handle cleanup, and preserves the original tree
+owner's completion authority. The shared sinks and platform Writers are locally
+implemented and code-reviewed; Windows native validation remains pending.
+Tree deletion remains outside its scope.
 
 ## Authority Order
 

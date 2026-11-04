@@ -20,6 +20,12 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal, cast
 
+from loushang.harness.resources.packages.plugin_lifecycle._file_sinks import (
+    ReuseFileSink as _ReuseFileSink,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._file_sinks import (
+    VerifiedFileSink as _PosixFileSink,
+)
 from loushang.harness.resources.packages.plugin_lifecycle._materialization_shared import (
     ObservedTree,
     PackageStorePinnedRootPort,
@@ -1126,8 +1132,8 @@ class _PosixVerifiedTreeSink:
             )
         if self._reuse:
             file_sink: _PosixFileSink | _ReuseFileSink = _ReuseFileSink(
-                owner=self,
                 entry=entry,
+                on_finished=self._file_finished,
             )
         else:
             file_sink = self._create_file_sink(entry)
@@ -1154,10 +1160,9 @@ class _PosixVerifiedTreeSink:
         identity = _identity(os.fstat(descriptor))
         self._file_identities[parts] = identity
         return _PosixFileSink(
-            owner=self,
             entry=entry,
-            descriptor=descriptor,
-            identity=identity,
+            writer=_PosixFileWriter(descriptor=descriptor, identity=identity),
+            on_finished=self._file_finished,
         )
 
     def _ensure_directories(self, parts: tuple[str, ...]) -> None:
@@ -1388,72 +1393,30 @@ class _PosixVerifiedTreeSink:
             raise RuntimeError("Package verified-tree sink is closed")
 
 
-class _PosixFileSink:
-    def __init__(
-        self,
-        *,
-        owner: _PosixVerifiedTreeSink,
-        entry: PackageVerifiedTreeEntryV1,
-        descriptor: int,
-        identity: _Identity,
-    ) -> None:
-        self._owner = owner
-        self._entry = entry
+class _PosixFileWriter:
+    def __init__(self, *, descriptor: int, identity: _Identity) -> None:
         self._descriptor: int | None = descriptor
         self._identity = identity
-        self._digest = sha256()
-        self._byte_count = 0
-        self._finished = False
 
-    def __enter__(self) -> _PosixFileSink:
-        return self
+    def require_open(self) -> None:
+        self._require_descriptor()
 
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        if exc_type is not None or not self._finished:
-            self.abort()
+    def write(self, view: memoryview) -> int:
+        return os.write(self._require_descriptor(), view)
 
-    def write(self, chunk: bytes) -> None:
-        descriptor = self._require_open()
-        if not isinstance(chunk, bytes):
-            raise TypeError("Package Store sink accepts only bytes")
-        self._byte_count += len(chunk)
-        if self._byte_count > self._entry.byte_count:
-            raise PackagePhysicalStagingError(
-                "Package Store file exceeds verified size",
-                code="package_artifact_identity_changed",
-            )
-        try:
-            view = memoryview(chunk)
-            while view:
-                written = os.write(descriptor, view)
-                if written < 1:
-                    raise OSError("Package Store write made no progress")
-                view = view[written:]
-        except OSError:
-            raise _root_untrusted() from None
-        self._digest.update(chunk)
+    def identity_matches(self) -> bool:
+        metadata = os.fstat(self._require_descriptor())
+        return (
+            _identity(metadata) == self._identity
+            and metadata.st_nlink == 1
+        )
 
-    def finish(self) -> None:
-        descriptor = self._require_open()
-        metadata = os.fstat(descriptor)
-        if (
-            self._byte_count != self._entry.byte_count
-            or self._digest.hexdigest() != self._entry.content_digest
-            or _identity(metadata) != self._identity
-            or metadata.st_nlink != 1
-        ):
-            raise PackagePhysicalStagingError(
-                "Package Store file changed from verified manifest",
-                code="package_artifact_identity_changed",
-            )
-        try:
-            os.fsync(descriptor)
-            os.close(descriptor)
-        except OSError:
-            raise _root_untrusted() from None
+    def flush(self) -> None:
+        os.fsync(self._require_descriptor())
+
+    def close(self) -> None:
+        os.close(self._require_descriptor())
         self._descriptor = None
-        self._finished = True
-        self._owner._file_finished(self)
 
     def abort(self) -> None:
         if self._descriptor is not None:
@@ -1461,63 +1424,10 @@ class _PosixFileSink:
                 os.close(self._descriptor)
             self._descriptor = None
 
-    def _require_open(self) -> int:
-        if self._descriptor is None or self._finished:
+    def _require_descriptor(self) -> int:
+        if self._descriptor is None:
             raise RuntimeError("Package Store file sink is closed")
         return self._descriptor
-
-
-class _ReuseFileSink:
-    def __init__(
-        self,
-        *,
-        owner: _PosixVerifiedTreeSink,
-        entry: PackageVerifiedTreeEntryV1,
-    ) -> None:
-        self._owner = owner
-        self._entry = entry
-        self._digest = sha256()
-        self._byte_count = 0
-        self._closed = False
-        self._finished = False
-
-    def __enter__(self) -> _ReuseFileSink:
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        if exc_type is not None or not self._finished:
-            self.abort()
-
-    def write(self, chunk: bytes) -> None:
-        if self._closed:
-            raise RuntimeError("Package Store reuse sink is closed")
-        if not isinstance(chunk, bytes):
-            raise TypeError("Package Store sink accepts only bytes")
-        self._byte_count += len(chunk)
-        if self._byte_count > self._entry.byte_count:
-            raise PackagePhysicalStagingError(
-                "Reused Package file exceeds verified size",
-                code="package_artifact_identity_changed",
-            )
-        self._digest.update(chunk)
-
-    def finish(self) -> None:
-        if self._closed:
-            raise RuntimeError("Package Store reuse sink is closed")
-        if (
-            self._byte_count != self._entry.byte_count
-            or self._digest.hexdigest() != self._entry.content_digest
-        ):
-            raise PackagePhysicalStagingError(
-                "Reused Package file changed from verified manifest",
-                code="package_artifact_identity_changed",
-            )
-        self._closed = True
-        self._finished = True
-        self._owner._file_finished(self)
-
-    def abort(self) -> None:
-        self._closed = True
 
 
 def _validate_role_request(
