@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -538,6 +539,81 @@ def test_screen_loop_escape_closes_model_surface_and_restores_prompt() -> None:
     assert rendered.rfind(
         "moonshot/kimi-for-coding | repo | main | abcd | idle"
     ) > rendered.rfind("Select Model")
+
+
+def test_screen_loop_can_interrupt_turn_while_model_change_waits() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
+    from loushang.harnesstui.status.provider import StatusProvider
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=time.monotonic,
+    )
+    manager = ScreenSurfaceManager(
+        app=app,
+        session=_ModelSurfaceSession(),
+        status_provider=StatusProvider(
+            model_label=app.state.model_label,
+            cwd=app.state.cwd,
+            branch=app.state.branch,
+            session_label=lambda: app.state.session_label,
+            thinking_level=lambda: None,
+            running=lambda: app.state.running,
+        ),
+    )
+    release = asyncio.Event()
+    aborts: list[bool] = []
+    selected: list[str] = []
+
+    async def prompt(_text: str) -> None:
+        await release.wait()
+
+    async def select_model(value: str) -> str:
+        selected.append(value)
+        await release.wait()
+        return "Model set: selected"
+
+    async def abort() -> None:
+        aborts.append(True)
+        release.set()
+
+    manager.ports = replace(manager.ports, select_model=select_model)
+
+    async def scenario() -> int:
+        result = await asyncio.wait_for(
+            run_coding_test_screen(
+                app=app,
+                stdin=StringIO(),
+                stdout=StringIO(),
+                action_host=_action_host(submit=prompt, abort=abort),
+                input_chunk_reader=_timed_input_reader(
+                    (0.0, "run\r"),
+                    (0.01, "/model\r"),
+                    (0.02, "\r"),
+                    (0.03, "\x1b"),
+                    (0.08, ""),
+                ),
+                handle_local=manager.handle_text,
+                handle_surface_intent=manager.handle_surface_intent,
+                terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
+                should_exit=lambda _text: False,
+                is_local_command=manager.is_local_command,
+            ),
+            timeout=2,
+        )
+        task = manager._model_selection_task
+        if task is not None:
+            await task
+        return result
+
+    assert asyncio.run(scenario()) == 0
+    assert selected
+    assert aborts == [True]
+    assert app.state.running is False
 
 
 def test_screen_loop_exposes_terminal_diagnostics_provider_while_running() -> None:

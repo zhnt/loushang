@@ -87,6 +87,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             model_selector_profile=_CODING_MODEL_SELECTOR_PROFILE,
             build_reasoning_selector=build_reasoning,
             select_reasoning_level=select_reasoning,
+            is_running=lambda: app.state.running,
         )
         self.command_catalog = ports.command_catalog
         super().__init__(

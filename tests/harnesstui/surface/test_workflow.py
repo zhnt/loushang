@@ -328,6 +328,67 @@ def test_model_selection_can_continue_into_reasoning_choice() -> None:
     assert state.statuses[-1] == "Reasoning: high"
 
 
+def test_running_model_command_waits_without_blocking_surface_input() -> None:
+    workflow, state = _workflow()
+    release = asyncio.Event()
+    selected: list[str] = []
+
+    async def select_model(value: str) -> str:
+        selected.append(value)
+        await release.wait()
+        return f"selected:{value}"
+
+    workflow.ports = replace(
+        workflow.ports,
+        is_running=lambda: True,
+        select_model=select_model,
+        build_reasoning_selector=lambda: _surface("Reasoning", "reasoning"),
+    )
+
+    async def scenario() -> None:
+        await workflow.handle_text("/model provider:model")
+        task = workflow._model_selection_task
+        assert task is not None
+        assert state.statuses == ["Model change queued until the current turn ends."]
+        await asyncio.sleep(0)
+        assert selected == ["provider:model"]
+        assert task.done() is False
+
+        release.set()
+        await task
+
+    asyncio.run(scenario())
+    assert workflow._model_selection_task is None
+    assert state.model_refreshes == 1
+    assert state.statuses[-1] == "selected:provider:model"
+    assert workflow.current is None
+
+
+def test_pending_model_change_is_cancelled_on_surface_disposal() -> None:
+    workflow, state = _workflow()
+    release = asyncio.Event()
+
+    async def select_model(_value: str) -> str:
+        await release.wait()
+        return "selected"
+
+    workflow.ports = replace(
+        workflow.ports, is_running=lambda: True, select_model=select_model
+    )
+
+    async def scenario() -> None:
+        await workflow.handle_text("/model provider:model")
+        task = workflow._model_selection_task
+        assert task is not None
+        await asyncio.sleep(0)
+        workflow.cancel_pending_model_selection()
+        await asyncio.gather(task, return_exceptions=True)
+        assert task.cancelled()
+
+    asyncio.run(scenario())
+    assert state.model_refreshes == 0
+
+
 def test_cancel_reasoning_choice_keeps_selected_model() -> None:
     workflow, state = _workflow()
     workflow.ports = replace(
