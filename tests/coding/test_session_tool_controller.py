@@ -638,3 +638,16 @@ def test_tool_controller_runtime_registration_preserves_default_activation(
     assert controller.get_active_tool_names() == ["runtime_tool"]
     assert [tool.name for tool in agent.tools] == ["runtime_tool"]
     assert "- runtime_tool: run runtime behavior" in agent.system_prompt
+
+
+def test_execution_tool_prompt_is_rendered_without_overwriting_live_selection():
+    controller, _registry, agent, _original, _replacement = _active_runtime_tool_controller()
+    baseline = agent.system_prompt
+    tools = list(agent.tools)
+    rendered = controller.render_execution_prompt(())
+    assert agent.system_prompt == baseline and agent.tools == tools
+    assert controller.get_active_tool_names() == ["runtime_tool"]
+    controller.apply_active_tools([])
+    assert agent.system_prompt == rendered
+    with pytest.raises(ValueError, match="restrict"):
+        controller.render_execution_prompt(("runtime_tool",))

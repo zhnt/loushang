@@ -52,6 +52,38 @@ from .harnesswork import CODING_WORK_PROFILE, project_coding_runtime_event
 
 LIMITS = {**DEFAULT_LIMITS, "planning_intents": 8}
 
+
+def _repository_limits(task):
+    """Optional bounded host-closeout policy, frozen with the private task."""
+    content = task.path.read_bytes()
+    if digest(content) != task.digest:
+        raise GoalError("task manifest changed")
+    config = json.loads(content)
+    if "closeout_budget" not in config:
+        return dict(LIMITS)
+    value = config["closeout_budget"]
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"version", "work_intents", "planning_intents"}
+        or type(value["version"]) is not int
+        or value["version"] != 1
+        or any(type(value[k]) is not int for k in ("work_intents", "planning_intents"))
+        or not 1 <= value["work_intents"] <= 6
+        or not 1 <= value["planning_intents"] <= 2
+    ):
+        raise GoalError("invalid repository closeout budget")
+    return {
+        **LIMITS,
+        "work_intents": value["work_intents"],
+        "planning_intents": value["planning_intents"],
+        "inspect_intents": 1,
+        "repair_intents": 1,
+        "verification_intents": 1,
+        "review_intents": 1,
+        "check_intents": 0,
+    }
+
+
 REQUIREMENTS = frozenset(f"RC-0{i}" for i in range(1, 7))
 EVIDENCE = {
     "inspect": frozenset({"repository_report"}),
@@ -139,9 +171,86 @@ parse_repository_proposal = partial(
 )
 
 
+def _host_request(goal_id, command_id, revision, epoch, expected_inventory):
+    if (
+        any(not isinstance(v, str) or not v.strip() for v in (goal_id, command_id))
+        or any(type(v) is not int or v < 1 for v in (revision, epoch))
+        or not isinstance(expected_inventory, dict)
+        or not expected_inventory
+        or any(
+            not isinstance(k, str) or not k or not isinstance(v, str) or not v
+            for k, v in expected_inventory.items()
+        )
+    ):
+        raise GoalError("invalid host verification request")
+    return {
+        "version": 1,
+        "goal_id": goal_id,
+        "command_id": command_id,
+        "revision": revision,
+        "epoch": epoch,
+        "expected_inventory": dict(expected_inventory),
+    }
+
+
+def _host_intent(batch, history):
+    if "host_verification" not in batch.source:
+        return None
+    value = plain(batch.source["host_verification"])
+    if (
+        not isinstance(value, dict)
+        or set(value)
+        != {
+            "version",
+            "goal_id",
+            "command_id",
+            "revision",
+            "epoch",
+            "expected_inventory",
+        }
+        or type(value["version"]) is not int
+        or value["version"] != 1
+    ):
+        raise GoalError("unsupported host verification request")
+    _host_request(
+        value["goal_id"],
+        value["command_id"],
+        value["revision"],
+        value["epoch"],
+        value["expected_inventory"],
+    )
+    expected = _host_request(
+        batch.goal_id,
+        batch.command_id,
+        batch.revision,
+        batch.epoch,
+        plain(batch.source.get("inventory")),
+    )
+    basis = plain(batch.source.get("basis", {}))
+    if not 0 < batch.intent_sequence <= len(history.records):
+        raise GoalError("host verification intent missing")
+    intent = history.records[batch.intent_sequence - 1]
+    if (
+        value != expected
+        or intent.kind != "batch_intent"
+        or canonical(basis) != canonical(intent.data.get("basis"))
+        or not isinstance(basis, dict)
+        or batch.source.get("phase") != "verification"
+        or batch.source.get("check") != "all"
+        or "proposal_id" in batch.source
+        or basis.get("goal_id") != batch.goal_id
+        or basis.get("revision") != batch.revision
+        or basis.get("epoch") != batch.epoch
+        or any(type(basis.get(k)) is not int for k in ("revision", "epoch", "sequence"))
+        or basis["sequence"] != batch.intent_sequence - 1
+    ):
+        raise GoalError("host verification intent mismatch")
+    return value
+
+
 def prompt(operation_id, content):
     return (
-        "Choose one next action and a revisable route for issue #125 from the supplied facts. "
+        "Choose one next action and a revisable route for the supplied repository task from its frozen requirements and current facts. "
         "Return ONE JSON object, no fences/tools. Keys exactly: next_action, targets, "
         "requirement_ids, rationale, expected_evidence, remaining_route, change_reason, evidence_refs. "
         "rationale/change_reason are strings <=2048 UTF-8 bytes; change_reason may be empty. "
@@ -150,7 +259,7 @@ def prompt(operation_id, content):
         "inspect targets: nonempty subset of reader,operations,tests. implement targets: reader,tests. "
         "check targets: exactly one of reader,regression. All checks include the independent contract. "
         "verify_all and stop targets: []. Every non-stop action covers RC-01 through RC-06. "
-        "An implement Work may edit any of the two allowed files; targets describe focus. "
+        "An implement Work may edit only the files declared in allowed_files; targets describe focus. "
         "Use actual failures to adjust the plan. The initial defect is established; implementation need not wait "
         "for another failed test. Only verify_all and independent human review can support completion. "
         "Do not change requirements, protected verifier, Method, paths, permissions or limits. "
@@ -179,6 +288,7 @@ class RepositoryProfile:
             raise GoalError("invalid repository Session policy")
         self.execution_policy = execution_policy
         self.task, self.requirements = task, task.requirements
+        self.limits = _repository_limits(task)
 
     def tool_policy(self, root):
         if root != self.task.root:
@@ -194,7 +304,7 @@ class RepositoryProfile:
             "profile": self.policy_id,
             "task_sha256": self.task.digest,
             "initial_inventory": self.task.snapshot(),
-            "planning_limits": LIMITS,
+            "planning_limits": self.limits,
             "task_ref": put(blobs, self.task.path.read_bytes(), "repository-task.json"),
         }
 
@@ -293,12 +403,17 @@ class RepositoryDomain:
         tool_policy,
         history,
         transcript_source=None,
+        execution_session=None, execution=None,
     ):
         self.task, self.root, self.session, self.blobs = task, workspace, session, blobs
+        self.limits = _repository_limits(task)
         self.log, self.prepared = event_log, prepared
         self.allowance, self.tool_policy, self.history = allowance, tool_policy, history
         self.pending_review = None
+        self.pending_verification = None
         self.transcript_source = transcript_source
+        self.execution_session = execution_session or session
+        self.execution = execution
         self.delegation = None
         self.source_reader = None
 
@@ -308,19 +423,25 @@ class RepositoryDomain:
         return prepare_session_work_source(
             operation,
             spec=spec,
-            session=self.session,
+            session=self.execution_session,
             executor=executor,
             source=self.transcript_source,
         )
 
     def _current_inputs(self, basis):
+        if (
+            self.allowance is not None
+            and self.allowance.hosted_limits is not None
+            and canonical(plain(basis.goal.metadata.get("hosted_execution_limits"))) != canonical(dict(self.allowance.hosted_limits))
+        ):
+            raise GoalError("hosted execution limits changed")
         if self.delegation is not None:
             self.delegation._available()
         if (
             basis.header.policy_id != self.task.policy_id
-            or basis.goal.limit != LIMITS["work_intents"]
+            or basis.goal.limit != self.limits["work_intents"]
             or basis.goal.metadata.get("task_sha256") != self.task.digest
-            or plain(basis.goal.metadata.get("planning_limits")) != LIMITS
+            or plain(basis.goal.metadata.get("planning_limits")) != self.limits
             or tuple(basis.goal.requirements) != self.task.requirements
             or (self.allowance is not None and self.allowance.fenced)
         ):
@@ -336,6 +457,24 @@ class RepositoryDomain:
         from ._goal_delegation import KEY
 
         try:
+            if not self._closeout_admits(
+                candidate.basis,
+                candidate.source.get("phase"),
+                own_operation=candidate.operation.operation_id,
+            ):
+                return False
+            if "host_verification" in candidate.source:
+                value = candidate.source["host_verification"]
+                if (
+                    self.session.pending_message_count
+                    or self.pending_verification is None
+                    or plain(value) != self.pending_verification
+                    or value["expected_inventory"] != candidate.source["inventory"]
+                    or not self._host_capacity(
+                        candidate.basis, candidate.operation.operation_id
+                    )
+                ):
+                    return False
             if KEY in candidate.source and (
                 self.delegation is None
                 or plain(candidate.source[KEY])
@@ -353,20 +492,114 @@ class RepositoryDomain:
         except (ValueError, OSError, KeyError):
             return False
 
+    def _host_capacity(self, basis, own_operation=None):
+        history = self.history()
+        batches = [b for b in history.batches if b.goal_id == basis.goal.id]
+        own = [b for b in batches if b.operation_id == own_operation]
+        if own and (
+            len(own) != 1
+            or _host_intent(own[0], history) != self.pending_verification
+            or own[0].source.get("basis") != basis.identity
+            or own[0].intent_sequence != basis.sequence + 1
+        ):
+            return False
+        return basis.goal.limit - len(batches) + len(own) >= 2
+
     def confirm_resume(self, basis, work_facts):
         try:
             self._current_inputs(basis)
             _, _, _, count, invalid, stalled = self._observations(basis, work_facts)
-            return count < LIMITS["planning_intents"] and invalid < 3 and stalled < 2
+            if invalid >= 3 or stalled >= 2:
+                return False
+            if "inspect_intents" in self.limits:
+                # Resume changes epoch: host closeout needs a fresh verification,
+                # but need not spend another planning intent after implementation.
+                return self._closeout_admits(
+                    basis, "planning"
+                ) or self._closeout_admits(basis, "verification")
+            return count < self.limits["planning_intents"]
         except (ValueError, OSError, KeyError):
             return False
 
     def planning_material(self, snapshot):
-        return {
+        material = {
             "acceptance": self.task.config["requirements"],
             "allowed_files": self.task.allowed,
             "inspect_files": self.task.config["inspect_files"],
+            # Persist guidance in new inputs: changing prompt() would invalidate
+            # provenance checks that reconstruct prompts for historical batches.
+            "response_guidance": (
+                "Return a compact, complete JSON object with all required keys. "
+                "Use at most one short sentence each for rationale and change_reason; "
+                "use an empty change_reason when the route has not changed. "
+                "Do not repeat requirements, file contents or implementation code. "
+                "Keep remaining_route short; one selected action is sufficient "
+                "when no later action needs to be proposed. "
+                "evidence_refs may contain only exact id values from the top-level "
+                "evidence array in this input. If that array is empty, return "
+                "evidence_refs: []. The Trusted planning operation and input sha256 "
+                "identify this request, not evidence; never cite them as evidence. "
+                "requirement_ids identify requirements, and expected_evidence names "
+                "future outputs; neither supplies evidence_refs."
+            ),
         }
+        if "inspect_intents" in self.limits:
+            material["host_closeout"] = {
+                "model_actions": ["inspect", "implement", "stop"],
+                "work_routes": [
+                    ["planning", "repair", "verification", "review"],
+                    [
+                        "planning",
+                        "inspect",
+                        "planning",
+                        "repair",
+                        "verification",
+                        "review",
+                    ],
+                ],
+                "instruction": "Work routes describe phases, not proposal action names. Use only model_actions in next_action and remaining_route. Phase slots also require sufficient total remaining Work/command budget; listed routes are not execution grants. Inspect only if needed and affordable; implementation receives the full allowed source. After one implement Work, the host selects full verification and independent review.",
+            }
+        return material
+
+    def _closeout_admits(self, basis, phase, own_operation=None):
+        if "inspect_intents" not in self.limits:
+            return True
+        batches = [b for b in self.history().batches if b.goal_id == basis.goal.id]
+        own = [b for b in batches if b.operation_id == own_operation]
+        if own:
+            if (
+                len(own) != 1
+                or own[0].source.get("phase") != phase
+                or canonical(own[0].source.get("basis")) != canonical(basis.identity)
+                or own[0].intent_sequence != basis.sequence + 1
+            ):
+                return False
+            batches.remove(own[0])
+        counts = {
+            p: sum(b.source.get("phase") == p for b in batches)
+            for p in (
+                "planning",
+                "inspect",
+                "repair",
+                "verification",
+                "review",
+                "check",
+            )
+        }
+        if phase in {"planning", "inspect"} and counts["repair"]:
+            return False
+        required = {
+            "planning": ("planning", "repair", "verification", "review"),
+            "inspect": ("inspect", "planning", "repair", "verification", "review"),
+            "repair": ("repair", "verification", "review"),
+            "verification": ("verification", "review"),
+            "review": ("review",),
+        }.get(phase, ())
+        return (
+            bool(required)
+            and basis.goal.limit - len(batches) >= len(required)
+            and all(counts[p] < self.limits[f"{p}_intents"] for p in required)
+        )
 
     def _verification(self, batch, run):
         evidence = inspect_verification(
@@ -436,6 +669,22 @@ class RepositoryDomain:
         return None
 
     def _observations(self, basis, facts):
+        history = self.history()
+        if "inspect_intents" in self.limits:
+            batches = [b for b in history.batches if b.goal_id == basis.goal.id]
+            for phase in (
+                "planning",
+                "inspect",
+                "repair",
+                "verification",
+                "review",
+                "check",
+            ):
+                if (
+                    sum(b.source.get("phase") == phase for b in batches)
+                    > self.limits[f"{phase}_intents"]
+                ):
+                    raise GoalError("repository closeout history exceeds budget")
         evidence, routes, rejections = [], [], []
         planning = invalid = stalled = 0
         knowledge = set()
@@ -445,6 +694,7 @@ class RepositoryDomain:
         for batch in facts.batches:
             if batch.goal_id != basis.goal.id:
                 continue
+            _host_intent(batch, history)
             phase = batch.source.get("phase")
             planning += phase == "planning"
             run = self._run(batch, facts)
@@ -688,61 +938,72 @@ class RepositoryDomain:
         except (ValueError, OSError, KeyError):
             return False
 
+    def _verification_candidate(self, basis, snapshot, check, op_id):
+        request = {
+            "package": str(self.task.path),
+            "package_sha256": self.task.digest,
+            "inventory": snapshot,
+            "check": check,
+            "identity": {
+                "goal_id": basis.goal.id,
+                "revision": basis.goal.revision,
+                "epoch": basis.goal.epoch,
+                "operation_id": op_id,
+            },
+        }
+        command = shlex.join(
+            [
+                self.task.config["python"],
+                "-I",
+                "-S",
+                str(self.task.path.parent / "driver.py"),
+            ]
+        )
+        operation = WorkOperation(
+            op_id,
+            "VerifyCodingCommand",
+            basis.header.session_id,
+            "coding",
+            {
+                "command": command,
+                "execution": {
+                    "stdin": canonical(request),
+                    "cwd": str(self.root),
+                    "env": [["PYTHONDONTWRITEBYTECODE", "1"]],
+                },
+            },
+        )
+        return WorkCandidate(
+            basis,
+            operation,
+            WorkRunSpec(
+                plan_id="verification:" + op_id,
+                steps=(WorkStepSpec("report"), WorkStepSpec("validation")),
+            ),
+            {
+                "inventory": snapshot,
+                "basis": basis.identity,
+                "phase": "verification" if check == "all" else "check",
+                "check": check,
+            },
+        )
+
     def _implementation(self, basis, proposal, snapshot, source, tests, code, evidence):
         action = proposal.action
         if action.name == "stop":
             return PolicyStop("model_requested_stop:" + proposal.rationale)
+        if "inspect_intents" in self.limits and (
+            action.name not in {"inspect", "implement"}
+            or not self._closeout_admits(
+                basis, "repair" if action.name == "implement" else "inspect"
+            )
+        ):
+            return PolicyStop("repository_closeout_budget")
         op_id = "goal-op-" + uuid4().hex
         common = {"inventory": snapshot, "basis": basis.identity}
         if action.name in {"check", "verify_all"}:
             check = "all" if action.name == "verify_all" else action.targets[0]
-            request = {
-                "package": str(self.task.path),
-                "package_sha256": self.task.digest,
-                "inventory": snapshot,
-                "check": check,
-                "identity": {
-                    "goal_id": basis.goal.id,
-                    "revision": basis.goal.revision,
-                    "epoch": basis.goal.epoch,
-                    "operation_id": op_id,
-                },
-            }
-            command = shlex.join(
-                [
-                    self.task.config["python"],
-                    "-I",
-                    "-S",
-                    str(self.task.path.parent / "driver.py"),
-                ]
-            )
-            operation = WorkOperation(
-                op_id,
-                "VerifyCodingCommand",
-                basis.header.session_id,
-                "coding",
-                {
-                    "command": command,
-                    "execution": {
-                        "stdin": canonical(request),
-                        "cwd": str(self.root),
-                        "env": [["PYTHONDONTWRITEBYTECODE", "1"]],
-                    },
-                },
-            )
-            return WorkCandidate(
-                basis,
-                operation,
-                WorkRunSpec(
-                    plan_id="verification:" + op_id,
-                    steps=(WorkStepSpec("report"), WorkStepSpec("validation")),
-                ),
-                {
-                    **common,
-                    "phase": "verification" if check == "all" else "check",
-                    "check": check,
-                },
-            )
+            return self._verification_candidate(basis, snapshot, check, op_id)
         if action.name == "inspect":
             operation = WorkOperation(
                 op_id, "InspectRepository", basis.header.session_id, "coding", {}
@@ -766,6 +1027,7 @@ class RepositoryDomain:
                             "proposal": proposal.data(),
                             "material": self.task.material(),
                             "evidence": evidence,
+                            **(self.allowance.model_budget() if self.allowance is not None else {}),
                         }
                     ),
                     self.root,
@@ -783,7 +1045,7 @@ class RepositoryDomain:
             ):
                 raise GoalError("protected repository Method changed")
             original = SessionTurnExecutor(
-                session=self.session,
+                session=self.execution_session,
                 profile=CODING_WORK_PROFILE,
                 project_event_facts=project_coding_runtime_event,
                 turns=prepared,
@@ -813,12 +1075,10 @@ class RepositoryDomain:
                     session=self.session,
                     allowance=self.allowance,
                     policy=self.tool_policy,
-                    phase="repair",
+                    phase="repair", execution=self.execution,
                 )
             executor = RepositoryReport(self, snapshot, scoped)
-        self.prepared[op_id] = WorkExecutionBinding(
-            executor, executor if action.name == "implement" else None
-        )
+        self.prepared[op_id] = WorkExecutionBinding(executor, cancellation=executor)
         return WorkCandidate(
             basis,
             operation,
@@ -833,9 +1093,52 @@ class RepositoryPolicy(BatchPlanningPolicy, RepositoryDomain):
     make_prompt = staticmethod(prompt)
     planning_material = RepositoryDomain.planning_material
 
+    def _planning_remaining(self, basis, batches):
+        remaining = super()._planning_remaining(basis, batches)
+        if "inspect_intents" in self.limits:
+            remaining.update(
+                {
+                    f"{phase}_intents": self.limits[f"{phase}_intents"]
+                    - sum(b.source.get("phase") == phase for b in batches)
+                    for phase in (
+                        "inspect",
+                        "repair",
+                        "verification",
+                        "review",
+                        "check",
+                    )
+                }
+            )
+        return remaining
+
+    def _planning(self, basis, snapshot, evidence, routes, rejections):
+        if not self._closeout_admits(basis, "planning"):
+            return PolicyStop("repository_closeout_budget")
+        return super()._planning(basis, snapshot, evidence, routes, rejections)
+
     async def prepare(self, basis, work_facts):
         if self.pending_review is not None:
+            if not self._closeout_admits(basis, "review"):
+                raise GoalError("repository closeout review budget exhausted")
             return review_candidate(self, basis, self.pending_review)
+        if self.pending_verification is not None:
+            if not self._closeout_admits(basis, "verification"):
+                raise GoalError("repository closeout verification budget exhausted")
+            snapshot = self._current_inputs(basis)[0]
+            if snapshot != self.pending_verification[
+                "expected_inventory"
+            ] or not self._host_capacity(basis):
+                raise GoalError("host verification basis or capacity changed")
+            candidate = self._verification_candidate(
+                basis, snapshot, "all", "goal-op-" + uuid4().hex
+            )
+            return replace(
+                candidate,
+                source={
+                    **candidate.source,
+                    "host_verification": self.pending_verification,
+                },
+            )
         reason = self.assess_now(basis, work_facts).reason
         if reason == "review_required":
             raise GoalError("review_required")
@@ -867,9 +1170,7 @@ class RepositoryReport:
                 for target in self.targets
                 for name in self.policy.task.config["inspect_files"][target]
             }
-            report["files"] = {
-                name: (self.policy.root / name).read_text() for name in sorted(names)
-            }
+            report["files"] = self.policy.task.read_files(sorted(names), report["after"])
         publish_report(
             self.policy.blobs,
             context,
@@ -879,6 +1180,12 @@ class RepositoryReport:
         )
 
     async def cancel_and_wait(self, operation, context):
+        if self.delegate is None:
+            # A local snapshot/report owns no independent execution resources;
+            # its actual invocation is joined by the Session admission bridge.
+            from loushang.harnesswork.types import WorkCancellationOutcome
+
+            return WorkCancellationOutcome.settled()
         return await self.delegate.cancel_and_wait(operation, context)
 
 
@@ -934,6 +1241,11 @@ class _RepositoryGoal(CodingGoal):
         try:
             command_id = kwargs.get("command_id")
             if any(
+                b.command_id == command_id and "host_verification" in b.source
+                for b in self.controller.history.batches
+            ):
+                raise GoalError("command belongs to host verification")
+            if any(
                 b.command_id == command_id and b.source.get("phase") == "review"
                 for b in self.controller.history.batches
             ):
@@ -944,6 +1256,60 @@ class _RepositoryGoal(CodingGoal):
                     raise GoalError("review_required: supply a trusted review")
             return await super().advance(goal_id, **kwargs)
         finally:
+            self._repository_busy = False
+
+    async def verify_current(
+        self,
+        goal_id,
+        *,
+        command_id,
+        revision,
+        epoch,
+        expected_inventory,
+    ):
+        """Trusted host selection of original full verification; never plans."""
+        self._open_for_commands()
+        if self._repository_busy:
+            raise GoalError("repository Goal busy")
+        self._repository_busy = True
+        try:
+            value = _host_request(
+                goal_id, command_id, revision, epoch, expected_inventory
+            )
+            core = self.controller
+            old = [b for b in core.history.batches if b.command_id == command_id]
+            if old:
+                if len(old) != 1 or _host_intent(old[0], core.history) != value:
+                    raise GoalError("command has no matching host verification intent")
+                return await super().advance(
+                    goal_id, command_id=command_id, revision=revision, epoch=epoch
+                )
+            if command_id in core.history.commands:
+                raise GoalError("command has no matching host verification intent")
+            state = core.query(goal_id)
+            if state.status != "active" or (state.revision, state.epoch) != (
+                revision,
+                epoch,
+            ):
+                raise GoalError("host verification requires current active Goal")
+            facts = core.facts()
+            if facts.busy or facts.unresolved or self._session.pending_message_count:
+                raise GoalError("host verification execution unresolved")
+            basis = GoalBasis(core.header, state, core.history.sequence)
+            if self._policy._current_inputs(basis)[0] != value["expected_inventory"]:
+                raise GoalError("host verification inventory changed")
+            if not self._policy._host_capacity(basis):
+                raise GoalError("host verification requires two Work slots")
+            if not self._policy._closeout_admits(basis, "verification"):
+                raise GoalError("repository closeout verification budget exhausted")
+            if self._policy.assess_now(basis, facts).reason == "review_required":
+                raise GoalError("review_required: supply a trusted review")
+            self._policy.pending_verification = value
+            return await super().advance(
+                goal_id, command_id=command_id, revision=revision, epoch=epoch
+            )
+        finally:
+            self._policy.pending_verification = None
             self._repository_busy = False
 
     async def submit_review(
@@ -1014,6 +1380,9 @@ class _RepositoryGoal(CodingGoal):
                     raise GoalError(
                         "same candidate already reviewed; conflicting review"
                     )
+            basis = GoalBasis(core.header, core.query(goal_id), core.history.sequence)
+            if not self._policy._closeout_admits(basis, "review"):
+                raise GoalError("repository closeout review budget exhausted")
             self._policy.pending_review = value
             return await super().advance(
                 goal_id,

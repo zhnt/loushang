@@ -208,7 +208,7 @@ class EvidenceTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/quality.yml").read_text()
         import re
         conditions = re.findall(r"    if: .*workflows\[", workflow)
-        self.assertEqual(len(conditions), 14)
+        self.assertEqual(len(conditions), 15)
         self.assertTrue(all("needs.changes.outputs.reused_run == ''" in c for c in conditions))
         self.assertLess(workflow.index("--require-changes"), workflow.index("--record"))
         self.assertIn("CI_REUSED_RUN: ${{ needs.changes.outputs.reused_run }}", workflow)

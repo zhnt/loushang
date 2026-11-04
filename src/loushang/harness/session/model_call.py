@@ -1556,6 +1556,17 @@ class SessionModelCallRuntime:
         if not worker.cancelled():
             worker.exception()
 
+    async def settle(self) -> None:
+        """Join preparation already admitted before its invocation stopped.
+
+        Cancelling the awaiting Agent does not stop its native preparation
+        worker. The original serialization lock is released by that worker's
+        completion callback, after the Transcript write has finished.
+        Callers must first settle the invocation that can admit preparations.
+        """
+        async with self._prepare_lock:
+            pass
+
     def _registration_inventory(self) -> RegistrationInventorySnapshot:
         return compose_registration_inventory(
             self._projector.registration_inventory(),

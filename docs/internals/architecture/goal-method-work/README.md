@@ -3,8 +3,8 @@
 ## 状态
 
 - Authority: proposed — cross-scope design package。
-- Design status: accepted for reviewed local SDK minimum-loop scope；其余扩展为 draft。
-- Implementation status: 本地首版已实现并经真实 SDK 与用户手工验证，已集成本地 main；远程发布待完成。
+- Design status: accepted for reviewed local SDK scope and accepted incremental key designs；其余扩展为 draft，范围见当前能力盘点及各专项接受记录。
+- Implementation status: 本地 SDK、模型逐批规划/实质重规划、Session 选择、有界收尾、有限托管接入与嵌入式 TUI 开发 Goal 已交付 main；当前增量及原历史切点分别见[能力盘点](capability-status.md)。
 - Owner: Loushang architecture，涉及 Harness、Method、HarnessWork 及 Product composition。
 - 设计起始基线：本地 main `372cde4ade0fe026076c8fa5e8b4486774b09cc3`；前置证据切片 `d1f418de53c58040a590683a0c499ff3de50e50d` 与本地首版已随 `e0031f273` 集成本地 main。
 - 方法咨询：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
@@ -14,30 +14,29 @@
 明确要求，不是从方法文件推断出的额外审批流程。
 
 本目录是协作设计包，不声明新增顶层运行时或 Python 包。旧实现仅作产品树外
-历史素材，不作为本设计的结构前提。本地最小闭环已获用户实施授权；其余扩展范围仍仅为设计。
+历史素材，不作为本设计的结构前提。已接受并交付的增量与尚未接受的扩展分别见[能力、验证范围与剩余差异](capability-status.md)。历史文档中的“待实施/尚未发布”只描述其原切点，不作为当前工作清单。
 
 ## 概念与职责定位
 
-2026-10-30 接入专项：[Goal 执行上下文与 Work 来源记录 R2.1](session-execution-recording.md)。区分同 Session 连续执行、独立子上下文及固定截点继承；优先复用已有 Multiagent。[三视角独立评审](session-execution-recording-review.md)及用户接受后，同 Session 第一切片已实现并通过离线验证，见[交付记录](../../plans/2026-10-30-goal-session-recording.md)；两种子 agent 接入仍为后续范围。
+2026-10-30 接入专项：[Goal 执行上下文与 Work 来源记录 R2.1](session-execution-recording.md)。区分同 Session 连续执行、独立子上下文及固定截点继承；优先复用已有 Multiagent。[三视角独立评审](session-execution-recording-review.md)及用户接受后，同 Session 第一切片已实现并通过离线验证，见[交付记录](../../plans/2026-10-30-goal-session-recording.md)；其后的子 Session 接入已随 R3 交付，见下。
 
-2026-10-31 已接受专项：[Goal 批次执行 Session 与上下文选择 R3](delegated-session-execution.md)及[独立三视角评审](delegated-session-execution-review.md)。用户已授权实施；任务分支实现 reuse/fresh/inherit，初轮代码评审发现的五类阻断已在 `2a046fa3b` 修正并经原三位独立 reviewer 复核关闭。离线 SDK 闭环和完整 Harness 回归通过；本轮真实任务完成 A→A→B 及两次事实驱动的修复，但在最终 verify_all 前用尽 8 次规划额度并暂停，尚未完成在线验收；不把任务分支或旧在线记录写成 main 已交付事实。
+2026-10-31 已接受专项：[Goal 批次执行 Session 与上下文选择 R3](delegated-session-execution.md)及[独立三视角评审](delegated-session-execution-review.md)。用户已授权实施；已交付实现支持 reuse/fresh/inherit，初轮代码评审发现的五类阻断已在 `2a046fa3b` 修正并经原三位独立 reviewer 复核关闭。离线 SDK 闭环和完整 Harness 回归通过；本轮真实任务完成 A→A→B 及两次事实驱动的修复，但在最终 verify_all 前用尽 8 次规划额度并暂停，尚未完成在线验收；实现已随 PR #832 合入 main。旧在线 Goal 的暂停结论保留；后续零模型收尾及有界新任务的成功证据分别见[当前盘点](capability-status.md)。
 
 Work 记录与 Goal 完成依据的已接受协同设计见
 [HW-KD-003：事实留存、重放与 Transcript 共享](../harnesswork/key-designs/fact-retention-replay.md)。
 其 R3.1 明确共享默认处理与 Product 策略配置，并提出来源/留存及读取合同：Goal 继续声明并核验所需依据，Work 记录合同不能静默删去这些依据；
-原文与用量仍由 Transcript 保存。便宜的状态快照不等于当前验收。用户于 2026-10-29 接受 R3.1 的架构语义及所列实施前条件；底座的默认记录合同/确认查询[第一切片](../../plans/2026-10-29-work-recording-defaults.md)及[Transcript 引用切片](../../plans/2026-10-29-work-transcript-references.md)已本地合入 main；Coding Goal 接入仍为上述新专项，不改变既有 Goal 状态机与已交付范围。
+原文与用量仍由 Transcript 保存。便宜的状态快照不等于当前验收。用户于 2026-10-29 接受 R3.1 的架构语义及所列实施前条件；底座的默认记录合同/确认查询[第一切片](../../plans/2026-10-29-work-recording-defaults.md)及[Transcript 引用切片](../../plans/2026-10-29-work-transcript-references.md)已合入 main；Coding 同 Session 及仓库父来源接入也已交付。正文裁剪、完整审计等剩余范围见[差异清单](capability-status.md)。
 
 > Goal 保存目标和完成依据；模型提出实施计划；Method 规定所选工作的契约；Skill 提供局部专业指导；Work 执行并记录实际结果。
 
-这句话记录用户确认采用的协作职责定位，不代表各项能力均已实现。当前本地最小闭环
-由固定领域策略选择工作，使用显式 Method 执行修复；模型自主规划仍属于后续扩展。
+这句话记录用户确认采用的协作职责定位，不代表各项能力均已实现。初版本地最小闭环
+由固定领域策略选择工作，使用显式 Method 执行修复；后续模型逐批规划与有界仓库实质重规划已实现并验证。它们不等于任意任务、任意 Method 的通用自主规划。
 Method 的契约声明及 Skill 指导不自动构成权限授予或运行时强制保证；实际执行与
 约束核验由既有 Product、Policy 和执行路径承担，目标完成还须有当前有效的验收证据。
 Method 与 Skill 的详细边界见 [Method 架构说明](../method/README.md)。
 
-当前阶段需求：[G-GOAL-PLAN-01：模型自主规划的最小 Goal 闭环 R1](../../plans/2026-10-26-goal-model-planning-loop.md)。
-在已交付本地闭环上补模型候选、计划受理、证据驱动的调整与有限推进；当前仅生成
-需求和专项设计已形成，三视角技术复核完成；2026-10-26 用户接受专项及场景，实施已启动。
+模型规划阶段需求：[G-GOAL-PLAN-01：模型自主规划的最小 Goal 闭环 R1](../../plans/2026-10-26-goal-model-planning-loop.md)。
+在已交付本地闭环上补模型候选、计划受理、证据驱动的调整与有限推进；需求、专项设计、实施与技术复核已完成；2026-10-26 用户接受专项及场景后授权实施，后续真实 GP-03 结果见[验证记录](../../plans/2026-10-28-goal-review-replanning.md)。
 已接受机制见[模型规划闭环专项](model-planning-loop.md)：规划作为原 Work，保持一次
 推进一批；该选择及其环境、组件、交互已获用户接受，旧显式 Method profile 保持不变。
 配套[场景合同](model-planning-scenario.md)与[独立三视角处置记录](model-planning-review.md)
@@ -58,17 +57,15 @@ Method 与 Skill 的详细边界见 [Method 架构说明](../method/README.md)�
 | GMW-R5 | 关键决策、备选方案和影响 | 共同父级 ARD 和关键设计 | R2 非归属内容已认可；R3.2 明确共享归属及直接合同 |
 | GMW-R6 | 固定修订三视角评审、阻断处置、接受证据 | 追溯/验证与评审记录 | 各固定修订三视角结果见评审记录；设计不等于功能验收 |
 
-所有要求保持原范围。当前以本地 SDK 最小闭环收束设计；全入口协作仍按后续实际范围补齐。
+所有要求保持原范围。后续有限托管与嵌入式 TUI 接入分别按其已接受专项交付；全入口协作仍按实际范围补齐，不能将某一入口成功外推为全部入口已支持。
 
 补充工作件：[Goal 推进所需支撑能力与复用边界](support-capabilities.md)。
-该表区分已有支撑、目标语义缺口、候选责任、关键场景和待决定事项；独立评审
-及修订处置见[评审记录](support-capabilities-review.md)。用户评审仍待进行，
-本表不替代环境图和完整组件/接口设计。
+该表保留 2026-10-25 原始能力盘点，独立评审及修订处置见[评审记录](support-capabilities-review.md)。它不替代环境图或后续接受记录；现在安排开发应先读[当前能力盘点](capability-status.md)，不能重做旧表中后来已交付的缺口。
 
-下一批讨论提纲：[Goal 最小闭环的三项待评审决定](minimum-loop-decisions.md)，
-覆盖目标身份/寿命、计划与工作批次、推进与用户输入交接；仍为候选。
+历史讨论提纲：[Goal 最小闭环的三项待评审决定](minimum-loop-decisions.md)，
+覆盖目标身份/寿命、计划与工作批次、推进与用户输入交接；其后实际接受范围以最小闭环及各专项为准。
 
-第三阶段候选设计：[Goal 最小业务闭环](minimum-loop-architecture.md)，对照
+第三阶段设计：[Goal 最小业务闭环](minimum-loop-architecture.md)，对照
 [G-GOAL-MIN-01](../../plans/2026-10-25-goal-minimum-business-loop.md) 补齐本地 SDK
 范围、组件、状态、受测版本绑定及关键交互。R2 非归属部分已获用户认可，R3.2 按
 用户反馈明确 Controller 与记录组件两个子组件、内部 Codec/Reducer 及真实适配边界。
@@ -104,8 +101,7 @@ Method 与 Skill 的详细边界见 [Method 架构说明](../method/README.md)�
 ## Current 与候选的区分
 
 本包启动时的 main 基线已有 Method、HarnessWork、Harness/Session/Agent/AI 和相关
-入口。当前本地 main 已实现并验证本地 SDK 最小闭环，详见实现记录；通用模型规划、
-全入口协作和跨进程自动续跑仍属扩展，历史框图不表示这些能力已经实现。
+入口。当前 main 已交付本地 SDK、有限模型规划/实质重规划、Session 选择、收尾、有限托管与嵌入式开发目标接入，详见[当前盘点](capability-status.md)。模型自动选配任意 Method、跨领域通用验收、全入口协作和跨进程自动续跑仍属扩展，历史框图不表示这些能力已经实现。
 
 旧 `2de1359c` 基线上的
 [Method/Work 协作草稿](../../plans/2026-10-24-goal-method-work-design.md)
@@ -122,4 +118,18 @@ Method 与 Skill 的详细边界见 [Method 架构说明](../method/README.md)�
 Coding 私有适配承接，复用原 Goal/Work/Blob，系统环境和关键交互已于 2026-10-28 获用户明确确认；
 旧试验保留。本轮反馈集成离线验证通过；真实 Kimi 运行在测试失败后新增并执行修复，
 完整验证、宿主评审与关闭后冷读均通过，GP-03 在该有界仓库任务中已证明。
-实际运行采用 7 次规划、15 个 Work；历史读取成本较高，性能与全入口扩展仍待后续工作。
+实际运行采用 7 次规划、15 个 Work；原历史读取成本记录保留。后续来源记录、收尾及 #824 的有限托管增量已交付，范围见能力盘点；性能优化按用户要求暂缓，不从旧试验推导当前性能收益。
+
+## 当前会话接入盘点
+
+[Product / Session接口盘点](current-session-interface-inventory.md)保留重构前嵌入式TUI与lmux两条调用路径、共同职责及当时缺口；后续普通持久Session的有限Goal attach及嵌入式TUI接线已分别交付，不能把原盘点当作今天的完整实现状态。
+
+[Goal职责收敛与双入口复用重构计划](refactoring-plan.md)：阶段、兼容迁移与验证要求；已接受的S0–S4a及Session协同专项R2随PR #852交付，未实施扩展仍依各自接受范围处理。
+
+[重构计划三视角评审](refactoring-plan-review.md)保留R2原评审过程；后续实际范围及验证见[交付记录](refactoring-delivery.md)。
+
+[重构推进记录](refactoring-progress.md)记录S0—S4实际证据；[S2协同专项](session-goal-coordination.md)及[专项评审](session-goal-coordination-review.md)中的已接受R2已实施，历史pending记录不代表今天仍暂停。
+
+## 已交付的嵌入式开发 Goal 接入
+
+[交互式开发 Goal 与嵌入式 TUI 专项 R2](interactive-development-goal.md)按用户“同时支持任意开发目标，先补专项设计”的选择，在用户随后授权的收敛范围内实施参数化任务、默认人工验收、Method 配置、有限推进与薄 TUI 接线；[评审与实施记录](interactive-development-goal-review.md)明确各阶段作者走查、用户授权和独立代码评审范围。实现已由PR #853合入main，验证与限制仍以该专项为准；该交付不包含lmux Goal wire或跨进程自动续跑。

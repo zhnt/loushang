@@ -194,10 +194,13 @@ class CalculatorPolicy:
         prepared: dict[str, WorkExecutionBinding],
         policy_id: str | None = None,
         transcript_source: WorkTranscriptSource | None = None,
+        execution_session=None, execution=None,
     ):
         self.root, self.session, self.blobs = workspace, session, blobs
         self.log, self.prepared = event_log, prepared
         self.transcript_source = transcript_source
+        self.execution_session = execution_session or session
+        self.execution = execution
         if policy_id is not None:
             self.policy_id = policy_id
 
@@ -275,7 +278,7 @@ class CalculatorPolicy:
         return prepare_session_work_source(
             operation,
             spec=spec,
-            session=self.session,
+            session=self.execution_session,
             executor=executor,
             source=self.transcript_source,
         )
@@ -333,7 +336,7 @@ class CalculatorPolicy:
             follow_up_messages=(),
         )
         executor = SessionTurnExecutor(
-            session=self.session,
+            session=self.execution_session,
             profile=CODING_WORK_PROFILE,
             project_event_facts=project_coding_runtime_event,
             turns=turns,

@@ -18,6 +18,12 @@
 - Activation status: explicit library, `loushang-hosted` foreground command or `loushang-mux` local route; no default-route change
 - Owner: Loushang AppServer architecture
 
+Accepted amendment: [ARD-020](../decisions/accepted/ARD-020-hosted-goal-budget-and-observation.md)
+and the [Coding budget/observation design](../coding/key-designs/hosted-goal-budget-observation.md)
+define an optional application-local progress capability using existing Goal
+value types. R1 was accepted on 2026-11-02; the local implementation is recorded
+with the Coding design. This does not activate a remote wire contract.
+
 The implemented
 [G11 In-Process Hosted Application](hosted-application-g11.md) adds a strict
 protocol kernel and transport-neutral AppClient contract here, plus a separate

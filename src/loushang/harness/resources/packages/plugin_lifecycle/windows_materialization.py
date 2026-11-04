@@ -10,12 +10,37 @@ from __future__ import annotations
 import os
 import stat
 import threading
-from collections.abc import Callable
-from contextlib import AbstractContextManager, suppress
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager, suppress
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
+from loushang.harness.resources.packages.plugin_lifecycle._file_sinks import (
+    ReuseFileSink as _ReuseFileSink,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._file_sinks import (
+    VerifiedFileSink as _WindowsFileSink,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._materialization_shared import (
+    ObservedTree,
+    PackageStorePinnedRootPort,
+    PackageStorePlatformPort,
+    finish_verified_tree,
+    validate_receipt_at_root,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._tree_validation import (
+    TreeDirectoryReadPort,
+    TreeEntryObservation,
+    TreeFileReadPort,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._tree_validation import (
+    collect_tree as _collect_observed_tree,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._tree_validation import (
+    validate_tree_contents as _validate_observed_tree_contents,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     PluginRevisionRefV1,
     VerifiedArtifactRefV1,
@@ -372,6 +397,9 @@ class _WindowsRoleStore:
             self._root_identities = provisioned.identities
         finally:
             provisioned.close()
+        self._platform: PackageStorePlatformPort = _WindowsStorePlatform(
+            self._root, self._root_identities, self._read_only
+        )
         try:
             validate = (
                 self._settlement_journal.read_validate_store_root
@@ -437,17 +465,14 @@ class _WindowsRoleStore:
             self._lock.release()
             raise _root_untrusted() from None
         try:
-            root = _PinnedWindowsRoot.open(
-                self._root,
-                expected_identities=self._root_identities,
-                writable=not self._read_only,
-            )
-            try:
-                return self._validate_receipt_at_root(
-                    root, receipt, read_only=read_only
+            with self._platform.pin_root() as root:
+                return validate_receipt_at_root(
+                    root, receipt,
+                    store_role=self._role,
+                    store_identity=self._store_identity,
+                    settlement_journal=self._settlement_journal,
+                    read_only=read_only,
                 )
-            finally:
-                root.close()
         except PackagePhysicalStagingError:
             raise
         except PackageStoreSettlementJournalError:
@@ -797,64 +822,6 @@ class _WindowsRoleStore:
         finally:
             self._lock.release()
 
-    def _validate_receipt_at_root(
-        self,
-        root: _PinnedWindowsRoot,
-        receipt: PackageArtifactStagingReceiptV1,
-        *,
-        read_only: bool = False,
-    ) -> PackageArtifactStagingReceiptV1:
-        stable_ref = receipt.stable_ref
-        if (
-            stable_ref.store_identity != self._store_identity
-            or (
-                self._role == "dependency"
-                and not isinstance(stable_ref, VerifiedArtifactRefV1)
-            )
-            or (
-                self._role == "root" and not isinstance(stable_ref, PluginRevisionRefV1)
-            )
-        ):
-            raise _collision()
-        settlements_read = (
-            self._settlement_journal.read_settlements_for_receipt
-            if read_only
-            else self._settlement_journal.settlements_for_receipt
-        )
-        settlements = settlements_read(
-            store_role=self._role,
-            store_identity=self._store_identity,
-            root_identities=root.identities,
-            receipt=receipt,
-        )
-        if not settlements:
-            raise _collision()
-        authority = settlements[0]
-        tree_identity, directory_identities, file_identities = _validate_existing_tree(
-            root,
-            authority.final_name,
-            authority.manifest,
-        )
-        authorizes_read = (
-            self._settlement_journal.read_authorizes
-            if read_only
-            else self._settlement_journal.authorizes
-        )
-        if not authorizes_read(
-            store_role=self._role,
-            store_identity=self._store_identity,
-            root_identities=root.identities,
-            tree_identity=tree_identity,
-            directory_identities=directory_identities,
-            file_identities=file_identities,
-            final_name=authority.final_name,
-            staging_name=authority.staging_name,
-            manifest=authority.manifest,
-            receipt=receipt,
-        ):
-            raise _collision()
-        return receipt
-
     def open_sink(
         self,
         request: PackageArtifactStagingRequestV1,
@@ -900,6 +867,25 @@ class _WindowsRoleStore:
         except Exception:
             release_owner_lock()
             raise
+
+
+@dataclass(frozen=True)
+class _WindowsStorePlatform:
+    root: Path
+    expected_identities: tuple[_Identity, ...]
+    construction_read_only: bool
+
+    @contextmanager
+    def pin_root(self) -> Iterator[PackageStorePinnedRootPort]:
+        root = _PinnedWindowsRoot.open(
+            self.root,
+            expected_identities=self.expected_identities,
+            writable=not self.construction_read_only,
+        )
+        try:
+            yield root
+        finally:
+            root.close()
 
 
 class _PinnedWindowsRoot:
@@ -996,6 +982,11 @@ class _PinnedWindowsRoot:
                     raise OSError("Package Store ancestor path identity changed")
         finally:
             os.close(visible)
+
+    def validate_tree(
+        self, final_name: str, manifest: PackageVerifiedTreeManifestV1,
+    ) -> ObservedTree:
+        return _validate_existing_tree(self, final_name, manifest)
 
     def close(self) -> None:
         if self._closed:
@@ -1147,8 +1138,8 @@ class _WindowsVerifiedTreeSink:
             )
         if self._reuse:
             file_sink: _WindowsFileSink | _ReuseFileSink = _ReuseFileSink(
-                owner=self,
                 entry=entry,
+                on_finished=self._file_finished,
             )
         else:
             file_sink = self._create_file_sink(entry)
@@ -1175,10 +1166,9 @@ class _WindowsVerifiedTreeSink:
         identity = _identity(os.fstat(descriptor))
         self._file_identities[parts] = identity
         return _WindowsFileSink(
-            owner=self,
             entry=entry,
-            descriptor=descriptor,
-            identity=identity,
+            writer=_WindowsFileWriter(descriptor=descriptor, identity=identity),
+            on_finished=self._file_finished,
         )
 
     def _ensure_directories(self, parts: tuple[str, ...]) -> None:
@@ -1238,78 +1228,27 @@ class _WindowsVerifiedTreeSink:
 
     def finish(self) -> PackageArtifactStagingReceiptV1:
         self._require_open()
-        if self._active_file is not None or self._next_entry != len(
-            self._manifest.entries
-        ):
-            raise PackagePhysicalStagingError(
-                "Package Store received an incomplete verified tree",
-                code="package_artifact_identity_changed",
-            )
-        try:
-            if self._reuse:
-                self._root.validate_visible()
-                tree_identity, directory_identities, file_identities = (
-                    _validate_existing_tree(
-                        self._root,
-                        self._final_name,
-                        self._manifest,
-                    )
-                )
-                exact = self._settlement_journal.authorizes(
-                    store_role=self._role,
-                    store_identity=self._store_identity,
-                    root_identities=self._root.identities,
-                    tree_identity=tree_identity,
-                    directory_identities=directory_identities,
-                    file_identities=file_identities,
-                    final_name=self._final_name,
-                    staging_name=self._staging_name,
-                    manifest=self._manifest,
-                    receipt=self._receipt,
-                )
-                if self._reuse_alias and not exact:
-                    if not self._settlement_journal.authorizes_dependency_reuse(
-                        store_identity=self._store_identity,
-                        root_identities=self._root.identities,
-                        tree_identity=tree_identity,
-                        directory_identities=directory_identities,
-                        file_identities=file_identities,
-                        final_name=self._final_name,
-                        staging_name=self._staging_name,
-                        manifest=self._manifest,
-                        receipt=self._receipt,
-                    ):
-                        raise _collision()
-                    self._settlement_journal.authorize(
-                        store_role=self._role,
-                        store_identity=self._store_identity,
-                        root_identities=self._root.identities,
-                        tree_identity=tree_identity,
-                        directory_identities=directory_identities,
-                        file_identities=file_identities,
-                        final_name=self._final_name,
-                        staging_name=self._staging_name,
-                        manifest=self._manifest,
-                        receipt=self._receipt,
-                    )
-                elif not exact:
-                    raise PackagePhysicalStagingError(
-                        "Package Store final identity lacks durable owner evidence",
-                        code="package_publication_collision",
-                    )
-            else:
-                self._settle_new_tree()
-        except PackagePhysicalStagingError:
-            raise
-        except PackageStoreSettlementJournalError:
-            raise _root_untrusted() from None
-        except Exception:
-            raise _root_untrusted() from None
-        self._finished = True
-        self._close_handles()
-        return self._receipt
+        return finish_verified_tree(
+            self,
+            store_role=self._role,
+            store_identity=self._store_identity,
+            root_identities=self._root.identities,
+            final_name=self._final_name,
+            staging_name=self._staging_name,
+            manifest=self._manifest,
+            receipt=self._receipt,
+            settlement_journal=self._settlement_journal,
+            reuse=self._reuse,
+            reuse_alias=self._reuse_alias,
+            completed_entries=self._next_entry,
+            has_active_file=self._active_file is not None,
+        )
 
-    def _settle_new_tree(self) -> None:
+    def observe_reused_tree(self) -> ObservedTree:
+        self._root.validate_visible()
+        return _validate_existing_tree(self._root, self._final_name, self._manifest)
+
+    def prepare_new_tree(self) -> ObservedTree:
         if self._staging_fd is None or self._staging_identity is None:
             raise RuntimeError("Package Store staging root is unavailable")
         _validate_owned_tree(
@@ -1359,18 +1298,11 @@ class _WindowsVerifiedTreeSink:
                 "Package Store final identity already exists",
                 code="package_publication_collision",
             )
-        self._settlement_journal.authorize(
-            store_role=self._role,
-            store_identity=self._store_identity,
-            root_identities=self._root.identities,
-            tree_identity=self._staging_identity,
-            directory_identities=self._directory_identities,
-            file_identities=self._file_identities,
-            final_name=self._final_name,
-            staging_name=self._staging_name,
-            manifest=self._manifest,
-            receipt=self._receipt,
+        return (
+            self._staging_identity, self._directory_identities, self._file_identities,
         )
+
+    def publish_authorized_tree(self) -> None:
         self._authorized = True
         try:
             windows_rename_at(
@@ -1394,6 +1326,11 @@ class _WindowsVerifiedTreeSink:
             raise
         except Exception:
             raise _root_untrusted() from None
+
+
+    def complete_and_close(self) -> None:
+        self._finished = True
+        self._close_handles()
 
     def abort(self) -> None:
         if self._closed:
@@ -1469,73 +1406,31 @@ class _WindowsVerifiedTreeSink:
             raise RuntimeError("Package verified-tree sink is closed")
 
 
-class _WindowsFileSink:
-    def __init__(
-        self,
-        *,
-        owner: _WindowsVerifiedTreeSink,
-        entry: PackageVerifiedTreeEntryV1,
-        descriptor: int,
-        identity: _Identity,
-    ) -> None:
-        self._owner = owner
-        self._entry = entry
+class _WindowsFileWriter:
+    def __init__(self, *, descriptor: int, identity: _Identity) -> None:
         self._descriptor: int | None = descriptor
         self._identity = identity
-        self._digest = sha256()
-        self._byte_count = 0
-        self._finished = False
 
-    def __enter__(self) -> _WindowsFileSink:
-        return self
+    def require_open(self) -> None:
+        self._require_descriptor()
 
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        if exc_type is not None or not self._finished:
-            self.abort()
+    def write(self, view: memoryview) -> int:
+        return os.write(self._require_descriptor(), view)
 
-    def write(self, chunk: bytes) -> None:
-        descriptor = self._require_open()
-        if not isinstance(chunk, bytes):
-            raise TypeError("Package Store sink accepts only bytes")
-        self._byte_count += len(chunk)
-        if self._byte_count > self._entry.byte_count:
-            raise PackagePhysicalStagingError(
-                "Package Store file exceeds verified size",
-                code="package_artifact_identity_changed",
-            )
-        try:
-            view = memoryview(chunk)
-            while view:
-                written = os.write(descriptor, view)
-                if written < 1:
-                    raise OSError("Package Store write made no progress")
-                view = view[written:]
-        except OSError:
-            raise _root_untrusted() from None
-        self._digest.update(chunk)
+    def identity_matches(self) -> bool:
+        metadata = os.fstat(self._require_descriptor())
+        return (
+            _identity(metadata) == self._identity
+            and metadata.st_nlink == 1
+            and not _is_reparse(metadata)
+        )
 
-    def finish(self) -> None:
-        descriptor = self._require_open()
-        metadata = os.fstat(descriptor)
-        if (
-            self._byte_count != self._entry.byte_count
-            or self._digest.hexdigest() != self._entry.content_digest
-            or _identity(metadata) != self._identity
-            or metadata.st_nlink != 1
-            or _is_reparse(metadata)
-        ):
-            raise PackagePhysicalStagingError(
-                "Package Store file changed from verified manifest",
-                code="package_artifact_identity_changed",
-            )
-        try:
-            windows_flush_file(descriptor)
-            os.close(descriptor)
-        except OSError:
-            raise _root_untrusted() from None
+    def flush(self) -> None:
+        windows_flush_file(self._require_descriptor())
+
+    def close(self) -> None:
+        os.close(self._require_descriptor())
         self._descriptor = None
-        self._finished = True
-        self._owner._file_finished(self)
 
     def abort(self) -> None:
         if self._descriptor is not None:
@@ -1543,63 +1438,10 @@ class _WindowsFileSink:
                 os.close(self._descriptor)
             self._descriptor = None
 
-    def _require_open(self) -> int:
-        if self._descriptor is None or self._finished:
+    def _require_descriptor(self) -> int:
+        if self._descriptor is None:
             raise RuntimeError("Package Store file sink is closed")
         return self._descriptor
-
-
-class _ReuseFileSink:
-    def __init__(
-        self,
-        *,
-        owner: _WindowsVerifiedTreeSink,
-        entry: PackageVerifiedTreeEntryV1,
-    ) -> None:
-        self._owner = owner
-        self._entry = entry
-        self._digest = sha256()
-        self._byte_count = 0
-        self._closed = False
-        self._finished = False
-
-    def __enter__(self) -> _ReuseFileSink:
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        if exc_type is not None or not self._finished:
-            self.abort()
-
-    def write(self, chunk: bytes) -> None:
-        if self._closed:
-            raise RuntimeError("Package Store reuse sink is closed")
-        if not isinstance(chunk, bytes):
-            raise TypeError("Package Store sink accepts only bytes")
-        self._byte_count += len(chunk)
-        if self._byte_count > self._entry.byte_count:
-            raise PackagePhysicalStagingError(
-                "Reused Package file exceeds verified size",
-                code="package_artifact_identity_changed",
-            )
-        self._digest.update(chunk)
-
-    def finish(self) -> None:
-        if self._closed:
-            raise RuntimeError("Package Store reuse sink is closed")
-        if (
-            self._byte_count != self._entry.byte_count
-            or self._digest.hexdigest() != self._entry.content_digest
-        ):
-            raise PackagePhysicalStagingError(
-                "Reused Package file changed from verified manifest",
-                code="package_artifact_identity_changed",
-            )
-        self._closed = True
-        self._finished = True
-        self._owner._file_finished(self)
-
-    def abort(self) -> None:
-        self._closed = True
 
 
 def _validate_role_request(
@@ -1832,20 +1674,11 @@ def _validate_tree_contents(
     dict[tuple[str, ...], _Identity],
     dict[tuple[str, ...], _Identity],
 ]:
-    expected = {entry.logical_path: entry for entry in manifest.entries}
-    observed, observed_directories, observed_files = _collect_tree(
-        root_fd,
-        expected,
+    return _validate_observed_tree_contents(
+        _WindowsTreeDirectoryReader(root_fd), manifest,
         directory_identities=directory_identities,
         file_identities=file_identities,
     )
-    if set(observed) != set(expected):
-        raise OSError("Published Package tree members changed")
-    for logical_path, entry in expected.items():
-        byte_count, digest = observed[logical_path]
-        if byte_count != entry.byte_count or digest != entry.content_digest:
-            raise OSError("Published Package tree content changed")
-    return observed_directories, observed_files
 
 
 def _collect_tree(
@@ -1860,97 +1693,68 @@ def _collect_tree(
     dict[tuple[str, ...], _Identity],
     dict[tuple[str, ...], _Identity],
 ]:
-    observed: dict[str, tuple[int, str]] = {}
-    observed_directories: dict[tuple[str, ...], _Identity] = {}
-    observed_files: dict[tuple[str, ...], _Identity] = {}
-    expected_directories = {
-        "/".join(parts[:depth])
-        for logical_path in expected
-        for parts in (tuple(logical_path.split("/")),)
-        for depth in range(1, len(parts))
-    }
+    return _collect_observed_tree(
+        _WindowsTreeDirectoryReader(root_fd), expected,
+        directory_identities=directory_identities,
+        file_identities=file_identities,
+        allow_partial=allow_partial,
+    )
 
-    def visit(directory_fd: int, prefix: tuple[str, ...]) -> None:
-        names = windows_listdir_at(directory_fd)
-        if not names and prefix and not allow_partial:
-            raise OSError("Published Package tree contains an empty directory")
-        for name in names:
-            metadata = windows_stat_at(directory_fd, name)
-            parts = prefix + (name,)
-            logical_path = "/".join(parts)
-            if _is_reparse(metadata):
-                raise OSError("Published Package tree contains a reparse point")
-            if stat.S_ISDIR(metadata.st_mode):
-                if logical_path not in expected_directories:
-                    raise OSError("Published Package tree has an unexpected directory")
-                if directory_identities is not None and _identity(
-                    metadata
-                ) != directory_identities.get(parts):
-                    raise OSError("Published Package directory identity changed")
-                child_fd = _open_directory(
-                    name,
-                    dir_fd=directory_fd,
-                    writable=False,
-                )
-                try:
-                    if _identity(os.fstat(child_fd)) != _identity(metadata):
-                        raise OSError("Published Package directory identity changed")
-                    observed_directories[parts] = _identity(metadata)
-                    visit(child_fd, parts)
-                finally:
-                    os.close(child_fd)
-            elif stat.S_ISREG(metadata.st_mode):
-                entry = expected.get(logical_path)
-                if entry is None or metadata.st_nlink != 1:
-                    raise OSError("Published Package tree has an unexpected file")
-                if file_identities is not None and _identity(
-                    metadata
-                ) != file_identities.get(parts):
-                    raise OSError("Published Package file identity changed")
-                descriptor = open_windows_regular_file_at(
-                    directory_fd,
-                    name,
-                    create_new=False,
-                    write=False,
-                )
-                digest = sha256()
-                byte_count = 0
-                try:
-                    while chunk := os.read(descriptor, 64 * 1024):
-                        digest.update(chunk)
-                        byte_count += len(chunk)
-                        if byte_count > entry.byte_count:
-                            raise OSError(
-                                "Published Package file exceeds verified size"
-                            )
-                    opened = os.fstat(descriptor)
-                    if (
-                        _identity(opened) != _identity(metadata)
-                        or opened.st_nlink != 1
-                        or _is_reparse(opened)
-                    ):
-                        raise OSError("Published Package file identity changed")
-                finally:
-                    os.close(descriptor)
-                observed[logical_path] = (byte_count, digest.hexdigest())
-                observed_files[parts] = _identity(metadata)
-            else:
-                raise OSError("Published Package tree entry type changed")
 
-    visit(root_fd, ())
-    if (
-        not allow_partial
-        and directory_identities is not None
-        and set(observed_directories) != set(directory_identities)
-    ):
-        raise OSError("Published Package directory set changed")
-    if (
-        not allow_partial
-        and file_identities is not None
-        and set(observed_files) != set(file_identities)
-    ):
-        raise OSError("Published Package file set changed")
-    return observed, observed_directories, observed_files
+@dataclass(frozen=True)
+class _WindowsTreeFileReader:
+    descriptor: int
+
+    def read(self, max_bytes: int) -> bytes:
+        return os.read(self.descriptor, max_bytes)
+
+    def identity_and_links(self) -> tuple[_Identity, int]:
+        metadata = os.fstat(self.descriptor)
+        if _is_reparse(metadata):
+            raise OSError("Published Package file identity changed")
+        return _identity(metadata), metadata.st_nlink
+
+
+@dataclass(frozen=True)
+class _WindowsTreeDirectoryReader:
+    descriptor: int
+
+    def identity(self) -> _Identity:
+        return _identity(os.fstat(self.descriptor))
+
+    @contextmanager
+    def entries(self) -> Iterator[Iterator[TreeEntryObservation]]:
+        names = windows_listdir_at(self.descriptor)
+
+        def observe() -> Iterator[TreeEntryObservation]:
+            for name in names:
+                metadata = windows_stat_at(self.descriptor, name)
+                if _is_reparse(metadata):
+                    raise OSError("Published Package tree contains a reparse point")
+                yield TreeEntryObservation(
+                    name,
+                    "directory" if stat.S_ISDIR(metadata.st_mode) else (
+                        "file" if stat.S_ISREG(metadata.st_mode) else "other"
+                    ),
+                    _identity(metadata), metadata.st_nlink,
+                )
+        yield observe()
+
+    @contextmanager
+    def open_directory(self, name: str) -> Iterator[TreeDirectoryReadPort]:
+        descriptor = _open_directory(name, dir_fd=self.descriptor, writable=False)
+        try:
+            yield _WindowsTreeDirectoryReader(descriptor)
+        finally:
+            os.close(descriptor)
+
+    @contextmanager
+    def file_reader(self, name: str) -> Iterator[TreeFileReadPort]:
+        descriptor = open_windows_regular_file_at(self.descriptor, name, create_new=False, write=False)
+        try:
+            yield _WindowsTreeFileReader(descriptor)
+        finally:
+            os.close(descriptor)
 
 
 def _open_directory(

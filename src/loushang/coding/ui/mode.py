@@ -39,6 +39,7 @@ from loushang.harnesstui.conversation.host import (
     ConversationScreenRunProfile,
     run_action_host_conversation_screen,
 )
+from loushang.harnesstui.conversation.intents import PromptIntent
 from loushang.harnesstui.conversation.run_context import (
     RebindableEventSource,
     StableEmit,
@@ -214,6 +215,7 @@ async def _run_bound_screen_interactive_tui(
             runtime=runtime,
             continuity_reference=continuity_reference,
             status_provider=status_provider,
+            goal_command=lambda text: controller.dispatch(PromptIntent(text)),
             on_approval=lambda event: handle_agent_screen_approval(
                 current_approval_interaction(),
                 event,

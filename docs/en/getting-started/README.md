@@ -38,6 +38,40 @@ loushang --list-models
 loushang --list-commands
 ```
 
+## Configure A Provider Credential
+
+Online runs need a credential for the selected model route. For API-key routes, Loushang reads the environment variable declared by the resolved catalog entry; OAuth routes use sign-in instead. Loushang does not automatically load a `.env` file: export the API key in the shell that runs `loushang`.
+
+| Provider | Environment variable |
+| --- | --- |
+| Anthropic | `ANTHROPIC_API_KEY` |
+| OpenAI | `OPENAI_API_KEY` (the `coding-responses` endpoint uses OAuth instead) |
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| Alibaba Cloud DashScope | `DASHSCOPE_API_KEY` |
+| Moonshot AI | `MOONSHOT_API_KEY` |
+| Kimi Code | `KIMI_CODE_API_KEY` |
+| MiniMax | `MINIMAX_API_KEY` |
+| Z.AI | `ZAI_API_KEY` |
+| Volcano Ark | `ARK_API_KEY` |
+| Tencent Hunyuan | `HUNYUAN_API_KEY` |
+| Baidu Qianfan | `QIANFAN_API_KEY` or `BAIDU_QIANFAN_API_KEY` |
+| StepFun | `STEP_API_KEY` or `STEPFUN_API_KEY` |
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+loushang -p "Reply with the single word: ready"
+```
+
+Windows PowerShell:
+
+```powershell
+$env:ANTHROPIC_API_KEY = "sk-ant-..."
+```
+
+`loushang --list-models` prints the catalog with the provider and endpoint each model resolves through, and `loushang --list-models --list-models-format json` prints the same data as JSON for scripts. When a model needs a credential and none of its variables is set, the error names the variables it looked for (`expected_env`).
+
+Project and example catalogs under `.loushang/models/` may declare their own `apiKeyEnv` / `apiKeyEnvs`; those names replace the built-in ones for that catalog entry.
+
 ## Run A First Prompt
 
 ```bash
@@ -45,6 +79,13 @@ loushang -p "Inspect this repository and summarize what it does."
 ```
 
 Use `--model` or provider-specific environment variables when you need to select a concrete model route. `--model provider:model` is a short form (`provider/model` is also accepted): it works only when that provider/model pair matches exactly one endpoint. If the same provider/model exists under multiple endpoints, the CLI reports an ambiguity and lists explicit `provider:endpoint:model` alternatives. Use `--model provider:endpoint:model` when you need to choose a specific endpoint, region, lane, or protocol. In catalog keys, `provider` and `model` ids cannot contain `:`, while endpoint ids may contain `:`. Project and example model catalog files can be placed under `.loushang/models/` or passed explicitly where supported.
+
+With your own Anthropic credential configured as above, these commands make a live request using a catalog model. The first selects its unique endpoint; the second names that endpoint explicitly:
+
+```bash
+loushang --model anthropic/claude-haiku-4-5 -p "Reply with ready."
+loushang --model anthropic:anthropic-messages:claude-haiku-4-5 -p "Reply with ready."
+```
 
 ## Next Steps
 

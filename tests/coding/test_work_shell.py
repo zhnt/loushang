@@ -2162,6 +2162,8 @@ def test_goal_planning_work_uses_original_runtime_and_publishes_bound_evidence(
 
         monkeypatch.setattr(limits, "stream", original)
 
+        reservation = object()
+
         class Session:
             session_id = "session"
             session_manager = manager
@@ -2174,11 +2176,18 @@ def test_goal_planning_work_uses_original_runtime_and_publishes_bound_evidence(
             def get_active_tool_names(self):
                 return list(self.active)
 
-            async def set_active_tools(self, tools):
-                self.active = list(tools)
+            selected = None
+
+            def configure_execution(self, execution, *, stream_fn, tool_names, additional_policy):
+                assert execution is reservation and stream_fn is allowance.stream
+                self.selected = tool_names
+
+            def release_execution(self, execution):
+                assert execution is reservation
+                self.selected = None
 
             async def prompt(self, text, **kwargs):
-                assert text == prompt and self.active == []
+                assert text == prompt and self.selected == ()
                 await allowance.stream(None, None)
                 records.extend(completed)
                 for event in events:
@@ -2188,7 +2197,10 @@ def test_goal_planning_work_uses_original_runtime_and_publishes_bound_evidence(
             async def wait_for_idle(self):
                 pass
 
+        from types import SimpleNamespace
+
         session = Session()
+        session.runtime = SimpleNamespace(execution_configuration=session)
         tools = PlanningToolPolicy(tmp_path)
         original_executor = SessionTurnExecutor(
             session=session,
@@ -2201,7 +2213,7 @@ def test_goal_planning_work_uses_original_runtime_and_publishes_bound_evidence(
             session=session,
             allowance=allowance,
             policy=tools,
-            phase="planning",
+            phase="planning", execution=lambda: reservation,
         )
         blobs = SessionBlobStore(tmp_path / "blobs", "session")
         executor = PlanningWork(
@@ -2277,18 +2289,22 @@ def test_goal_planning_original_work_cancel_retains_scope_until_idle(
 
         class Session:
             active = list(prior)
-            selections = 0
+            configured = None
 
             def get_active_tool_names(self):
                 return list(self.active)
 
-            async def set_active_tools(self, names):
-                self.selections += 1
-                if self.selections > 1 and restore == "raises":
-                    raise RuntimeError("restoration failed")
-                self.active = (
-                    [] if self.selections > 1 and restore == "mismatch" else list(names)
-                )
+            def configure_execution(self, execution, **options):
+                assert execution is reservation
+                self.configured = options
+
+            def release_execution(self, execution):
+                assert execution is reservation
+                if restore == "raises":
+                    raise RuntimeError("configuration release failed")
+                if restore == "mismatch":
+                    raise GoalError("configuration still published")
+                self.configured = None
 
             def subscribe_runtime_events(self, listener):
                 return lambda: None
@@ -2304,7 +2320,9 @@ def test_goal_planning_original_work_cancel_retains_scope_until_idle(
                 idle_waiting.set()
                 await idle.wait()
 
+        reservation = object()
         session = Session()
+        session.runtime = SimpleNamespace(execution_configuration=session)
         allowance, policy = PlanningCallAllowance(), PlanningToolPolicy(tmp_path)
         delegate = SessionTurnExecutor(
             session=session,
@@ -2313,7 +2331,8 @@ def test_goal_planning_original_work_cancel_retains_scope_until_idle(
             turn=SessionWorkTurn("execute"),
         )
         scoped = ScopedSessionWork(
-            delegate, session=session, allowance=allowance, policy=policy, phase=phase
+            delegate, session=session, allowance=allowance, policy=policy, phase=phase,
+            execution=lambda: reservation,
         )
 
         class Resolver:
@@ -2341,9 +2360,9 @@ def test_goal_planning_original_work_cancel_retains_scope_until_idle(
         assert allowance.phase is None and policy.step is None
         assert runtime.get_cancellation(run.run_id).status == "settled"
         if restore == "okay":
-            assert not allowance.fenced and session.active == prior
+            assert not allowance.fenced and session.active == prior and session.configured is None
         else:
-            assert allowance.fenced
+            assert allowance.fenced and session.configured is not None and session.active == prior
             with pytest.raises(PlanningCallLimit):
                 allowance.enter("another-op", "planning")
             owner = CodingGoal(tmp_path, tmp_path / "data")
@@ -2780,6 +2799,93 @@ def _goal_offline_model():
             input=("text",), context_window=128000, max_tokens=4096
         ),
     )
+
+
+@pytest.mark.parametrize("close_during_cancel", [False, True])
+def test_goal_verification_cancel_waits_for_original_command_owner_before_close(tmp_path, monkeypatch, close_during_cancel):
+    from loushang.agent.types import AgentToolResult
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+
+    async def scenario():
+        owner = await CodingGoal.open(
+            workspace=_goal_project(tmp_path), data_root=tmp_path / "data",
+            model=_goal_offline_model(), stream_fn=_goal_text_transport(),
+        )
+        entered, drained, aborted = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        signals = []
+
+        async def execute(definition, **kwargs):
+            signals.append(kwargs["signal"])
+            entered.set()
+            await drained.wait()
+            return AgentToolResult(content=[], details={
+                "exit_code": None, "cancelled": True, "truncated": False,
+                "stdio_complete": True, "stdio_drain_reason": None,
+            })
+
+        monkeypatch.setattr(owner._session.command_execution._runtime, "execute_definition", execute)
+        original_abort = owner._session.command_execution.abort
+
+        def abort():
+            original_abort()
+            aborted.set()
+
+        monkeypatch.setattr(owner._session.command_execution, "abort", abort)
+        owner.create("g", command_id="create")
+        advancing = asyncio.create_task(owner.advance("g", command_id="advance", revision=1, epoch=1))
+        await entered.wait()
+        cancel_finally, cancellation_waiting = asyncio.Event(), asyncio.Event()
+        cancellation = None
+        original_cancel = owner._work.cancel
+
+        async def cancel_work(run_id):
+            result = await original_cancel(run_id)
+            if close_during_cancel and asyncio.current_task() is cancellation:
+                # Keep the public cancellation invocation open after physical
+                # settlement, without holding the Work's own cancellation driver.
+                cancellation_waiting.set()
+                await asyncio.Event().wait()
+            return result
+
+        monkeypatch.setattr(owner._work, "cancel", cancel_work)
+
+        async def cancel():
+            try:
+                return await owner.controller.request_cancel("g")
+            finally:
+                cancel_finally.set()
+                if close_during_cancel:
+                    await owner.close()
+
+        cancellation = asyncio.create_task(cancel())
+        await aborted.wait()
+        assert signals[0].aborted and not cancellation.done()
+        assert owner._session.command_execution.is_running
+        drained.set()
+        if close_during_cancel:
+            await asyncio.wait_for(cancellation_waiting.wait(), 10)
+            with pytest.raises(asyncio.CancelledError):
+                await advancing
+            closing = asyncio.create_task(owner.close())
+            await asyncio.wait_for(cancel_finally.wait(), 2)
+            await asyncio.wait_for(closing, 10)
+            result = await asyncio.gather(cancellation, return_exceptions=True)
+            assert isinstance(result[0], asyncio.CancelledError)
+        else:
+            await cancellation
+            with pytest.raises(asyncio.CancelledError):
+                await advancing
+        assert not owner._session.command_execution.is_running
+        assert owner.controller.query("g").status != "completed"
+        for batch in owner.controller.history.batches:
+            run = owner._work.get_run_for_operation(batch.operation_id)
+            assert run is not None
+            assert owner._work.get_cancellation(run.run_id).status == "settled"
+        await owner.close()
+        assert owner._closed
+
+    asyncio.run(scenario())
 
 
 def _goal_text_transport():
@@ -3643,20 +3749,19 @@ def test_goal_query_cleanup_error_is_retained_without_disposing_resources(tmp_pa
         started = asyncio.Event()
 
         async def query():
-            task = asyncio.current_task()
-            owner._queries.add(task)
             started.set()
             try:
                 await asyncio.Event().wait()
             finally:
-                owner._queries.discard(task)
                 raise OSError("query reader cleanup pending")
 
-        task = asyncio.create_task(query())
+        task = asyncio.create_task(owner._observations.invoke(query))
         await started.wait()
         with pytest.raises(OSError, match="reader cleanup pending"):
             await owner.close()
         assert task.done() and not disposed and not owner._closed
+        result = await asyncio.gather(task, return_exceptions=True)
+        assert isinstance(result[0], OSError)
         with pytest.raises(OSError, match="reader cleanup pending"):
             await owner.close()
         assert not disposed
@@ -3781,5 +3886,88 @@ def test_goal_verifier_nonzero_uses_last_cumulative_preview_not_exception_text(
             assert output == b"actual failure\n"
         else:
             assert view.passed is None and not view.records
+
+    asyncio.run(scenario())
+
+
+def test_goal_query_outer_finally_can_join_same_close_without_deadlock(tmp_path):
+    from types import SimpleNamespace
+
+    async def scenario():
+        owner = CodingGoal(tmp_path, tmp_path / "data")
+        started = asyncio.Event()
+        released = []
+
+        class Core:
+            fenced = False
+            header = object()
+            history = SimpleNamespace(sequence=0)
+
+            def query(self, goal_id):
+                return object()
+
+            def facts(self):
+                return object()
+
+            def begin_close(self):
+                pass
+
+            async def quiesce(self):
+                pass
+
+            async def settle_work(self):
+                pass
+
+            def retire(self):
+                released.append("core")
+
+        class Policy:
+            async def assess(self, basis, facts):
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    released.append("reader")
+
+        class Store:
+            def close(self):
+                released.append("writer")
+
+        owner._core, owner._policy, owner._store = Core(), Policy(), Store()
+
+        async def caller():
+            try:
+                await owner.query("goal")
+            finally:
+                await owner.close()
+
+        task = asyncio.create_task(caller())
+        await started.wait()
+        await asyncio.wait_for(owner.close(), 2)
+        result = await asyncio.gather(task, return_exceptions=True)
+        assert isinstance(result[0], asyncio.CancelledError)
+        assert released == ["reader", "core", "writer"] and owner._closed
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("execution", [None, lambda: None])
+def test_goal_model_work_without_execution_binding_cannot_enter_allowance_or_session(tmp_path, execution):
+    from loushang.coding.adapters._goal_planning_limits import PlanningCallAllowance
+    from loushang.coding.adapters._goal_planning_work import (
+        PlanningToolPolicy,
+        ScopedSessionWork,
+    )
+
+    async def scenario():
+        allowance = PlanningCallAllowance()
+        policy = PlanningToolPolicy(tmp_path)
+        work = ScopedSessionWork(
+            object(), session=object(), allowance=allowance, policy=policy,
+            phase="planning", execution=execution,
+        )
+        with pytest.raises(GoalError, match="Session execution binding"):
+            await work.execute(object(), object())
+        assert allowance.phase is None and allowance.total_calls == 0 and policy.step is None
 
     asyncio.run(scenario())

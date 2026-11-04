@@ -27,6 +27,8 @@ Method is the work contract, work is the runtime fact, agent is the execution ke
 
 Loushang is in early development. The recommended path is to run it from source.
 
+Before your first online prompt, configure the selected provider's credential; [Getting Started](./docs/en/getting-started/#configure-a-provider-credential) covers API key variables and OAuth routes.
+
 ```bash
 git clone https://github.com/zhnt/loushang.git
 cd loushang

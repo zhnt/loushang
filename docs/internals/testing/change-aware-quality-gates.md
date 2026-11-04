@@ -81,6 +81,7 @@ coverage still requires the planned shard collection and ownership checks.
 | Change | Required scope |
 | --- | --- |
 | Ordinary Markdown/RST documentation | Existing documentation invariants and changed Markdown links; no product dependency installation |
+| HarnessGUI source, fixtures, dependencies and `scripts/gui/**` | Rapid-development GUI typecheck and offline unit/playback tests; native/full/layout checks run on demand |
 | Ordinary package source on a PR or main push | That package's complete offline regression directory and explicitly owned extras, plus documentation and source dependency facts |
 | Test implementation or package-owned test fixture only | Its existing module or targeted owner; no global integration, consumer, native, or E2E expansion |
 | Session, conversation, transcript, or hosted application code on a PR or main push | Package units plus a focused create → turn → resume → turn → close E2E smoke |
@@ -220,6 +221,19 @@ Make. Local execution reports platform, installation, and real-LSP scopes that
 must run in Actions; a local success is not a substitute for that evidence.
 Existing offline and host-runtime selectors are preserved. Do not repeat a
 passed suite without relevant changes or an unresolved failure.
+
+The GUI scope invokes `pnpm --dir gui run check` directly, without Unix Make
+activation recipes. The rapid-development default needs Node and pnpm, not
+Rust; see the
+[GUI README](../../../gui/README.md). Its reusable
+[lightweight workflow](../../../.github/workflows/gui-quality.yml) participates
+in the same fail-closed aggregate gate, without TUI/Harness suites or native
+packaging. Edits to that GUI-only workflow select GUI and CI routing/syntax
+checks. Shared routing/aggregate changes still select all affected checks.
+Use `check:full` for Rust/native/toolchain changes and run browser playback or
+packaging when needed for acceptance. Building the executable does not establish
+native visual acceptance. This temporary B1 policy must be reassessed for B2
+real-service integration and release acceptance.
 
 ## Actions and branch protection
 

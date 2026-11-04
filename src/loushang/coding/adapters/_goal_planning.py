@@ -20,21 +20,14 @@ from loushang.harnesswork.ports import WorkExecutionBinding
 from . import _goal_driver as driver
 from ._goal_calculator import CalculatorPolicy
 from ._goal_planning_shared import BatchPlanningPolicy
+from ._goal_planning_shared import planning_prompt as planning_prompt
 from ._goal_planning_work import InspectionWork, ScopedSessionWork
 from ._goal_proposal import (
     LIMITS,
     POLICY_ID,
     ProposalRejected,
-    planning_instructions,
 )
-
-
-def planning_prompt(operation_id, content):
-    return (
-        planning_instructions()
-        + f"\nTrusted planning operation: {operation_id}; input sha256: {driver.digest(content)}\n"
-        + content.decode("utf-8")
-    )
+from ._goal_proposal import planning_instructions as planning_instructions
 
 
 class ModelPlanningPolicy(BatchPlanningPolicy, CalculatorPolicy):
@@ -227,7 +220,7 @@ class ModelPlanningPolicy(BatchPlanningPolicy, CalculatorPolicy):
                     session=self.session,
                     allowance=self.allowance,
                     policy=self.tool_policy,
-                    phase="repair",
+                    phase="repair", execution=self.execution,
                 )
                 self.prepared[candidate.operation.operation_id] = WorkExecutionBinding(
                     scoped, scoped

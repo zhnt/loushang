@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import (
@@ -604,6 +605,8 @@ class AgentLoopConfig:
     ) = None
     prepare_model_call: PrepareModelCallFn | None = None
     require_prepared_request_conformance: bool = False
+    execution_scope: Callable[[], AbstractContextManager[None]] | None = None
+    checkpoint: Callable[[], None] | None = None
 
 
 class AgentState:
@@ -657,6 +660,22 @@ class AgentState:
     def set_messages(self, messages: list[AgentMessage]) -> None:
         """Replace the messages list, copying the top-level container."""
         self._messages = list(messages)
+
+
+@dataclass(frozen=True)
+class AgentRunOptions:
+    """Invocation-local restrictions; never mutate the Agent's baseline.
+
+    The caller owns the lifetime and authority of injected callbacks. Tool
+    selection only filters the existing snapshot; input queues remain intact.
+    """
+
+    stream_fn: StreamFn | None = None
+    tool_names: frozenset[str] | None = None
+    system_prompt: str | None = None
+    deliver_queued_input: bool = True
+    execution_scope: Callable[[], AbstractContextManager[None]] | None = None
+    checkpoint: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True)

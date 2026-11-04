@@ -213,6 +213,16 @@ class ProductSessionRuntime(
             record_index_refresh_failure=self._record_index_refresh_failure,
         )
 
+    def bind_session_execution_lifecycle(self, session: object) -> None:
+        bind = getattr(session, "bind_execution_lifecycle", None)
+        if callable(bind):
+            host = self._lifecycle.transition_host
+            bind(
+                is_current=lambda: self.current_session is session,
+                transition_pending=lambda: host.has_pending_transitions,
+                generation=lambda: host.transition_generation,
+            )
+
     async def create_session(
         self,
         *,
@@ -239,6 +249,15 @@ class ProductSessionRuntime(
                 failure.add_note(f"transcript construction cleanup retained: {type(error).__name__}")
         if failure is not None:
             raise failure
+
+    async def dispose_bound_session(self, session: SessionT) -> None:
+        """Close this exact owned binding; never fence or dispose its successor."""
+        host = self._lifecycle.transition_host
+        async with host.transition():
+            if self.current_session is session or self._transcript_construction_store.closing:
+                await self.dispose_session_runtime()
+            else:
+                await host.retry_retirements()
 
     async def rename_session(
         self,

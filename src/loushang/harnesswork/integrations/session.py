@@ -393,18 +393,26 @@ class _SessionExecutionResolver:
         session: SessionPromptPort,
         profile: SessionWorkProfile,
         project_event_facts: SessionEventFactProjector,
+        before_accept: Callable[[], None] | None = None,
     ) -> None:
         self._session = session
         self._profile = profile
         self._project_event_facts = project_event_facts
-        self._prepared: dict[str, SessionTurnExecutor] = {}
+        self._before_accept = before_accept
+        self._prepared: dict[str, tuple[WorkExecutionBinding, Callable[[], None] | None]] = {}
 
     def prepare(self, operation_id: str, executor: SessionTurnExecutor) -> None:
+        self.prepare_binding(operation_id, WorkExecutionBinding(executor, executor))
+
+    def prepare_binding(
+        self, operation_id: str, binding: WorkExecutionBinding, *,
+        commit: Callable[[], None] | None = None,
+    ) -> None:
         if operation_id in self._prepared:
             raise ValueError(
                 f"session Work operation is already prepared: {operation_id}"
             )
-        self._prepared[operation_id] = executor
+        self._prepared[operation_id] = (binding, commit)
 
     def discard(self, operation_id: str) -> None:
         self._prepared.pop(operation_id, None)
@@ -415,14 +423,23 @@ class _SessionExecutionResolver:
         spec: WorkRunSpec,
     ) -> WorkExecutionBinding:
         del spec
-        executor = self._prepared.pop(operation.operation_id, None)
-        if executor is None:
+        prepared = self._prepared.get(operation.operation_id)
+        if prepared is None:
             executor = SessionTurnExecutor(
                 session=self._session,
                 profile=self._profile,
                 project_event_facts=self._project_event_facts,
             )
-        return WorkExecutionBinding(executor=executor, cancellation=executor)
+            binding = WorkExecutionBinding(executor, executor)
+            commit = None
+        else:
+            binding, commit = prepared
+        if commit is not None:
+            commit()
+        elif self._before_accept is not None:
+            self._before_accept()
+        self._prepared.pop(operation.operation_id, None)
+        return binding
 
 
 class SessionOperationInProgressError(RuntimeError):
@@ -482,10 +499,14 @@ class SessionWorkRuntime:
         self.profile = profile
         self._session_id = session_id
         self.transcript_source = transcript_source
+        self._settling_runs: set[str] = set()
+        self._execution_configuration = (clock, cancellation_timeout, transcript_source, recording_policy)
+        self.recording_version = 1 if transcript_source is not None or recording_policy is not None else None
         self._resolver = _SessionExecutionResolver(
             session=session,
             profile=profile,
             project_event_facts=project_event_facts,
+            before_accept=getattr(session, "before_work_accept", None),
         )
         self.work_runtime = WorkRuntime(
             resolver=self._resolver,
@@ -498,6 +519,57 @@ class SessionWorkRuntime:
             recording_policy=recording_policy,
         )
         self._project_event_facts = project_event_facts
+        register = getattr(session, "bind_work_execution_backend", None)
+        if callable(register):
+            register(self, busy=lambda: bool(self._settling_runs or self.work_runtime.active_runs()), settle=self.settle)
+
+    async def settle(self) -> None:
+        """Settle this Session's original backend without suppressing failures.
+
+        A cancelled Work projection alone does not establish domain quiescence.
+        Retain unresolved run identities so the same cleanup can be retried.
+        """
+        pending = self._settling_runs
+        pending.update(run.run_id for run in self.work_runtime.active_runs())
+        for run_id in tuple(pending):
+            await self.work_runtime.cancel(run_id)
+            observation = self.work_runtime.get_cancellation(run_id)
+            if observation.basis != "journal" or observation.status not in {"not_requested", "settled"}:
+                raise RuntimeError("Session Work cancellation has not established domain settlement")
+            pending.discard(run_id)
+
+    def prepare_binding(
+        self, operation_id: str, binding: WorkExecutionBinding, *,
+        commit: Callable[[], None],
+    ) -> None:
+        """Use the original prepared slot and accept resolver for an integration."""
+        self._resolver.prepare_binding(operation_id, binding, commit=commit)
+
+    def require_compatible_configuration(
+        self, *, session: SessionPromptPort, event_log: EventLogBackend,
+        profile: SessionWorkProfile, clock: Callable[[], datetime],
+        cancellation_timeout: float | None, transcript_source: WorkTranscriptSource | None,
+        recording_policy: WorkRecordingPolicy | None,
+    ) -> None:
+        clock_config, timeout_config, source_config, policy_config = self._execution_configuration
+        if (session is not self.session or event_log is not self.event_log or profile != self.profile
+                or (clock_config, timeout_config, source_config) != (clock, cancellation_timeout, transcript_source)
+                or recording_policy is not None and policy_config != recording_policy):
+            raise ValueError("existing Session Work backend configuration differs")
+
+    def discard_binding(self, operation_id: str) -> None:
+        self._resolver.discard(operation_id)
+
+    def require_goal_compatibility(self, *, require_unbounded_cancellation: bool = True) -> None:
+        """Preserve the pre-refactor Goal cancellation and source contract.
+
+        Keep the existing clock and original event authority. A backend-level
+        source adapter rewrites operation/executor binding and cannot be silently
+        combined with Goal's own explicit per-operation source handoff.
+        """
+        _, timeout, source, _ = self._execution_configuration
+        if (require_unbounded_cancellation and timeout is not None) or source is not None:
+            raise ValueError("existing Session Work backend is incompatible with Goal settlement or source")
 
     async def accept_operation(
         self,

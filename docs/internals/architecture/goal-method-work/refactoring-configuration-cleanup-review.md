@@ -1,0 +1,11 @@
+# 删除模型Work全局配置回退
+
+Authority: descriptive。对象为c71f43e45之后ScopedSessionWork与其测试两个文件，沿已接受操作级overlay合同收尾。
+
+所有三个生产构造点已提供原Session执行绑定。删除execution缺失时全局set_active_tools及旧快照恢复的私有分支，统一使用原configure_execution/release_execution。构造参数保留以兼容只构造候选的旧解释器；实际execute缺绑定或返回None在进入allowance、领域policy与Session之前明确拒绝，不再创建另一套配置机制。
+
+原wait_for_idle → release → leave顺序保留，释放失败保留原配置owner并fence后续模型推进。原7项证据交接、取消及配置失败测试改用overlay端口装配，保留等待idle、失败fence和新推进拒绝的断言；mismatch场景现在表示原owner仍发布配置而拒绝释放，不再模拟已删除的全局setter比对。单元domain settled不代表配置已释放，生产admitted bridge仍负责整体收敛错误传播。
+
+三个独立视角无剩余阻断；报告在产品树外architecture-analysis/goal-refactor-20261103/no-global-configuration-{ownership,runtime,data}.md。实施负责人依据该评审与以下回归接受本地集成。未改任何门禁。
+
+验证：原7项专项通过4.78秒；随后证据/取消/释放失败、无凭据不进入预算/Session、普通Session六组合及原固定selector差分共16 passed、150 deselected，42.30秒。Ruff通过；源文件mypy通过（未注解函数体的既有检查局限保留）。无线上模型调用。

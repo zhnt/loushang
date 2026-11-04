@@ -8,6 +8,7 @@ from loushang.harnesswork import WorkOperation, WorkRunSpec, WorkStepSpec
 from loushang.harnesswork.goal import GoalError, WorkCandidate
 from loushang.harnesswork.goal.records import canonical, plain
 from loushang.harnesswork.ports import WorkExecutionBinding
+from loushang.harnesswork.types import WorkCancellationOutcome
 
 from ._goal_planning_work import publish_report
 from ._goal_repository_task import digest
@@ -111,7 +112,8 @@ def review_candidate(policy, basis, value):
     ):
         raise GoalError("review basis changed")
     op_id = "goal-review-" + uuid4().hex
-    policy.prepared[op_id] = WorkExecutionBinding(ReviewWork(policy, value))
+    executor = ReviewWork(policy, value)
+    policy.prepared[op_id] = WorkExecutionBinding(executor, cancellation=executor)
     return WorkCandidate(
         basis,
         WorkOperation(
@@ -152,3 +154,9 @@ class ReviewWork:
         )
         if self.policy.task.snapshot() != self.value["identity"]["inventory"]:
             raise GoalError("repository changed during review publication")
+
+    async def cancel_and_wait(self, operation, context):
+        # This publisher owns no child task, transport or native worker. The
+        # admitted-execution bridge must still stop and join its invocation
+        # before this domain's result becomes a Work cancellation observation.
+        return WorkCancellationOutcome.settled()

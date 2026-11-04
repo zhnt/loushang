@@ -902,6 +902,7 @@ def initialize_composed_session(
         raise RuntimeError("Agent Product sessions require package operations.")
 
     session._composition = composition
+    composition.tool_controller.bind_execution_configuration(composition.session_runtime.execution_configuration)
     session._package_controller = package_controller
     session._extension_provider_controller = composition.extension_provider_controller
     session._extension_replacement_controller = (

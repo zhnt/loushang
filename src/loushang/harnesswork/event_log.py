@@ -229,6 +229,10 @@ class InMemoryEventLogBackend(_EventLogState):
 
 class JsonlEventLogBackend(_EventLogState):
     @property
+    def storage_path(self) -> Path:
+        return self._path
+
+    @property
     def recording_retention(self) -> Literal["persistent"]:
         # Process-local file retention is not an fsync or writer-lock promise.
         return "persistent"

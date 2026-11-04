@@ -6,8 +6,12 @@ the standard AI stream and counts logical invocations within an admitted Work.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from types import MappingProxyType
+
 from loushang.agent.model_transport import prepared_request_conformant
-from loushang.ai import CallOptions, RetryOptions, stream
+from loushang.ai import stream
+from loushang.harness.session.call_allowance import ModelCallAllowance
 from loushang.harnesswork.goal import GoalError
 
 from ._goal_proposal import LIMITS
@@ -17,64 +21,79 @@ class PlanningCallLimit(GoalError):
     pass
 
 
-class PlanningCallAllowance:
-    def __init__(self) -> None:
-        self.operation_id: str | None = None
-        self.phase: str | None = None
-        self.calls = 0
-        self.failed = False
-        self.fenced = False
-        # Decorating the bound callable itself is unsupported; decorate the
-        # closure given to the SDK, preserving its existing conformance seam.
-        self.stream = prepared_request_conformant(self._delegate())
+class PlanningCallAllowance(ModelCallAllowance):
+    """Compatibility profile over the shared operation call limiter."""
 
-    def enter(self, operation_id: str, phase: str) -> None:
-        if (
-            not operation_id
-            or self.fenced
-            or self.phase is not None
-            or phase not in {"planning", "repair"}
-        ):
-            raise PlanningCallLimit("model phase unavailable")
-        if operation_id != self.operation_id:
-            self.operation_id, self.calls, self.failed = operation_id, 0, False
-        elif self.failed:
-            raise PlanningCallLimit("model Work allowance already failed")
-        self.phase = phase
+    def __init__(self, *, total_limit: int | None = None, max_output_tokens: int | None = None) -> None:
+        @prepared_request_conformant
+        async def delegate(model, context, options=None):
+            # Resolve the original module binding at call time, as before.
+            return await stream(model, context, options)
 
-    def leave(self, operation_id: str) -> None:
-        if self.operation_id != operation_id:
-            self.fenced = True
-            raise PlanningCallLimit("model phase ownership mismatch")
-        self.phase = None
-        # Preserve calls/failed across Method steps and cancellation settlement.
+        self._initialize(delegate, total_limit=total_limit, max_output_tokens=max_output_tokens)
 
-    def _delegate(self):
-        async def bounded_stream(model, context, options=None):
-            if self.fenced or self.phase is None or self.failed:
-                self.failed = True
-                raise PlanningCallLimit("model call outside an admitted phase")
-            maximum = LIMITS[f"{self.phase}_calls"]
-            if self.calls >= maximum:
-                self.failed = True
-                raise PlanningCallLimit("model logical-call allowance exhausted")
-            if options is not None and not isinstance(options, CallOptions):
-                self.failed = True
-                raise PlanningCallLimit("unrecognized model call options")
-            retry = options.retry if options is not None else None
-            if retry is not None and (
-                not isinstance(retry, RetryOptions)
-                or retry.max_attempts > LIMITS["provider_attempts"]
-            ):
-                self.failed = True
-                raise PlanningCallLimit("provider retry allowance unsupported")
-            # No suspension occurs before consuming the allowance. Pass through
-            # the exact prepared committer, cancellation authority and response.
-            self.calls += 1
-            try:
-                return await stream(model, context, options)
-            except BaseException:
-                self.failed = True
-                raise
+    @classmethod
+    def from_stream(cls, delegate, *, total_limit=None, max_output_tokens=None, checkpoint=None):
+        """Bind the existing Session transport without replacing its authority."""
+        from loushang.ai.api import stream as standard_stream
 
-        return bounded_stream
+        if delegate is standard_stream:
+            @prepared_request_conformant
+            async def standard_delegate(model, context, options=None):
+                return await delegate(model, context, options)
+
+            transport = standard_delegate
+        else:
+            transport = delegate
+        owner = cls.__new__(cls)
+        owner._initialize(transport, total_limit=total_limit, max_output_tokens=max_output_tokens)
+        owner._checkpoint = checkpoint
+        return owner
+
+    def _initialize(self, delegate, *, total_limit, max_output_tokens):
+        super().__init__(phase_limits={name: LIMITS[f"{name}_calls"] for name in ("planning", "repair")},
+                         provider_attempts=LIMITS["provider_attempts"], delegate=delegate,
+                         total_limit=total_limit, max_output_tokens=max_output_tokens,
+                         retry_attempts=1 if max_output_tokens is not None else None,
+                         error_type=PlanningCallLimit)
+        self.hosted_limits = None
+        self._budget_snapshot: Callable[[], dict] | None = None
+
+    def _error(self, message: str) -> Exception:
+        return PlanningCallLimit(message.replace("model operation allowance already failed",
+                                                 "model Work allowance already failed"))
+
+    def bind_hosted_budget(self, limits, snapshot, checkpoint):
+        if self.hosted_limits is not None or self.total_calls:
+            raise PlanningCallLimit("hosted budget already bound")
+        self.hosted_limits = MappingProxyType(dict(limits))
+        self._budget_snapshot = snapshot
+        prior_checkpoint = self._checkpoint
+        if prior_checkpoint is None:
+            self._checkpoint = checkpoint
+        else:
+            def combined_checkpoint():
+                prior_checkpoint()
+                checkpoint()
+            self._checkpoint = combined_checkpoint
+
+    def model_budget(self):
+        if self.hosted_limits is None:
+            return {}
+        assert self._budget_snapshot is not None
+        return {"hosted_budget": {
+            **self.hosted_limits, **self._budget_snapshot(),
+            "total_calls": self.total_calls,
+            "model_calls_remaining_including_next_call": max(0, self.total_limit - self.total_calls),
+            "sample": "batch_preparation_including_next_call",
+        }}
+
+    def model_limits(self, profile):
+        if self.hosted_limits is None:
+            return profile
+        result = dict(profile)
+        for key in ("repair_calls", "planning_calls"):
+            result[key] = min(result[key], self.total_limit)
+        result["provider_attempts"] = 1
+        result["work_intents"] = min(result["work_intents"], self.hosted_limits["max_advances"])
+        return result

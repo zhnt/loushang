@@ -33,6 +33,7 @@ from loushang.appservice.discovery_ports import (
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.machine_resources import prepare_private_directory_chain
+from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
@@ -201,6 +202,39 @@ def _create_coding_attempt(
     ) = None,
 ) -> CodingHostedContinuityAttemptV1:
     """Installed Product wiring shared by explicit legacy/managed launch facts."""
+    foreground = _coding_foreground_request(
+        application_id=application_id, catalog=catalog, generation=generation,
+        model=model, stream_fn=stream_fn, tools=tools, session_discovery=session_discovery,
+        owned_transcripts=owned_transcripts, profile_id=profile_id, resume_history=resume_history,
+        managed_selection=managed_selection, managed_mux=managed_mux,
+        output_capture_factory=output_capture_factory,
+        package_product_runtime_factory_for_session=package_product_runtime_factory_for_session,
+    )
+    return create_coding_hosted_continuity_attempt(
+        CodingHostedContinuityRequestV1(
+            activation=HostedApplicationContinuityActivationV1(),
+            foreground=foreground,
+            application_id=application_id,
+            owner_epoch=token_hex(16),
+            store=JsonFileApplicationContinuityStoreV1(application_root),
+        )
+    )
+
+
+def _coding_foreground_request(
+    *, application_id: str, catalog: CodingHostedSessionCatalogV1,
+    generation: str, model: Model | ModelSelection | None, stream_fn: StreamFn | None,
+    tools: list[ToolDefinition] | None, session_discovery: bool, owned_transcripts: bool,
+    profile_id: str, resume_history: bool = False, managed_selection: bool = False,
+    managed_mux: ManagedMuxServiceBindingV1 | None = None,
+    session_tool_policy: PolicyEvaluator | None = None,
+    session_active_tools: list[str] | None = None,
+    session_allowed_tools: list[str] | None = None,
+    session_system_prompt: str | None = None,
+    output_capture_factory: ExecCaptureFactory | None = None,
+    package_product_runtime_factory_for_session: CodingHostedProductRuntimeFactoryForSession | None = None,
+) -> CodingForegroundHostedApplicationRequestV1:
+    """Shared installed Product composition, independent of application persistence."""
     admitted_scopes = tuple(HostedSessionDiscoveryScopeV1(
         "coding", scope.scope, scope.fingerprint,
     ) for scope in catalog.scopes)
@@ -222,7 +256,7 @@ def _create_coding_attempt(
         from .hosted_execution import create_coding_execution_service_binding
 
         execution = create_coding_execution_service_binding(application_id)
-    foreground = CodingForegroundHostedApplicationRequestV1(
+    return CodingForegroundHostedApplicationRequestV1(
         activation=HostedApplicationActivationV1(),
         generation_id=generation,
         product_version=product_version,
@@ -249,6 +283,10 @@ def _create_coding_attempt(
             model=model,
             stream_fn=stream_fn,
             tools=tools,
+            session_tool_policy=session_tool_policy,
+            session_active_tools=session_active_tools,
+            session_allowed_tools=session_allowed_tools,
+            session_system_prompt=session_system_prompt,
             output_capture_factory=output_capture_factory,
             package_product_runtime_factory_for_session=(
                 package_product_runtime_factory_for_session
@@ -259,15 +297,6 @@ def _create_coding_attempt(
         profile_id=profile_id,
         managed_selection=managed_selection,
         managed_mux=managed_mux,
-    )
-    return create_coding_hosted_continuity_attempt(
-        CodingHostedContinuityRequestV1(
-            activation=HostedApplicationContinuityActivationV1(),
-            foreground=foreground,
-            application_id=application_id,
-            owner_epoch=token_hex(16),
-            store=JsonFileApplicationContinuityStoreV1(application_root),
-        )
     )
 
 

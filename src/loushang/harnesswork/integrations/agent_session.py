@@ -69,6 +69,17 @@ def create_agent_session_work_runtime(
 ) -> SessionWorkRuntime:
     """Bind a Product profile to the existing session Work runtime."""
 
+    existing = getattr(session, "work_execution_backend", None)
+    if existing is not None:
+        if not isinstance(existing, SessionWorkRuntime):
+            raise ValueError("Session already has an incompatible Work backend")
+        existing.require_compatible_configuration(
+            session=session, event_log=event_log, profile=profile, clock=clock,
+            cancellation_timeout=cancellation_timeout, transcript_source=transcript_source,
+            recording_policy=recording_policy,
+        )
+        return existing
+
     return SessionWorkRuntime(
         session=session,
         event_log=event_log,
