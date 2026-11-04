@@ -64,6 +64,16 @@ For current kind, Product, platform, and entry-route status, use the
 [Plugin support matrix](plugin-support-matrix.md). Earlier status lines in
 delivery records are chronological evidence and may predate later gates.
 
+The [Plugin and Harness convergence audit](convergence-audit.md) traces Session
+creation, Plugin loading, disable, and shutdown at the 2026-11-04 source baseline.
+It separates observed ownership from proposed simplification; its candidate
+list does not change accepted contracts or authorize legacy-path removal.
+
+The [materialization platform Adapter](materialization-platform-adapter.md)
+defines shared Store rules with narrow native operations. M1a receipt
+verification and M1b finish/reuse/publication coordination are locally
+implemented; Windows native validation remains pending. M1c remains proposed.
+
 ## Authority Order
 
 When documents disagree, use this order:

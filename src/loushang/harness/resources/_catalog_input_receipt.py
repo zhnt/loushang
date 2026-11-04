@@ -5,13 +5,23 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from loushang.foundation.json import dump_json_value
 from loushang.harness.resources.packages.catalog_inputs import (
     CatalogPluginPackageInput,
 )
 from loushang.harness.resources.packages.mounts import PackageResourceMount
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from loushang.harness.resources.types import (
+        ExtensionDescriptor,
+        PromptFragmentDescriptor,
+        SkillDescriptor,
+        ThemeDescriptor,
+    )
 
 LegacyPackageResourceKind = Literal["extension", "prompt", "skill", "theme"]
 
@@ -73,6 +83,30 @@ class LegacyPackageResourceCandidateFact:
             or any(character not in "0123456789abcdef" for character in digest)
         ):
             raise ValueError("Legacy package Resource digest must be SHA-256")
+
+
+def _package_resource_facts_for(
+    resource_kind: LegacyPackageResourceKind,
+    descriptors: Sequence[
+        PromptFragmentDescriptor
+        | SkillDescriptor
+        | ExtensionDescriptor
+        | ThemeDescriptor
+    ],
+) -> tuple[LegacyPackageResourceCandidateFact, ...]:
+    return tuple(
+        LegacyPackageResourceCandidateFact(
+            resource_kind=resource_kind,
+            source_path=descriptor.source_path,
+            source_root_order=descriptor.source_root_order,
+            package_content_digest=(
+                descriptor.revision_ref.content_digest
+                if descriptor.revision_ref is not None
+                else None
+            ),
+        )
+        for descriptor in descriptors
+    )
 
 
 @dataclass(frozen=True, slots=True)
