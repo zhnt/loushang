@@ -13,12 +13,20 @@ import os
 import stat
 import sys
 import threading
-from collections.abc import Callable, Iterable
-from contextlib import AbstractContextManager, suppress
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import AbstractContextManager, contextmanager, suppress
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Literal, cast
 
+from loushang.harness.resources.packages.plugin_lifecycle._materialization_shared import (
+    ObservedTree,
+    PackageStorePinnedRootPort,
+    PackageStorePlatformPort,
+    finish_verified_tree,
+    validate_receipt_at_root,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     PluginRevisionRefV1,
     VerifiedArtifactRefV1,
@@ -363,6 +371,9 @@ class _PosixRoleStore:
             self._root_identities = provisioned.identities
         finally:
             provisioned.close()
+        self._platform: PackageStorePlatformPort = _PosixStorePlatform(
+            self._root, self._root_identities
+        )
         try:
             validate_store_root = (
                 self._settlement_journal.read_validate_store_root
@@ -424,16 +435,14 @@ class _PosixRoleStore:
             self._lock.release()
             raise _root_untrusted() from None
         try:
-            root = _PinnedPosixRoot.open(
-                self._root,
-                expected_identities=self._root_identities,
-            )
-            try:
-                return self._validate_receipt_at_root(
-                    root, receipt, read_only=read_only
+            with self._platform.pin_root() as root:
+                return validate_receipt_at_root(
+                    root, receipt,
+                    store_role=self._role,
+                    store_identity=self._store_identity,
+                    settlement_journal=self._settlement_journal,
+                    read_only=read_only,
                 )
-            finally:
-                root.close()
         except PackagePhysicalStagingError:
             raise
         except PackageStoreSettlementJournalError:
@@ -794,64 +803,6 @@ class _PosixRoleStore:
         finally:
             self._lock.release()
 
-    def _validate_receipt_at_root(
-        self,
-        root: _PinnedPosixRoot,
-        receipt: PackageArtifactStagingReceiptV1,
-        *,
-        read_only: bool = False,
-    ) -> PackageArtifactStagingReceiptV1:
-        stable_ref = receipt.stable_ref
-        if (
-            stable_ref.store_identity != self._store_identity
-            or (
-                self._role == "dependency"
-                and not isinstance(stable_ref, VerifiedArtifactRefV1)
-            )
-            or (
-                self._role == "root" and not isinstance(stable_ref, PluginRevisionRefV1)
-            )
-        ):
-            raise _collision()
-        settlements_read = (
-            self._settlement_journal.read_settlements_for_receipt
-            if read_only
-            else self._settlement_journal.settlements_for_receipt
-        )
-        settlements = settlements_read(
-            store_role=self._role,
-            store_identity=self._store_identity,
-            root_identities=root.identities,
-            receipt=receipt,
-        )
-        if not settlements:
-            raise _collision()
-        authority = settlements[0]
-        tree_identity, directory_identities, file_identities = _validate_existing_tree(
-            root,
-            authority.final_name,
-            authority.manifest,
-        )
-        authorizes_read = (
-            self._settlement_journal.read_authorizes
-            if read_only
-            else self._settlement_journal.authorizes
-        )
-        if not authorizes_read(
-            store_role=self._role,
-            store_identity=self._store_identity,
-            root_identities=root.identities,
-            tree_identity=tree_identity,
-            directory_identities=directory_identities,
-            file_identities=file_identities,
-            final_name=authority.final_name,
-            staging_name=authority.staging_name,
-            manifest=authority.manifest,
-            receipt=receipt,
-        ):
-            raise _collision()
-        return receipt
-
     def open_sink(
         self,
         request: PackageArtifactStagingRequestV1,
@@ -895,6 +846,23 @@ class _PosixRoleStore:
         except Exception:
             release_owner_lock()
             raise
+
+
+@dataclass(frozen=True)
+class _PosixStorePlatform:
+    root: Path
+    expected_identities: tuple[_Identity, ...]
+
+    @contextmanager
+    def pin_root(self) -> Iterator[PackageStorePinnedRootPort]:
+        root = _PinnedPosixRoot.open(
+            self.root,
+            expected_identities=self.expected_identities,
+        )
+        try:
+            yield root
+        finally:
+            root.close()
 
 
 class _PinnedPosixRoot:
@@ -988,6 +956,11 @@ class _PinnedPosixRoot:
                     raise OSError("Package Store ancestor path identity changed")
         finally:
             os.close(visible)
+
+    def validate_tree(
+        self, final_name: str, manifest: PackageVerifiedTreeManifestV1,
+    ) -> ObservedTree:
+        return _validate_existing_tree(self, final_name, manifest)
 
     def close(self) -> None:
         if self._closed:
@@ -1225,78 +1198,27 @@ class _PosixVerifiedTreeSink:
 
     def finish(self) -> PackageArtifactStagingReceiptV1:
         self._require_open()
-        if self._active_file is not None or self._next_entry != len(
-            self._manifest.entries
-        ):
-            raise PackagePhysicalStagingError(
-                "Package Store received an incomplete verified tree",
-                code="package_artifact_identity_changed",
-            )
-        try:
-            if self._reuse:
-                self._root.validate_visible()
-                tree_identity, directory_identities, file_identities = (
-                    _validate_existing_tree(
-                        self._root,
-                        self._final_name,
-                        self._manifest,
-                    )
-                )
-                exact = self._settlement_journal.authorizes(
-                    store_role=self._role,
-                    store_identity=self._store_identity,
-                    root_identities=self._root.identities,
-                    tree_identity=tree_identity,
-                    directory_identities=directory_identities,
-                    file_identities=file_identities,
-                    final_name=self._final_name,
-                    staging_name=self._staging_name,
-                    manifest=self._manifest,
-                    receipt=self._receipt,
-                )
-                if self._reuse_alias and not exact:
-                    if not self._settlement_journal.authorizes_dependency_reuse(
-                        store_identity=self._store_identity,
-                        root_identities=self._root.identities,
-                        tree_identity=tree_identity,
-                        directory_identities=directory_identities,
-                        file_identities=file_identities,
-                        final_name=self._final_name,
-                        staging_name=self._staging_name,
-                        manifest=self._manifest,
-                        receipt=self._receipt,
-                    ):
-                        raise _collision()
-                    self._settlement_journal.authorize(
-                        store_role=self._role,
-                        store_identity=self._store_identity,
-                        root_identities=self._root.identities,
-                        tree_identity=tree_identity,
-                        directory_identities=directory_identities,
-                        file_identities=file_identities,
-                        final_name=self._final_name,
-                        staging_name=self._staging_name,
-                        manifest=self._manifest,
-                        receipt=self._receipt,
-                    )
-                elif not exact:
-                    raise PackagePhysicalStagingError(
-                        "Package Store final identity lacks durable owner evidence",
-                        code="package_publication_collision",
-                    )
-            else:
-                self._settle_new_tree()
-        except PackagePhysicalStagingError:
-            raise
-        except PackageStoreSettlementJournalError:
-            raise _root_untrusted() from None
-        except Exception:
-            raise _root_untrusted() from None
-        self._finished = True
-        self._close_handles()
-        return self._receipt
+        return finish_verified_tree(
+            self,
+            store_role=self._role,
+            store_identity=self._store_identity,
+            root_identities=self._root.identities,
+            final_name=self._final_name,
+            staging_name=self._staging_name,
+            manifest=self._manifest,
+            receipt=self._receipt,
+            settlement_journal=self._settlement_journal,
+            reuse=self._reuse,
+            reuse_alias=self._reuse_alias,
+            completed_entries=self._next_entry,
+            has_active_file=self._active_file is not None,
+        )
 
-    def _settle_new_tree(self) -> None:
+    def observe_reused_tree(self) -> ObservedTree:
+        self._root.validate_visible()
+        return _validate_existing_tree(self._root, self._final_name, self._manifest)
+
+    def prepare_new_tree(self) -> ObservedTree:
         if self._staging_fd is None or self._staging_identity is None:
             raise RuntimeError("Package Store staging root is unavailable")
         for parts in sorted(
@@ -1343,18 +1265,11 @@ class _PosixVerifiedTreeSink:
                 "Package Store final identity already exists",
                 code="package_publication_collision",
             )
-        self._settlement_journal.authorize(
-            store_role=self._role,
-            store_identity=self._store_identity,
-            root_identities=self._root.identities,
-            tree_identity=self._staging_identity,
-            directory_identities=self._directory_identities,
-            file_identities=self._file_identities,
-            final_name=self._final_name,
-            staging_name=self._staging_name,
-            manifest=self._manifest,
-            receipt=self._receipt,
+        return (
+            self._staging_identity, self._directory_identities, self._file_identities,
         )
+
+    def publish_authorized_tree(self) -> None:
         self._authorized = True
         try:
             _rename_directory_noreplace(
@@ -1382,6 +1297,11 @@ class _PosixVerifiedTreeSink:
             raise
         except Exception:
             raise _root_untrusted() from None
+
+
+    def complete_and_close(self) -> None:
+        self._finished = True
+        self._close_handles()
 
     def abort(self) -> None:
         if self._closed:

@@ -3553,12 +3553,19 @@ def test_plc9b3e3c3_settlement_authority_is_durable_exact_and_store_private() ->
         for module in imported
         for forbidden in forbidden_modules
     )
+    shared = _source(
+        Path("src/loushang/harness/resources/packages/plugin_lifecycle/_materialization_shared.py")
+    )
+    assert "settlement_journal.settlements_for_receipt" in shared
+    assert "settlement_journal.read_settlements_for_receipt" in shared
+    assert "settlement_journal.authorize(" in shared
     for store in (posix_store, windows_store):
         assert "settlement_journal: PackageStoreSettlementJournal" in store
         assert "self._settlement_journal.owner_lock()" in store
-        assert "self._settlement_journal.authorize(" in store
+        assert "finish_verified_tree(" in store
         assert "self._settlement_journal.authorizes(" in store
-        assert "settlements_for_receipt" in store
+        assert "validate_receipt_at_root(" in store
+        assert "plugin_lifecycle._materialization_shared import" in store
         assert "validate_dependency_receipt" in store
         assert "validate_root_receipt" in store
         assert "receipt_probe" in store

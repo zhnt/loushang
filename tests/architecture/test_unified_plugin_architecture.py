@@ -449,7 +449,7 @@ PLC9B_BOUNDARY_SINKS = (
     ),
     (
         "posix_materialization.py",
-        "_PosixRoleStore._validate_receipt",
+        "_PosixStorePlatform.pin_root",
         "package-posix-role-store",
         {"path_read": 1},
     ),
@@ -479,7 +479,7 @@ PLC9B_BOUNDARY_SINKS = (
     ),
     (
         "windows_materialization.py",
-        "_WindowsRoleStore._validate_receipt",
+        "_WindowsStorePlatform.pin_root",
         "package-windows-role-store",
         {"path_read": 1},
     ),

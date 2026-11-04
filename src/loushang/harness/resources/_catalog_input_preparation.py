@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import stat
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection
 from pathlib import Path
 
 from loushang.harness.resources._catalog_input_receipt import (
     CatalogPluginPackageInput,
     ContextFileInputFact,
     LegacyPackageResourceCandidateFact,
-    LegacyPackageResourceKind,
     ResourceCatalogInputReceipt,
+    _package_resource_facts_for,
 )
 from loushang.harness.resources._loader_discovery import (
     _apply_resource_switches,
@@ -23,12 +23,6 @@ from loushang.harness.resources._safe_files import (
     capture_contained_regular_file,
 )
 from loushang.harness.resources.packages.mounts import PackageResourceMount
-from loushang.harness.resources.types import (
-    ExtensionDescriptor,
-    PromptFragmentDescriptor,
-    SkillDescriptor,
-    ThemeDescriptor,
-)
 
 _MAX_CONTEXT_PREVIEW_BYTES = 8 * 1024 * 1024
 
@@ -220,30 +214,6 @@ def _package_resource_candidate_facts(
         *_package_resource_facts_for("skill", getattr(discovery, "skills")),
         *_package_resource_facts_for("extension", getattr(discovery, "extensions")),
         *_package_resource_facts_for("theme", getattr(discovery, "themes")),
-    )
-
-
-def _package_resource_facts_for(
-    resource_kind: LegacyPackageResourceKind,
-    descriptors: Sequence[
-        PromptFragmentDescriptor
-        | SkillDescriptor
-        | ExtensionDescriptor
-        | ThemeDescriptor
-    ],
-) -> tuple[LegacyPackageResourceCandidateFact, ...]:
-    return tuple(
-        LegacyPackageResourceCandidateFact(
-            resource_kind=resource_kind,
-            source_path=descriptor.source_path,
-            source_root_order=descriptor.source_root_order,
-            package_content_digest=(
-                descriptor.revision_ref.content_digest
-                if descriptor.revision_ref is not None
-                else None
-            ),
-        )
-        for descriptor in descriptors
     )
 
 
