@@ -88,6 +88,14 @@ owner's completion authority. The shared sinks and platform Writers are locally
 implemented and code-reviewed; Windows native validation remains pending.
 Tree deletion remains outside its scope.
 
+The accepted [D1 ledger assembly design](management-ledger-assembly.md) covers
+the two legacy Coding lifecycle/management builders. It shares construction in
+two stages around the original caller-owned compatibility/recovery boundary;
+Product policy, leases, fenced B assembly, and retirement coordination stay
+with their existing owners. This slice is locally implemented and independently
+code-reviewed; focused offline verification is recorded in its review. It does
+not complete the wider D1 convergence work.
+
 ## Authority Order
 
 When documents disagree, use this order:
