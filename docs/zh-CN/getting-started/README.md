@@ -38,6 +38,40 @@ loushang --list-models
 loushang --list-commands
 ```
 
+## 配置 Provider 凭证
+
+在线运行需要为所选模型路线配置凭证。API key 路线从解析到的 catalog 条目所声明的环境变量读取凭证；OAuth 路线使用登录授权。Loushang 不会自动加载 `.env`：请在运行 `loushang` 的 shell 中导出 API key。
+
+| Provider | 环境变量 |
+| --- | --- |
+| Anthropic | `ANTHROPIC_API_KEY` |
+| OpenAI | `OPENAI_API_KEY`（`coding-responses` endpoint 使用 OAuth，不读该变量） |
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| 阿里云百炼 DashScope | `DASHSCOPE_API_KEY` |
+| Moonshot AI | `MOONSHOT_API_KEY` |
+| Kimi Code | `KIMI_CODE_API_KEY` |
+| MiniMax | `MINIMAX_API_KEY` |
+| Z.AI | `ZAI_API_KEY` |
+| 火山方舟 Volcano Ark | `ARK_API_KEY` |
+| 腾讯混元 | `HUNYUAN_API_KEY` |
+| 百度千帆 | `QIANFAN_API_KEY` 或 `BAIDU_QIANFAN_API_KEY` |
+| 阶跃星辰 StepFun | `STEP_API_KEY` 或 `STEPFUN_API_KEY` |
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+loushang -p "Reply with the single word: ready"
+```
+
+Windows PowerShell：
+
+```powershell
+$env:ANTHROPIC_API_KEY = "sk-ant-..."
+```
+
+`loushang --list-models` 会列出 catalog，以及每个模型解析到的 provider 与 endpoint；`loushang --list-models --list-models-format json` 输出同样的 JSON 数据，便于脚本处理。缺少凭证时，错误信息会列出它查找过的变量名（`expected_env`）。
+
+`.loushang/models/` 下的项目与示例 catalog 可以声明自己的 `apiKeyEnv` / `apiKeyEnvs`，这些名字会替换该 catalog 条目的内置变量名。
+
 ## 运行第一条 Prompt
 
 ```bash
@@ -45,6 +79,13 @@ loushang -p "Inspect this repository and summarize what it does."
 ```
 
 需要选择具体模型路线时，可以使用 `--model` 或 provider 相关环境变量。`--model provider:model` 是短写（也接受 `provider/model`）：只有该 provider/model 恰好匹配一个 endpoint 时才可用。如果同一个 provider/model 存在多个 endpoint，CLI 会报告歧义并列出可显式选择的 `provider:endpoint:model` 候选。需要指定具体 endpoint、region、lane 或 protocol 时，使用 `--model provider:endpoint:model`。模型切换成功后，CLI 会把完整选择保存为全局 `default_model`，路径是 `~/.loushang/coding/settings.json`；带 endpoint 的选择会保留 `provider`、`model_id` 和 `endpoint_id`，不会写入项目级 `.loushang/settings.json`。catalog key 中 `provider` 和 `model` id 不能包含 `:`，endpoint id 可以包含 `:`。项目与示例模型 catalog 可以放在 `.loushang/models/`，也可以在支持的入口显式传入。
+
+配置好上述 Anthropic 凭证后，以下命令会使用 catalog 中的模型发起真实请求。第一条选择唯一匹配的 endpoint，第二条显式指定 endpoint：
+
+```bash
+loushang --model anthropic/claude-haiku-4-5 -p "Reply with ready."
+loushang --model anthropic:anthropic-messages:claude-haiku-4-5 -p "Reply with ready."
+```
 
 ## 下一步
 
