@@ -180,7 +180,14 @@ def test_native_pty_echo_and_mode_restore_during_sync_prepare(quit_during_loadin
         assert result == (130 if quit_during_loading else 0)
         assert cleaned == [True]
         assert coordinator._joined
-        assert termios.tcgetattr(slave) == original_attrs
+        restored_attrs = termios.tcgetattr(slave)
+        # macOS may set PENDIN when switching PTY input modes; it is a state bit.
+        pending_input_state = getattr(termios, "PENDIN", 0)
+        assert restored_attrs[:3] == original_attrs[:3]
+        assert restored_attrs[3] & ~pending_input_state == (
+            original_attrs[3] & ~pending_input_state
+        )
+        assert restored_attrs[4:] == original_attrs[4:]
     finally:
         os.close(master)
         os.close(slave)
