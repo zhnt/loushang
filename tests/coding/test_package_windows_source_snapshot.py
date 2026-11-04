@@ -4,6 +4,7 @@ import json
 import os
 from hashlib import sha256
 from pathlib import Path
+from time import sleep
 
 import pytest
 
@@ -21,6 +22,7 @@ from loushang.coding.package_pre_b_snapshot import (
 )
 from loushang.coding.package_source_snapshot import (
     hold_coding_pre_b_source_configuration,
+    read_coding_settings_patch_without_writes,
 )
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
@@ -34,6 +36,23 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
 )
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows-native contract")
+
+
+def test_windows_settings_read_accepts_a_previously_modified_file(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "settings.json"
+    path.write_bytes(b"{}")
+    # Separate creation and change timestamps even on a fast Windows runner.
+    sleep(0.05)
+    raw = b'{"theme":"dark"}\n'
+    path.write_bytes(raw)
+
+    assert read_coding_settings_patch_without_writes(path) == (
+        True,
+        sha256(raw).hexdigest(),
+        {"theme": "dark"},
+    )
 
 
 def test_windows_source_projection_pins_real_settings_and_private_bytes(
