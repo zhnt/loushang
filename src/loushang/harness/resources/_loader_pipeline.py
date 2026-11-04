@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,8 +9,8 @@ from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._catalog_input_receipt import (
     CatalogPluginPackageInput,
     LegacyPackageResourceCandidateFact,
-    LegacyPackageResourceKind,
     ResourceCatalogInputReceipt,
+    _package_resource_facts_for,
 )
 from loushang.harness.resources._loader_discovery import (
     _apply_resource_switches,
@@ -325,34 +324,10 @@ def _legacy_package_resource_candidate_facts(
     discovery: _SourceDiscovery,
 ) -> tuple[LegacyPackageResourceCandidateFact, ...]:
     return (
-        *_legacy_package_resource_facts_for("prompt", discovery.prompts),
-        *_legacy_package_resource_facts_for("skill", discovery.skills),
-        *_legacy_package_resource_facts_for("extension", discovery.extensions),
-        *_legacy_package_resource_facts_for("theme", discovery.themes),
-    )
-
-
-def _legacy_package_resource_facts_for(
-    resource_kind: LegacyPackageResourceKind,
-    descriptors: Sequence[
-        PromptFragmentDescriptor
-        | SkillDescriptor
-        | ExtensionDescriptor
-        | ThemeDescriptor
-    ],
-) -> tuple[LegacyPackageResourceCandidateFact, ...]:
-    return tuple(
-        LegacyPackageResourceCandidateFact(
-            resource_kind=resource_kind,
-            source_path=descriptor.source_path,
-            source_root_order=descriptor.source_root_order,
-            package_content_digest=(
-                descriptor.revision_ref.content_digest
-                if descriptor.revision_ref is not None
-                else None
-            ),
-        )
-        for descriptor in descriptors
+        *_package_resource_facts_for("prompt", discovery.prompts),
+        *_package_resource_facts_for("skill", discovery.skills),
+        *_package_resource_facts_for("extension", discovery.extensions),
+        *_package_resource_facts_for("theme", discovery.themes),
     )
 
 
