@@ -46,9 +46,6 @@ from loushang.harness.plugin_management import (
     PluginManagementCommandV1,
     PluginManagementReadModelProjector,
     PluginManagementService,
-    PluginOwnerRetirementOutcomeV1,
-    PluginOwnerRetirementPlanV1,
-    PluginOwnerRetirementTargetV1,
     PluginPackageLifecycleLedger,
     PluginPackageRevisionRefV1,
     PluginRetirementIntentLedger,
@@ -70,6 +67,11 @@ from loushang.harness.plugin_management.security_acceptance import (
 from loushang.harness.resources.plugins import PluginInstanceRevisionRef
 from loushang.harness.runtime.registration import (
     OwnerGenerationRetirementReceipt,
+)
+from loushang.harness.session._plugin_retirement import (
+    OwnerRetirementReportPolicy,
+    OwnerRetirementUnavailableReason,
+    report_exact_owner_retirement,
 )
 
 _PRODUCT_POLICY_REVISION = "coding-plugin-lifecycle-v1"
@@ -161,6 +163,34 @@ class CodingPluginLifecycleError(RuntimeError):
     def __init__(self, message: str, *, code: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+def _owner_retirement_unavailable_error(
+    reason: OwnerRetirementUnavailableReason,
+) -> CodingPluginLifecycleError:
+    message, code = {
+        "set_unavailable": (
+            "Coding retirement set is unavailable",
+            "coding_plugin_retirement_set_unavailable",
+        ),
+        "plan_unavailable": (
+            "Coding owner retirement plan was not committed",
+            "coding_plugin_owner_retirement_plan_unavailable",
+        ),
+        "outcome_unavailable": (
+            "Coding owner retirement lacks an exact cleanup outcome",
+            "coding_plugin_owner_retirement_outcome_unavailable",
+        ),
+    }[reason]
+    return CodingPluginLifecycleError(message, code=code)
+
+
+_CODING_OWNER_RETIREMENT_REPORT_POLICY = OwnerRetirementReportPolicy(
+    closure_namespace="coding-owner-closure",
+    outcome_namespace="coding-owner-retired",
+    success_result_code="coding.owner.exact_retired",
+    unavailable_error=_owner_retirement_unavailable_error,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -549,95 +579,13 @@ class CodingPluginLifecycle:
         )
 
     def _ensure_owner_retirement_plan(self, intent, runtime) -> None:
-        retirement_set = self.retirement_sets.snapshot().retirement_set(
-            intent.retirement_id
+        report_exact_owner_retirement(
+            intent,
+            runtime,
+            retirement_sets=self.retirement_sets,
+            owner_evidence=self.owner_evidence,
+            policy=_CODING_OWNER_RETIREMENT_REPORT_POLICY,
         )
-        if retirement_set is None:
-            raise CodingPluginLifecycleError(
-                "Coding retirement set is unavailable",
-                code="coding_plugin_retirement_set_unavailable",
-            )
-        if retirement_set.plan is None and any(
-            family.lease_kind == "session_membership"
-            and any(
-                member.instance_revision_ref == intent.instance_revision_ref
-                for member in family.members
-            )
-            for family in runtime.open_families
-        ):
-            # A family that acquired before cutover may still publish its exact
-            # owner generations.  Seal the plan only after every Session family
-            # has either retired its receipts or closed without publishing.
-            return
-        families = self.owner_evidence.retired_families_for_instance(
-            intent.instance_revision_ref
-        )
-        receipts = tuple(receipt for family in families for receipt in family.receipts)
-        targets = tuple(
-            PluginOwnerRetirementTargetV1.create(
-                owner_reference=receipt.owner_reference,
-                owner_generation_reference=receipt.owner_generation_reference,
-                retirement_handle=receipt.retirement_handle,
-                contribution_ids=receipt.contribution_ids,
-            )
-            for receipt in receipts
-        )
-        canonical_targets = tuple(sorted(targets, key=lambda item: item.target_id))
-        closure_digest = hashlib.sha256(
-            repr(tuple(item.target_id for item in canonical_targets)).encode("utf-8")
-        ).hexdigest()
-        # Re-submit the exact plan and outcomes idempotently.  A process may
-        # stop after sealing the plan or after only some target outcomes; the
-        # next reconciliation must finish that durable transition.
-        committed = self.retirement_sets.commit_plan(
-            PluginOwnerRetirementPlanV1.create(
-                retirement_id=intent.retirement_id,
-                owner_closure_reference=f"coding-owner-closure:{closure_digest}",
-                targets=canonical_targets,
-            )
-        )
-        if committed.plan is None:
-            raise CodingPluginLifecycleError(
-                "Coding owner retirement plan was not committed",
-                code="coding_plugin_owner_retirement_plan_unavailable",
-            )
-        outcome_references = {
-            (
-                receipt.owner_reference,
-                receipt.owner_generation_reference,
-                receipt.retirement_handle,
-            ): family.retirement_outcome_reference
-            for family in families
-            for receipt in family.receipts
-        }
-        for target in committed.plan.targets:
-            outcome_reference = outcome_references[
-                (
-                    target.owner_reference,
-                    target.owner_generation_reference,
-                    target.retirement_handle,
-                )
-            ]
-            if outcome_reference is None:
-                raise CodingPluginLifecycleError(
-                    "Coding owner retirement lacks an exact cleanup outcome",
-                    code="coding_plugin_owner_retirement_outcome_unavailable",
-                )
-            identity = hashlib.sha256(
-                repr((intent.retirement_id, target.target_id)).encode("utf-8")
-            ).hexdigest()
-            self.retirement_sets.record_outcome(
-                PluginOwnerRetirementOutcomeV1(
-                    retirement_id=intent.retirement_id,
-                    target_id=target.target_id,
-                    operation_id=f"coding-owner-retired:{identity}",
-                    idempotency_key=f"coding-owner-retired:{identity}",
-                    attempt=1,
-                    disposition="succeeded",
-                    result_code="coding.owner.exact_retired",
-                    owner_outcome_reference=outcome_reference,
-                )
-            )
 
     def _complete_ready_retirement(self, intent) -> None:
         retirement_set = self.retirement_sets.snapshot().retirement_set(
