@@ -40,7 +40,7 @@ loushang --list-commands
 
 ## Configure A Provider Credential
 
-Online runs need an API key. Loushang reads it from the environment variable declared by the model catalog entry it resolves, and does not load a `.env` file for you: export the variable in the shell that runs `loushang`.
+Online runs need a credential for the selected model route. For API-key routes, Loushang reads the environment variable declared by the resolved catalog entry; OAuth routes use sign-in instead. Loushang does not automatically load a `.env` file: export the API key in the shell that runs `loushang`.
 
 | Provider | Environment variable |
 | --- | --- |
@@ -79,6 +79,13 @@ loushang -p "Inspect this repository and summarize what it does."
 ```
 
 Use `--model` or provider-specific environment variables when you need to select a concrete model route. `--model provider:model` is a short form (`provider/model` is also accepted): it works only when that provider/model pair matches exactly one endpoint. If the same provider/model exists under multiple endpoints, the CLI reports an ambiguity and lists explicit `provider:endpoint:model` alternatives. Use `--model provider:endpoint:model` when you need to choose a specific endpoint, region, lane, or protocol. In catalog keys, `provider` and `model` ids cannot contain `:`, while endpoint ids may contain `:`. Project and example model catalog files can be placed under `.loushang/models/` or passed explicitly where supported.
+
+With your own Anthropic credential configured as above, these commands make a live request using a catalog model. The first selects its unique endpoint; the second names that endpoint explicitly:
+
+```bash
+loushang --model anthropic/claude-haiku-4-5 -p "Reply with ready."
+loushang --model anthropic:anthropic-messages:claude-haiku-4-5 -p "Reply with ready."
+```
 
 ## Next Steps
 
