@@ -39,6 +39,12 @@ keeps Coding configuration in its Product adapter and uses the original Session
 Host and queues. Failed child cleanup retains its handle and dependencies until
 an explicit retry succeeds; parent release does not run ahead of the child.
 
+The bounded [Session owner retirement handoff](plugin/session-owner-retirement-handoff.md)
+uses a private Session integration function to report exact retired-family
+evidence through the original management ledgers. Coding retains its evidence
+source, fixed report policy and outer lock; Graph cleanup, family release and
+fenced Product runtime disposal retain their original owners and retry state.
+
 ## Accepted Capability Graph Target (Mount Runtime Implemented)
 
 The implemented owner table above remains authoritative for current code. The
