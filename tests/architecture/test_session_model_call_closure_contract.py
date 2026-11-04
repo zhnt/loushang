@@ -29,6 +29,8 @@ EXPECTED_DIRECT_AI_IMPORTS = {
     Path("src/loushang/coding/adapters/_goal_planning_limits.py"): frozenset(
         {"stream"}
     ),
+    # Current-Session attach compares transport identity; it does not call stream.
+    Path("src/loushang/coding/adapters/goal.py"): frozenset({"stream"}),
 }
 
 MODEL_CALL_RUNTIME_PATH = Path("src/loushang/harness/session/model_call.py")

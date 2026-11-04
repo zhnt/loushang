@@ -7,7 +7,7 @@ import os
 import secrets
 import stat
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager, nullcontext
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -162,40 +162,27 @@ def read_coding_settings_patch_without_writes(
     """Read a settings patch before a Product owner creates its first lock."""
 
     _require_path(path, name="settings")
-    try:
-        before = path.lstat()
-    except FileNotFoundError:
-        return False, None, {}
-    getuid = getattr(os, "getuid", None)
-    if (
-        not stat.S_ISREG(before.st_mode)
-        or before.st_nlink != 1
-        or (callable(getuid) and before.st_uid != getuid())
-        or before.st_size > _MAX_SETTINGS_BYTES
-    ):
-        raise ValueError("Coding Source settings file is unsafe")
-    if os.name == "nt":
-        parent = _PinnedWindowsAuthority.open(path.parent)
+    adapter = (
+        _windows_settings_file(path)
+        if os.name == "nt"
+        else nullcontext(_PosixSettingsFile(path))
+    )
+    with ExitStack() as stack:
         try:
-            descriptor = open_windows_regular_file_at(
-                parent.descriptor,
-                path.name,
-                create_new=False,
-                write=False,
-            )
-        except BaseException:
-            parent.close()
-            raise
-    else:
-        parent = None
-        flags = (
-            os.O_RDONLY
-            | getattr(os, "O_NOFOLLOW", 0)
-            | getattr(os, "O_CLOEXEC", 0)
-            | getattr(os, "O_NONBLOCK", 0)
-        )
-        descriptor = os.open(path, flags)
-    try:
+            source = stack.enter_context(adapter)
+            before = source.stat()
+        except FileNotFoundError:
+            return False, None, {}
+        getuid = getattr(os, "getuid", None)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or (callable(getuid) and before.st_uid != getuid())
+            or before.st_size > _MAX_SETTINGS_BYTES
+        ):
+            raise ValueError("Coding Source settings file is unsafe")
+        descriptor = source.open()
+        stack.callback(os.close, descriptor)
         opened = os.fstat(descriptor)
         if _stable_file_identity(opened) != _stable_file_identity(before):
             raise ValueError("Coding Source settings changed during read")
@@ -205,20 +192,11 @@ def read_coding_settings_patch_without_writes(
             if len(raw) > _MAX_SETTINGS_BYTES:
                 raise ValueError("Coding Source settings file exceeds budget")
         after = os.fstat(descriptor)
-        visible = path.lstat()
+        visible = source.stat()
         if _stable_file_identity(after) != _stable_file_identity(
             before
         ) or _stable_file_identity(visible) != _stable_file_identity(before):
             raise ValueError("Coding Source settings changed during read")
-    finally:
-        try:
-            os.close(descriptor)
-        finally:
-            if parent is not None:
-                try:
-                    parent.assert_visible()
-                finally:
-                    parent.close()
     try:
         decoded = json.loads(
             raw.decode("utf-8"),
@@ -230,6 +208,50 @@ def read_coding_settings_patch_without_writes(
     if not isinstance(decoded, dict):
         raise ValueError("Coding Source settings must be an object")
     return True, sha256(raw).hexdigest(), decoded
+
+
+class _PosixSettingsFile:
+    def __init__(self, path: Path) -> None:
+        self._path = path
+
+    def stat(self) -> os.stat_result:
+        return self._path.lstat()
+
+    def open(self) -> int:
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        return os.open(self._path, flags)
+
+
+class _WindowsSettingsFile:
+    def __init__(self, parent: _PinnedWindowsAuthority, name: str) -> None:
+        self._parent = parent
+        self._name = name
+
+    def stat(self) -> os.stat_result:
+        # Use handle-based metadata on both sides of the identity comparison.
+        return windows_stat_at(self._parent.descriptor, self._name)
+
+    def open(self) -> int:
+        return open_windows_regular_file_at(
+            self._parent.descriptor, self._name, create_new=False, write=False
+        )
+
+
+@contextmanager
+def _windows_settings_file(path: Path) -> Iterator[_WindowsSettingsFile]:
+    parent = _PinnedWindowsAuthority.open(path.parent)
+    try:
+        yield _WindowsSettingsFile(parent, path.name)
+    finally:
+        try:
+            parent.assert_visible()
+        finally:
+            parent.close()
 
 
 def require_coding_fresh_settings_without_writes(*paths: Path) -> None:

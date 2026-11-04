@@ -765,6 +765,9 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "_posix_local_record.py",
         "_windows_local_record.py",
         "ports.py",
+        # Accepted application-local Method/Goal DTOs; no wire activation.
+        "method_work.py",
+        "goal.py",
         # Optional negotiated observation; no execution or retry grant.
         "resume_model.py",
         "remote_client.py",

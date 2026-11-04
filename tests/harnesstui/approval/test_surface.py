@@ -9,7 +9,12 @@ from loushang.harness.permissions import (
     permission_profile_snapshot,
 )
 from loushang.harnesstui.approval import build_permissions_surface_view
-from loushang.tui import InputEvent, InputIntent, RenderConstraints
+from loushang.tui import (
+    InputEvent,
+    InputIntent,
+    RenderConstraints,
+    strip_control_sequences,
+)
 
 
 def test_permissions_surface_selects_scoped_modes_and_confirms_full_access() -> None:
@@ -22,7 +27,7 @@ def test_permissions_surface_selects_scoped_modes_and_confirms_full_access() -> 
         line.text
         for line in view.render(RenderConstraints(width=90, max_height=24)).lines
     )
-    assert "Standard (current)" in rendered
+    assert "Standard  ✓ Current" in rendered
     assert "Cautious" in rendered
     assert "Full Access" in rendered
 
@@ -52,6 +57,33 @@ def test_permissions_surface_selects_scoped_modes_and_confirms_full_access() -> 
         kind="permission_profile_action",
         text="set-profile:project:full_access",
     )
+
+
+def test_permissions_colors_mark_navigation_and_reserve_red_for_confirmation() -> None:
+    view = build_permissions_surface_view(
+        ApprovalPermissionsSnapshot(),
+        profile_snapshot=permission_profile_snapshot("standard"),
+    )
+    constraints = RenderConstraints(width=90, max_height=24)
+
+    view.handle_input(InputEvent(kind="key", key="down"))
+    modes = view.content.render(constraints).lines
+    plain = tuple(strip_control_sequences(line.text) for line in modes)
+    assert plain[0].startswith("[Mode]   Retained")
+    assert "[Session]" in plain[3]
+    assert "  1. Standard  ✓ Current" in plain
+    selected = next(line.text for line in modes if "› 2. Cautious" in line.text)
+    assert "\x1b[1;36m" in selected
+    assert all("\x1b[31m" not in line.text and "\x1b[32m" not in line.text for line in modes)
+
+    view.handle_input(InputEvent(kind="key", key="down"))
+    modes = view.content.render(constraints).lines
+    full_access = next(line.text for line in modes if "› 3. Full Access" in line.text)
+    assert "\x1b[1;36m" in full_access
+    assert "\x1b[31m" not in full_access
+    view.handle_input(InputEvent(kind="key", key="enter"))
+    confirmation = view.content.render(constraints).lines
+    assert any("\x1b[1;31m" in line.text for line in confirmation)
 
 
 def test_saving_full_as_user_default_confirms_even_when_session_is_already_full():

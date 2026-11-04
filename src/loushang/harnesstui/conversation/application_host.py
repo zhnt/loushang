@@ -176,6 +176,11 @@ async def run_prepared_screen_conversation(
                     unsubscribe()
     finally:
         try:
+            cancel_model_selection = getattr(
+                run.surface, "cancel_pending_model_selection", None
+            )
+            if callable(cancel_model_selection):
+                cancel_model_selection()
             unbind_transition()
         finally:
             try:
