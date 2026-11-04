@@ -206,8 +206,17 @@ The prepared-request committer, cancellation signal, provider attempt records,
 and Transcript usage remain owned by their original components. This is an
 MC-07 adapter, not an additional sampling purpose or an independent transport.
 
-The direct-import inventory therefore records this exact Product module in
-addition to the three shared modules. Existing checks in
+Current-Session Goal attach also imports `loushang.ai.api.stream` in
+`src/loushang/coding/adapters/goal.py::CodingGoal._attach` solely to compare
+the original Session transport by identity. The delivered
+[Current-Session integration](../goal-method-work/current-session-implementation-review.md)
+retains that transport and accepts either the standard stream or a
+prepared-request-conformant delegate. This identity reference does not invoke
+the model or add a sampling entrypoint.
+
+The direct-import inventory therefore records both exact Product modules in
+addition to the three shared modules, distinguishing delegation from the
+identity-only reference. Existing checks in
 `tests/coding/test_work_shell.py` cover transparent delegation, Work-level
 allowance exhaustion, sticky cancellation, and the original Work/Session
 pipeline. Registering this adapter does not authorize other Product call sites.
