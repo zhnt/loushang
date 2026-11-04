@@ -1,5 +1,7 @@
 # Goal 最小闭环：本地实现与验证
 
+> 历史切点说明：下文保留本专项原设计/实施时点。其后实现已进入 main；当前交付与验证范围见[能力盘点](../../goal-method-work/capability-status.md)。“待验证/未发布”不能单独作为今天的未完成清单。
+
 - Authority: descriptive — 实施授权、源码边界、复核及实际验证记录。
 - Design status: accepted for reviewed R3.2 local SDK scope；Implementation status: implemented and verified locally for the stated profile；integrated into local main；remote publication pending。
 - Owner: HarnessWork 通用 Goal / Coding Product 领域与物理适配。
