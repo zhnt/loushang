@@ -1,6 +1,6 @@
 # 交互式开发 Goal：实施与三视角代码评审
 
-- Authority: descriptive；Design: R2 已按用户授权范围收敛接受；Implementation: implemented locally，未发布 main。
+- Authority: descriptive；Design: R2 已按用户授权范围收敛接受；Implementation: implemented；远程交付由 [PR #853](https://github.com/zhnt/loushang/pull/853) 记录。
 - 任务：用户要求“收敛并实施，开发完成后进行三视角评审”。设计、支持范围和命令由[专项 R2](interactive-development-goal.md)唯一维护。
 - 基线：`832d7249d089586a0bd01907e1458808bf317461`；分支 `feat/tui-embedded-goal`，长期 tui lane。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
@@ -12,9 +12,9 @@
 
 原 journal、Transcript、Blob、Work、受理/overlay/limiter 与关闭机制继续权威；没有新执行器内核、输入队列、事实账本或全局状态文件。新 profile 不复写旧 fixed policy；原公共 CodingGoal.attach 签名及旧行为保留，通过私有装配参数注入新 profile。
 
-源码变更的最终固定对象为 13 份 source/test 文件，manifest SHA256：
+首次本地交付 `cff86ec2c` 的固定对象为 13 份 source/test 文件，manifest SHA256：
 `b3b0074d206c77f9a9c5ecfedd5a63358ac8e28ee1636abbdb0f160f982452e3`。
-最终复核后仅更新本交付记录和专项状态，不改变该固定源码。
+该历史固定源码仍保留；后续远程交付中发生的布局修正见下节，不将旧摘要冒称最终 PR 源码。
 
 ## 独立三视角与发现关闭
 
@@ -58,3 +58,11 @@
 ```
 
 进入后先输入 `/goal <目标>`，检查显示的目标/默认预算，再 `/goal run`。需要测试作为硬条件时使用 `/goal new --check '<检查命令>' -- <目标>`。状态用 `/goal status`；人工审阅用 `/goal review`，确认实际文件后按显示的 token 接受，或 reject 并给出具体反馈。原模型/认证/权限照常加载，没有切换全局安装或替用户触发在线试验。
+
+## PR #853 的 UI 预算修正
+
+首次远程 CI 检出本次新增的两项真实架构失败：`coding.ui.goal` 不在原模块清单、UI 总行数 2552 超出原 2200 行预算。没有修改测试清单、预算阈值或 CI gate。将 Goal 交互适配完整字节不变移到已有 `coding.interaction` 层；原 UI 只更换导入。将原纯 Plugin support status 格式化函数体字节不变归回已有 `coding.plugin_management_ui`，UI 保留同名导出及 monkeypatch 接缝。UI 总行数回到 2178，既有 UI 模块集合恢复。
+
+窄修正固定 manifest SHA256 `7990c1c962ef9e68d7fcf8f327f68fe5348b69f24c04433953dcb9303ea00f77`，三位原 reviewer 分别独立复核布局、运行及数据兼容；复核原文保存在产品树外 `architecture-analysis/goal-tui-20261104-delivery/ci-closure/`。实际检查及远程合并结果以 PR 头提交和 checks 为准，不用旧提交的 CI 结果代替新头。
+
+该布局修正的本地检查：原 UI 模块/预算、Plugin support status 及 Goal 入口共 68 passed（180.48 秒）；Ruff 与 3 份受影响源码 mypy 通过，原断言和阈值未改。

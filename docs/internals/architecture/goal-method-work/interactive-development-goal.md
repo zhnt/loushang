@@ -2,7 +2,7 @@
 
 - ID: GMW-KD-IG-001；Revision: R2，2026-11-03。
 - Authority: normative — 本轮已授权的收敛实现合同；Design status: accepted within delegated scope。
-- Implementation status: implemented locally — 独立三视角阻断已关闭，离线回归完成；未发布 main。
+- Implementation status: implemented locally — 独立三视角阻断已关闭；远程交付见 [PR #853](https://github.com/zhnt/loushang/pull/853)。
 - Owner: Loushang architecture；Harness、HarnessWork、Method、HarnessTUI、Coding composition。
 - 基线：`832d7249d089586a0bd01907e1458808bf317461`，PR #852 后的本地 main。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`，未核验方法远端。

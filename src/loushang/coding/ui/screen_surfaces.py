@@ -96,15 +96,14 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         )
 
     def is_local_command(self, text: str) -> bool:
-        from .goal import is_goal_control
+        from loushang.coding.interaction.goal import is_goal_control
         return (self._goal_command is not None and is_goal_control(text)) or super().is_local_command(text)
 
     async def handle_text(self, text: str) -> int | None:
-        from .goal import is_goal_control
+        from loushang.coding.interaction.goal import is_goal_control
         if self._goal_command is not None and is_goal_control(text):
+            from loushang.coding.interaction.goal import GoalControlSurface
             from loushang.harnesstui.surface.view import ScreenSurfaceView
-
-            from .goal import GoalControlSurface
             self.open(ScreenSurfaceView(
                 title="Goal", purpose="info", presentation="bottom",
                 footer="Esc to close · original execution remains owned by the Session",

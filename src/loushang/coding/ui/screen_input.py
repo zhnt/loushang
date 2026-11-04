@@ -77,7 +77,7 @@ def project_coding_capabilities(
 
 class _CodingInputRouter(ConversationInputRouter):
     def _submit(self):
-        from .goal import is_goal_command, is_goal_control
+        from loushang.coding.interaction.goal import is_goal_command, is_goal_control
         text = self.app.composer.value.strip()
         if is_goal_command(text):
             if self.draft_store.select_for_text(text):
