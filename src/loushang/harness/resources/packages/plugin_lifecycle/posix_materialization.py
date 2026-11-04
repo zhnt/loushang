@@ -27,6 +27,17 @@ from loushang.harness.resources.packages.plugin_lifecycle._materialization_share
     finish_verified_tree,
     validate_receipt_at_root,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._tree_validation import (
+    TreeDirectoryReadPort,
+    TreeEntryObservation,
+    TreeFileReadPort,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._tree_validation import (
+    collect_tree as _collect_observed_tree,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._tree_validation import (
+    validate_tree_contents as _validate_observed_tree_contents,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     PluginRevisionRefV1,
     VerifiedArtifactRefV1,
@@ -1733,20 +1744,11 @@ def _validate_tree_contents(
     dict[tuple[str, ...], _Identity],
     dict[tuple[str, ...], _Identity],
 ]:
-    expected = {entry.logical_path: entry for entry in manifest.entries}
-    observed, observed_directories, observed_files = _collect_tree(
-        root_fd,
-        expected,
+    return _validate_observed_tree_contents(
+        _PosixTreeDirectoryReader(root_fd), manifest,
         directory_identities=directory_identities,
         file_identities=file_identities,
     )
-    if set(observed) != set(expected):
-        raise OSError("Published Package tree members changed")
-    for logical_path, entry in expected.items():
-        byte_count, digest = observed[logical_path]
-        if byte_count != entry.byte_count or digest != entry.content_digest:
-            raise OSError("Published Package tree content changed")
-    return observed_directories, observed_files
 
 
 def _collect_tree(
@@ -1761,106 +1763,66 @@ def _collect_tree(
     dict[tuple[str, ...], _Identity],
     dict[tuple[str, ...], _Identity],
 ]:
-    observed: dict[str, tuple[int, str]] = {}
-    observed_directories: dict[tuple[str, ...], _Identity] = {}
-    observed_files: dict[tuple[str, ...], _Identity] = {}
-    expected_directories = {
-        "/".join(parts[:depth])
-        for logical_path in expected
-        for parts in (tuple(logical_path.split("/")),)
-        for depth in range(1, len(parts))
-    }
+    return _collect_observed_tree(
+        _PosixTreeDirectoryReader(root_fd), expected,
+        directory_identities=directory_identities,
+        file_identities=file_identities,
+        allow_partial=allow_partial,
+    )
 
-    def visit(directory_fd: int, prefix: tuple[str, ...]) -> None:
-        saw_entry = False
-        with os.scandir(directory_fd) as directory_entries:
-            for directory_entry in directory_entries:
-                saw_entry = True
-                name = directory_entry.name
-                if not name or name in {".", ".."} or "/" in name or "\x00" in name:
-                    raise OSError("Published Package tree entry name is invalid")
-                metadata = os.stat(
-                    name,
-                    dir_fd=directory_fd,
-                    follow_symlinks=False,
-                )
-                parts = prefix + (name,)
-                logical_path = "/".join(parts)
-                if stat.S_ISDIR(metadata.st_mode):
-                    if logical_path not in expected_directories:
-                        raise OSError(
-                            "Published Package tree has an unexpected directory"
-                        )
-                    identity = _identity(metadata)
-                    if (
-                        directory_identities is not None
-                        and identity != directory_identities.get(parts)
-                    ):
-                        raise OSError("Published Package directory identity changed")
-                    child_fd = _open_directory(name, dir_fd=directory_fd)
-                    try:
-                        if _identity(os.fstat(child_fd)) != identity:
-                            raise OSError(
-                                "Published Package directory identity changed"
-                            )
-                        observed_directories[parts] = identity
-                        visit(child_fd, parts)
-                    finally:
-                        os.close(child_fd)
-                elif stat.S_ISREG(metadata.st_mode):
-                    entry = expected.get(logical_path)
-                    if entry is None or metadata.st_nlink != 1:
-                        raise OSError("Published Package tree has an unexpected file")
-                    identity = _identity(metadata)
-                    if file_identities is not None and identity != file_identities.get(
-                        parts
-                    ):
-                        raise OSError("Published Package file identity changed")
-                    descriptor = _open_regular_file(
-                        directory_fd,
+
+@dataclass(frozen=True)
+class _PosixTreeFileReader:
+    descriptor: int
+
+    def read(self, max_bytes: int) -> bytes:
+        return os.read(self.descriptor, max_bytes)
+
+    def identity_and_links(self) -> tuple[_Identity, int]:
+        metadata = os.fstat(self.descriptor)
+        return _identity(metadata), metadata.st_nlink
+
+
+@dataclass(frozen=True)
+class _PosixTreeDirectoryReader:
+    descriptor: int
+
+    def identity(self) -> _Identity:
+        return _identity(os.fstat(self.descriptor))
+
+    @contextmanager
+    def entries(self) -> Iterator[Iterator[TreeEntryObservation]]:
+        with os.scandir(self.descriptor) as directory_entries:
+            def observe() -> Iterator[TreeEntryObservation]:
+                for entry in directory_entries:
+                    name = entry.name
+                    if not name or name in {".", ".."} or "/" in name or "\x00" in name:
+                        raise OSError("Published Package tree entry name is invalid")
+                    metadata = os.stat(name, dir_fd=self.descriptor, follow_symlinks=False)
+                    yield TreeEntryObservation(
                         name,
-                        create_new=False,
-                        write=False,
+                        "directory" if stat.S_ISDIR(metadata.st_mode) else (
+                            "file" if stat.S_ISREG(metadata.st_mode) else "other"
+                        ),
+                        _identity(metadata), metadata.st_nlink,
                     )
-                    digest = sha256()
-                    byte_count = 0
-                    try:
-                        while chunk := os.read(descriptor, 64 * 1024):
-                            digest.update(chunk)
-                            byte_count += len(chunk)
-                            if byte_count > entry.byte_count:
-                                raise OSError(
-                                    "Published Package file exceeds verified size"
-                                )
-                        opened = os.fstat(descriptor)
-                        if (
-                            _identity(opened) != _identity(metadata)
-                            or opened.st_nlink != 1
-                        ):
-                            raise OSError("Published Package file identity changed")
-                    finally:
-                        os.close(descriptor)
-                    observed[logical_path] = (byte_count, digest.hexdigest())
-                    observed_files[parts] = identity
-                else:
-                    raise OSError("Published Package tree entry type changed")
-        if not saw_entry and prefix and not allow_partial:
-            raise OSError("Published Package tree contains an empty directory")
+            yield observe()
 
-    visit(root_fd, ())
-    if (
-        not allow_partial
-        and directory_identities is not None
-        and set(observed_directories) != set(directory_identities)
-    ):
-        raise OSError("Published Package directory set changed")
-    if (
-        not allow_partial
-        and file_identities is not None
-        and set(observed_files) != set(file_identities)
-    ):
-        raise OSError("Published Package file set changed")
-    return observed, observed_directories, observed_files
+    @contextmanager
+    def open_directory(self, name: str) -> Iterator[TreeDirectoryReadPort]:
+        descriptor = _open_directory(name, dir_fd=self.descriptor)
+        try:
+            yield _PosixTreeDirectoryReader(descriptor)
+        finally:
+            os.close(descriptor)
+
+    @contextmanager
+    def file_reader(self, name: str) -> Iterator[TreeFileReadPort]:
+        descriptor = _open_regular_file(self.descriptor, name, create_new=False, write=False)
+        try:
+            yield _PosixTreeFileReader(descriptor)
+        finally:
+            os.close(descriptor)
 
 
 def _supports_posix_rooted_io() -> bool:

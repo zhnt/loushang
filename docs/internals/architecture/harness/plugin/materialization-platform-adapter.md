@@ -2,9 +2,9 @@
 
 ## 状态与目标
 
-- Authority: normative for implemented M1a/M1b；M1c 保持 proposed。
-- Design status: M1a 在 R2 三视角复核后由用户授权实施；后续继续开发授权内的 M1b 经三个原 reviewer 定向设计核查、由实施 scope owner 接受。M1c 仍为 draft，冻结评审版本见评审记录。
-- Implementation status: M1a/M1b 已本地实现，POSIX 与共享逻辑已验证，Windows native 待验证；范围见 §7/§8。本工作区先前的 M2 与本设计无关。
+- Authority: normative for implemented M1a/M1b；M1c 读取/核验切片的接受与实施范围见[专项设计](materialization-tree-validation.md)，其余 M1c 候选仍待设计。
+- Design status: M1a 在 R2 三视角复核后由用户授权实施；后续继续开发授权内的 M1b 经三个原 reviewer 定向设计核查、由实施 scope owner 接受。M1c 读取/核验专项 R2 后获用户明确实施授权；写入/删除收敛未获本专项设计覆盖。
+- Implementation status: M1a/M1b 已本地实现，范围见 §7/§8；M1c 读取/核验已本地实现并经三视角代码审查，结果见专项记录。POSIX 与共享逻辑已验证，Windows native 待验证。本工作区先前的 M2 与本设计无关。
 - Owner: Harness package lifecycle。
 - 源码基线：main `1120f9b1fe3b8610de76b60c115660dc9d0353d7`；M2 未修改本设计涉及的平台文件。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
