@@ -31,13 +31,11 @@ _PERMISSIONS_THEME = ThemeResolver(
     defaults={
         "permissions.heading": {"bold": True},
         "permissions.tab": {"color": "bright_black", "dim": True},
-        "permissions.tab.selected": {"color": "cyan", "bold": True},
+        "permissions.tab.selected": {"bold": True},
         "permissions.scope": {"color": "bright_black"},
-        "permissions.scope.selected": {"color": "cyan", "bold": True},
+        "permissions.scope.selected": {"bold": True},
         "permissions.mode": {"color": "default"},
         "permissions.mode.selected": {"color": "cyan", "bold": True},
-        "permissions.mode.current": {"color": "green", "bold": True},
-        "permissions.mode.full_access": {"color": "red", "bold": True},
         "permissions.description": {"color": "bright_black", "dim": True},
         "permissions.disabled": {"color": "bright_black", "dim": True},
         "permissions.warning": {"color": "red", "bold": True},
@@ -178,17 +176,13 @@ class PermissionsCenterSurface:
         for index, option in enumerate(self.profile_snapshot.options, start=1):
             selected = index - 1 == self.selected_mode_index
             marker = "›" if selected else " "
-            current = " (current)" if option.current else ""
+            current = "  ✓ Current" if option.current else ""
             label = f"{marker} {index}. {option.profile.label}{current}"
             token = (
-                "permissions.disabled"
-                if not option.enabled
-                else "permissions.mode.full_access"
-                if option.profile.profile_id == "full_access"
-                else "permissions.mode.selected"
+                "permissions.mode.selected"
                 if selected
-                else "permissions.mode.current"
-                if option.current
+                else "permissions.disabled"
+                if not option.enabled
                 else "permissions.mode"
             )
             lines.append(RenderLine(self._styled(label, token)))
@@ -313,7 +307,7 @@ class PermissionsCenterSurface:
     def _tab_line(self) -> str:
         return "   ".join(
             self._styled(
-                label,
+                f"[{label}]" if tab == self.selected_tab else label,
                 (
                     "permissions.tab.selected"
                     if tab == self.selected_tab
