@@ -51,8 +51,10 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         ) = None,
         command_catalog: ScreenSurfaceCommandCatalog | None = None,
         on_model_changed: Callable[[], None] | None = None,
+        goal_command: Callable[[str], Awaitable[object]] | None = None,
     ) -> None:
         self.session = session
+        self._goal_command = goal_command
         self.runtime = runtime
         self.status_provider = status_provider
         self._on_model_changed = on_model_changed
@@ -92,6 +94,23 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             ports=ports,
             copy=STANDARD_SCREEN_SURFACE_WORKFLOW_COPY,
         )
+
+    def is_local_command(self, text: str) -> bool:
+        from loushang.coding.interaction.goal import is_goal_control
+        return (self._goal_command is not None and is_goal_control(text)) or super().is_local_command(text)
+
+    async def handle_text(self, text: str) -> int | None:
+        from loushang.coding.interaction.goal import is_goal_control
+        if self._goal_command is not None and is_goal_control(text):
+            from loushang.coding.interaction.goal import GoalControlSurface
+            from loushang.harnesstui.surface.view import ScreenSurfaceView
+            self.open(ScreenSurfaceView(
+                title="Goal", purpose="info", presentation="bottom",
+                footer="Esc to close · original execution remains owned by the Session",
+                content=GoalControlSurface(self._goal_command, text, self.app.request_render),
+            ))
+            return None
+        return await super().handle_text(text)
 
     @property
     def coding_app(self) -> ScreenCodingTuiApp:

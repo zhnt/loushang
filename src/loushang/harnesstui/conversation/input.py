@@ -761,6 +761,7 @@ def bind_clipboard_image_input_router(
     *,
     policy: ConversationInputPolicy = DEFAULT_CONVERSATION_INPUT_POLICY,
     runtime_scope: RuntimeScope | None = None,
+    router_type: type[ConversationInputRouter] = ConversationInputRouter,
 ) -> ClipboardImageInputRouterBuilder:
     """Bind app-aware staging and status presentation to a router builder.
 
@@ -824,7 +825,7 @@ def bind_clipboard_image_input_router(
             if message is not None:
                 current_app().state.set_status(message)
 
-        router = ConversationInputRouter(
+        router = router_type(
             app=app,
             should_exit=should_exit,
             is_local_command=is_local_command,

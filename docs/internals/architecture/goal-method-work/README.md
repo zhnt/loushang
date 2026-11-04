@@ -133,3 +133,7 @@ Coding 私有适配承接，复用原 Goal/Work/Blob，系统环境和关键交�
 [重构计划三视角评审](refactoring-plan-review.md)：R2可呈交用户，阶段设计与验证义务仍待落实。
 
 [重构推进记录](refactoring-progress.md)记录S0—S4实际证据；[S2协同专项](session-goal-coordination.md)及[专项评审](session-goal-coordination-review.md)待用户接受后实施。
+
+## 交互式开发 Goal 接入候选
+
+[交互式开发 Goal 与嵌入式 TUI 专项 R2](interactive-development-goal.md)按用户“同时支持任意开发目标，先补专项设计”的选择，在用户随后授权的收敛范围内实施参数化任务、默认人工验收、Method 配置、有限推进与薄 TUI 接线；[评审与实施记录](interactive-development-goal-review.md)明确原作者走查、用户授权及本轮独立代码评审的各自范围。本轮已本地实现，独立三视角阻断已关闭；验证边界和主线既有失败见该记录，不将离线验证等同已发布。

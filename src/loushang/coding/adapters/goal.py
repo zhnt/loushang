@@ -200,6 +200,11 @@ class CodingGoal:
         This explicit entry creates Goal history, never another Session.
         Optional limits belong to this execution owner, not Session settings.
         """
+        return await cls._attach(session=session, max_model_calls=max_model_calls,
+                                 max_output_tokens=max_output_tokens)
+
+    @classmethod
+    async def _attach(cls, *, session, max_model_calls=None, max_output_tokens=None, profile=None):
         from loushang.agent.model_transport import is_prepared_request_conformant
         from loushang.ai.api import stream
 
@@ -218,12 +223,13 @@ class CodingGoal:
         owner._journal_directory, owner._ordinary_session = directory, True
         owner._session, owner.session_id = session, session.session_id
         owner._model_planning = True
+        owner._profile = profile
         owner._ordinary_transport = delegate
         owner._allowance = PlanningCallAllowance.from_stream(
             delegate, total_limit=max_model_calls, max_output_tokens=max_output_tokens,
             checkpoint=owner._check_current_transport,
         )
-        policy = PlanningToolPolicy(owner.workspace)
+        policy = profile.tool_policy(owner.workspace) if profile is not None else PlanningToolPolicy(owner.workspace)
         try:
             owner._attach_scope()
             assert owner._scope is not None
@@ -234,7 +240,8 @@ class CodingGoal:
                 try:
                     _validate_goal_session(session, owner.workspace, True, ordinary=True)
                     await owner._assemble_session(
-                        policy_id=PLANNING_POLICY_ID, create=True, planning_tool_policy=policy,
+                        policy_id=profile.policy_id if profile is not None else PLANNING_POLICY_ID,
+                        create=True, planning_tool_policy=policy,
                     )
                     admission.validate_reservation(reservation, require_operation=False)
                 finally:

@@ -198,3 +198,95 @@ def _format_operation(
 
 
 __all__ = ["execute_coding_plugin_management_ui_command"]
+
+
+def format_coding_plugin_support_status(document: dict[str, object]) -> str:
+    """Show owner-observed stages without claiming a live Session used them."""
+
+    if document.get("supportStatusVersion") not in {1, 2} or document.get("snapshotStatus") not in {
+        "partial_evidence", "stale_evidence"
+    }:
+        raise ValueError("Plugin support status is invalid")
+    entries = document.get("installations")
+    gaps = document.get("evidenceGaps")
+    if not isinstance(entries, list) or not isinstance(gaps, list):
+        raise ValueError("Plugin support status is invalid")
+    lines = [f"Plugin support ({document['snapshotStatus']}; live use not checked)"]
+    for item in entries:
+        if not isinstance(item, dict):
+            raise ValueError("Plugin support Installation is invalid")
+        plugin_id = item.get("pluginId")
+        desired = item.get("desiredState")
+        admission = item.get("productAdmission")
+        selection = item.get("productSelection")
+        use = item.get("productUse")
+        reasons = item.get("reasonCodes")
+        pending = item.get("pendingOperations", [])
+        revision = item.get("packageRevisionFingerprint")
+        instance = item.get("instanceRevisionRef")
+        debt = item.get("cleanupDebtIds", [])
+        retirement = item.get("retirementStates", [])
+        if any(
+            not isinstance(value, str) or not value.isprintable()
+            for value in (plugin_id, desired, admission, selection, use)
+        ) or not isinstance(reasons, list) or any(
+            not isinstance(code, str) or not code.isprintable() for code in reasons
+        ) or not isinstance(pending, list) or any(
+            not isinstance(values, list)
+            or any(not isinstance(value, str) or not value.isprintable() for value in values)
+            for values in (debt, retirement)
+        ) or (revision is not None and (
+            not isinstance(revision, str)
+            or len(revision) != 64
+            or any(character not in "0123456789abcdef" for character in revision)
+        )):
+            raise ValueError("Plugin support Installation is invalid")
+        line = (
+            f"{plugin_id}: {desired}; admission={admission}; "
+            f"selection={selection}; use={use}"
+        )
+        if reasons:
+            line += "; reasons=" + ", ".join(reasons)
+        if revision is not None:
+            line += f"; package-revision={revision[:12]}"
+        if instance is not None:
+            if (
+                not isinstance(instance, dict)
+                or not isinstance(instance.get("instanceId"), str)
+                or not instance["instanceId"].isprintable()
+                or type(instance.get("revision")) is not int
+            ):
+                raise ValueError("Plugin support Instance revision is invalid")
+            line += f"; instance={instance['instanceId']}@{instance['revision']}"
+        if retirement:
+            line += "; retirement=" + ", ".join(retirement)
+        if debt:
+            line += "; cleanup-debt=" + ", ".join(debt)
+        lines.append(line)
+        for operation in pending:
+            if not isinstance(operation, dict):
+                raise ValueError("Plugin support pending operation is invalid")
+            kind = operation.get("operationKind")
+            actor = operation.get("actorId")
+            operation_id = operation.get("operationId")
+            repair = operation.get("repairCommand")
+            if (
+                kind != "a1_desired"
+                or any(
+                    not isinstance(value, str) or not value or not value.isprintable()
+                    for value in (actor, operation_id)
+                )
+                or (repair is not None and (not isinstance(repair, str) or not repair.isprintable()))
+            ):
+                raise ValueError("Plugin support pending operation is invalid")
+            pending_line = f"  pending {kind} {operation_id} (actor={actor})"
+            if repair is not None:
+                pending_line += f"; repair: {repair}"
+            lines.append(pending_line)
+    if len(lines) == 1:
+        lines.append("No installations")
+    if gaps:
+        if any(not isinstance(item, str) or not item.isprintable() for item in gaps):
+            raise ValueError("Plugin support evidence gap is invalid")
+        lines.append("Evidence gaps: " + ", ".join(gaps))
+    return "\n".join(lines)
