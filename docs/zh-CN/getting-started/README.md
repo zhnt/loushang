@@ -38,6 +38,40 @@ loushang --list-models
 loushang --list-commands
 ```
 
+## 配置 Provider 凭证
+
+在线运行需要 API key。Loushang 从解析到的模型 catalog 条目所声明的环境变量读取凭证，不会自动加载 `.env`：请在使用 `loushang` 的 shell 中导出变量。
+
+| Provider | 环境变量 |
+| --- | --- |
+| Anthropic | `ANTHROPIC_API_KEY` |
+| OpenAI | `OPENAI_API_KEY`（`coding-responses` endpoint 使用 OAuth，不读该变量） |
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| 阿里云百炼 DashScope | `DASHSCOPE_API_KEY` |
+| Moonshot AI | `MOONSHOT_API_KEY` |
+| Kimi Code | `KIMI_CODE_API_KEY` |
+| MiniMax | `MINIMAX_API_KEY` |
+| Z.AI | `ZAI_API_KEY` |
+| 火山方舟 Volcano Ark | `ARK_API_KEY` |
+| 腾讯混元 | `HUNYUAN_API_KEY` |
+| 百度千帆 | `QIANFAN_API_KEY` 或 `BAIDU_QIANFAN_API_KEY` |
+| 阶跃星辰 StepFun | `STEP_API_KEY` 或 `STEPFUN_API_KEY` |
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+loushang -p "Reply with the single word: ready"
+```
+
+Windows PowerShell：
+
+```powershell
+$env:ANTHROPIC_API_KEY = "sk-ant-..."
+```
+
+`loushang --list-models` 会列出 catalog，以及每个模型解析到的 provider 与 endpoint；`loushang --list-models --list-models-format json` 输出同样的 JSON 数据，便于脚本处理。缺少凭证时，错误信息会列出它查找过的变量名（`expected_env`）。
+
+`.loushang/models/` 下的项目与示例 catalog 可以声明自己的 `apiKeyEnv` / `apiKeyEnvs`，这些名字会替换该 catalog 条目的内置变量名。
+
 ## 运行第一条 Prompt
 
 ```bash

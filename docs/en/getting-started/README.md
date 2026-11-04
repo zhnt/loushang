@@ -38,6 +38,40 @@ loushang --list-models
 loushang --list-commands
 ```
 
+## Configure A Provider Credential
+
+Online runs need an API key. Loushang reads it from the environment variable declared by the model catalog entry it resolves, and does not load a `.env` file for you: export the variable in the shell that runs `loushang`.
+
+| Provider | Environment variable |
+| --- | --- |
+| Anthropic | `ANTHROPIC_API_KEY` |
+| OpenAI | `OPENAI_API_KEY` (the `coding-responses` endpoint uses OAuth instead) |
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| Alibaba Cloud DashScope | `DASHSCOPE_API_KEY` |
+| Moonshot AI | `MOONSHOT_API_KEY` |
+| Kimi Code | `KIMI_CODE_API_KEY` |
+| MiniMax | `MINIMAX_API_KEY` |
+| Z.AI | `ZAI_API_KEY` |
+| Volcano Ark | `ARK_API_KEY` |
+| Tencent Hunyuan | `HUNYUAN_API_KEY` |
+| Baidu Qianfan | `QIANFAN_API_KEY` or `BAIDU_QIANFAN_API_KEY` |
+| StepFun | `STEP_API_KEY` or `STEPFUN_API_KEY` |
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+loushang -p "Reply with the single word: ready"
+```
+
+Windows PowerShell:
+
+```powershell
+$env:ANTHROPIC_API_KEY = "sk-ant-..."
+```
+
+`loushang --list-models` prints the catalog with the provider and endpoint each model resolves through, and `loushang --list-models --list-models-format json` prints the same data as JSON for scripts. When a model needs a credential and none of its variables is set, the error names the variables it looked for (`expected_env`).
+
+Project and example catalogs under `.loushang/models/` may declare their own `apiKeyEnv` / `apiKeyEnvs`; those names replace the built-in ones for that catalog entry.
+
 ## Run A First Prompt
 
 ```bash
