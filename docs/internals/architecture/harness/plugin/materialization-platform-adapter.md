@@ -2,9 +2,9 @@
 
 ## 状态与目标
 
-- Authority: normative for implemented M1a/M1b；M1c 读取/核验切片的接受与实施范围见[专项设计](materialization-tree-validation.md)，其余 M1c 候选仍待设计。
-- Design status: M1a 在 R2 三视角复核后由用户授权实施；后续继续开发授权内的 M1b 经三个原 reviewer 定向设计核查、由实施 scope owner 接受。M1c 读取/核验专项 R2 后获用户明确实施授权；写入/删除收敛未获本专项设计覆盖。
-- Implementation status: M1a/M1b 已本地实现，范围见 §7/§8；M1c 读取/核验已本地实现并经三视角代码审查，结果见专项记录。POSIX 与共享逻辑已验证，Windows native 待验证。本工作区先前的 M2 与本设计无关。
+- Authority: normative for implemented M1a/M1b；M1c [读取/核验](materialization-tree-validation.md)及[文件写入/复用](materialization-file-sinks.md)按其专项范围接受与实施，其余候选仍待设计。
+- Design status: M1a 在 R2 三视角复核后由用户授权实施；后续继续开发授权内的 M1b 经三个原 reviewer 定向设计核查、由实施 scope owner 接受。M1c 读取/核验和文件写入/复用的专项 R2 均获用户接受并授权实施；tree abort/删除收敛未覆盖。
+- Implementation status: M1a/M1b 已本地实现，范围见 §7/§8；M1c 读取/核验与文件写入/复用均已本地实现并经三视角代码审查，结果见专项记录。POSIX 与共享逻辑已验证，Windows native 待验证。本工作区先前的 M2 与本设计无关。
 - Owner: Harness package lifecycle。
 - 源码基线：main `1120f9b1fe3b8610de76b60c115660dc9d0353d7`；M2 未修改本设计涉及的平台文件。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
@@ -117,6 +117,8 @@ class PackageStorePlatformPort(Protocol):
 1. **M1a：receipt 校验公共流程 + 上述平台接口。** 先证明两平台原路径等价，移除两份 57 行重复控制流程。原锁的取得与根 pin 次序不变。
 2. **M1b：共享 verified sink 生命周期及 finish/reuse。** 使用已有 sink/transfer 合同；拆清“物理树就绪→原 journal 授权→不可覆盖发布→发布后身份复核”。平台端口必须精确描述 Windows 句柄关闭与 POSIX flush 的边界，并保留授权后/rename 后失败时的原重试清理状态，不能封装成隐含 journal 写入的 `commit()`。
 3. **M1c：继续合并树校验、文件 sink、abort 中证实平台无关的部分。** 共同内容规则留共享层，原生读写和安全访问留 Adapter；按实际差异扩端口，不要求每个同名方法都保留两个实现。
+
+M1c 的读取/核验切片已按其专项交付；后续[文件写入与复用设计](materialization-file-sinks.md)R2 经用户接受后已本地实施，仅细化共同 file sink 与原生 Writer 的协作，不包含 tree abort 或删除流程的收敛。
 
 最终期望是“一个共享流程 + 薄平台实现”；阶段划分用于控制迁移风险，不是允许把重复流程永久留在 Adapter。后续切片的接口细节仍须结合失败序列设计，当前不将其当作已冻结合同。
 
