@@ -183,9 +183,7 @@ def _run_model_select() -> object:
     assert playback.app.state.model_label == "openai:test-endpoint:gpt-5.4"
     result.assert_text_contains("Select Model")
     result.assert_text_contains("Model set: openai:test-endpoint:gpt-5.4")
-    result.assert_text_contains(
-        "gpt-5.4 | repo | main | abcd | idle"
-    )
+    result.assert_text_contains("gpt-5.4 | repo | main | abcd | idle")
     result.assert_no_clear_screen()
     assert result.app.active_surface is None
     return result
@@ -480,7 +478,7 @@ def _run_permissions_mode_surface() -> object:
     assert session.actions == ["set-profile:project:cautious"]
     assert result.app.state.permission_profile == "cautious"
     result.assert_text_contains("Standard")
-    result.assert_text_contains("Cautious (current)")
+    result.assert_text_contains("Cautious  ✓ Current")
     result.assert_text_contains("Permissions updated to Cautious for this session.")
     result.assert_text_contains("Saved as the project default.")
     result.assert_no_clear_screen()
@@ -511,7 +509,7 @@ def _run_permissions_full_access_confirmation() -> object:
     assert session.actions == ["set-profile:session:full_access"]
     assert result.app.state.permission_profile == "full_access"
     result.assert_text_contains("Enable Full Access?")
-    result.assert_text_contains("Full Access (current)")
+    result.assert_text_contains("Full Access  ✓ Current")
     result.assert_no_clear_screen()
     return result
 
