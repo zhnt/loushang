@@ -188,6 +188,7 @@ class ScreenSurfaceWorkflowPorts:
     build_side_question_surface: Callable[[str], ScreenSurfaceView] | None = None
     build_reasoning_selector: Callable[[], ScreenSurfaceView | None] | None = None
     select_reasoning_level: Callable[[str], Awaitable[str]] | None = None
+    is_running: Callable[[], bool] = lambda: False
 
 
 @dataclass(slots=True)
@@ -210,6 +211,11 @@ class ScreenSurfaceWorkflow:
         repr=False,
     )
     _fork_activation_task: asyncio.Task[None] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+    _model_selection_task: asyncio.Task[None] | None = field(
         default=None,
         init=False,
         repr=False,
@@ -253,7 +259,7 @@ class ScreenSurfaceWorkflow:
             return None
         if command.kind == "select_model":
             if command.query.strip():
-                await self.select_model(command.query, close_surface=False)
+                await self._submit_model_selection(command.query, close_surface=False)
             else:
                 self.open(await self.ports.build_model_selector())
         elif command.kind == "list_models":
@@ -367,7 +373,45 @@ class ScreenSurfaceWorkflow:
             )
         return None
 
-    async def select_model(self, value: str, *, close_surface: bool) -> None:
+    async def _submit_model_selection(self, value: str, *, close_surface: bool) -> None:
+        if self._model_selection_task is not None:
+            self.app.set_status("A model change is already waiting for this turn.")
+            return
+        if not self.ports.is_running():
+            await self.select_model(value, close_surface=close_surface)
+            return
+        # Session model changes wait for the active turn. The input loop must
+        # remain free to deliver approval and interrupt keys during that wait.
+        if close_surface:
+            self.close()
+        self.app.set_status("Model change queued until the current turn ends.")
+        self._model_selection_task = asyncio.create_task(
+            self._apply_pending_model_selection(value)
+        )
+
+    async def _apply_pending_model_selection(self, value: str) -> None:
+        try:
+            await self.select_model(
+                value, close_surface=False, show_reasoning_selector=False
+            )
+        except Exception as error:
+            self.app.set_status(self.copy.recoverable_error(error))
+        finally:
+            self._model_selection_task = None
+
+    def cancel_pending_model_selection(self) -> None:
+        task = self._model_selection_task
+        if task is not None and not task.done():
+            task.cancel()
+        self._model_selection_task = None
+
+    async def select_model(
+        self,
+        value: str,
+        *,
+        close_surface: bool,
+        show_reasoning_selector: bool = True,
+    ) -> None:
         try:
             message = await self.ports.select_model(value)
         except Exception as error:
@@ -387,7 +431,7 @@ class ScreenSurfaceWorkflow:
             self.close()
         await self.ports.refresh_model_label()
         self.app.set_status(message)
-        if self.ports.build_reasoning_selector is not None:
+        if show_reasoning_selector and self.ports.build_reasoning_selector is not None:
             try:
                 reasoning = self.ports.build_reasoning_selector()
             except Exception as error:
@@ -531,7 +575,7 @@ class ScreenSurfaceWorkflow:
         self.coordinator.dismiss_approval(action_id)
 
     async def _handle_model_submit(self, payload: str) -> None:
-        await self.select_model(payload, close_surface=True)
+        await self._submit_model_selection(payload, close_surface=True)
 
     async def _handle_reasoning_submit(self, payload: str) -> None:
         await self.select_reasoning_level(payload)

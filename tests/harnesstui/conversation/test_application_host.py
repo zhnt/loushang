@@ -78,6 +78,9 @@ class _Surface:
     def clear_approval_surfaces(self) -> None:
         self.events.append("surface.clear")
 
+    def cancel_pending_model_selection(self) -> None:
+        self.events.append("surface.cancel_model")
+
 
 class _EventSource:
     def __init__(self, events: list[str]) -> None:
@@ -187,6 +190,7 @@ def test_prepared_screen_host_installs_state_and_unwinds_in_reverse() -> None:
         "trace:tui.end",
         "unsubscribe",
         "context.exit",
+        "surface.cancel_model",
         "transition.unbind",
         "surface.clear",
         "presenter.unbind",
@@ -215,9 +219,10 @@ def test_prepared_screen_host_cleans_outer_bindings_when_listener_factory_fails(
             )
         )
 
-    assert events[-5:] == [
+    assert events[-6:] == [
         "transition.bind",
         "listener.fail",
+        "surface.cancel_model",
         "transition.unbind",
         "surface.clear",
         "presenter.unbind",
@@ -245,11 +250,12 @@ def test_prepared_screen_host_unsubscribes_before_outer_cleanup_on_runner_error(
             )
         )
 
-    assert events[-7:] == [
+    assert events[-8:] == [
         "runner.fail",
         "trace:tui.end",
         "unsubscribe",
         "context.exit",
+        "surface.cancel_model",
         "transition.unbind",
         "surface.clear",
         "presenter.unbind",
