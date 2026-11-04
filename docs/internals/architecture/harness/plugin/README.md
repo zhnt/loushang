@@ -72,7 +72,14 @@ list does not change accepted contracts or authorize legacy-path removal.
 The [materialization platform Adapter](materialization-platform-adapter.md)
 defines shared Store rules with narrow native operations. M1a receipt
 verification and M1b finish/reuse/publication coordination are locally
-implemented; Windows native validation remains pending. M1c remains proposed.
+implemented; Windows native validation remains pending.
+
+The [M1c tree validation design](materialization-tree-validation.md)
+separates one shared traversal/verification algorithm from native rooted reads,
+including the existing partial-delete GC observation path. The shared scanner
+and both platform readers are locally implemented and code-reviewed; Windows
+native validation remains pending. File writing and deletion remain separate
+follow-on concerns.
 
 ## Authority Order
 

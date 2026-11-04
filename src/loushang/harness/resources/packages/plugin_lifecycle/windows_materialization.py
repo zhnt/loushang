@@ -24,6 +24,17 @@ from loushang.harness.resources.packages.plugin_lifecycle._materialization_share
     finish_verified_tree,
     validate_receipt_at_root,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._tree_validation import (
+    TreeDirectoryReadPort,
+    TreeEntryObservation,
+    TreeFileReadPort,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._tree_validation import (
+    collect_tree as _collect_observed_tree,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._tree_validation import (
+    validate_tree_contents as _validate_observed_tree_contents,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     PluginRevisionRefV1,
     VerifiedArtifactRefV1,
@@ -1753,20 +1764,11 @@ def _validate_tree_contents(
     dict[tuple[str, ...], _Identity],
     dict[tuple[str, ...], _Identity],
 ]:
-    expected = {entry.logical_path: entry for entry in manifest.entries}
-    observed, observed_directories, observed_files = _collect_tree(
-        root_fd,
-        expected,
+    return _validate_observed_tree_contents(
+        _WindowsTreeDirectoryReader(root_fd), manifest,
         directory_identities=directory_identities,
         file_identities=file_identities,
     )
-    if set(observed) != set(expected):
-        raise OSError("Published Package tree members changed")
-    for logical_path, entry in expected.items():
-        byte_count, digest = observed[logical_path]
-        if byte_count != entry.byte_count or digest != entry.content_digest:
-            raise OSError("Published Package tree content changed")
-    return observed_directories, observed_files
 
 
 def _collect_tree(
@@ -1781,97 +1783,68 @@ def _collect_tree(
     dict[tuple[str, ...], _Identity],
     dict[tuple[str, ...], _Identity],
 ]:
-    observed: dict[str, tuple[int, str]] = {}
-    observed_directories: dict[tuple[str, ...], _Identity] = {}
-    observed_files: dict[tuple[str, ...], _Identity] = {}
-    expected_directories = {
-        "/".join(parts[:depth])
-        for logical_path in expected
-        for parts in (tuple(logical_path.split("/")),)
-        for depth in range(1, len(parts))
-    }
+    return _collect_observed_tree(
+        _WindowsTreeDirectoryReader(root_fd), expected,
+        directory_identities=directory_identities,
+        file_identities=file_identities,
+        allow_partial=allow_partial,
+    )
 
-    def visit(directory_fd: int, prefix: tuple[str, ...]) -> None:
-        names = windows_listdir_at(directory_fd)
-        if not names and prefix and not allow_partial:
-            raise OSError("Published Package tree contains an empty directory")
-        for name in names:
-            metadata = windows_stat_at(directory_fd, name)
-            parts = prefix + (name,)
-            logical_path = "/".join(parts)
-            if _is_reparse(metadata):
-                raise OSError("Published Package tree contains a reparse point")
-            if stat.S_ISDIR(metadata.st_mode):
-                if logical_path not in expected_directories:
-                    raise OSError("Published Package tree has an unexpected directory")
-                if directory_identities is not None and _identity(
-                    metadata
-                ) != directory_identities.get(parts):
-                    raise OSError("Published Package directory identity changed")
-                child_fd = _open_directory(
-                    name,
-                    dir_fd=directory_fd,
-                    writable=False,
-                )
-                try:
-                    if _identity(os.fstat(child_fd)) != _identity(metadata):
-                        raise OSError("Published Package directory identity changed")
-                    observed_directories[parts] = _identity(metadata)
-                    visit(child_fd, parts)
-                finally:
-                    os.close(child_fd)
-            elif stat.S_ISREG(metadata.st_mode):
-                entry = expected.get(logical_path)
-                if entry is None or metadata.st_nlink != 1:
-                    raise OSError("Published Package tree has an unexpected file")
-                if file_identities is not None and _identity(
-                    metadata
-                ) != file_identities.get(parts):
-                    raise OSError("Published Package file identity changed")
-                descriptor = open_windows_regular_file_at(
-                    directory_fd,
-                    name,
-                    create_new=False,
-                    write=False,
-                )
-                digest = sha256()
-                byte_count = 0
-                try:
-                    while chunk := os.read(descriptor, 64 * 1024):
-                        digest.update(chunk)
-                        byte_count += len(chunk)
-                        if byte_count > entry.byte_count:
-                            raise OSError(
-                                "Published Package file exceeds verified size"
-                            )
-                    opened = os.fstat(descriptor)
-                    if (
-                        _identity(opened) != _identity(metadata)
-                        or opened.st_nlink != 1
-                        or _is_reparse(opened)
-                    ):
-                        raise OSError("Published Package file identity changed")
-                finally:
-                    os.close(descriptor)
-                observed[logical_path] = (byte_count, digest.hexdigest())
-                observed_files[parts] = _identity(metadata)
-            else:
-                raise OSError("Published Package tree entry type changed")
 
-    visit(root_fd, ())
-    if (
-        not allow_partial
-        and directory_identities is not None
-        and set(observed_directories) != set(directory_identities)
-    ):
-        raise OSError("Published Package directory set changed")
-    if (
-        not allow_partial
-        and file_identities is not None
-        and set(observed_files) != set(file_identities)
-    ):
-        raise OSError("Published Package file set changed")
-    return observed, observed_directories, observed_files
+@dataclass(frozen=True)
+class _WindowsTreeFileReader:
+    descriptor: int
+
+    def read(self, max_bytes: int) -> bytes:
+        return os.read(self.descriptor, max_bytes)
+
+    def identity_and_links(self) -> tuple[_Identity, int]:
+        metadata = os.fstat(self.descriptor)
+        if _is_reparse(metadata):
+            raise OSError("Published Package file identity changed")
+        return _identity(metadata), metadata.st_nlink
+
+
+@dataclass(frozen=True)
+class _WindowsTreeDirectoryReader:
+    descriptor: int
+
+    def identity(self) -> _Identity:
+        return _identity(os.fstat(self.descriptor))
+
+    @contextmanager
+    def entries(self) -> Iterator[Iterator[TreeEntryObservation]]:
+        names = windows_listdir_at(self.descriptor)
+
+        def observe() -> Iterator[TreeEntryObservation]:
+            for name in names:
+                metadata = windows_stat_at(self.descriptor, name)
+                if _is_reparse(metadata):
+                    raise OSError("Published Package tree contains a reparse point")
+                yield TreeEntryObservation(
+                    name,
+                    "directory" if stat.S_ISDIR(metadata.st_mode) else (
+                        "file" if stat.S_ISREG(metadata.st_mode) else "other"
+                    ),
+                    _identity(metadata), metadata.st_nlink,
+                )
+        yield observe()
+
+    @contextmanager
+    def open_directory(self, name: str) -> Iterator[TreeDirectoryReadPort]:
+        descriptor = _open_directory(name, dir_fd=self.descriptor, writable=False)
+        try:
+            yield _WindowsTreeDirectoryReader(descriptor)
+        finally:
+            os.close(descriptor)
+
+    @contextmanager
+    def file_reader(self, name: str) -> Iterator[TreeFileReadPort]:
+        descriptor = open_windows_regular_file_at(self.descriptor, name, create_new=False, write=False)
+        try:
+            yield _WindowsTreeFileReader(descriptor)
+        finally:
+            os.close(descriptor)
 
 
 def _open_directory(
