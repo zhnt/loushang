@@ -27,10 +27,10 @@ policy decision. No blanket `int -> number` conversion is allowed.
 Generation is opt-in:
 
 ```text
-pnpm --dir gui run contract:generate
-pnpm --dir gui run contract:check-generated
+npm --prefix gui run contract:generate
+npm --prefix gui run contract:check-generated
 uv run python scripts/gui/test_generate_contract_types.py
-pnpm --dir gui run check:contract
+npm --prefix gui run check:contract
 ```
 
 Keep generated shapes checked in and compiled by the contract probe. Do not

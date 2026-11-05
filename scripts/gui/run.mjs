@@ -8,7 +8,7 @@ const guiDir = path.resolve(scriptDir, "..", "..", "gui");
 const manifest = path.join(guiDir, "src-tauri", "Cargo.toml");
 const cargo = rustTool("cargo");
 const rustc = rustTool("rustc");
-const pnpmEntry = process.env.npm_execpath;
+const npmEntry = process.env.npm_execpath;
 const childEnv = path.isAbsolute(cargo)
   ? {
       ...process.env,
@@ -28,17 +28,17 @@ function rustTool(name) {
   return executable;
 }
 
-if (!pnpmEntry) {
-  process.stderr.write("Run this script through a pnpm package command.\n");
+if (!npmEntry) {
+  process.stderr.write("Run this script through an npm package command.\n");
   process.exit(1);
 }
 
-function runPnpm(args) {
-  run(process.execPath, [pnpmEntry, ...args]);
+function runNpm(args) {
+  run(process.execPath, [npmEntry, ...args]);
 }
 
-function capturePnpm(args) {
-  return capture(process.execPath, [pnpmEntry, ...args]);
+function captureNpm(args) {
+  return capture(process.execPath, [npmEntry, ...args]);
 }
 
 function run(command, args) {
@@ -79,8 +79,8 @@ function expectPrefix(label, actual, expected) {
 }
 
 function doctor() {
-  expectPrefix("node", process.version, "v24.19.0");
-  expectPrefix("pnpm", capturePnpm(["--version"]), "11.19.0");
+  expectPrefix("node", process.version, "v24.22.2");
+  expectPrefix("npm", captureNpm(["--version"]), "11.19.1");
   expectPrefix("rustc", capture(rustc, ["--version"]), "rustc 1.98.1 ");
   expectPrefix("cargo", capture(cargo, ["--version"]), "cargo 1.98.1 ");
   const verboseRustc = capture(rustc, ["--version", "--verbose"]);
@@ -95,26 +95,26 @@ function doctor() {
 }
 
 function buildWeb() {
-  runPnpm(["exec", "tsc", "--noEmit"]);
-  runPnpm(["exec", "vite", "build"]);
+  runNpm(["exec", "--", "tsc", "--noEmit"]);
+  runNpm(["exec", "--", "vite", "build"]);
 }
 
 function runNative(command, fixtureBridge = false) {
-  const args = ["exec", "tauri", command];
+  const args = ["exec", "--", "tauri", command];
   if (command === "build") args.push("--no-bundle");
   if (fixtureBridge) args.push("--features", "fixture-bridge");
-  runPnpm(args);
+  runNpm(args);
 }
 
 function check() {
-  runPnpm(["exec", "tsc", "--noEmit"]);
-  runPnpm(["exec", "vitest", "run"]);
+  runNpm(["exec", "--", "tsc", "--noEmit"]);
+  runNpm(["exec", "--", "vitest", "run"]);
 }
 
 function checkFull() {
   doctor();
   buildWeb();
-  runPnpm(["exec", "vitest", "run"]);
+  runNpm(["exec", "--", "vitest", "run"]);
   run(cargo, ["fmt", "--manifest-path", manifest, "--", "--check"]);
   run(cargo, ["clippy", "--locked", "--manifest-path", manifest, "--all-targets", "--", "-D", "warnings"]);
   run(cargo, ["clippy", "--locked", "--manifest-path", manifest, "--all-targets", "--features", "fixture-bridge", "--", "-D", "warnings"]);

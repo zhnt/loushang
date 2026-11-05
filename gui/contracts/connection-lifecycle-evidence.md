@@ -34,7 +34,7 @@ but belong exclusively to this test, not an existing user's service.
 ## Evidence
 
 ```text
-pnpm --dir gui run check:connection-contract
+npm --prefix gui run check:connection-contract
 ```
 
 Windows-only and opt-in, with locked offline build dependencies. Eight scenarios

@@ -34,9 +34,9 @@ native cleanup-failure reporting or sensitive-buffer erasure guarantees.
 Opt-in reproduction from the lane root:
 
 ```text
-pnpm --dir gui run check:record-values
-pnpm --dir gui run check:record-contract
-pnpm --dir gui run check:auth-contract
+npm --prefix gui run check:record-values
+npm --prefix gui run check:record-contract
+npm --prefix gui run check:auth-contract
 ```
 
 Recorded results: 53 record-value/selection cases (10 accepted, 43 rejected),

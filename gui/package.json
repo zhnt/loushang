@@ -4,14 +4,14 @@
   "version": "0.1.0",
   "description": "Product-neutral native HarnessGUI shell for Loushang",
   "type": "module",
-  "packageManager": "pnpm@11.19.0",
+  "packageManager": "npm@11.19.1",
   "engines": {
-    "node": "24.19.0",
-    "pnpm": "11.19.0"
+    "node": "24.22.2",
+    "npm": "11.19.1"
   },
   "scripts": {
     "doctor": "node ../scripts/gui/run.mjs doctor",
-    "bootstrap": "pnpm install --frozen-lockfile",
+    "bootstrap": "npm ci",
     "dev:web": "vite",
     "dev": "node ../scripts/gui/run.mjs dev-native",
     "dev:fixture-native": "node ../scripts/gui/run.mjs dev-fixture-native",
