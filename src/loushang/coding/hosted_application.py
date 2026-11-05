@@ -60,6 +60,7 @@ from loushang.appservice.ports import (
     HostedSessionResolutionErrorV1,
     HostedSessionResolutionFailureV1,
 )
+from loushang.harness.runtime import await_owned_task
 
 from ._hosted_goal_config import HostedGoalSetup
 from ._hosted_method_config import CodingHostedMethodV1
@@ -223,7 +224,7 @@ class _ForegroundSessionOwner:
                 task = asyncio.create_task(self.binding.close())
                 task.add_done_callback(_observe_background_result)
                 self._close_task = task
-        await _join_void_owner(task)
+        await await_owned_task(task)
         async with self._close_lock:
             if self._close_task is task:
                 self._closed = True
@@ -475,7 +476,7 @@ class _LeasedCodingHostedBinding:
                 task = asyncio.create_task(self._close_once())
                 task.add_done_callback(_observe_background_result)
                 self._close_task = task
-        await _join_void_owner(task)
+        await await_owned_task(task)
 
     async def _close_once(self) -> None:
         if not self._lease_closed:
@@ -789,7 +790,7 @@ async def _settle_failed_construction(
             raise RuntimeError("coding_foreground_cleanup_incomplete") from None
 
     task = asyncio.create_task(settle())
-    await _join_void_owner(task)
+    await await_owned_task(task)
 
 
 async def _close_rejected_lease(
@@ -809,7 +810,7 @@ async def _close_rejected_lease(
         if failures:
             raise RuntimeError("coding_foreground_cleanup_incomplete") from None
 
-    await _join_void_owner(asyncio.create_task(settle()))
+    await await_owned_task(asyncio.create_task(settle()))
 
 
 def _validate_hosted_binding(
@@ -907,21 +908,6 @@ def _method_descriptor(value: object, name: str) -> object:
 def _require_async_method(value: object, name: str) -> None:
     if not inspect.iscoroutinefunction(_method_descriptor(value, name)):
         raise TypeError(f"Coding hosted application {name} port is invalid")
-
-
-async def _join_void_owner(task: asyncio.Task[None]) -> None:
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as error:
-            if caller is None or caller.cancelling() == 0:
-                return task.result()
-            cancellation = error
-    task.result()
-    if cancellation is not None:
-        raise cancellation
 
 
 def _observe_background_result(task: asyncio.Task[object]) -> None:

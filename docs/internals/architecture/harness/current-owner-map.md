@@ -45,6 +45,18 @@ evidence through the original management ledgers. Coding retains its evidence
 source, fixed report policy and outer lock; Graph cleanup, family release and
 fenced Product runtime disposal retain their original owners and retry state.
 
+`runtime.await_owned_task` exposes the existing cancellation-safe owned-task
+join used internally by Harness. Coding Continuity, AppHost Product and hosted
+application cleanup now use that same function, without another task runtime.
+The caller supplies an existing task and retains cleanup ordering, resource
+ownership and retry state. Successful settlement returns its result, or
+propagates the last caught caller cancellation; task failures and cancellation
+retain the original join behavior. Worker joins with different failure
+precedence and `journal.settled_io`'s independent native receipt remain separate.
+The four focused [owned-task scenarios](../../../../tests/harness/runtime/test_owned_tasks.py)
+cover result reuse and repeated caller cancellation with success, failure or
+task cancellation; execution results belong to the implementation evidence.
+
 The bounded [Product composition input preparation](plugin/composition-route-inputs.md)
 keeps owner grouping, structural supplied-binding checks, ordering and selection
 seed construction in the existing private Session assembly. Coding retains its
