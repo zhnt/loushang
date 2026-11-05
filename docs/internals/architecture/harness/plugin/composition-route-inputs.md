@@ -165,7 +165,7 @@ sequenceDiagram
 
 路线部分本轮的成果是明确已实现的选择与交接合同，而不是增加另一份状态。更广泛的 bootstrap 分支收敛只有在证明重复的选择或输入准备、并保留 current recheck 与原失败顺序后，才另选后续切片；首切片完成不等于 D2 全部完成。
 
-第一切片交付后的[剩余范围盘点](composition-route-inputs-remaining.md)区分已共享、职责差异与局部重复，定位了一项 bootstrap 配置构造重复。随后 [B1 专项](bootstrap-capability-config.md) R1.1 经用户接受并完成本地实现、定向验证与三视角代码评审；接受来自专项评审而非盘点，其余处置仍待决，D2 整体不因此标为完成。
+第一切片交付后的[剩余范围盘点](composition-route-inputs-remaining.md)区分已共享、职责差异与局部重复，定位了一项 bootstrap 配置构造重复。随后 [B1 专项](bootstrap-capability-config.md) R1.1 经用户接受并完成本地实现、定向验证与三视角代码评审；接受来自专项评审而非盘点，其余项随后明确保留，本轮限定收敛范围已按该盘点的结案记录关闭；不表示全部 bootstrap 分支或兼容路线已统一。
 
 ## 7. 验证与评审计划
 

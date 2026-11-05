@@ -72,7 +72,7 @@ from ._external_data_product_composition import (
     compile_coding_external_data_product_selection,
 )
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
-from ._resource_catalog_shadow import (
+from ._resource_catalog_adapter import (
     CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
     CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
     build_coding_initial_resource_catalog_adapter,

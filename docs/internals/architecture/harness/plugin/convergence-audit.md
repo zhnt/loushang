@@ -240,3 +240,10 @@ POSIX `finish`（基线第 1226 行）与 Windows `finish`（1239 行）的 AST 
 实施后的独立 xhigh 代码评审由 `resource_facts_independent_review` 完成：未发现本次引入的正确性、类型、依赖或库存回归问题，本切片可交付。评审独立比对完整转换函数、两个聚合器、三个 Receipt/Fact 类、导出和运行时产品导入集合，并固定三个源文件的 SHA256；未重跑 pytest，不声称全量回归通过。完整报告归档于产品树外 `architecture-analysis/plugin-harness-audit-20261104/resource-facts-code-review.md`。
 
 实施责任人据此接受本切片的内部重构结果；只涵盖原字段转换的共享，不扩大其余候选方案的接受范围。上述是实施切点的本地证据，提交与远程交付状态以承载此变更的 PR/Git 记录为准；既有库存失败如实保留。
+
+
+## 9. 后续交付索引（不改写原审计切点）
+
+M1、D1 和 D2 的独立专项及交付进度以 [Plugin 索引](README.md)所链记录为准。D2 的共同输入准备（PR #869）与 B1 配置构造（PR #871）已交付；其余候选按[剩余盘点的范围结案](composition-route-inputs-remaining.md#本轮范围结案2026-11-05)明确保留，本轮不再以合并所有分支为目标。M1 的 Windows native 证据仍保留原限制。
+
+E1 的[正式 Catalog 模块与兼容入口专项设计](catalog-adapter-module.md) R1.1 已经用户接受，已完成本地实现、定向验证与三视角独立代码评审；旧路径和兼容别名继续保留，远程交付状态以对应 PR 为准。E2 legacy 退出、M3 进一步 helper 合并及 V1 性能测量均未因此启动。

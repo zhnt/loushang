@@ -122,7 +122,17 @@ uses one local function at the two original B call positions, retaining original
 expression order, Store/private-directory checks and cleanup ownership. Implementation, focused validation and three-view code review are complete;
 remote delivery is tracked by the corresponding PR. The [review record](bootstrap-capability-config-review.md)
 records 41 distinct related passing cases, 38 differential cases and the existing
-joint-activation fixture correction. This does not mark all of D2 complete.
+joint-activation fixture correction. The remaining-scope inventory now closes
+this bounded D2 round with explicit retention decisions; it does not claim all
+bootstrap or compatibility routes are unified.
+
+The accepted R1.1 [E1 Catalog adapter module design](catalog-adapter-module.md)
+aligns the production Coding module name with its responsibility while retaining
+a forwarding compatibility module. Source migration and equivalent inventory
+updates, 54 focused passing tests, three controlled compatibility probes and
+three-view independent code review are complete locally. Current source
+navigation and evidence are linked from the [E1 review](catalog-adapter-module-review.md);
+remote delivery is tracked by the corresponding PR.
 
 ## Authority Order
 

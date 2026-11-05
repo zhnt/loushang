@@ -76,7 +76,7 @@ from ._capability_plugin_specs import (
     CodingCapabilityPluginConfig,
     ordered_coding_capability_plugin_specs,
 )
-from ._resource_catalog_shadow import (
+from ._resource_catalog_adapter import (
     complete_coding_package_plugin_selection_seed,
 )
 from .package_legacy_data_trust import (
