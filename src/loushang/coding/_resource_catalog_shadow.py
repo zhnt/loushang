@@ -7,13 +7,12 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol
 
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
 )
 from loushang.harness.capabilities.contribution_admission import (
-    CatalogConsumerContributionSpec,
     OwnerContributionAdmissionRecord,
     OwnerContributionAuthority,
     OwnerContributionKind,
@@ -67,10 +66,12 @@ from loushang.harness.resources.plugins.selection import (
     PluginSourceTrustSnapshotV1,
 )
 from loushang.harness.session.product_composition_assembly import (
+    OwnerCompletionRejection,
     ProductCompositionAssemblyRequest,
     ProductContributionOwnerBinding,
     ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
+    _complete_product_plugin_selection_seed,
     assemble_product_composition,
 )
 
@@ -923,98 +924,60 @@ def complete_coding_package_plugin_selection_seed(
         for item in selection.candidates
         if item.declaration.kind in PLUGIN_OWNER_CONTRIBUTION_KINDS
     )
-    owner_collections: dict[tuple[str, OwnerContributionKind], set[str]] = {}
-    owner_trust_classes: dict[tuple[str, OwnerContributionKind], set[str]] = {}
-    for candidate in candidates:
-        contribution = candidate.contribution
-        if not isinstance(
-            contribution,
-            ResourceContributionSpec | CatalogConsumerContributionSpec,
-        ):
-            raise CodingResourceCatalogAdmissionError(
-                ("invalid_package_resource_declaration",)
-            )
-        owner_key = (candidate.owner_id, candidate.contribution_kind)
-        owner_collections.setdefault(owner_key, set()).add(contribution.collection_id)
-        owner_trust_classes.setdefault(owner_key, set()).add(
-            candidate.source_trust_class
-        )
-    supplied: dict[
-        tuple[str, OwnerContributionKind], ProductContributionOwnerBinding
-    ] = {}
-    for binding in seed.owner_bindings:
-        owner_id, raw_contribution_kind, _ = binding.owner_key
-        if raw_contribution_kind not in PLUGIN_OWNER_CONTRIBUTION_KINDS:
-            raise CodingResourceCatalogAdmissionError(
-                ("invalid_product_owner_binding_kind",)
-            )
-        contribution_kind = cast(
-            OwnerContributionKind,
-            raw_contribution_kind,
-        )
-        owner_key = (owner_id, contribution_kind)
-        if owner_key in supplied:
-            raise CodingResourceCatalogAdmissionError(
-                ("duplicate_product_owner_binding",)
-            )
-        supplied[owner_key] = binding
-
-    if set(supplied) - set(owner_collections):
-        raise CodingResourceCatalogAdmissionError(
-            ("product_owner_binding_extra",)
-        )
-
-    owner_bindings_list: list[ProductContributionOwnerBinding] = []
-    for owner_key, collection_ids in sorted(owner_collections.items()):
-        supplied_binding = supplied.get(owner_key)
-        if supplied_binding is not None:
-            if not _owner_binding_covers(
-                supplied_binding,
-                owner_id=owner_key[0],
-                contribution_kind=owner_key[1],
-                trust_classes=owner_trust_classes[owner_key],
-                collection_ids=collection_ids,
-            ):
-                raise CodingResourceCatalogAdmissionError(
-                    ("product_owner_binding_boundary_mismatch",)
-                )
-            owner_bindings_list.append(supplied_binding)
-            continue
-        if (
-            owner_key[1] != "resource_item"
-            or owner_trust_classes[owner_key] != {_CODING_PACKAGE_TRUST_CLASS}
-        ):
-            raise CodingResourceCatalogAdmissionError(
-                ("product_owner_binding_missing",)
-            )
-        owner_bindings_list.append(
-            ProductContributionOwnerBinding(
-                authority=OwnerContributionAuthority(
-                    OwnerContributionPolicy(
-                        owner_id=owner_key[0],
-                        contribution_kind=owner_key[1],
-                        product_id="coding",
-                        policy_revision=(
-                            f"{owner_key[0]}-{owner_key[1]}-coding-ingress-v1"
-                        ),
-                        revocation_epoch=0,
-                        allowed_source_trust_classes=tuple(
-                            sorted(owner_trust_classes[owner_key])
-                        ),
-                        allowed_collection_ids=tuple(sorted(collection_ids)),
-                        allowed_requirement_bindings=("direct",),
-                        consumer_scope="session",
-                        consumer_refresh_boundary="sealed",
-                    )
-                )
-            )
-        )
-    owner_bindings = tuple(owner_bindings_list)
-    return ProductPluginSelectionSeed(
+    return _complete_product_plugin_selection_seed(
+        seed,
         selection=selection,
-        packages=seed.packages,
-        bindings=seed.bindings,
-        owner_bindings=owner_bindings,
+        candidates=candidates,
+        resolve_owner=_resolve_coding_contribution_owner,
+        reject=_reject_coding_owner_completion,
+    )
+
+
+def _reject_coding_owner_completion(
+    reason: OwnerCompletionRejection,
+) -> CodingResourceCatalogAdmissionError:
+    return CodingResourceCatalogAdmissionError((reason,))
+
+
+def _resolve_coding_contribution_owner(
+    *,
+    owner_id: str,
+    contribution_kind: OwnerContributionKind,
+    trust_classes: set[str],
+    collection_ids: set[str],
+    supplied_binding: ProductContributionOwnerBinding | None,
+) -> ProductContributionOwnerBinding:
+    if supplied_binding is not None:
+        if not _owner_binding_covers(
+            supplied_binding,
+            owner_id=owner_id,
+            contribution_kind=contribution_kind,
+            trust_classes=trust_classes,
+            collection_ids=collection_ids,
+        ):
+            raise CodingResourceCatalogAdmissionError(
+                ("product_owner_binding_boundary_mismatch",)
+            )
+        return supplied_binding
+    if contribution_kind != "resource_item" or trust_classes != {
+        _CODING_PACKAGE_TRUST_CLASS
+    }:
+        raise CodingResourceCatalogAdmissionError(("product_owner_binding_missing",))
+    return ProductContributionOwnerBinding(
+        authority=OwnerContributionAuthority(
+            OwnerContributionPolicy(
+                owner_id=owner_id,
+                contribution_kind=contribution_kind,
+                product_id="coding",
+                policy_revision=f"{owner_id}-{contribution_kind}-coding-ingress-v1",
+                revocation_epoch=0,
+                allowed_source_trust_classes=tuple(sorted(trust_classes)),
+                allowed_collection_ids=tuple(sorted(collection_ids)),
+                allowed_requirement_bindings=("direct",),
+                consumer_scope="session",
+                consumer_refresh_boundary="sealed",
+            )
+        )
     )
 
 
