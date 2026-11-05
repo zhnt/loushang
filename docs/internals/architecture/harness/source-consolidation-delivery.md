@@ -3,8 +3,8 @@
 ## Status And Objective
 
 - Authority: delivery evidence; existing capability contracts remain authoritative.
-- Design status: accepted for the internal Store and record-field consolidation
-  described below; durable contracts remain unchanged.
+- Design status: accepted for the internal Store, record-field and epoch-workflow
+  consolidation described below; durable contracts remain unchanged.
 - Implementation status: partial; the 50,000-line objective is not achieved.
 - Responsible implementer and internal reviewer: Codex, under the user's task.
 - Method consulted: local archmethod master at
@@ -185,3 +185,48 @@ The batch-local check plan selects Harness, architecture and existing native/hos
 routes. It does not select AI; the branch's prior AI result belongs to Batch 001.
 Outstanding integrated platform validation and the cumulative 50,000-line target
 remain open.
+
+## Batch 003: Epoch Cutover Transaction Workflow
+
+The POSIX and Windows owners now share current-root observation, cutover
+coordination, native transaction sequencing, exact replay and prior-fence CAS
+validation through `_PackageEpochCutoverWorkflow`. The common implementation
+stays beside the existing canonical epoch records; no source moves outside
+Harness. Each concrete owner retains its original constructor, reopen boundary,
+rooted handle acquisition, public signatures and native operations.
+
+The creation/cleanup differences remain explicit. POSIX creates a directory
+before opening its descriptor; Windows creates and opens through one native
+operation. Windows closes its new namespace handle before rollback, while POSIX
+retains the original close-after-cleanup order. Windows visibility checks still
+open with `share_delete=True`. Existing open-helper instrumentation continues
+to observe the actual native calls.
+
+| Accounting item | Lines |
+| --- | ---: |
+| Batch 003 Resources net reduction | 186 |
+| Outside-Harness Product source increase | 0 |
+| Effective cumulative reduction | 1,373 |
+| Remaining to cumulative objective | 48,627 |
+
+Local validation:
+
+- Existing cutover/snapshot and Plugin architecture regressions: 129 passed,
+  22 native Windows cases skipped on Linux.
+- Existing pre-B workspace snapshot and real CLI adoption/replay cases:
+  30 passed.
+- Repository-external old/new transaction trace comparison: 663 cases, zero
+  mismatches. It covers both platform workflows, exact replay, rejection paths,
+  stale fences, invalid snapshots, callback failures, and injected I/O failures
+  at every successful-path step. Results, error codes/causes, native call order,
+  remaining descriptors and namespace state agree.
+- Separate inspection verifies concrete native callback bindings and exercises
+  the actual instrumented open/create adapters, including Windows access flags.
+- AST comparison preserves 60 original native/record definitions and constructor,
+  reopen and pin-acquisition bodies. All eight public method signatures remain
+  unchanged. Ruff, focused mypy, whitespace and dependency freshness checks pass.
+
+The existing Windows single-publication assertion now reads the exact shared
+workflow body. All 956 assertions remain; native sink inventories, workflow
+configuration, test routes, platforms and triggers are unchanged. Simulated
+Windows trace agreement does not replace outstanding native Windows execution.

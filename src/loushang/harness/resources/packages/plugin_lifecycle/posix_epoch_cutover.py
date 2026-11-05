@@ -11,7 +11,7 @@ import errno
 import os
 import re
 import stat
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from hashlib import sha256
@@ -713,475 +713,6 @@ class PackageEpochCutoverSnapshotPort(Protocol):
     ) -> PackageEpochCutoverSnapshotReceiptV1: ...
 
 
-class PackagePosixEpochCutoverOwner:
-    """Configured POSIX capability owner; public records remain pathless."""
-
-    @staticmethod
-    def reopen_fenced(
-        authority_root: Path,
-        *,
-        store_id: str,
-        epoch_journal: PackageEpochFenceJournal,
-        epochs_root_name: str,
-    ) -> PackagePosixEpochCutoverResultV1:
-        """Rebuild current admission evidence without the pre-B Source owner."""
-
-        if os.name != "posix" or not _supports_posix_rooted_io():
-            raise PackagePosixEpochCutoverError(
-                "POSIX Package epoch reopen is unavailable",
-                code="package_epoch_cutover_unavailable",
-            )
-        if (
-            not isinstance(authority_root, Path)
-            or not authority_root.is_absolute()
-            or ".." in authority_root.parts
-            or authority_root == Path(authority_root.anchor)
-            or not isinstance(epoch_journal, PackageEpochFenceJournal)
-        ):
-            raise ValueError("Package epoch reopen authority is invalid")
-        _require_safe_id(store_id, name="Package store identity")
-        _require_component(epochs_root_name, name="Package epochs root name")
-        records = epoch_journal.records()
-        if not records or records[-1].receipt.store_id != store_id:
-            raise PackagePosixEpochCutoverError(
-                "Package epoch fence is unavailable",
-                code="package_epoch_fence_stale",
-            )
-        current = records[-1].receipt
-        prior = records[-2].receipt if len(records) > 1 else None
-        source = current.request
-        request = PackagePosixEpochCutoverRequestV1.create(
-            store_id=store_id,
-            prior_fence=prior,
-            expected_legacy_root_identity=source.legacy_root_identity,
-            namespace_id=source.namespace_id,
-            minimum_runtime_version=source.minimum_runtime_version,
-            minimum_runtime_protocol_epoch=source.minimum_runtime_protocol_epoch,
-        )
-        switch = PackagePosixEpochRootSwitchReceiptV1.create(
-            request,
-            fenced_root_identity=source.fenced_root_identity,
-            quiescence_receipt_id=source.quiescence_receipt_id,
-            snapshot_receipt_id=source.snapshot_receipt_id,
-        )
-        if switch.switch_receipt_id != source.root_switch_receipt_id:
-            raise _identity_changed()
-        try:
-            pinned = _PinnedPosixAuthority.open(authority_root)
-            try:
-                epochs_fd = pinned.open_authority_child(epochs_root_name)
-                try:
-                    epoch_identity = _directory_native_identity(epochs_fd)
-                    selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
-                    try:
-                        if (
-                            _directory_identity(selected_fd)
-                            != source.fenced_root_identity
-                        ):
-                            raise _identity_changed()
-                    finally:
-                        os.close(selected_fd)
-                finally:
-                    os.close(epochs_fd)
-                pinned.assert_visible()
-                epochs_fd = pinned.open_authority_child(
-                    epochs_root_name, expected_identity=epoch_identity
-                )
-                try:
-                    selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
-                    try:
-                        if (
-                            _directory_identity(selected_fd)
-                            != source.fenced_root_identity
-                        ):
-                            raise _identity_changed()
-                    finally:
-                        os.close(selected_fd)
-                finally:
-                    os.close(epochs_fd)
-            finally:
-                pinned.close()
-        except Exception as exc:
-            raise _native_error(exc) from exc
-        if epoch_journal.current(store_id) != current:
-            raise PackagePosixEpochCutoverError(
-                "Package epoch changed during reopen",
-                code="package_epoch_fence_stale",
-            )
-        return PackagePosixEpochCutoverResultV1.fenced(
-            request, fence=current, switch_receipt=switch
-        )
-
-    def __init__(
-        self,
-        authority_root: str | Path,
-        *,
-        store_id: str,
-        epoch_journal: PackageEpochFenceJournal,
-        coordination: PackageEpochCutoverCoordinationPort,
-        snapshots: PackageEpochCutoverSnapshotPort,
-        legacy_root_name: str = "legacy",
-        epochs_root_name: str = "epochs",
-        snapshot_admission: Callable[[PackageEpochCutoverSnapshotReceiptV1], None]
-        | None = None,
-        before_fence_probe=None,
-    ) -> None:
-        if os.name != "posix" or not _supports_posix_rooted_io():
-            raise PackagePosixEpochCutoverError(
-                "POSIX Package epoch cutover is unavailable",
-                code="package_epoch_cutover_unavailable",
-            )
-        if not isinstance(authority_root, (str, Path)):
-            raise TypeError("Package epoch authority root must be a filesystem path")
-        raw_root = Path(authority_root)
-        if (
-            not raw_root.is_absolute()
-            or ".." in raw_root.parts
-            or raw_root == Path(raw_root.anchor)
-        ):
-            raise PackagePosixEpochCutoverError(
-                "Package epoch authority root must be absolute and normalized",
-                code="package_epoch_cutover_identity_changed",
-            )
-        _require_safe_id(store_id, name="Package store identity")
-        _require_component(legacy_root_name, name="legacy Package root name")
-        _require_component(epochs_root_name, name="Package epochs root name")
-        if legacy_root_name == epochs_root_name:
-            raise ValueError("Legacy and epoch Package roots must be distinct")
-        if not isinstance(epoch_journal, PackageEpochFenceJournal):
-            raise TypeError("Package epoch fence journal is required")
-        if not callable(getattr(coordination, "exclusive_quiescence", None)):
-            raise TypeError("Package epoch coordination owner is required")
-        if not callable(getattr(snapshots, "capture", None)):
-            raise TypeError("Package epoch snapshot owner is required")
-        if before_fence_probe is not None and not callable(before_fence_probe):
-            raise TypeError("Package epoch pre-fence probe must be callable")
-        if snapshot_admission is not None and not callable(snapshot_admission):
-            raise TypeError("Package snapshot admission must be callable")
-        self._root = raw_root
-        self._store_id = store_id
-        self._journal = epoch_journal
-        self._coordination = coordination
-        self._snapshots = snapshots
-        self._legacy_name = legacy_root_name
-        self._epochs_name = epochs_root_name
-        self._before_fence_probe = before_fence_probe
-        self._snapshot_admission = snapshot_admission
-        pinned = _PinnedPosixAuthority.open(self._root)
-        try:
-            legacy_fd = pinned.open_authority_child(self._legacy_name)
-            epochs_fd = pinned.open_authority_child(self._epochs_name)
-            try:
-                self._authority_identities = pinned.identities
-                self._legacy_genesis_identity = _directory_identity(legacy_fd)
-                self._epochs_identity = _directory_native_identity(epochs_fd)
-            finally:
-                os.close(epochs_fd)
-                os.close(legacy_fd)
-        except Exception as exc:
-            raise _native_error(exc) from exc
-        finally:
-            pinned.close()
-
-    def current_root_identity(self) -> str:
-        current = self._journal.current(self._store_id)
-        pinned = self._open_pinned()
-        root_fd: int | None = None
-        epochs_fd: int | None = None
-        try:
-            epochs_fd = pinned.open_authority_child(
-                self._epochs_name,
-                expected_identity=self._epochs_identity,
-            )
-            if current is None:
-                root_fd = pinned.open_authority_child(self._legacy_name)
-                observed = _directory_identity(root_fd)
-                if observed != self._legacy_genesis_identity:
-                    raise _identity_changed()
-                return observed
-            root_fd = _open_directory_at(epochs_fd, current.request.namespace_id)
-            observed = _directory_identity(root_fd)
-            if observed != current.fenced_root_identity:
-                raise _identity_changed()
-            return observed
-        except PackagePosixEpochCutoverError:
-            raise
-        except Exception as exc:
-            raise _native_error(exc) from exc
-        finally:
-            if root_fd is not None:
-                os.close(root_fd)
-            if epochs_fd is not None:
-                os.close(epochs_fd)
-            pinned.close()
-
-    def cutover(
-        self,
-        request: PackagePosixEpochCutoverRequestV1,
-    ) -> PackagePosixEpochCutoverResultV1:
-        if not isinstance(request, PackagePosixEpochCutoverRequestV1):
-            raise TypeError("POSIX Package epoch cutover request is required")
-        if request.store_id != self._store_id:
-            raise PackagePosixEpochCutoverError(
-                "Package epoch cutover store changed",
-                code="package_epoch_fence_stale",
-            )
-        current = self._journal.current(self._store_id)
-        replay = self._exact_replay(request, current)
-        if replay is not None:
-            return replay
-        self._validate_prior(request, current)
-        try:
-            exclusive = self._coordination.exclusive_quiescence(store_id=self._store_id)
-            with exclusive as quiescence:
-                locked_current = self._journal.current(self._store_id)
-                replay = self._exact_replay(request, locked_current)
-                if replay is not None:
-                    return replay
-                self._validate_prior(request, locked_current)
-                return self._cutover_exclusive(
-                    request,
-                    locked_current,
-                    quiescence,
-                )
-        except PackagePosixEpochCutoverError:
-            raise
-        except PackageEpochFenceError as exc:
-            raise PackagePosixEpochCutoverError(
-                "Package epoch fence compare-and-swap failed",
-                code=exc.code,
-            ) from exc
-        except Exception as exc:
-            raise _native_error(exc) from exc
-
-    def _cutover_exclusive(
-        self,
-        request: PackagePosixEpochCutoverRequestV1,
-        current: PackageEpochFenceReceiptV1 | None,
-        quiescence: PackageEpochCutoverQuiescenceReceiptV1,
-    ) -> PackagePosixEpochCutoverResultV1:
-        if not isinstance(quiescence, PackageEpochCutoverQuiescenceReceiptV1):
-            raise PackagePosixEpochCutoverError(
-                "Package quiescence evidence is invalid",
-                code="package_epoch_cutover_quiescence_unavailable",
-            )
-        if quiescence.store_id != self._store_id:
-            raise PackagePosixEpochCutoverError(
-                "Package quiescence store changed",
-                code="package_epoch_cutover_quiescence_unavailable",
-            )
-        if not quiescence.is_quiescent:
-            return PackagePosixEpochCutoverResultV1.rejected(
-                request,
-                evidence_ref=quiescence.first_active_evidence,
-            )
-        if self._journal.current(self._store_id) != current:
-            raise PackagePosixEpochCutoverError(
-                "Package epoch changed before native cutover",
-                code="package_epoch_fence_stale",
-            )
-
-        pinned = self._open_pinned()
-        epochs_fd: int | None = None
-        legacy_fd: int | None = None
-        new_fd: int | None = None
-        new_identity: str | None = None
-        created = False
-        fenced = False
-        try:
-            epochs_fd = pinned.open_authority_child(
-                self._epochs_name,
-                expected_identity=self._epochs_identity,
-            )
-            if current is None:
-                legacy_fd = pinned.open_authority_child(self._legacy_name)
-            else:
-                legacy_fd = _open_directory_at(
-                    epochs_fd,
-                    current.request.namespace_id,
-                )
-            observed_legacy = _directory_identity(legacy_fd)
-            if observed_legacy != request.expected_legacy_root_identity:
-                raise _identity_changed()
-            snapshot = self._snapshots.capture(
-                store_id=self._store_id,
-                legacy_root_identity=observed_legacy,
-                quiescence_receipt_id=quiescence.receipt_id,
-            )
-            _validate_snapshot(snapshot, request, quiescence)
-            if self._snapshot_admission is not None:
-                self._snapshot_admission(snapshot)
-            try:
-                os.mkdir(request.namespace_id, mode=0o700, dir_fd=epochs_fd)
-                created = True
-            except FileExistsError as exc:
-                raise PackagePosixEpochCutoverError(
-                    "Package epoch namespace already exists",
-                    code="package_epoch_cutover_namespace_conflict",
-                ) from exc
-            new_fd = _open_directory_at(epochs_fd, request.namespace_id)
-            new_identity = _directory_identity(new_fd)
-            if new_identity == observed_legacy:
-                raise _identity_changed()
-            os.fsync(new_fd)
-            os.fsync(epochs_fd)
-            switch = PackagePosixEpochRootSwitchReceiptV1.create(
-                request,
-                fenced_root_identity=new_identity,
-                quiescence_receipt_id=quiescence.receipt_id,
-                snapshot_receipt_id=snapshot.receipt_id,
-            )
-            epoch_request = PackageEpochFenceRequestV1.create(
-                store_id=self._store_id,
-                prior_fence=current,
-                legacy_root_identity=observed_legacy,
-                fenced_root_identity=new_identity,
-                namespace_id=request.namespace_id,
-                minimum_runtime_version=request.minimum_runtime_version,
-                minimum_runtime_protocol_epoch=(request.minimum_runtime_protocol_epoch),
-                quiescence_receipt_id=quiescence.receipt_id,
-                snapshot_receipt_id=snapshot.receipt_id,
-                root_switch_receipt_id=switch.switch_receipt_id,
-            )
-            if self._before_fence_probe is not None:
-                self._before_fence_probe()
-            pinned.assert_visible()
-            if _directory_identity(legacy_fd) != observed_legacy:
-                raise _identity_changed()
-            if _directory_identity(new_fd) != new_identity:
-                raise _identity_changed()
-            if os.listdir(new_fd):
-                raise PackagePosixEpochCutoverError(
-                    "Fresh Package epoch namespace is not empty",
-                    code="package_epoch_cutover_namespace_conflict",
-                )
-            visible_epochs = pinned.open_authority_child(
-                self._epochs_name,
-                expected_identity=self._epochs_identity,
-            )
-            try:
-                visible_new = _open_directory_at(
-                    visible_epochs,
-                    request.namespace_id,
-                )
-                try:
-                    if _directory_identity(visible_new) != new_identity:
-                        raise _identity_changed()
-                finally:
-                    os.close(visible_new)
-            finally:
-                os.close(visible_epochs)
-            if self._journal.current(self._store_id) != current:
-                raise PackagePosixEpochCutoverError(
-                    "Package epoch changed before fence publication",
-                    code="package_epoch_fence_stale",
-                )
-            fence = self._journal.publish(epoch_request)
-            fenced = True
-            if fence.request != epoch_request:
-                raise PackagePosixEpochCutoverError(
-                    "Package epoch fence publication changed",
-                    code="package_epoch_fence_stale",
-                )
-            return PackagePosixEpochCutoverResultV1.fenced(
-                request,
-                fence=fence,
-                switch_receipt=switch,
-            )
-        except Exception:
-            if created and not fenced and epochs_fd is not None and new_identity:
-                _remove_created_epoch(
-                    epochs_fd,
-                    request.namespace_id,
-                    expected_identity=new_identity,
-                )
-            raise
-        finally:
-            if new_fd is not None:
-                os.close(new_fd)
-            if legacy_fd is not None:
-                os.close(legacy_fd)
-            if epochs_fd is not None:
-                os.close(epochs_fd)
-            pinned.close()
-
-    def _exact_replay(
-        self,
-        request: PackagePosixEpochCutoverRequestV1,
-        current: PackageEpochFenceReceiptV1 | None,
-    ) -> PackagePosixEpochCutoverResultV1 | None:
-        if current is None or current.epoch != request.next_epoch:
-            return None
-        epoch_request = current.request
-        if (
-            epoch_request.store_id != request.store_id
-            or epoch_request.prior_epoch != request.prior_epoch
-            or epoch_request.prior_fence_id != request.prior_fence_id
-            or epoch_request.prior_fence_revision != request.prior_fence_revision
-            or epoch_request.legacy_root_identity
-            != request.expected_legacy_root_identity
-            or epoch_request.namespace_id != request.namespace_id
-            or epoch_request.minimum_runtime_version != request.minimum_runtime_version
-            or epoch_request.minimum_runtime_protocol_epoch
-            != request.minimum_runtime_protocol_epoch
-        ):
-            return None
-        if self.current_root_identity() != epoch_request.fenced_root_identity:
-            raise _identity_changed()
-        switch = PackagePosixEpochRootSwitchReceiptV1.create(
-            request,
-            fenced_root_identity=epoch_request.fenced_root_identity,
-            quiescence_receipt_id=epoch_request.quiescence_receipt_id,
-            snapshot_receipt_id=epoch_request.snapshot_receipt_id,
-        )
-        if switch.switch_receipt_id != epoch_request.root_switch_receipt_id:
-            raise _identity_changed()
-        if self._journal.current(self._store_id) != current:
-            raise PackagePosixEpochCutoverError(
-                "Package epoch changed during exact replay",
-                code="package_epoch_fence_stale",
-            )
-        return PackagePosixEpochCutoverResultV1.fenced(
-            request,
-            fence=current,
-            switch_receipt=switch,
-        )
-
-    def _validate_prior(
-        self,
-        request: PackagePosixEpochCutoverRequestV1,
-        current: PackageEpochFenceReceiptV1 | None,
-    ) -> None:
-        if current is None:
-            valid = (
-                request.prior_epoch == 0
-                and request.prior_fence_id is None
-                and request.prior_fence_revision == 0
-            )
-        else:
-            valid = (
-                request.prior_epoch == current.epoch
-                and request.prior_fence_id == current.fence_id
-                and request.prior_fence_revision == current.fence_revision
-                and request.expected_legacy_root_identity
-                == current.fenced_root_identity
-            )
-        if not valid:
-            raise PackagePosixEpochCutoverError(
-                "Package epoch cutover compare-and-swap failed",
-                code="package_epoch_fence_stale",
-            )
-
-    def _open_pinned(self) -> _PinnedPosixAuthority:
-        try:
-            return _PinnedPosixAuthority.open(
-                self._root,
-                expected_identities=self._authority_identities,
-            )
-        except Exception as exc:
-            raise _native_error(exc) from exc
-
-
 class _PinnedPosixAuthority:
     def __init__(
         self,
@@ -1706,3 +1237,551 @@ _POSIX_EPOCH_CUTOVER_FAILURE_V1_SCHEMA = RecordSchema(
         RecordField("failure_version", "failure version", _wire_int),
     ),
 )
+
+
+class _EpochCutoverPinnedAuthority(Protocol):
+    def open_authority_child(
+        self, name: str, *, expected_identity: _NativeIdentity | None = None
+    ) -> int: ...
+
+    def assert_visible(self) -> None: ...
+
+    def close(self) -> None: ...
+
+
+class _EpochCutoverErrorFactory(Protocol):
+    def __call__(self, message: str, *, code: str) -> RuntimeError: ...
+
+
+def _create_epoch_directory(epochs_fd: int, namespace_id: str) -> int | None:
+    os.mkdir(namespace_id, mode=0o700, dir_fd=epochs_fd)
+    return None
+
+
+class _PackageEpochCutoverWorkflow:
+    """One fence-publication state machine over native directory capabilities.
+
+    Concrete owners retain constructor admission, rooted handle acquisition,
+    native errors and platform-specific cleanup ordering.
+    """
+
+    _platform_name = "POSIX"
+    _error_type: type[RuntimeError] = PackagePosixEpochCutoverError
+    _close_before_cleanup = False
+
+    @staticmethod
+    def _open_child(parent_fd: int, name: str) -> int:
+        return _open_directory_at(parent_fd, name)
+
+    _open_visible_child: Callable[[int, str], int] = _open_child
+    _create_epoch_directory = staticmethod(_create_epoch_directory)
+    _directory_identity = staticmethod(_directory_identity)
+    _identity_changed: Callable[[], RuntimeError] = staticmethod(_identity_changed)
+    _native_error: Callable[[BaseException], RuntimeError] = staticmethod(_native_error)
+    _validate_snapshot = staticmethod(_validate_snapshot)
+    _remove_created_epoch = staticmethod(_remove_created_epoch)
+    _flush_directory: Callable[[int], None] = staticmethod(os.fsync)
+    _list_directory: Callable[[int], Sequence[str]] = staticmethod(
+        cast(Callable[[int], Sequence[str]], os.listdir)
+    )
+
+    _store_id: str
+    _journal: PackageEpochFenceJournal
+    _coordination: PackageEpochCutoverCoordinationPort
+    _snapshots: PackageEpochCutoverSnapshotPort
+    _legacy_name: str
+    _epochs_name: str
+    _epochs_identity: _NativeIdentity
+    _legacy_genesis_identity: str
+    _snapshot_admission: Callable[[PackageEpochCutoverSnapshotReceiptV1], None] | None
+    _before_fence_probe: Callable[[], None] | None
+
+    def _cutover_error(self, message: str, *, code: str) -> RuntimeError:
+        return cast(_EpochCutoverErrorFactory, self._error_type)(message, code=code)
+
+    def _open_pinned(self) -> _EpochCutoverPinnedAuthority:
+        raise NotImplementedError
+
+    def current_root_identity(self) -> str:
+        current = self._journal.current(self._store_id)
+        pinned = self._open_pinned()
+        root_fd: int | None = None
+        epochs_fd: int | None = None
+        try:
+            epochs_fd = pinned.open_authority_child(
+                self._epochs_name,
+                expected_identity=self._epochs_identity,
+            )
+            if current is None:
+                root_fd = pinned.open_authority_child(self._legacy_name)
+                observed = self._directory_identity(root_fd)
+                if observed != self._legacy_genesis_identity:
+                    raise self._identity_changed()
+                return observed
+            root_fd = self._open_child(epochs_fd, current.request.namespace_id)
+            observed = self._directory_identity(root_fd)
+            if observed != current.fenced_root_identity:
+                raise self._identity_changed()
+            return observed
+        except self._error_type:
+            raise
+        except Exception as exc:
+            raise self._native_error(exc) from exc
+        finally:
+            if root_fd is not None:
+                os.close(root_fd)
+            if epochs_fd is not None:
+                os.close(epochs_fd)
+            pinned.close()
+
+    def cutover(
+        self,
+        request: PackagePosixEpochCutoverRequestV1,
+    ) -> PackagePosixEpochCutoverResultV1:
+        if not isinstance(request, PackagePosixEpochCutoverRequestV1):
+            raise TypeError(
+                f"{self._platform_name} Package epoch cutover request is required"
+            )
+        if request.store_id != self._store_id:
+            raise self._cutover_error(
+                "Package epoch cutover store changed",
+                code="package_epoch_fence_stale",
+            )
+        current = self._journal.current(self._store_id)
+        replay = self._exact_replay(request, current)
+        if replay is not None:
+            return replay
+        self._validate_prior(request, current)
+        try:
+            exclusive = self._coordination.exclusive_quiescence(store_id=self._store_id)
+            with exclusive as quiescence:
+                locked_current = self._journal.current(self._store_id)
+                replay = self._exact_replay(request, locked_current)
+                if replay is not None:
+                    return replay
+                self._validate_prior(request, locked_current)
+                return self._cutover_exclusive(
+                    request,
+                    locked_current,
+                    quiescence,
+                )
+        except self._error_type:
+            raise
+        except PackageEpochFenceError as exc:
+            raise self._cutover_error(
+                "Package epoch fence compare-and-swap failed",
+                code=exc.code,
+            ) from exc
+        except Exception as exc:
+            raise self._native_error(exc) from exc
+
+    def _cutover_exclusive(
+        self,
+        request: PackagePosixEpochCutoverRequestV1,
+        current: PackageEpochFenceReceiptV1 | None,
+        quiescence: PackageEpochCutoverQuiescenceReceiptV1,
+    ) -> PackagePosixEpochCutoverResultV1:
+        if not isinstance(quiescence, PackageEpochCutoverQuiescenceReceiptV1):
+            raise self._cutover_error(
+                "Package quiescence evidence is invalid",
+                code="package_epoch_cutover_quiescence_unavailable",
+            )
+        if quiescence.store_id != self._store_id:
+            raise self._cutover_error(
+                "Package quiescence store changed",
+                code="package_epoch_cutover_quiescence_unavailable",
+            )
+        if not quiescence.is_quiescent:
+            return PackagePosixEpochCutoverResultV1.rejected(
+                request,
+                evidence_ref=quiescence.first_active_evidence,
+            )
+        if self._journal.current(self._store_id) != current:
+            raise self._cutover_error(
+                "Package epoch changed before native cutover",
+                code="package_epoch_fence_stale",
+            )
+
+        pinned = self._open_pinned()
+        epochs_fd: int | None = None
+        legacy_fd: int | None = None
+        new_fd: int | None = None
+        new_identity: str | None = None
+        created = False
+        fenced = False
+        try:
+            epochs_fd = pinned.open_authority_child(
+                self._epochs_name,
+                expected_identity=self._epochs_identity,
+            )
+            if current is None:
+                legacy_fd = pinned.open_authority_child(self._legacy_name)
+            else:
+                legacy_fd = self._open_child(
+                    epochs_fd,
+                    current.request.namespace_id,
+                )
+            observed_legacy = self._directory_identity(legacy_fd)
+            if observed_legacy != request.expected_legacy_root_identity:
+                raise self._identity_changed()
+            snapshot = self._snapshots.capture(
+                store_id=self._store_id,
+                legacy_root_identity=observed_legacy,
+                quiescence_receipt_id=quiescence.receipt_id,
+            )
+            self._validate_snapshot(snapshot, request, quiescence)
+            if self._snapshot_admission is not None:
+                self._snapshot_admission(snapshot)
+            try:
+                new_fd = self._create_epoch_directory(epochs_fd, request.namespace_id)
+                created = True
+            except FileExistsError as exc:
+                raise self._cutover_error(
+                    "Package epoch namespace already exists",
+                    code="package_epoch_cutover_namespace_conflict",
+                ) from exc
+            if new_fd is None:
+                new_fd = self._open_child(epochs_fd, request.namespace_id)
+            new_identity = self._directory_identity(new_fd)
+            if new_identity == observed_legacy:
+                raise self._identity_changed()
+            self._flush_directory(new_fd)
+            self._flush_directory(epochs_fd)
+            switch = PackagePosixEpochRootSwitchReceiptV1.create(
+                request,
+                fenced_root_identity=new_identity,
+                quiescence_receipt_id=quiescence.receipt_id,
+                snapshot_receipt_id=snapshot.receipt_id,
+            )
+            epoch_request = PackageEpochFenceRequestV1.create(
+                store_id=self._store_id,
+                prior_fence=current,
+                legacy_root_identity=observed_legacy,
+                fenced_root_identity=new_identity,
+                namespace_id=request.namespace_id,
+                minimum_runtime_version=request.minimum_runtime_version,
+                minimum_runtime_protocol_epoch=(request.minimum_runtime_protocol_epoch),
+                quiescence_receipt_id=quiescence.receipt_id,
+                snapshot_receipt_id=snapshot.receipt_id,
+                root_switch_receipt_id=switch.switch_receipt_id,
+            )
+            if self._before_fence_probe is not None:
+                self._before_fence_probe()
+            pinned.assert_visible()
+            if self._directory_identity(legacy_fd) != observed_legacy:
+                raise self._identity_changed()
+            if self._directory_identity(new_fd) != new_identity:
+                raise self._identity_changed()
+            if self._list_directory(new_fd):
+                raise self._cutover_error(
+                    "Fresh Package epoch namespace is not empty",
+                    code="package_epoch_cutover_namespace_conflict",
+                )
+            visible_epochs = pinned.open_authority_child(
+                self._epochs_name,
+                expected_identity=self._epochs_identity,
+            )
+            try:
+                visible_new = self._open_visible_child(
+                    visible_epochs,
+                    request.namespace_id,
+                )
+                try:
+                    if self._directory_identity(visible_new) != new_identity:
+                        raise self._identity_changed()
+                finally:
+                    os.close(visible_new)
+            finally:
+                os.close(visible_epochs)
+            if self._journal.current(self._store_id) != current:
+                raise self._cutover_error(
+                    "Package epoch changed before fence publication",
+                    code="package_epoch_fence_stale",
+                )
+            fence = self._journal.publish(epoch_request)
+            fenced = True
+            if fence.request != epoch_request:
+                raise self._cutover_error(
+                    "Package epoch fence publication changed",
+                    code="package_epoch_fence_stale",
+                )
+            return PackagePosixEpochCutoverResultV1.fenced(
+                request,
+                fence=fence,
+                switch_receipt=switch,
+            )
+        except Exception:
+            if created and not fenced and epochs_fd is not None and new_identity:
+                if self._close_before_cleanup and new_fd is not None:
+                    os.close(new_fd)
+                    new_fd = None
+                self._remove_created_epoch(
+                    epochs_fd,
+                    request.namespace_id,
+                    expected_identity=new_identity,
+                )
+            raise
+        finally:
+            if new_fd is not None:
+                os.close(new_fd)
+            if legacy_fd is not None:
+                os.close(legacy_fd)
+            if epochs_fd is not None:
+                os.close(epochs_fd)
+            pinned.close()
+
+    def _exact_replay(
+        self,
+        request: PackagePosixEpochCutoverRequestV1,
+        current: PackageEpochFenceReceiptV1 | None,
+    ) -> PackagePosixEpochCutoverResultV1 | None:
+        if current is None or current.epoch != request.next_epoch:
+            return None
+        epoch_request = current.request
+        if (
+            epoch_request.store_id != request.store_id
+            or epoch_request.prior_epoch != request.prior_epoch
+            or epoch_request.prior_fence_id != request.prior_fence_id
+            or epoch_request.prior_fence_revision != request.prior_fence_revision
+            or epoch_request.legacy_root_identity
+            != request.expected_legacy_root_identity
+            or epoch_request.namespace_id != request.namespace_id
+            or epoch_request.minimum_runtime_version != request.minimum_runtime_version
+            or epoch_request.minimum_runtime_protocol_epoch
+            != request.minimum_runtime_protocol_epoch
+        ):
+            return None
+        if self.current_root_identity() != epoch_request.fenced_root_identity:
+            raise self._identity_changed()
+        switch = PackagePosixEpochRootSwitchReceiptV1.create(
+            request,
+            fenced_root_identity=epoch_request.fenced_root_identity,
+            quiescence_receipt_id=epoch_request.quiescence_receipt_id,
+            snapshot_receipt_id=epoch_request.snapshot_receipt_id,
+        )
+        if switch.switch_receipt_id != epoch_request.root_switch_receipt_id:
+            raise self._identity_changed()
+        if self._journal.current(self._store_id) != current:
+            raise self._cutover_error(
+                "Package epoch changed during exact replay",
+                code="package_epoch_fence_stale",
+            )
+        return PackagePosixEpochCutoverResultV1.fenced(
+            request,
+            fence=current,
+            switch_receipt=switch,
+        )
+
+    def _validate_prior(
+        self,
+        request: PackagePosixEpochCutoverRequestV1,
+        current: PackageEpochFenceReceiptV1 | None,
+    ) -> None:
+        if current is None:
+            valid = (
+                request.prior_epoch == 0
+                and request.prior_fence_id is None
+                and request.prior_fence_revision == 0
+            )
+        else:
+            valid = (
+                request.prior_epoch == current.epoch
+                and request.prior_fence_id == current.fence_id
+                and request.prior_fence_revision == current.fence_revision
+                and request.expected_legacy_root_identity
+                == current.fenced_root_identity
+            )
+        if not valid:
+            raise self._cutover_error(
+                "Package epoch cutover compare-and-swap failed",
+                code="package_epoch_fence_stale",
+            )
+
+
+class PackagePosixEpochCutoverOwner(_PackageEpochCutoverWorkflow):
+    """Configured POSIX capability owner; public records remain pathless."""
+
+    @staticmethod
+    def reopen_fenced(
+        authority_root: Path,
+        *,
+        store_id: str,
+        epoch_journal: PackageEpochFenceJournal,
+        epochs_root_name: str,
+    ) -> PackagePosixEpochCutoverResultV1:
+        """Rebuild current admission evidence without the pre-B Source owner."""
+
+        if os.name != "posix" or not _supports_posix_rooted_io():
+            raise PackagePosixEpochCutoverError(
+                "POSIX Package epoch reopen is unavailable",
+                code="package_epoch_cutover_unavailable",
+            )
+        if (
+            not isinstance(authority_root, Path)
+            or not authority_root.is_absolute()
+            or ".." in authority_root.parts
+            or authority_root == Path(authority_root.anchor)
+            or not isinstance(epoch_journal, PackageEpochFenceJournal)
+        ):
+            raise ValueError("Package epoch reopen authority is invalid")
+        _require_safe_id(store_id, name="Package store identity")
+        _require_component(epochs_root_name, name="Package epochs root name")
+        records = epoch_journal.records()
+        if not records or records[-1].receipt.store_id != store_id:
+            raise PackagePosixEpochCutoverError(
+                "Package epoch fence is unavailable",
+                code="package_epoch_fence_stale",
+            )
+        current = records[-1].receipt
+        prior = records[-2].receipt if len(records) > 1 else None
+        source = current.request
+        request = PackagePosixEpochCutoverRequestV1.create(
+            store_id=store_id,
+            prior_fence=prior,
+            expected_legacy_root_identity=source.legacy_root_identity,
+            namespace_id=source.namespace_id,
+            minimum_runtime_version=source.minimum_runtime_version,
+            minimum_runtime_protocol_epoch=source.minimum_runtime_protocol_epoch,
+        )
+        switch = PackagePosixEpochRootSwitchReceiptV1.create(
+            request,
+            fenced_root_identity=source.fenced_root_identity,
+            quiescence_receipt_id=source.quiescence_receipt_id,
+            snapshot_receipt_id=source.snapshot_receipt_id,
+        )
+        if switch.switch_receipt_id != source.root_switch_receipt_id:
+            raise _identity_changed()
+        try:
+            pinned = _PinnedPosixAuthority.open(authority_root)
+            try:
+                epochs_fd = pinned.open_authority_child(epochs_root_name)
+                try:
+                    epoch_identity = _directory_native_identity(epochs_fd)
+                    selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
+                    try:
+                        if (
+                            _directory_identity(selected_fd)
+                            != source.fenced_root_identity
+                        ):
+                            raise _identity_changed()
+                    finally:
+                        os.close(selected_fd)
+                finally:
+                    os.close(epochs_fd)
+                pinned.assert_visible()
+                epochs_fd = pinned.open_authority_child(
+                    epochs_root_name, expected_identity=epoch_identity
+                )
+                try:
+                    selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
+                    try:
+                        if (
+                            _directory_identity(selected_fd)
+                            != source.fenced_root_identity
+                        ):
+                            raise _identity_changed()
+                    finally:
+                        os.close(selected_fd)
+                finally:
+                    os.close(epochs_fd)
+            finally:
+                pinned.close()
+        except Exception as exc:
+            raise _native_error(exc) from exc
+        if epoch_journal.current(store_id) != current:
+            raise PackagePosixEpochCutoverError(
+                "Package epoch changed during reopen",
+                code="package_epoch_fence_stale",
+            )
+        return PackagePosixEpochCutoverResultV1.fenced(
+            request, fence=current, switch_receipt=switch
+        )
+
+    def __init__(
+        self,
+        authority_root: str | Path,
+        *,
+        store_id: str,
+        epoch_journal: PackageEpochFenceJournal,
+        coordination: PackageEpochCutoverCoordinationPort,
+        snapshots: PackageEpochCutoverSnapshotPort,
+        legacy_root_name: str = "legacy",
+        epochs_root_name: str = "epochs",
+        snapshot_admission: Callable[[PackageEpochCutoverSnapshotReceiptV1], None]
+        | None = None,
+        before_fence_probe=None,
+    ) -> None:
+        if os.name != "posix" or not _supports_posix_rooted_io():
+            raise PackagePosixEpochCutoverError(
+                "POSIX Package epoch cutover is unavailable",
+                code="package_epoch_cutover_unavailable",
+            )
+        if not isinstance(authority_root, (str, Path)):
+            raise TypeError("Package epoch authority root must be a filesystem path")
+        raw_root = Path(authority_root)
+        if (
+            not raw_root.is_absolute()
+            or ".." in raw_root.parts
+            or raw_root == Path(raw_root.anchor)
+        ):
+            raise PackagePosixEpochCutoverError(
+                "Package epoch authority root must be absolute and normalized",
+                code="package_epoch_cutover_identity_changed",
+            )
+        _require_safe_id(store_id, name="Package store identity")
+        _require_component(legacy_root_name, name="legacy Package root name")
+        _require_component(epochs_root_name, name="Package epochs root name")
+        if legacy_root_name == epochs_root_name:
+            raise ValueError("Legacy and epoch Package roots must be distinct")
+        if not isinstance(epoch_journal, PackageEpochFenceJournal):
+            raise TypeError("Package epoch fence journal is required")
+        if not callable(getattr(coordination, "exclusive_quiescence", None)):
+            raise TypeError("Package epoch coordination owner is required")
+        if not callable(getattr(snapshots, "capture", None)):
+            raise TypeError("Package epoch snapshot owner is required")
+        if before_fence_probe is not None and not callable(before_fence_probe):
+            raise TypeError("Package epoch pre-fence probe must be callable")
+        if snapshot_admission is not None and not callable(snapshot_admission):
+            raise TypeError("Package snapshot admission must be callable")
+        self._root = raw_root
+        self._store_id = store_id
+        self._journal = epoch_journal
+        self._coordination = coordination
+        self._snapshots = snapshots
+        self._legacy_name = legacy_root_name
+        self._epochs_name = epochs_root_name
+        self._before_fence_probe = before_fence_probe
+        self._snapshot_admission = snapshot_admission
+        pinned = _PinnedPosixAuthority.open(self._root)
+        try:
+            legacy_fd = pinned.open_authority_child(self._legacy_name)
+            epochs_fd = pinned.open_authority_child(self._epochs_name)
+            try:
+                self._authority_identities = pinned.identities
+                self._legacy_genesis_identity = _directory_identity(legacy_fd)
+                self._epochs_identity = _directory_native_identity(epochs_fd)
+            finally:
+                os.close(epochs_fd)
+                os.close(legacy_fd)
+        except Exception as exc:
+            raise _native_error(exc) from exc
+        finally:
+            pinned.close()
+
+    def _open_pinned(self) -> _PinnedPosixAuthority:
+        try:
+            return _PinnedPosixAuthority.open(
+                self._root,
+                expected_identities=self._authority_identities,
+            )
+        except Exception as exc:
+            raise _native_error(exc) from exc
+
+    def current_root_identity(self) -> str:
+        return super().current_root_identity()
+
+    def cutover(
+        self,
+        request: PackagePosixEpochCutoverRequestV1,
+    ) -> PackagePosixEpochCutoverResultV1:
+        return super().cutover(request)

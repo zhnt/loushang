@@ -4123,7 +4123,16 @@ def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
         "windows_rmdir_at",
     ):
         assert rooted_primitive in source
-    assert "self._journal.publish(epoch_request)" in source
+    shared_source = _source(POSIX_EPOCH_CUTOVER)
+    shared_workflow = next(
+        node
+        for node in ast.parse(shared_source).body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "_PackageEpochCutoverWorkflow"
+    )
+    assert "self._journal.publish(epoch_request)" in (
+        ast.get_source_segment(shared_source, shared_workflow) or ""
+    )
     assert "PackageWindowsEpochCutoverRequestV1: TypeAlias" in source
     assert "NtFlushBuffersFileEx" in _source(WINDOWS_QUARANTINE)
     assert "PackagePosixEpochCutoverOwner" not in source
