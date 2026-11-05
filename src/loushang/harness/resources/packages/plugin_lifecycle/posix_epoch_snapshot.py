@@ -1,4 +1,4 @@
-"""Rooted pre-B snapshots shared by POSIX cutover and offline restore.
+"""Rooted pre-B snapshot publication and authenticated evidence reads.
 
 The Product supplies one private source for each required pre-B domain.
 Whole-tree sources must be disjoint. Explicit top-level member selections may
@@ -19,15 +19,10 @@ from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.journal import journal_file_lock
-from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
-    PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
-    PackageOfflineRestoreError,
-    PackageOfflineRestoreSnapshotEvidenceV1,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore import (
+from loushang.harness.resources.packages.plugin_lifecycle.posix_snapshot_io import (
     DEFAULT_PACKAGE_POSIX_OFFLINE_RESTORE_MAX_BYTES,
     DEFAULT_PACKAGE_POSIX_OFFLINE_RESTORE_MAX_DEPTH,
     DEFAULT_PACKAGE_POSIX_OFFLINE_RESTORE_MAX_ENTRIES,
@@ -58,6 +53,11 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore 
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.snapshot_records import (
+    PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
+    PackageOfflineRestoreError,
+    PackageOfflineRestoreSnapshotEvidenceV1,
 )
 
 _PAYLOAD_NAME = "payload"

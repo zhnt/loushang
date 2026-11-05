@@ -6,6 +6,13 @@ checks an artifact only; it does not establish Product admission, selection, or
 consumer use. The owner of each Product route makes those decisions. This page
 does not add a second Plugin registry or change a default route.
 
+The unbound internal PLC9B offline-restore coordinator and isolated legacy-runtime
+launchers have been retired by
+[HAR-PLUG-ARD-001](decisions/accepted/HAR-PLUG-ARD-001-retire-unbound-legacy-restore.md).
+Pre-B snapshots and backup inspection remain available; there is no shipped
+Product command that launches an isolated old runtime. Existing unfenced
+workspaces continue through their compatible ordinary Session owner.
+
 | Kind and entry | Artifact build/validation | Product admission | Selection and consumer evidence | Platform and default | Remaining gate |
 | --- | --- | --- | --- | --- | --- |
 | Native Skill | `.loushang/skills/<name>/SKILL.md` | Native Resource discovery; no Wheel installation | New Coding Session selects the Skill; `/skill:<name>` injects its text into model input | Coding workspace; no package lifecycle | Verify a concrete Session when asserting use |

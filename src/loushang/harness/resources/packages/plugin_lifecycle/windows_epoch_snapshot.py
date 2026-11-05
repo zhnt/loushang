@@ -2,7 +2,7 @@
 
 The Product maps complete legacy state into the fixed offline-restore domains.
 The snapshot is copied under native directory handles and indexed only after
-its immutable bundle can be read back through the restore verifier.
+its immutable bundle can be read back through the snapshot verifier.
 """
 
 from __future__ import annotations
@@ -17,17 +17,26 @@ from pathlib import Path
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.journal import journal_file_lock
-from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
-    PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
-    PackageOfflineRestoreSnapshotEvidenceV1,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restore import (
+from loushang.harness.resources.packages.plugin_lifecycle.snapshot_records import (
+    PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
+    PackageOfflineRestoreSnapshotEvidenceV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_regular_file_at,
+    supports_windows_rooted_io,
+    windows_flush_directory,
+    windows_flush_file,
+    windows_listdir_at,
+    windows_rename_at,
+    windows_unlink_at,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_snapshot_io import (
     DEFAULT_PACKAGE_WINDOWS_OFFLINE_RESTORE_MAX_BYTES,
     DEFAULT_PACKAGE_WINDOWS_OFFLINE_RESTORE_MAX_DEPTH,
     DEFAULT_PACKAGE_WINDOWS_OFFLINE_RESTORE_MAX_ENTRIES,
@@ -53,15 +62,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restor
     _validated_root_path,
     _validated_snapshot_bundle,
     _write_new_file,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_regular_file_at,
-    supports_windows_rooted_io,
-    windows_flush_directory,
-    windows_flush_file,
-    windows_listdir_at,
-    windows_rename_at,
-    windows_unlink_at,
 )
 
 _PAYLOAD_NAME = "payload"

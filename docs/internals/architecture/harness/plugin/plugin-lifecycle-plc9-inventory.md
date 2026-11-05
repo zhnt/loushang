@@ -1,5 +1,10 @@
 # Plugin Lifecycle PLC9.0 Owner And Peer Inventory
 
+Current retirement: [HAR-PLUG-ARD-001](decisions/accepted/HAR-PLUG-ARD-001-retire-unbound-legacy-restore.md)
+retires the unbound offline-restore execution stack and isolated legacy-runtime
+launchers. Their earlier implementation entries below are historical evidence;
+snapshot publication and ordinary unfenced-workspace support remain current.
+
 ## Status
 
 - Source baseline: `1c104ce5`.

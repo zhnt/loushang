@@ -6,28 +6,17 @@ from pathlib import Path
 
 import pytest
 
-from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
-    PackageEpochFenceJournal,
-    PackageEpochFenceRequestV1,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
-    PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
-    PackageOfflineRestoreError,
-    PackageOfflineRestoreRequestV1,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
-    PackageEpochCutoverQuiescenceReceiptV1,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.snapshot_records import (
+    PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
+    PackageOfflineRestoreError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_snapshot import (
     PackageWindowsEpochSnapshotEvidenceStore,
     PackageWindowsEpochSnapshotOwner,
     PackageWindowsSnapshotSharedMemberV1,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restore import (
-    PackageWindowsOfflineRestoreMaterializer,
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     prepare_windows_product_control_root,
@@ -171,65 +160,3 @@ def test_windows_snapshot_reader_refuses_payload_tamper(tmp_path: Path) -> None:
     with pytest.raises(PackageOfflineRestoreError) as captured:
         reader.snapshot(receipt.receipt_id)
     assert captured.value.code == "package_offline_restore_snapshot_invalid"
-
-
-def test_windows_published_snapshot_restores_through_native_product_port(
-    tmp_path: Path,
-) -> None:
-    owner, snapshot_root, roots = _owner(tmp_path)
-    quiescence = PackageEpochCutoverQuiescenceReceiptV1.create(
-        store_id=STORE_ID,
-        owner_revision=1,
-        active_runtime_lease_ids=(),
-        active_pre_fence_registration_ids=(),
-    )
-    receipt = owner.capture(
-        store_id=STORE_ID,
-        legacy_root_identity=_identity(roots["store_bytes"]),
-        quiescence_receipt_id=quiescence.receipt_id,
-    )
-    evidence = owner.snapshot(receipt.receipt_id)
-    assert evidence is not None
-    current_b = tmp_path / "current-b"
-    restore_root = tmp_path / "restore"
-    current_b.mkdir()
-    restore_root.mkdir()
-    fences = PackageEpochFenceJournal(tmp_path / "epoch.jsonl")
-    fence = fences.publish(
-        PackageEpochFenceRequestV1.create(
-            store_id=STORE_ID,
-            prior_fence=None,
-            legacy_root_identity=receipt.legacy_root_identity,
-            fenced_root_identity=_identity(current_b),
-            namespace_id=sha256(b"current-b").hexdigest(),
-            minimum_runtime_version="2.0.0",
-            minimum_runtime_protocol_epoch=2,
-            quiescence_receipt_id=quiescence.receipt_id,
-            snapshot_receipt_id=receipt.receipt_id,
-            root_switch_receipt_id=sha256(b"root-switch").hexdigest(),
-        )
-    )
-    request = PackageOfflineRestoreRequestV1.create(
-        current_fence=fence,
-        genesis_fence=fence,
-        snapshot_evidence=evidence,
-        restore_namespace_id=sha256(b"restore").hexdigest(),
-        legacy_runtime_version="1.9.0",
-    )
-    materializer = PackageWindowsOfflineRestoreMaterializer(
-        snapshot_root,
-        restore_root,
-        current_b_authority_root=current_b,
-        store_id=STORE_ID,
-    )
-
-    restored = materializer.restore(request, evidence, quiescence)
-
-    assert restored.legacy_snapshot_exact
-    assert (
-        restore_root
-        / request.restore_namespace_id
-        / "payload"
-        / "store_bytes"
-        / "plugin.whl"
-    ).read_bytes() == b"wheel bytes"

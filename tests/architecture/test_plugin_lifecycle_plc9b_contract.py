@@ -41,9 +41,6 @@ RETENTION_HANDOFF = OWNER_KERNEL_ROOT / "retention_handoff.py"
 EPOCH_FENCE = OWNER_KERNEL_ROOT / "epoch_fence.py"
 POSIX_EPOCH_CUTOVER = OWNER_KERNEL_ROOT / "posix_epoch_cutover.py"
 WINDOWS_EPOCH_CUTOVER = OWNER_KERNEL_ROOT / "windows_epoch_cutover.py"
-OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "offline_restore.py"
-POSIX_OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "posix_offline_restore.py"
-WINDOWS_OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "windows_offline_restore.py"
 LEGACY_ADOPTION = OWNER_KERNEL_ROOT / "adoption.py"
 LEGACY_ADOPTION_TRANSACTION = OWNER_KERNEL_ROOT / "adoption_transaction.py"
 PRODUCT_LIFECYCLE = Path("src/loushang/harness/resources/packages/product_lifecycle.py")
@@ -98,15 +95,6 @@ POSIX_EPOCH_CUTOVER_TEST = Path(
 )
 WINDOWS_EPOCH_CUTOVER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_windows_epoch_cutover.py"
-)
-OFFLINE_RESTORE_TEST = Path(
-    "tests/harness/resources/packages/test_plc9b_offline_restore.py"
-)
-POSIX_OFFLINE_RESTORE_TEST = Path(
-    "tests/harness/resources/packages/test_plc9b_posix_offline_restore.py"
-)
-WINDOWS_OFFLINE_RESTORE_TEST = Path(
-    "tests/harness/resources/packages/test_plc9b_windows_offline_restore.py"
 )
 LEGACY_ADOPTION_TEST = Path("tests/harness/resources/packages/test_plc9b_adoption.py")
 LEGACY_ADOPTION_TRANSACTION_TEST = Path(
@@ -176,7 +164,7 @@ EXPECTED_MANIFEST_CATEGORY_COUNTS = {
     "ARCH": 5,
     "CLASS": 5,
     "CLOSURE": 7,
-    "COMPAT": 15,
+    "COMPAT": 13,
     "CONCUR": 3,
     "CRASH": 12,
     "ENTRY": 8,
@@ -248,12 +236,6 @@ PLC9B4C1_POSIX_EPOCH_CUTOVER_CASES = {
 PLC9B4C2_WINDOWS_EPOCH_CUTOVER_CASES = {
     "B-COMPAT-CUTOVER-WINDOWS",
     "B-COMPAT-PREFENCE-LIVE-WINDOWS",
-}
-PLC9B4C3C_LINUX_OFFLINE_RESTORE_CASES = {
-    "B-COMPAT-OFFLINE-RESTORE-POSIX",
-}
-PLC9B4C5_WINDOWS_OFFLINE_RESTORE_CASES = {
-    "B-COMPAT-OFFLINE-RESTORE-WINDOWS",
 }
 PLC9B4C4D_LINUX_ADOPTION_CASES = {
     "B-COMPAT-ADOPT",
@@ -641,18 +623,6 @@ def _implemented_b4c1_posix_epoch_cutover_manifest_cases() -> set[str]:
 def _implemented_b4c2_windows_epoch_cutover_manifest_cases() -> set[str]:
     return _literal_manifest_cases(
         "IMPLEMENTED_B4C2_WINDOWS_EPOCH_CUTOVER_MANIFEST_CASES"
-    )
-
-
-def _implemented_b4c3c_linux_offline_restore_manifest_cases() -> set[str]:
-    return _literal_manifest_cases(
-        "IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES"
-    )
-
-
-def _implemented_b4c5_windows_offline_restore_manifest_cases() -> set[str]:
-    return _literal_manifest_cases(
-        "IMPLEMENTED_B4C5_WINDOWS_OFFLINE_RESTORE_MANIFEST_CASES"
     )
 
 
@@ -1053,12 +1023,6 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b4c0_epoch = _implemented_b4c0_epoch_admission_manifest_cases()
     implemented_b4c1_posix = _implemented_b4c1_posix_epoch_cutover_manifest_cases()
     implemented_b4c2_windows = _implemented_b4c2_windows_epoch_cutover_manifest_cases()
-    implemented_b4c3c_linux_restore = (
-        _implemented_b4c3c_linux_offline_restore_manifest_cases()
-    )
-    implemented_b4c5_windows_restore = (
-        _implemented_b4c5_windows_offline_restore_manifest_cases()
-    )
     implemented_b4c4d_linux_adoption = (
         _implemented_b4c4d_linux_adoption_manifest_cases()
     )
@@ -1094,8 +1058,6 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b4c0_epoch
         | implemented_b4c1_posix
         | implemented_b4c2_windows
-        | implemented_b4c3c_linux_restore
-        | implemented_b4c5_windows_restore
         | implemented_b4c4d_linux_adoption
         | implemented_b4c4e_linux_adoption_failure
         | implemented_b4c4f_linux_adoption_committed_crash
@@ -1105,7 +1067,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b5_routing
     )
 
-    assert len(manifest) == 127
+    assert len(manifest) == 125
     assert categories == EXPECTED_MANIFEST_CATEGORY_COUNTS
     for case_id, row in manifest.items():
         assert row["platform"] in ALLOWED_PLATFORMS, case_id
@@ -1412,14 +1374,6 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
     assert hardlink["status"] == "implemented"
-    assert implemented_b4c3c_linux_restore == (PLC9B4C3C_LINUX_OFFLINE_RESTORE_CASES)
-    assert (implemented - implemented_b4c3c_linux_restore).isdisjoint(
-        implemented_b4c3c_linux_restore
-    )
-    assert implemented_b4c5_windows_restore == (PLC9B4C5_WINDOWS_OFFLINE_RESTORE_CASES)
-    assert (implemented - implemented_b4c5_windows_restore).isdisjoint(
-        implemented_b4c5_windows_restore
-    )
     assert implemented_b4c4d_linux_adoption == PLC9B4C4D_LINUX_ADOPTION_CASES
     assert (implemented - implemented_b4c4d_linux_adoption).isdisjoint(
         implemented_b4c4d_linux_adoption
@@ -1539,8 +1493,6 @@ def test_plc9b_manifest_separates_caller_response_from_journal_effect() -> None:
         "B-COMPAT-MIXED",
         "B-COMPAT-PREFENCE-LIVE-POSIX",
         "B-COMPAT-PREFENCE-LIVE-WINDOWS",
-        "B-COMPAT-OFFLINE-RESTORE-POSIX",
-        "B-COMPAT-OFFLINE-RESTORE-WINDOWS",
     ):
         assert resolved[no_append] == ("none", "no_append:unchanged")
     cleanup = manifest["B-STATE-REJECT-CLEANUP"]
@@ -1931,36 +1883,6 @@ def test_plc9b_manifest_covers_every_route_and_native_platform_evidence() -> Non
         "enablement_unchanged",
     }
     compatibility_contract = {
-        "B-COMPAT-OFFLINE-RESTORE-POSIX": (
-            "posix-native",
-            "accepted",
-            "complete_pre_b_restore_exclusive_old_runtime",
-            "ok",
-            "accepted@offline_restore",
-            {
-                "single_owner",
-                "legacy_snapshot_exact",
-                "b_namespace_unreachable",
-                "no_peer_fallback",
-                "no_skip",
-            },
-            "harness-quality.yml#plc9b-linux-native",
-        ),
-        "B-COMPAT-OFFLINE-RESTORE-WINDOWS": (
-            "windows-native",
-            "accepted",
-            "complete_pre_b_restore_exclusive_old_runtime",
-            "ok",
-            "accepted@offline_restore",
-            {
-                "single_owner",
-                "legacy_snapshot_exact",
-                "b_namespace_unreachable",
-                "no_peer_fallback",
-                "no_skip",
-            },
-            "windows-shell-compatibility.yml#plc9b-windows-native",
-        ),
         "B-COMPAT-ADOPT": (
             "posix-native",
             "committed",
@@ -3471,7 +3393,7 @@ def test_plc9b3e3c2_windows_materialization_is_rooted_role_safe_and_native() -> 
     for case_id in PLC9B3E3C2_WINDOWS_CASES:
         assert f"test_manifest_case[{case_id}]" in workflow
     assert "test_plc9b_windows_materialization.py" in workflow
-    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 15
+    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 14
     _assert_current_publication_statuses(manifest)
     assert manifest["B-PUB-UNCOMMITTED"]["status"] == "implemented"
 
@@ -4283,349 +4205,6 @@ def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
     assert "PLC9B4c2 accepted code adds the symmetric dark" in index
 
 
-def test_plc9b4c3a_offline_restore_stays_dark_and_unpromoted() -> None:
-    contract = _source(CONTRACT)
-    inventory = _source(INVENTORY)
-    index = _source(INDEX)
-    source = _source(OFFLINE_RESTORE)
-    component_tests = _source(OFFLINE_RESTORE_TEST)
-    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
-    package_facade = _source(PACKAGE_ROOT / "__init__.py")
-    author_sdk = _source(AUTHOR_SDK)
-    manifest = _adversarial_manifest()
-
-    assert OFFLINE_RESTORE.is_file()
-    assert OFFLINE_RESTORE_TEST.is_file()
-    for symbol in (
-        "PackageOfflineRestoreSnapshotEvidenceV1",
-        "PackageOfflineRestoreRequestV1",
-        "PackageOfflineRestoreMaterializationReceiptV1",
-        "PackageLegacyRuntimeActivationReceiptV1",
-        "PackageOfflineRestoreFailureV1",
-        "PackageOfflineRestoreResultV1",
-        "PackageOfflineRestoreSnapshotEvidencePort",
-        "PackageOfflineRestoreMaterializationPort",
-        "PackageLegacyRuntimeActivationPort",
-        "PackageOfflineRestoreOwner",
-    ):
-        assert f"class {symbol}" in source
-        assert symbol not in internal_facade
-        assert symbol not in package_facade
-        assert symbol not in author_sdk
-
-    tree = ast.parse(source, filename=str(OFFLINE_RESTORE))
-    imported = {
-        alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    } | {
-        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
-    }
-    for forbidden in (
-        "os",
-        "pathlib",
-        "subprocess",
-        "loushang.coding",
-        "loushang.harness.plugin_management",
-        "loushang.plugin",
-    ):
-        assert not any(
-            module == forbidden or module.startswith(f"{forbidden}.")
-            for module in imported
-        )
-    for forbidden_capability in (
-        "PackageMaterializer",
-        "PackageOperationsRuntime",
-        "PluginRevisionStore",
-        "PackageRetentionHandoffOwner",
-        "PackageCommitLifecycleOwner",
-        "PackageLifecycleOwner",
-        "self._journal.publish",
-    ):
-        assert forbidden_capability not in source
-
-    assert "PACKAGE_PRE_B_SNAPSHOT_DOMAINS" in source
-    for domain in (
-        "store_bytes",
-        "source_configuration",
-        "lock_history",
-        "binding_history",
-        "desired_state",
-        "instance_state",
-        "enablement_state",
-        "legacy_root_pointer",
-        "fence_record",
-    ):
-        assert f'"{domain}"' in source
-    assert "with exclusive as quiescence" in source
-    assert source.count("not self._fences_match(request)") == 3
-    assert "self._deactivate(activation)" in source
-    assert "self._discard(materialization)" in source
-    assert "legacy_snapshot_exact" in source
-    assert "b_namespace_unreachable" in source
-
-    for evidence in (
-        "binds_genesis_snapshot_and_exactly_replays",
-        "refuses_live_writer_before_snapshot_or_restore",
-        "rejects_stale_current_fence_before_effect",
-        "rejects_snapshot_substitution_under_exclusive_lock",
-        "discards_isolated_tree_when_epoch_drifts",
-        "deactivates_mismatched_old_runtime_and_discards_tree",
-        "deactivates_runtime_and_discards_tree_when_epoch_drifts",
-        "concurrent_exact_requests_converge_on_one_effect",
-        "wire_records_reject_extensions_and_forgery",
-    ):
-        assert evidence in component_tests
-
-    assert manifest["B-COMPAT-OFFLINE-RESTORE-WINDOWS"]["status"] == "implemented"
-    assert manifest["B-COMPAT-ADOPT"]["status"] == "implemented"
-    assert "IMPLEMENTED_B4C3" not in component_tests
-
-    normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.5-accepted." in contract
-    assert "PLC9B4c3a Accepted Offline Restore Protocol" in normalized
-    assert "does not reinterpret the opaque B4c1 snapshot identifier" in normalized
-    assert "closed coverage tuple" in normalized
-    assert "deliberately supplied no POSIX or Windows filesystem materializer" in (
-        normalized
-    )
-    assert "all five `B-COMPAT-ADOPT*` rows remain planned" in normalized
-    assert "PLC9B4c3a accepted code adds strict offline-restore" in inventory
-    assert "PLC9B4c3a accepted code adds the dark, pathless" in index
-
-
-def test_plc9b4c3b_posix_materializer_is_rooted_exact_and_dark() -> None:
-    contract = _source(CONTRACT)
-    inventory = _source(INVENTORY)
-    index = _source(INDEX)
-    source = _source(POSIX_OFFLINE_RESTORE)
-    component_tests = _source(POSIX_OFFLINE_RESTORE_TEST)
-    adversarial_tests = _source(ADVERSARIAL_TEST)
-    workflow = _source(HARNESS_WORKFLOW)
-    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
-    package_facade = _source(PACKAGE_ROOT / "__init__.py")
-    author_sdk = _source(AUTHOR_SDK)
-    manifest = _adversarial_manifest()
-
-    assert POSIX_OFFLINE_RESTORE.is_file()
-    assert POSIX_OFFLINE_RESTORE_TEST.is_file()
-    assert "class PackagePosixOfflineRestoreMaterializer" in source
-    for rooted_primitive in (
-        "O_NOFOLLOW",
-        "dir_fd=",
-        "_PinnedRoot",
-        "_rename_directory_noreplace",
-        "flock",
-        "os.fsync",
-    ):
-        assert rooted_primitive in source
-    for invariant in (
-        "PACKAGE_PRE_B_SNAPSHOT_DOMAINS",
-        "snapshot_tree_digest",
-        "state_manifest_digest",
-        "current_b_authority_root",
-        "PackageOfflineRestoreMaterializationReceiptV1.create",
-        "_directory_identity",
-        "package_offline_restore_cleanup_failed",
-    ):
-        assert invariant in source
-    assert "__all__ = ()" in source
-
-    tree = ast.parse(source, filename=str(POSIX_OFFLINE_RESTORE))
-    imported = {
-        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
-    }
-    forbidden_modules = (
-        "loushang.harness.plugin_management",
-        "loushang.harness.resources.plugins",
-        "loushang.coding",
-        "loushang.foundation",
-        "subprocess",
-    )
-    assert not any(
-        module == forbidden or module.startswith(f"{forbidden}.")
-        for module in imported
-        for forbidden in forbidden_modules
-    )
-    for forbidden_capability in (
-        "PackageEpochFenceJournal",
-        "PackageLifecycleOwner",
-        "PackageMaterializer",
-        "PackageOperationsRuntime",
-        "PluginRevisionStore",
-        "self._journal.publish",
-        "subprocess",
-    ):
-        assert forbidden_capability not in source
-    for symbol in ("PackagePosixOfflineRestoreMaterializer",):
-        assert symbol not in internal_facade
-        assert symbol not in package_facade
-        assert symbol not in author_sdk
-
-    for evidence in (
-        "materializes_exact_isolated_tree_and_replays",
-        "rejects_substituted_snapshot_without_residue",
-        "rejects_aliased_or_special_snapshot_member",
-        "rejects_extended_snapshot_bundle",
-        "rejects_oversized_snapshot_metadata",
-        "rejects_foreign_precreated_namespace",
-        "rejects_untrusted_lock_permissions",
-        "atomic_publish_rejects_racing_namespace",
-        "cleans_exact_namespace_after_injected_failure",
-        "reports_cleanup_debt_without_deleting_unknown_state",
-        "concurrent_owners_converge_on_one_tree",
-        "cross_process_lock_publishes_only_once",
-        "discard_removes_only_exact_owned_tree",
-        "discard_fails_closed_after_tree_tamper",
-        "rejects_noncanonical_durable_receipt",
-        "revalidates_authority_before_publish",
-        "revalidates_current_b_after_final_tree_check",
-        "requires_request_bound_current_b_identity",
-        "rejects_configured_authority_replacement",
-        "rejects_nested_authorities",
-        "rejects_nonprivate_authority",
-        "rejects_current_b_nested_in_restore_authority",
-        "rejects_snapshot_over_configured_budget_before_effect",
-        "rejects_tree_over_configured_depth",
-        "closes_source_descriptor_when_target_open_fails",
-        "releases_native_descriptors",
-    ):
-        assert evidence in component_tests
-    assert "IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES" in (
-        adversarial_tests
-    )
-    assert "test_posix_offline_restore_candidate_composes_pathless_protocol" in (
-        component_tests
-    )
-    assert "candidate_discards_real_tree_after_fence_drift" in component_tests
-    row = manifest["B-COMPAT-OFFLINE-RESTORE-POSIX"]
-    assert row["status"] == "implemented"
-    assert row["platform"] == "posix-native"
-    assert row["workflow"] == "harness-quality.yml#plc9b-linux-native"
-    assert _journal_policy_for("B-COMPAT-OFFLINE-RESTORE-POSIX") == (
-        "none",
-        "no_append:unchanged",
-    )
-    assert {
-        "single_owner",
-        "legacy_snapshot_exact",
-        "b_namespace_unreachable",
-        "no_peer_fallback",
-        "no_skip",
-    } <= set(row["oracles"].split(";"))
-    assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
-    assert "scripts/dev/verify_pytest_xml.py" in workflow
-    assert manifest["B-COMPAT-OFFLINE-RESTORE-WINDOWS"]["status"] == "implemented"
-    assert manifest["B-COMPAT-ADOPT"]["status"] == "implemented"
-
-    normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.5-accepted." in contract
-    assert "PLC9B4c3b Accepted POSIX Offline Restore Materialization" in normalized
-    assert "authenticated snapshot authority" in normalized
-    assert "requires its native directory identity" in normalized
-    assert "process-level unreachability remains" in normalized
-    assert "entry, byte, and depth limits" in normalized
-    assert "atomic no-replace visibility edge" in normalized
-    assert "does not launch a legacy process" in normalized
-    assert "remains at 92 manifest nodes" in normalized
-    assert "not proof that an old-runtime process started" in normalized
-    assert "PLC9B4c3b accepted code adds the dark POSIX-native" in inventory
-    assert "PLC9B4c3b accepted code adds rooted POSIX" in index
-
-
-def test_plc9b4c3c_linux_activation_is_native_exclusive_dark_and_promoted() -> None:
-    contract = _source(CONTRACT)
-    inventory = _source(INVENTORY)
-    index = _source(INDEX)
-    source = _source(LINUX_LEGACY_RUNTIME)
-    component_tests = _source(POSIX_OFFLINE_RESTORE_TEST)
-    adversarial_tests = _source(ADVERSARIAL_TEST)
-    workflow = _source(HARNESS_WORKFLOW)
-    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
-    sandbox_facade = _source(Path("src/loushang/harness/sandbox/__init__.py"))
-    package_facade = _source(PACKAGE_ROOT / "__init__.py")
-    author_sdk = _source(AUTHOR_SDK)
-    manifest = _adversarial_manifest()
-
-    assert LINUX_LEGACY_RUNTIME.is_file()
-    assert "class PackageLinuxLegacyRuntimeActivationOwner" in source
-    assert LINUX_LEGACY_RUNTIME.parent == Path("src/loushang/harness/sandbox")
-    assert "def _prepare_guarded_command(" in _source(
-        Path("src/loushang/harness/sandbox/backends/linux.py")
-    )
-    for invariant in (
-        "LinuxBubblewrapBackend",
-        "SandboxScopeRequest",
-        "subprocess.Popen",
-        "LOUSHANG_LEGACY_RUNTIME_READY_FD",
-        "flock",
-        "/proc/{marker.sandbox.pid}/root",
-        "_process_children",
-        "_namespace_identity",
-        "_open_matching_pidfd",
-        "_spawn_guarded_process",
-        "_directory_identity(payload_fd)",
-        "package_offline_restore_cleanup_failed",
-    ):
-        assert invariant in source
-    for namespace in ("mnt", "pid", "net", "ipc", "uts", "user"):
-        assert f'"{namespace}"' in source
-    for forbidden_capability in (
-        "PackageEpochFenceJournal",
-        "PackageLifecycleOwner",
-        "PackageMaterializer",
-        "PackageOperationsRuntime",
-        "PluginRevisionStore",
-        "self._journal.publish",
-        "loushang.coding",
-        "loushang.foundation",
-        "loushang.harness.plugin_management",
-    ):
-        assert forbidden_capability not in source
-    assert "__all__ = ()" in source
-    for facade in (internal_facade, sandbox_facade, package_facade, author_sdk):
-        assert "PackageLinuxLegacyRuntimeActivationOwner" not in facade
-
-    for evidence in (
-        "activates_replays_and_deactivates_real_process",
-        "rejects_missing_readiness_without_process_residue",
-        "rejects_second_sandbox_profile_while_active",
-        "rejects_restore_over_independent_activation_budget",
-        "tampered_marker_refuses_cleanup_without_signalling",
-        "concurrent_owners_publish_one_live_process",
-        "native_process_composition_converges_exactly",
-    ):
-        assert evidence in component_tests
-    assert "IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES" in (
-        adversarial_tests
-    )
-    assert "_manifest_linux_offline_restore_fixture" in adversarial_tests
-    row = manifest["B-COMPAT-OFFLINE-RESTORE-POSIX"]
-    assert row["status"] == "implemented"
-    assert row["platform"] == "posix-native"
-    assert row["workflow"] == "harness-quality.yml#plc9b-linux-native"
-    assert "Install PLC9B Linux native isolation dependency" in workflow
-    assert "sudo apt-get install --yes bubblewrap" in workflow
-    assert workflow.index("sudo apt-get install --yes bubblewrap") < workflow.index(
-        "PLC9B Linux native adversarial gate (plc9b-linux-native)"
-    )
-    assert manifest["B-COMPAT-OFFLINE-RESTORE-WINDOWS"]["status"] == "implemented"
-    assert manifest["B-COMPAT-ADOPT"]["status"] == "implemented"
-
-    normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.5-accepted." in contract
-    assert "PLC9B4c3c Accepted Linux Legacy Runtime Activation" in normalized
-    assert "owned by `loushang.harness.sandbox`" in normalized
-    assert "the resource kernel remains backend-free" in inventory
-    assert "single real sandbox child" in normalized
-    assert "distinct mount, PID, network, IPC, UTS, and user namespaces" in normalized
-    assert "The Linux manifest now contains 93 nodes" in normalized
-    assert "3,890 tests with 33 expected platform skips" in normalized
-    assert "PLC9B4c3c accepted code adds the concrete Linux/Bubblewrap" in inventory
-    assert "PLC9B4c3c accepted code adds one dark Linux/Bubblewrap" in index
-
-
 def test_plc9b4c4a_adoption_protocol_is_pathless_and_stays_internal() -> None:
     contract = _source(CONTRACT)
     inventory = _source(INVENTORY)
@@ -5081,115 +4660,6 @@ def test_plc9b4c4g_every_precommit_adoption_phase_rebuilds_and_recovers() -> Non
     assert "Linux native node 98" in " ".join(index.split())
 
 
-def test_plc9b4c5_windows_restore_is_rooted_isolated_and_promoted() -> None:
-    contract = _source(CONTRACT)
-    inventory = _source(INVENTORY)
-    index = _source(INDEX)
-    source = _source(WINDOWS_OFFLINE_RESTORE)
-    runtime_source = _source(WINDOWS_LEGACY_RUNTIME)
-    component_tests = _source(WINDOWS_OFFLINE_RESTORE_TEST)
-    adversarial_tests = _source(ADVERSARIAL_TEST)
-    workflow = _source(WINDOWS_WORKFLOW)
-    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
-    package_facade = _source(PACKAGE_ROOT / "__init__.py")
-    author_sdk = _source(AUTHOR_SDK)
-    manifest = _adversarial_manifest()
-
-    assert WINDOWS_OFFLINE_RESTORE.is_file()
-    assert WINDOWS_OFFLINE_RESTORE_TEST.is_file()
-    assert "class PackageWindowsOfflineRestoreMaterializer" in source
-    for rooted_primitive in (
-        "open_windows_directory",
-        "open_windows_regular_file_at",
-        "windows_listdir_at",
-        "windows_rename_at",
-        "windows_flush_directory",
-        "windows_rmdir_at",
-        "windows_unlink_at",
-        "_PinnedWindowsRoot",
-        "_msvcrt",
-    ):
-        assert rooted_primitive in source
-    for invariant in (
-        "PACKAGE_PRE_B_SNAPSHOT_DOMAINS",
-        "snapshot_tree_digest",
-        "state_manifest_digest",
-        "current_b_authority_root",
-        "PackageOfflineRestoreMaterializationReceiptV1.create",
-        "package_offline_restore_cleanup_failed",
-        "expected_identities=self._current_b_identities",
-        "__all__ = ()",
-    ):
-        assert invariant in source
-    for facade in (internal_facade, package_facade, author_sdk):
-        assert "PackageWindowsOfflineRestoreMaterializer" not in facade
-        assert "PackageWindowsLegacyRuntimeActivationOwner" not in facade
-
-    tree = ast.parse(source, filename=str(WINDOWS_OFFLINE_RESTORE))
-    imported = {
-        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
-    }
-    for forbidden in (
-        "loushang.coding",
-        "loushang.foundation",
-        "loushang.harness.plugin_management",
-        "loushang.harness.sandbox",
-        "subprocess",
-    ):
-        assert not any(
-            module == forbidden or module.startswith(f"{forbidden}.")
-            for module in imported
-        )
-
-    for evidence in (
-        "materializes_exact_tree_replays_and_discards",
-        "concurrent_owners_converge_on_one_tree",
-        "rejects_snapshot_tamper_without_restore_residue",
-        "rejects_replaced_current_b_authority",
-        "appcontainer_activation_is_exclusive_replayable_and_reversible",
-    ):
-        assert evidence in component_tests
-    for invariant in (
-        "PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES",
-        "CreateAppContainerProfile",
-        "CreateProcessW",
-        "_PROC_THREAD_ATTRIBUTE_JOB_LIST",
-        "IsProcessInJob",
-        "JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE",
-        "TOKEN_IS_APP_CONTAINER",
-        "TOKEN_CAPABILITIES",
-        "CapabilityCount = 0",
-        "restored_root",
-        "current_b_root",
-    ):
-        assert invariant in runtime_source
-    assert "test_plc9b_windows_offline_restore.py" in workflow
-    assert "IMPLEMENTED_B4C5_WINDOWS_OFFLINE_RESTORE_MANIFEST_CASES" in (
-        adversarial_tests
-    )
-    assert (
-        _implemented_b4c5_windows_offline_restore_manifest_cases()
-        == PLC9B4C5_WINDOWS_OFFLINE_RESTORE_CASES
-    )
-    assert "test_manifest_case[B-COMPAT-OFFLINE-RESTORE-WINDOWS]" in workflow
-    row = manifest["B-COMPAT-OFFLINE-RESTORE-WINDOWS"]
-    assert row["status"] == "implemented"
-    assert row["platform"] == "windows-native"
-    assert row["workflow"] == "windows-shell-compatibility.yml#plc9b-windows-native"
-
-    normalized = " ".join(contract.split())
-    assert "PLC9B4c5 Accepted Windows Offline Restore And Activation" in normalized
-    assert "complete visible ancestor chain" in normalized
-    assert "handle-relative atomic no-replace rename" in normalized
-    assert "zero-capability AppContainer" in normalized
-    assert "kill-on-close Job Object" in normalized
-    assert "Windows Shell Compatibility run `33709473605`" in normalized
-    assert "all 15 Windows manifest nodes" in normalized
-    assert "artifact ID `9876434660`" in normalized
-    assert "PLC9B4c5 accepted code adds a dark Windows" in inventory
-    assert "PLC9B4c5 accepted code adds the dark Windows" in index
-
-
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:
     contract = _source(CONTRACT)
     acquisition = _source(BOUNDED_ACQUISITION)
@@ -5220,7 +4690,7 @@ def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() 
     assert "test_plc9b_windows_native.py" in workflow
     assert "windows-shell-plc9b-native.xml" in workflow
     assert "include-hidden-files: true" in workflow
-    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 15
+    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 14
     for case_id in _implemented_b2i_windows_manifest_cases():
         assert f"test_manifest_case[{case_id}]" in workflow
     assert "windows-shell-plc9b-manifest.xml" in workflow

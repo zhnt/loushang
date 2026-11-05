@@ -1,5 +1,9 @@
 # Plugin 与 Harness 架构收敛审计 R1
 
+后续减负决定：[HAR-PLUG-ARD-001](decisions/accepted/HAR-PLUG-ARD-001-retire-unbound-legacy-restore.md)
+退役了无 Product 入口的离线恢复执行栈及隔离旧运行时。本文 E2 中普通旧
+workspace 的兼容保留结论继续有效；其余旧恢复执行能力的保留描述以该窄决定为准。
+
 ## 状态与范围
 
 - Authority: descriptive — source audit 与后续处置索引；不替代各专项已接受合同。

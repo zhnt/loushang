@@ -11,11 +11,11 @@ from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
-    PackageOfflineRestoreSnapshotEvidenceV1,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.snapshot_records import (
+    PackageOfflineRestoreSnapshotEvidenceV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
     PackageWindowsEpochCutoverOwner,

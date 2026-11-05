@@ -64,6 +64,12 @@ For current kind, Product, platform, and entry-route status, use the
 [Plugin support matrix](plugin-support-matrix.md). Earlier status lines in
 delivery records are chronological evidence and may predate later gates.
 
+Accepted retirement: [HAR-PLUG-ARD-001](decisions/accepted/HAR-PLUG-ARD-001-retire-unbound-legacy-restore.md)
+removes the unbound PLC9B offline-restore execution stack and isolated old-runtime
+launchers. The PLC9B4c3a/b/c and PLC9B4c5 execution descriptions below are
+historical; snapshot evidence, publication and verification remain implemented.
+Ordinary unfenced-workspace support continues under ARD-008.
+
 The [Plugin and Harness convergence audit](convergence-audit.md) traces Session
 creation, Plugin loading, disable, and shutdown at the 2026-11-04 source baseline.
 It separates observed ownership from proposed simplification; its candidate

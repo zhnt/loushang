@@ -30,7 +30,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordination import (
     PackagePreFenceRegistrationSnapshotV1,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore import (
+from loushang.harness.resources.packages.plugin_lifecycle.posix_snapshot_io import (
     _native_identity,
     _open_directory_at,
     _PinnedRoot,

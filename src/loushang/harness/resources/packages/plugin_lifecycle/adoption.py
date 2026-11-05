@@ -22,14 +22,14 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceReadPort,
     PackageEpochFenceReceiptV1,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
-    PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleFailureV1,
     PackageLifecyclePhase,
     PackageLifecycleStatusV1,
     canonical_json_bytes,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.snapshot_records import (
+    PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
 )
 
 PACKAGE_LEGACY_STATE_EVIDENCE_VERSION = 1
