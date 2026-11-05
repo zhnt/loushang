@@ -1473,17 +1473,7 @@ class PackageMaterializer:
         )
 
     def _refresh_lockfile(self) -> None:
-        with journal_file_lock(
-            self.lockfile_path,
-            "shared",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
-            self._replace_lockfile_state_from_disk_unlocked()
-        self._persisted_records = dict(self._records)
-        self._persisted_plugin_bindings = dict(self._plugin_bindings)
-        self._persisted_plugin_binding_history = dict(
-            self._plugin_binding_history
-        )
+        self._load_lockfile()
 
     def _replace_lockfile_state_from_disk_unlocked(self) -> None:
         self._records = {}
@@ -1725,21 +1715,6 @@ class PackageMaterializer:
         baseline_binding_history = dict(
             self._persisted_plugin_binding_history
         )
-        changed_records = {
-            key
-            for key in set(local_records) | set(baseline_records)
-            if local_records.get(key) != baseline_records.get(key)
-        }
-        changed_bindings = {
-            key
-            for key in set(local_bindings) | set(baseline_bindings)
-            if local_bindings.get(key) != baseline_bindings.get(key)
-        }
-        changed_binding_history = {
-            key
-            for key in set(local_binding_history) | set(baseline_binding_history)
-            if local_binding_history.get(key) != baseline_binding_history.get(key)
-        }
         try:
             with (
                 self._legacy_write_guard(),
@@ -1766,7 +1741,6 @@ class PackageMaterializer:
                     disk_records,
                     baseline=baseline_records,
                     local=local_records,
-                    changed_keys=changed_records,
                     path=self.lockfile_path,
                     subject="package record",
                 )
@@ -1774,7 +1748,6 @@ class PackageMaterializer:
                     disk_binding_history,
                     baseline=baseline_binding_history,
                     local=local_binding_history,
-                    changed_keys=changed_binding_history,
                     path=self.lockfile_path,
                     subject="Plugin binding revision",
                 )
@@ -1782,7 +1755,6 @@ class PackageMaterializer:
                     disk_bindings,
                     baseline=baseline_bindings,
                     local=local_bindings,
-                    changed_keys=changed_bindings,
                     path=self.lockfile_path,
                     subject="Plugin binding",
                 )
@@ -1893,10 +1865,12 @@ def _merge_lockfile_delta(
     *,
     baseline: dict[str, _LockValueT],
     local: dict[str, _LockValueT],
-    changed_keys: set[str],
     path: Path,
     subject: str,
 ) -> None:
+    changed_keys = {
+        key for key in set(local) | set(baseline) if local.get(key) != baseline.get(key)
+    }
     for key in changed_keys:
         before = baseline.get(key, _MISSING_LOCK_VALUE)
         current = target.get(key, _MISSING_LOCK_VALUE)

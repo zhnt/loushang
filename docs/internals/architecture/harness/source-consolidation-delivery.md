@@ -3,8 +3,8 @@
 ## Status And Objective
 
 - Authority: delivery evidence; existing capability contracts remain authoritative.
-- Design status: accepted for the internal Store, record-field and epoch-workflow
-  consolidation described below; durable contracts remain unchanged.
+- Design status: accepted for the internal Store, record-field, epoch-workflow
+  and lockfile consolidation described below; durable contracts remain unchanged.
 - Implementation status: partial; the 50,000-line objective is not achieved.
 - Responsible implementer and internal reviewer: Codex, under the user's task.
 - Method consulted: local archmethod master at
@@ -230,3 +230,61 @@ The existing Windows single-publication assertion now reads the exact shared
 workflow body. All 956 assertions remain; native sink inventories, workflow
 configuration, test routes, platforms and triggers are unchanged. Simulated
 Windows trace agreement does not replace outstanding native Windows execution.
+
+## Batch 004: Existing Workspace Lockfile Ownership
+
+The live old-workspace materializer now uses one load operation for initial
+opening and refresh. The existing delta-merge helper owns changed-key selection
+for Package records, immutable Plugin revisions and current binding heads.
+These remain three distinct maps with their original merge order; no new ledger,
+state object, persisted format or migration is introduced.
+
+Changed keys are computed from the same frozen local and baseline copies inside
+the existing exclusive section. Disk reload, conflict detection, missing-value
+sentinel, rollback, writer fencing and atomic replacement retain their existing
+rules. Lockfile versions 1–4 and security diagnostics remain supported. Both
+private load/refresh entry points remain available, and all public signatures
+are unchanged.
+
+| Accounting item | Lines |
+| --- | ---: |
+| Batch 004 Resources net reduction | 26 |
+| Outside-Harness Product source increase | 0 |
+| Effective cumulative reduction | 1,399 |
+| Remaining to cumulative objective | 48,601 |
+
+Local validation:
+
+- Existing materializer, Plugin binding, workspace storage/policy reopen and
+  lifecycle architecture cases: 134 passed. This includes stale-instance
+  disjoint merges, conflicting binding changes, versioned lockfiles, explicit
+  repair, old Transcript preservation and fenced legacy-write refusal.
+- Ruff, focused mypy, source dependency freshness, nine documentation invariants,
+  changed-document links and whitespace checks passed.
+- No test, CI selection, workflow or gate changed. The existing planner still
+  selects broader Harness/hosting and native platform coverage; those complete
+  suites and native Windows execution are not claimed by this focused batch.
+
+### Old Workspace Retirement Boundary
+
+The current audit establishes these dispositions, rather than a deletion budget:
+
+| Code or capability | Current disposition | Evidence needed before retirement |
+| --- | --- | --- |
+| `harness/workspace` path, Git, process and execution substrate | Active shared substrate; retain | A proven equivalent owner for each supported operation |
+| Unfenced workspace Session/Plugin owner | Retain the compatible route required by ARD-008 | Recoverable conversion of supported old settings, choices, history and interrupted states, with continued-use evidence |
+| Old materializer Git/Python installation | Active; retain source support | Equivalent supported source installation and updates; the Product Wheel route alone is insufficient |
+| Versioned old lockfile reader and identity/history validation | Retain; consolidate duplicate mechanics internally | Supported input inventory and a recoverable compatibility replacement |
+| Published new-store fence | Keep exclusive authority; never fall back to an old writer | No relaxation is part of this work |
+| Bounded reviewed adoption tools | Retain their explicit scope | Do not treat bounded adoption as automatic conversion of arbitrary workspaces |
+
+This follows the accepted
+[workspace contract](../decisions/accepted/ARD-008-workspace-upgrade-compatibility.md)
+and the existing
+[pre-B retirement disposition](plugin/convergence-audit.md).
+No user's workspace, state or settings are migrated or removed by this batch.
+No safe bulk deletion of the active old route has been established. The
+synchronous and asynchronous backend bodies were also reviewed: moving the
+whole operation to a worker or driving an async operation synchronously would
+change execution/cancellation behavior; no such adapter was introduced for line
+count savings.
