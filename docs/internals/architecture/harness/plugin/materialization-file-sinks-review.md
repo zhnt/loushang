@@ -78,3 +78,10 @@ R1 三视角独立审核无阻断；三位原 reviewer 对同一固定 R2 的图
 - 补充验收初期的 Windows stat stub 缺少真实 stat 必有的 st_mode，已补齐夹具并明确核对成功场景及原 fstat 异常；产品实现未因此修改。
 
 当前为本切片本地实现与代码审查完成。Windows native、原关闭结果不明机制的修复、tree abort/删除收敛及性能测量仍不在已完成范围；没有将聚焦结果宣称为整个 Harness/Hosting 全量回归通过。
+
+
+## 后续 Windows 原生证据（2026-11-05）
+
+上述各实施切点的 Windows pending/skip 是历史结果，保留原文。后续对与 #863/#872/当前 main 逐字相同的五个 M1 模块及三份测试做了一次实际原生 suite：既有 Windows 27 项加一个树外真实部分删除重试场景，28 passed、零跳过/失败，Windows Server 2022 x64、项目 Python 3.11.15。首个启动器准备失败未执行用例，修正后运行及两份日志均保留；不虚称单次 dispatch 成功。
+
+实际版本绑定、节点、局限及临时 ref 删除事实以[统一证据记录](materialization-platform-evidence.md#7-一次性-actions-执行验收与入口退出2026-11-05)为准；产品实现和原评审结论没有因此重写。限定 native 待验证项已取得对应证据，其余排除范围保持；未恢复或新增门禁。

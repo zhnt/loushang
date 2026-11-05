@@ -83,3 +83,10 @@
 - Hosting 补跑：512 passed、53 skipped、4 deselected、1 failed，115.71 秒。唯一失败为 `test_hosting_apphost_and_appserver_optional_modules_are_exact`，appserver 精确模块库存未列既有 `goal.py` / `method_work.py`；在同一干净 main 基线单条复现相同失败。相关模块与断言均未修改。扩展检查共有这两项已复现的主线既有库存失败，不宣称 `make check-changed` 通过；日志与基线复现保存在产品树外归档。
 
 本地实现和三视角代码审查完成；Windows native 与 Windows 部分删除重试、性能测量仍未验收。本结论不意味着整个 Store 收敛完成，也不触发后续写入/删除切片的实施。
+
+
+## 后续 Windows 原生证据（2026-11-05）
+
+上述各实施切点的 Windows pending/skip 是历史结果，保留原文。后续对与 #863/#872/当前 main 逐字相同的五个 M1 模块及三份测试做了一次实际原生 suite：既有 Windows 27 项加一个树外真实部分删除重试场景，28 passed、零跳过/失败，Windows Server 2022 x64、项目 Python 3.11.15。首个启动器准备失败未执行用例，修正后运行及两份日志均保留；不虚称单次 dispatch 成功。
+
+实际版本绑定、节点、局限及临时 ref 删除事实以[统一证据记录](materialization-platform-evidence.md#7-一次性-actions-执行验收与入口退出2026-11-05)为准；产品实现和原评审结论没有因此重写。限定 native 待验证项已取得对应证据，其余排除范围保持；未恢复或新增门禁。

@@ -4,7 +4,7 @@
 
 - Authority: normative for implemented M1a/M1b；M1c [读取/核验](materialization-tree-validation.md)及[文件写入/复用](materialization-file-sinks.md)按其专项范围接受与实施，其余候选仍待设计。
 - Design status: M1a 在 R2 三视角复核后由用户授权实施；后续继续开发授权内的 M1b 经三个原 reviewer 定向设计核查、由实施 scope owner 接受。M1c 读取/核验和文件写入/复用的专项 R2 均获用户接受并授权实施；tree abort/删除收敛未覆盖。
-- Implementation status: M1a/M1b 已本地实现，范围见 §7/§8；M1c 读取/核验与文件写入/复用均已本地实现并经三视角代码审查，结果见专项记录。POSIX 与共享逻辑已验证，Windows native 待验证。本工作区先前的 M2 与本设计无关。
+- Implementation status: M1a/M1b 已本地实现，范围见 §7/§8；M1c 读取/核验与文件写入/复用均已本地实现并经三视角代码审查，结果见专项记录。POSIX 与共享逻辑已验证；固定源码的 Windows Server 2022 x64/Python 3.11 原生补验已通过，见[证据记录](materialization-platform-evidence.md#7-一次性-actions-执行验收与入口退出2026-11-05)。本工作区先前的 M2 与本设计无关。
 - Owner: Harness package lifecycle。
 - 源码基线：main `1120f9b1fe3b8610de76b60c115660dc9d0353d7`；M2 未修改本设计涉及的平台文件。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。

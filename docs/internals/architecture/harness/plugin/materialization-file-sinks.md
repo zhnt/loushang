@@ -4,7 +4,7 @@
 
 - Authority: accepted — 用户评审 R2 后同意继续，范围为既有 package lifecycle 内部协作，不增加公开或持久合同。
 - Design status: accepted；R1 经三位独立 xhigh 评审，R2 定向复核后提交用户，用户回复“同意，继续”并授权实施。冻结评审版本及接受证据见评审记录。
-- Implementation status: locally-implemented；共享普通/reuse sink 与两个平台 Writer 已实现，三视角代码评审无实质问题。聚焦回归和树外差分验收通过；Windows native 仍待验证。
+- Implementation status: locally-implemented；共享普通/reuse sink 与两个平台 Writer 已实现，三视角代码评审无实质问题。聚焦回归、树外差分及固定源码的 Windows 原生补验通过，见[证据记录](materialization-platform-evidence.md#7-一次性-actions-执行验收与入口退出2026-11-05)。
 - Owner: Harness package lifecycle。
 - 源码基线：main `8b7e0358cbe79425757544154d5b36766771a410`，2026-11-04。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`；采用职责复用、运行失败、数据兼容三个视角。这里只声明本地方法版本。

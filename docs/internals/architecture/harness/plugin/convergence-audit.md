@@ -2,15 +2,17 @@
 
 ## 状态与范围
 
-- Authority: descriptive — source audit；建议清单为 proposed，不改变已接受架构。
-- Design status: 审计完成；M2 最小方案经独立审核及用户授权实施，其余重构仍为候选。
-- Implementation status: 原审计为文档；随后用户授权 M2 最小切片实施，结果见 §8。其余候选未实施；没有格式、默认策略或 PR gate 变更。
+- Authority: descriptive — source audit 与后续处置索引；不替代各专项已接受合同。
+- Design status: 原审计完成；截至 2026-11-05，本轮已选范围完成处置，当前总表见 §9–§11。
+- Implementation status: M1、M2、D1 两个切片、D2 两个切片及 E1 命名切片已合入 main；M1 固定源码的指定 Windows 补验已通过。明确保留项和条件性候选不计为未完成的必做开发。
 - Owner: Harness / Coding architecture，执行审计：Codex。
 - 日期：2026-11-04。产品源码基线：main `1120f9b1fe3b8610de76b60c115660dc9d0353d7`；审计分支起点 `b4b0a03fbd09e06342d18e86c79b0089f4668281` 的完整 tree 与该 main 相同。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。采用调用链、事实权威和运行失败检查，复用现有架构，不另建总体架构或平行交付计划。
 - 用户任务：①启动 Session、加载插件、禁用插件、关闭 Session 四条链；②状态、持久化及清理负责人；③保留、合并、下沉、退出清单及兼容条件。
 
 审计对象是上述路径涉及的 Coding 装配与 Harness Plugin、Resources、Capability Graph、Session、Transcript。对 Harness/Coding Python 源码做静态重复扫描，但没有逐一审查 Harness 的全部领域；不能把本报告解释为全库质量认证或运行时缺陷证明。
+
+§1–§8 保留原审计及 M2 实施切点的历史事实，源码位置、测试结果和当时的“下一步”均按各节切点解释。§9–§11 是当前处置总表，核对基线为 main `66a74974989f7e4e957d7f0cc89a3cd0631dda22`；不能把历史候选清单继续当作全部待开发任务。
 
 依据：[Plugin Architecture V2](architecture.md)、[Current Owner Map](../current-owner-map.md)、[Capability Graph](../capability-dependency-and-mount-lifecycle.md)、[CLA 收敛](../composition-lifecycle-authority-plan.md)、[升级兼容约束](../../decisions/accepted/ARD-008-workspace-upgrade-compatibility.md)。这些文档仍拥有各自的规范权威。
 
@@ -143,7 +145,7 @@ POSIX `finish`（基线第 1226 行）与 Windows `finish`（1239 行）的 AST 
 
 ## 4. 保留、合并、下沉、退出清单
 
-以下是审计建议，非已接受 Target 或已授权的代码变更。P1 表示优先收敛，并非本轮交付阻断。
+以下是原审计切点的建议，非当时已接受 Target 或已授权的代码变更。P1 表示原建议优先级，并非交付阻断。后续接受、实施与保留结果见 §9–§11；本表不再单独表示当前积压任务。
 
 | ID / 顺序 | 处置 | 对象与建议归属 | 保持的合同 / 完成条件 |
 | --- | --- | --- | --- |
@@ -242,8 +244,44 @@ POSIX `finish`（基线第 1226 行）与 Windows `finish`（1239 行）的 AST 
 实施责任人据此接受本切片的内部重构结果；只涵盖原字段转换的共享，不扩大其余候选方案的接受范围。上述是实施切点的本地证据，提交与远程交付状态以承载此变更的 PR/Git 记录为准；既有库存失败如实保留。
 
 
-## 9. 后续交付索引（不改写原审计切点）
+## 9. 当前总表：已交付范围
 
-M1、D1 和 D2 的独立专项及交付进度以 [Plugin 索引](README.md)所链记录为准。D2 的共同输入准备（PR #869）与 B1 配置构造（PR #871）已交付；其余候选按[剩余盘点的范围结案](composition-route-inputs-remaining.md#本轮范围结案2026-11-05)明确保留，本轮不再以合并所有分支为目标。M1 的 Windows native 证据仍保留原限制。
+以下交付均已在上述 main 基线的 Git 历史核对。各专项的评审与验证边界仍以原记录为准，不因汇总而扩大为全库、全平台或全故障模式通过。
 
-E1 的[正式 Catalog 模块与兼容入口专项设计](catalog-adapter-module.md) R1.1 已经用户接受，已完成本地实现、定向验证与三视角独立代码评审；旧路径和兼容别名继续保留，远程交付状态以对应 PR 为准。E2 legacy 退出、M3 进一步 helper 合并及 V1 性能测量均未因此启动。
+| 原审计项 | 本轮实际交付 | 交付与证据 |
+| --- | --- | --- |
+| M2 Resource 事实转换 | 两个原调用点复用原 Receipt 模块的私有转换函数；聚合与发现职责保留 | [PR #854](https://github.com/zhnt/loushang/pull/854)；§7–§8 保留当时的独立评审与既有库存失败证据。该精确调用库存后来在 PR #869 修正，没有倒改历史结果 |
+| M1 平台共同流程 | 共享 receipt、finish/reuse/publication 协调、树遍历验证和 file sinks；原平台句柄与原生操作留在 Adapter | [PR #854](https://github.com/zhnt/loushang/pull/854)、[PR #859](https://github.com/zhnt/loushang/pull/859)、[PR #863](https://github.com/zhnt/loushang/pull/863)；[平台专项](materialization-platform-adapter.md)、[树验证](materialization-tree-validation.md)、[file sinks](materialization-file-sinks.md) |
+| D1 通用装配与退役协调 | 两阶段管理账本构造归既有 Harness owner；exact-owner 退役报告算法归内部 Harness Session 集成 | [PR #865](https://github.com/zhnt/loushang/pull/865)、[PR #867](https://github.com/zhnt/loushang/pull/867)；[账本装配评审](management-ledger-assembly-review.md)、[退役交接评审](session-owner-retirement-handoff-review.md)；不是整体 Product 生命周期迁移 |
+| D2 共同输入准备与 B1 配置 | Harness 共同 owner 输入准备与 Coding 窄政策分离；原两个 B 调用位置复用一个局部配置函数 | [PR #869](https://github.com/zhnt/loushang/pull/869)、[PR #871](https://github.com/zhnt/loushang/pull/871)；[第一切片评审](composition-route-inputs-review.md)、[B1 评审](bootstrap-capability-config-review.md)、[D2 范围结案](composition-route-inputs-remaining.md#本轮范围结案2026-11-05) |
+| E1 生产命名 | 生产代码使用正式 Catalog adapter 模块；旧路径改为兼容转发 | [PR #872](https://github.com/zhnt/loushang/pull/872)；[专项设计](catalog-adapter-module.md)、[代码评审](catalog-adapter-module-review.md)；54 项聚焦测试及三视角独立代码评审已有记录，不代表兼容别名已删除 |
+
+M1 补验是交付后证据收尾：[一次性 Windows 原生执行](materialization-platform-evidence.md#7-一次性-actions-执行验收与入口退出2026-11-05)在固定源码、Windows Server 2022 x64、Python 3.11.15 下，原 27 项与 1 项树外 partial-delete retry 场景共 **28 passed / 0 skipped**。两次 dispatch 中首轮在启动器准备阶段失败，实际原生测试只执行一次；不把首轮写成测试通过。临时远程分支已删除，main 工作流及 required checks 未变，没有留下新的持续门禁。
+
+## 10. 当前总表：明确保留
+
+保留表示已有职责或兼容合同有依据，不表示等待全部合并。下表没有新增组件或改变既有权威。
+
+| 项 | 保留内容与理由 | 重新开启条件 |
+| --- | --- | --- |
+| K1 / K2 事实与寿命 owner | desired、operation、instance、package、Session、Graph、Registration、Transcript 各答不同问题；不合成统一账本或万能生命周期 | 证实两个 owner 竞争写入同一事实，或出现可复现的交接缺陷 |
+| D1 Product 与资源政策 | Product layout/policy、证据与标签、锁、fenced B 装配及 runtime leases、Graph 清理与 family release 仍由原 owner 负责；本轮只搬移已核对的共同构造和报告算法 | 定位新的同语义重复协调，明确可在既有 owner 内收敛的边界；不能仅因仍有 Coding 包装而立项 |
+| D2 路线、seed 与清理差异 | 沿用唯一 selector、共同 pipeline；保留身份/信任不同的 seed、清理凭据、deferred LSP 当前性检查和短 recheck 表达式 | 按 D2 结案记录，提供规则漂移、竞争权威或真实共同消费者的证据 |
+| E1 兼容入口 | 旧模块转发及 17 个可访问名称、其中 8 个 `__all__` 导出继续保留；正式生产调用已迁移 | 有支持版本、外部调用者与回滚证据，能证明移除不会破坏已有使用；本轮不承诺删除 |
+| M1 原生边界 | 平台句柄、权限、原子发布、删除与原生错误仍受各平台职责约束；共享算法不要求消除所有平台文件 | 出现同语义重复且能保留平台失败、身份和清理合同 |
+
+## 11. 当前总表：条件性候选与结案
+
+这些项目没有因出现在原审计或专项排除项中而成为必做开发；本轮不为凑“全部收敛”启动它们。
+
+| 候选 | 当前处置 | 启动所需依据 |
+| --- | --- | --- |
+| M3 文件状态比较、等待清理 helper | 未启动；先保留原实现 | 具体调用点同语义与维护收益，且能在原 substrate 内复用，不新增公共抽象负担 |
+| E2 pre-B / legacy 退出 | 不删除；继续维持兼容 | 真实存量、支持版本、降级/回滚与旧 workspace 连续使用证据，以及单独接受的退出范围 |
+| V1 历史读取成本 | 未启动测量或优化；无当前性能收益声明 | 真实业务性能问题或明确测量需求；旧 rollout 读次数不能当作当前瓶颈证明 |
+| M1 树 abort/delete 算法进一步共享 | 不在已交付共享范围内，不列为当前缺陷 | 具体重复与平台等价证据、独立兼容边界；已有 partial-delete retry 补验不能替代新算法设计 |
+| M1 file close 结果未知等失败机制修复 | 未纳入本轮；不据排除项断言已有产品故障 | 可复现缺陷或明确合同需求，再针对真实失败路径设计和验收 |
+
+本轮已选范围至此结案：完成项已有交付证据，保留项已有理由，条件性候选已有重新开启条件。处置归档由执行审计的 Codex 整理，只记录既有切片及其边界，不新增架构合同或一次全审计三位独立评审；各切片已有独立评审仍只覆盖各自固定输入。
+
+本次只整理总表与索引，沿用已有源码、差分、测试、PR 和原生证据，不重跑 Goal、模型或模块回归。结案不表示 Harness 所有领域已审计、所有平台 profile 已验证、legacy 可退出或性能项目已经完成。后续以真实业务需求、已复现问题或上述新证据决定下一项工作。
