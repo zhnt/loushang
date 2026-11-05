@@ -139,6 +139,10 @@ EXPECTED_CALL_SITES = {
         ),
         (
             Path("src/loushang/harness/session/tool_controller.py"),
+            "SessionToolController.render_execution_prompt",
+        ),
+        (
+            Path("src/loushang/harness/session/tool_controller.py"),
             "create_tool_prompt_rebuilder.rebuild",
         ),
     },
