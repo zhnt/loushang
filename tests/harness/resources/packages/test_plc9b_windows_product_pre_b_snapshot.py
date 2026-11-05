@@ -41,19 +41,14 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
     PackageEpochRuntimeLeaseRegistryError,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
+from loushang.harness.resources.packages.plugin_lifecycle.snapshot_records import (
     PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
-    PackageOfflineRestoreOwner,
-    PackageOfflineRestoreRequestV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
     PackageStoreSettlementJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
     PackageWindowsEpochCutoverError,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restore import (
-    PackageWindowsOfflineRestoreMaterializer,
 )
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleIntentV1,
@@ -65,15 +60,11 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
-    PackageWindowsCurrentEpochCutoverCoordinationOwner,
     prepare_windows_product_control_root,
 )
 from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
     PackageProductWindowsPreBSnapshotOwner,
     reopen_windows_product_cutover,
-)
-from loushang.harness.sandbox.package_windows_legacy_runtime import (
-    PackageWindowsLegacyRuntimeActivationOwner,
 )
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows-native contract")
@@ -215,102 +206,6 @@ def test_windows_product_snapshot_admission_refusal_leaves_no_fence(
 
     assert PackageEpochFenceJournal(control / "epoch.jsonl").current(STORE_ID) is None
     assert not list((authority / "epochs").iterdir())
-
-
-def test_windows_product_first_b_restore_activates_and_settles_old_runtime(
-    tmp_path: Path,
-) -> None:
-    snapshots, authority, control, snapshot_root = _product(tmp_path)
-    attempt = _cutover(snapshots, authority, control)
-    fence = attempt.result.fence
-    assert fence is not None
-    evidence = snapshots.snapshot(fence.request.snapshot_receipt_id)
-    assert evidence is not None
-    current_b_root = authority / "epochs" / attempt.request.namespace_id
-    b_marker = current_b_root / "epoch-b.txt"
-    b_marker.write_bytes(b"current B stays intact")
-    fence_bytes = (control / "epoch.jsonl").read_bytes()
-    restore_root = tmp_path / "restore-authority"
-    activation_root = tmp_path / "activation-authority"
-    restore_root.mkdir()
-    activation_root.mkdir()
-    request = PackageOfflineRestoreRequestV1.create(
-        current_fence=fence,
-        genesis_fence=fence,
-        snapshot_evidence=evidence,
-        restore_namespace_id=sha256(b"windows-product-first-b-restore").hexdigest(),
-        legacy_runtime_version="1.9.0",
-    )
-    command = (
-        os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),
-        "/d",
-        "/q",
-        "/c",
-        (
-            "> %LOUSHANG_LEGACY_RUNTIME_READY_PATH% "
-            "echo %LOUSHANG_LEGACY_RUNTIME_READY_TOKEN% && "
-            "for /L %i in (1,1,2147483647) do ver >nul 2>&1"
-        ),
-    )
-    materializer = PackageWindowsOfflineRestoreMaterializer(
-        snapshot_root,
-        restore_root,
-        current_b_authority_root=current_b_root,
-        store_id=STORE_ID,
-    )
-    activation = PackageWindowsLegacyRuntimeActivationOwner(
-        restore_root,
-        activation_root,
-        current_b_authority_root=current_b_root,
-        store_id=STORE_ID,
-        legacy_runtime_version=request.legacy_runtime_version,
-        command=command,
-    )
-    product = PackageProductWindowsFencedRuntimeOwner.open(
-        authority_root=authority,
-        control_root=control,
-        store_id=STORE_ID,
-        epochs_root_name="epochs",
-    )
-    restored = None
-    try:
-        drill = PackageOfflineRestoreOwner(
-            store_id=STORE_ID,
-            epoch_journal=product.registry.fences,
-            coordination=PackageWindowsCurrentEpochCutoverCoordinationOwner(
-                product.registry
-            ),
-            snapshots=snapshots,
-            materialization=materializer,
-            activation=activation,
-        )
-        restored = drill.restore(request)
-        assert restored.disposition == "restored"
-        assert restored.materialization is not None
-        assert restored.activation is not None
-        assert restored.materialization.legacy_snapshot_exact
-        assert restored.materialization.b_namespace_unreachable
-        assert restored.activation.exclusive_old_runtime
-        assert (
-            restore_root
-            / request.restore_namespace_id
-            / "payload"
-            / "store_bytes"
-            / "plugin.whl"
-        ).read_bytes() == b"wheel bytes"
-        assert b_marker.read_bytes() == b"current B stays intact"
-    finally:
-        try:
-            if restored is not None and restored.activation is not None:
-                activation.deactivate_required(restored.activation)
-            if restored is not None and restored.materialization is not None:
-                materializer.discard(restored.materialization)
-        finally:
-            product.close()
-    assert not (restore_root / request.restore_namespace_id).exists()
-    assert not (activation_root / "active-runtime.json").exists()
-    assert (control / "epoch.jsonl").read_bytes() == fence_bytes
-    assert PackageEpochFenceJournal(control / "epoch.jsonl").current(STORE_ID) == fence
 
 
 def test_windows_product_local_wheel_composition_activates_on_current_fence(

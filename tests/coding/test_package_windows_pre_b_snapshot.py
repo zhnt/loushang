@@ -335,13 +335,8 @@ from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
+from loushang.harness.resources.packages.plugin_lifecycle.snapshot_records import (
     PackageOfflineRestoreError,
-    PackageOfflineRestoreOwner,
-    PackageOfflineRestoreRequestV1,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restore import (
-    PackageWindowsOfflineRestoreMaterializer,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_pre_fence_registration import (
     PackageWindowsPreFenceRegistrationOwner,
@@ -359,14 +354,10 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
-    PackageWindowsCurrentEpochCutoverCoordinationOwner,
     prepare_windows_product_private_directory_chain,
 )
 from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
     read_windows_product_pre_b_snapshot,
-)
-from loushang.harness.sandbox.package_windows_legacy_runtime import (
-    PackageWindowsLegacyRuntimeActivationOwner,
 )
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 from loushang.harness.worker import (
@@ -7393,81 +7384,6 @@ def test_windows_coding_first_b_captures_real_fresh_workspace(
         ) as lease:
             assert lease.admission_request.store_id == epoch.store_id
             product.assert_current()
-        current_b_root = epoch.epoch_root(fence.request.namespace_id)
-        b_marker = current_b_root / "current-b.txt"
-        b_marker.write_bytes(b"current B remains isolated")
-        fence_bytes = (epoch.control_root / "epoch.jsonl").read_bytes()
-        restore_root = tmp_path / "coding-restore-authority"
-        activation_root = tmp_path / "coding-activation-authority"
-        restore_root.mkdir()
-        activation_root.mkdir()
-        restore_request = PackageOfflineRestoreRequestV1.create(
-            current_fence=fence,
-            genesis_fence=fence,
-            snapshot_evidence=evidence,
-            restore_namespace_id=sha256(b"windows-coding-first-b-restore").hexdigest(),
-            legacy_runtime_version="1.9.0",
-        )
-        materializer = PackageWindowsOfflineRestoreMaterializer(
-            epoch.snapshot_root,
-            restore_root,
-            current_b_authority_root=current_b_root,
-            store_id=epoch.store_id,
-        )
-        activation = PackageWindowsLegacyRuntimeActivationOwner(
-            restore_root,
-            activation_root,
-            current_b_authority_root=current_b_root,
-            store_id=epoch.store_id,
-            legacy_runtime_version=restore_request.legacy_runtime_version,
-            command=(
-                os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),
-                "/d",
-                "/q",
-                "/c",
-                (
-                    "> %LOUSHANG_LEGACY_RUNTIME_READY_PATH% "
-                    "echo %LOUSHANG_LEGACY_RUNTIME_READY_TOKEN% && "
-                    "for /L %i in (1,1,2147483647) do ver >nul 2>&1"
-                ),
-            ),
-        )
-        restore_owner = PackageOfflineRestoreOwner(
-            store_id=epoch.store_id,
-            epoch_journal=product.registry.fences,
-            coordination=PackageWindowsCurrentEpochCutoverCoordinationOwner(
-                product.registry
-            ),
-            snapshots=cutover.snapshots,
-            materialization=materializer,
-            activation=activation,
-        )
-        restored = None
-        try:
-            restored = restore_owner.restore(restore_request)
-            assert restored.disposition == "restored"
-            assert restored.materialization is not None
-            assert restored.activation is not None
-            assert restored.materialization.legacy_snapshot_exact
-            assert restored.materialization.b_namespace_unreachable
-            restored_projection = (
-                restore_root
-                / restore_request.restore_namespace_id
-                / "payload"
-                / "source_configuration"
-                / "coding-source-configuration.json"
-            )
-            assert restored_projection.read_bytes() == source_projection
-            assert b_marker.read_bytes() == b"current B remains isolated"
-        finally:
-            if restored is not None and restored.activation is not None:
-                activation.deactivate_required(restored.activation)
-            if restored is not None and restored.materialization is not None:
-                materializer.discard(restored.materialization)
-        assert not (restore_root / restore_request.restore_namespace_id).exists()
-        assert not (activation_root / "active-runtime.json").exists()
-        assert (epoch.control_root / "epoch.jsonl").read_bytes() == fence_bytes
-        assert product.registry.fences.current(epoch.store_id) == fence
     finally:
         product.close()
     assert inspect_coding_package_cutover_backup(lifecycle).status == "retained"

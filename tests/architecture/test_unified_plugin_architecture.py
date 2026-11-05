@@ -520,69 +520,33 @@ PLC9B_BOUNDARY_SINKS = (
         {"path_read": 1},
     ),
     (
-        "posix_offline_restore.py",
-        "PackagePosixOfflineRestoreMaterializer.__init__",
-        "package-posix-offline-restore-materializer",
-        {"path_read": 3},
-    ),
-    (
-        "posix_offline_restore.py",
-        "PackagePosixOfflineRestoreMaterializer._exclusive_restore_root",
-        "package-posix-offline-restore-materializer",
-        {"path_read": 3},
-    ),
-    (
-        "posix_offline_restore.py",
-        "PackagePosixOfflineRestoreMaterializer.restore",
-        "package-posix-offline-restore-materializer",
-        {"path_read": 2},
-    ),
-    (
-        "posix_offline_restore.py",
+        "posix_snapshot_io.py",
         "_open_directory",
-        "package-posix-offline-restore-materializer",
+        "package-posix-snapshot-io",
         {"path_read": 1},
     ),
     (
-        "posix_offline_restore.py",
+        "posix_snapshot_io.py",
         "_open_directory_at",
-        "package-posix-offline-restore-materializer",
+        "package-posix-snapshot-io",
         {"path_read": 1},
     ),
     (
-        "posix_offline_restore.py",
+        "posix_snapshot_io.py",
         "_open_regular_file",
-        "package-posix-offline-restore-materializer",
+        "package-posix-snapshot-io",
         {"path_read": 1},
     ),
     (
-        "posix_offline_restore.py",
+        "posix_snapshot_io.py",
         "_strict_json_object",
-        "package-posix-offline-restore-materializer",
+        "package-posix-snapshot-io",
         {"json_decode": 1},
     ),
     (
-        "windows_offline_restore.py",
-        "PackageWindowsOfflineRestoreMaterializer.__init__",
-        "package-windows-offline-restore-materializer",
-        {"path_read": 1},
-    ),
-    (
-        "windows_offline_restore.py",
-        "PackageWindowsOfflineRestoreMaterializer._exclusive_restore_root",
-        "package-windows-offline-restore-materializer",
-        {"path_read": 1},
-    ),
-    (
-        "windows_offline_restore.py",
-        "PackageWindowsOfflineRestoreMaterializer.restore",
-        "package-windows-offline-restore-materializer",
-        {"path_read": 2},
-    ),
-    (
-        "windows_offline_restore.py",
+        "windows_snapshot_io.py",
         "_strict_json_object",
-        "package-windows-offline-restore-materializer",
+        "package-windows-snapshot-io",
         {"json_decode": 1},
     ),
     (
@@ -628,7 +592,7 @@ PLC9B_BOUNDARY_OWNERS = {
     "PackageStoreSettlementJournal",
     "PackageTransactionPinJournal",
     "package-posix-epoch-cutover-owner",
-    "package-posix-offline-restore-materializer",
+    "package-posix-snapshot-io",
     "package-posix-role-store",
     "package-quarantine-native-boundary",
     "package-retention-handoff-journal",
@@ -636,7 +600,7 @@ PLC9B_BOUNDARY_OWNERS = {
     "package-safe-wheel-verifier",
     "package-verified-tree-transfer-owner",
     "package-windows-epoch-cutover-owner",
-    "package-windows-offline-restore-materializer",
+    "package-windows-snapshot-io",
     "package-windows-role-store",
 }
 for _module, _qualified, _owner, _counts in PLC9B_BOUNDARY_SINKS:
@@ -664,7 +628,6 @@ for _qualified in (
         "installed-python-distribution-evidence-resolver"
     )
     EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS[(*_site, "path_read")] = 1
-
 
 
 # Post-PLC9B owner inventory for exact Product, migration, and management reads.
