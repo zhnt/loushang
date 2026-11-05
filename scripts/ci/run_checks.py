@@ -48,7 +48,7 @@ def commands(
         raise ValueError("shards are only supported for module regression")
     python = sys.executable
     if scope == "gui":
-        return [[shutil.which("pnpm") or "pnpm", "--dir", "gui", "run", "check"]]
+        return [[shutil.which("npm") or "npm", "--prefix", "gui", "run", "check"]]
     pytest = [python, "scripts/dev/run_pytest.py"]
     inventories = make_paths(root)
     coding_ui_paths = sorted(

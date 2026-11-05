@@ -222,8 +222,8 @@ must run in Actions; a local success is not a substitute for that evidence.
 Existing offline and host-runtime selectors are preserved. Do not repeat a
 passed suite without relevant changes or an unresolved failure.
 
-The GUI scope invokes `pnpm --dir gui run check` directly, without Unix Make
-activation recipes. The rapid-development default needs Node and pnpm, not
+The GUI scope invokes `npm --prefix gui run check` directly, without Unix Make
+activation recipes. The rapid-development default needs Node and npm, not
 Rust; see the
 [GUI README](../../../gui/README.md). Its reusable
 [lightweight workflow](../../../.github/workflows/gui-quality.yml) participates

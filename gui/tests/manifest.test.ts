@@ -11,7 +11,7 @@ describe("GUI playback case manifest", () => {
     for (const item of manifest.cases) {
       expect(item.id).toMatch(/^GUI-B1-L[0-2]-/);
       expect(item.requiredOn.length).toBeGreaterThan(0);
-      expect(item.command).toMatch(/^pnpm run /);
+      expect(item.command).toMatch(/^npm run /);
       expect(item.intent.trim()).not.toBe("");
     }
   });

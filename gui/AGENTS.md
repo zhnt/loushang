@@ -14,10 +14,10 @@ fixture. Cross-language value contracts belong to C1; the real G16 connection
 belongs to B2. Keep deterministic fixture controls out of the AppService and add
 only the capability required by the current accepted slice.
 
-Use the package scripts documented in `README.md`. Keep Node, pnpm, Rust, Cargo,
-and pnpm lock files synchronized, and verify changes with `pnpm run check` from
+Use the package scripts documented in `README.md`. Keep Node, npm, Rust, Cargo,
+and npm lock files synchronized, and verify changes with `npm run check` from
 this directory. During rapid B1 development this command runs only TypeScript
-type checking and offline unit/playback tests. Run `pnpm run check:full` when
+type checking and offline unit/playback tests. Run `npm run check:full` when
 changing Rust, native capabilities, or native toolchain configuration. Browser
 layout playback and standalone packaging are on-demand acceptance checks, not
 mandatory checks on every presentation edit. Do not run TUI or Harness suites

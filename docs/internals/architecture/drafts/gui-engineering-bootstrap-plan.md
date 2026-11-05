@@ -172,7 +172,7 @@ loushang/
     rust-toolchain.toml
     .node-version
     package.json
-    pnpm-lock.yaml
+    package-lock.json
     src/
       app/                       composition and layout
       ui/                        reusable visual/document components
@@ -201,14 +201,14 @@ loushang/
    版本，安装 rustfmt/Clippy，编辑器使用 rust-analyzer。不要让 CI 随 `stable`
    浮动。Cargo 命令从 `gui/src-tauri/` 执行，确保 rustup 找到父目录的固定文件；
    仅在仓库根传 `--manifest-path` 不能替代这一工具链选择规则。
-2. 固定 Node LTS 的确切版本和 pnpm 版本；`packageManager` 与 CI 一致。
+2. 固定 Node LTS 的确切版本和 npm 版本；`packageManager` 与 CI 一致。
    React/TypeScript/Vite/Tauri/测试工具在首个基线 PR 解析并锁定，本文不预填
-   未验证的最新版本。应用提交 `Cargo.lock` 与 `pnpm-lock.yaml`，CI 使用锁定安装。
+   未验证的最新版本。应用提交 `Cargo.lock` 与 `package-lock.json`，CI 使用锁定安装。
 3. Python 保持现有 uv、本地 `.venv` 和 `uv.lock`；Mock GUI 开发不要求启动 Python。
 4. 系统依赖遵循 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)：
    Linux 配置 WebKitGTK/GTK 等构建依赖，Windows 配置 MSVC/SDK/WebView2，macOS
    配置 Xcode 工具链。安装系统包与拉取依赖属于后续环境初始化，不是文档动作。
-5. Cargo registry/pnpm store 可以按工具默认共享，各 worktree 的 `target`、前端
+5. Cargo registry/npm cache 可以按工具默认共享，各 worktree 的 `target`、前端
    构建输出与测试产物分别保存。此处共享限同机适用的缓存，不跨操作系统复制
    安装目录或编译结果。先以清楚的构建来源为目标，再评估共享编译缓存。
 6. 扩展 `.gitignore` 覆盖 node_modules、GUI 测试输出；保留锁文件与可审核 golden。
@@ -477,14 +477,14 @@ Make 作为现有 Linux 工作流的可选别名。两种入口调用同一实�
 
 | 拟建跨平台入口 | 可选 Make 别名 | 预期责任 |
 | --- | --- | --- |
-| `pnpm --dir gui run doctor` | `make doctor-gui` | 检查固定版本、系统库、空间与图形/driver 条件，明确区分 missing 与 unsupported |
-| `pnpm --dir gui run bootstrap` | `make bootstrap-gui` | 按锁文件准备工程依赖；系统包/工具链安装单独说明，避免隐式提权安装 |
-| `pnpm --dir gui run dev:web` | `make dev-gui-web` | Vite + Mock；支持本机浏览器及 SSH 转发 |
-| `pnpm --dir gui run dev` | `make dev-gui` | 当前平台真实 Tauri 开发入口；声明所需图形会话与显式后端模式 |
-| `pnpm --dir gui run check` | `make check-gui` | 静态检查、L0 与离线 L1；不把缺少 display 当成全部验证通过 |
-| `pnpm --dir gui run playback:native` | `make playback-gui-native` | 按平台运行 L2/L3 自动化；必需场景缺条件失败，探索性运行可单列 unavailable |
-| `pnpm --dir gui run check:contract` | `make check-gui-contract` | Python/Rust/TypeScript 的 codec、bridge 与版本兼容检查 |
-| `pnpm --dir gui run build` | `make build-gui` | 当前平台正式构建；产物带可核对的构建来源 |
+| `npm --prefix gui run doctor` | `make doctor-gui` | 检查固定版本、系统库、空间与图形/driver 条件，明确区分 missing 与 unsupported |
+| `npm --prefix gui run bootstrap` | `make bootstrap-gui` | 按锁文件准备工程依赖；系统包/工具链安装单独说明，避免隐式提权安装 |
+| `npm --prefix gui run dev:web` | `make dev-gui-web` | Vite + Mock；支持本机浏览器及 SSH 转发 |
+| `npm --prefix gui run dev` | `make dev-gui` | 当前平台真实 Tauri 开发入口；声明所需图形会话与显式后端模式 |
+| `npm --prefix gui run check` | `make check-gui` | 静态检查、L0 与离线 L1；不把缺少 display 当成全部验证通过 |
+| `npm --prefix gui run playback:native` | `make playback-gui-native` | 按平台运行 L2/L3 自动化；必需场景缺条件失败，探索性运行可单列 unavailable |
+| `npm --prefix gui run check:contract` | `make check-gui-contract` | Python/Rust/TypeScript 的 codec、bridge 与版本兼容检查 |
+| `npm --prefix gui run build` | `make build-gui` | 当前平台正式构建；产物带可核对的构建来源 |
 
 首次实施保存必要 baseline。执行 Python pytest 的命令继续遵守 workspace 的
 沙箱外执行规则，保留 `not live` 等选择器；文档方案不更改这条本地规则。

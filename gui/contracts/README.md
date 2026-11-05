@@ -73,7 +73,7 @@ implementation has not changed; native manual acceptance remains distinct.
 Run from the repository root:
 
 ```text
-pnpm --dir gui run check:contract
+npm --prefix gui run check:contract
 ```
 
 Requires the repository Python environment (`uv`), Node 24.19, and Rust 1.98.1.
@@ -209,7 +209,7 @@ those checks or native WebView/IPC acceptance.
 | `32a346d0` | State/metadata: 66 | 176 |
 
 The offline value probe does not acquire real snapshots, subscribe or authenticate.
-Reproduce this offline evidence with `pnpm --dir gui run check:contract`.
+Reproduce this offline evidence with `npm --prefix gui run check:contract`.
 
 ## Real AppHost integration follow-up
 

@@ -87,7 +87,7 @@ offline fixtures and never infer mutation results across reconnect.
 
 ## Opt-in provider desktop acceptance
 
-`pnpm --dir gui run accept:live-provider` uses the same isolated AppHost and
+`npm --prefix gui run accept:live-provider` uses the same isolated AppHost and
 desktop control bridge but resolves the saved Coding `default_model` through the
 standard layered ModelRegistry and settings path. Credentials remain in the AI
 runtime; they are not serialized to Rust or the WebView. The helper disables

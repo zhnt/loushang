@@ -596,7 +596,7 @@ if __name__ == "__main__":
     if not parsed.gui_exe.is_file():
         raise SystemExit(
             f"HarnessGUI executable not found: {parsed.gui_exe}\n"
-            "Build it first with: pnpm --dir gui run build"
+            "Build it first with: npm --prefix gui run build"
         )
     with tempfile.TemporaryDirectory(prefix="gui-desktop-acceptance-") as temporary:
         asyncio.run(run(parsed, Path(temporary).resolve()))

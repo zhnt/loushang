@@ -15,7 +15,7 @@ of Windows display scaling. Generated browser evidence lives in
 
 ## Native checklist
 
-Build with `pnpm --dir gui run build:fixture-native`; launch
+Build with `npm --prefix gui run build:fixture-native`; launch
 `gui/src-tauri/target/release/harness-gui.exe` without a Vite server.
 Record the executable SHA-256, OS scaling, window dimensions and screenshots
 with the results. Do not infer a pass from a successful build or live process.

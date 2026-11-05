@@ -35,7 +35,7 @@ Tauri application receives no added capabilities or dependencies.
 ## Native evidence and reproduction
 
 ```text
-pnpm --dir gui run check:record-contract
+npm --prefix gui run check:record-contract
 ```
 
 This opt-in Windows-only command builds with locked offline dependencies, then
