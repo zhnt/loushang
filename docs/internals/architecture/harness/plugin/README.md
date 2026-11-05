@@ -68,47 +68,62 @@ The [Plugin and Harness convergence audit](convergence-audit.md) traces Session
 creation, Plugin loading, disable, and shutdown at the 2026-11-04 source baseline.
 It separates observed ownership from proposed simplification; its candidate
 list does not change accepted contracts or authorize legacy-path removal.
+Its current disposition tables close the selected 2026-11-05 round: delivered
+slices, deliberate retention and conditional candidates are listed separately.
+Retained differences and unselected candidates are not mandatory unfinished work.
 
 The [materialization platform Adapter](materialization-platform-adapter.md)
 defines shared Store rules with narrow native operations. M1a receipt
-verification and M1b finish/reuse/publication coordination are locally
-implemented; Windows native validation remains pending.
+verification and M1b finish/reuse/publication coordination were delivered in
+PR #854; retained-source Windows Server 2022 x64/Python 3.11 native evidence
+has passed, as recorded in the evidence inventory below.
 
 The [M1c tree validation design](materialization-tree-validation.md)
 separates one shared traversal/verification algorithm from native rooted reads,
 including the existing partial-delete GC observation path. The shared scanner
-and both platform readers are locally implemented and code-reviewed; Windows
-native validation remains pending. File writing has its own accepted slice
-below; tree deletion remains a follow-on concern.
+and both platform readers were delivered in PR #859 and code-reviewed; their
+retained-source Windows native and partial-delete retry evidence has passed.
+File writing has its own accepted slice below; tree deletion is outside this scope.
 
 The accepted [M1c file sink design](materialization-file-sinks.md) follows that
 read/validation slice. It separates shared file consumption and completion
 rules from native writes and handle cleanup, and preserves the original tree
-owner's completion authority. The shared sinks and platform Writers are locally
-implemented and code-reviewed; Windows native validation remains pending.
+owner's completion authority. The shared sinks and platform Writers were
+implemented, code-reviewed and delivered in PR #863; retained-source Windows
+native evidence has passed.
 Tree deletion remains outside its scope.
+
+The [M1 cross-platform evidence inventory](materialization-platform-evidence.md)
+reuses PR #872's 33 passing POSIX materialization and 12 transfer cases after
+checking source identity. Its original 27 Windows cases were skipped in that run. A later isolated manual
+Windows run passed those 27 plus one external partial-delete retry case, with
+exact source/node checks. An initial launcher-only failure is retained separately.
+The temporary ref was deleted; main workflows and paused gates remain unchanged.
 
 The accepted [D1 ledger assembly design](management-ledger-assembly.md) covers
 the two legacy Coding lifecycle/management builders. It shares construction in
 two stages around the original caller-owned compatibility/recovery boundary;
-Product policy, leases, fenced B assembly, and retirement coordination stay
-with their existing owners. This slice is locally implemented and independently
-code-reviewed; focused offline verification is recorded in its review. It does
-not complete the wider D1 convergence work.
+Product policy, leases and fenced B assembly keep their existing owners;
+retirement coordination was outside that first slice and is addressed below.
+This slice was delivered in PR #865 and independently code-reviewed; focused
+offline verification is recorded in its review. The audit's current disposition
+tables distinguish the delivered D1 scope from deliberately retained ownership.
 
 The accepted [D1 Session owner retirement handoff](session-owner-retirement-handoff.md)
 implements a bounded follow-on: the existing exact-owner reporting algorithm
 now lives in an internal Harness Session integration module. Coding evidence,
 Product labels and locks, Graph cleanup, family release and fenced runtime
 leases keep their existing owners. Focused regression, local differential and
-journal reentry validation, and independent code reviews are complete.
+journal reentry validation, and independent code reviews are complete;
+this bounded slice was delivered in PR #867.
 
 The accepted first slice of the [D2 route and composition-input design](composition-route-inputs.md)
 distinguishes existing storage selection from composition shape and preserves
 the original selector, factory/binding and admission chain. Its first
 slice separates shared owner-input preparation from Coding trust/default policy
 inside the existing assembly path. The bounded implementation, independent
-code review and focused regression are complete. A follow-up correction closes
+code review and focused regression are complete, with delivery in PR #869.
+A follow-up correction closes
 the existing main caller-inventory failure with the original exact-set assertion;
 local full cross-package validation remains unfinished in the review record.
 Broader bootstrap convergence remains outside this first slice.
@@ -120,7 +135,7 @@ identified the bounded Coding bootstrap configuration slice implemented below.
 The accepted R1.1 [D2-B1 bootstrap configuration design](bootstrap-capability-config.md)
 uses one local function at the two original B call positions, retaining original
 expression order, Store/private-directory checks and cleanup ownership. Implementation, focused validation and three-view code review are complete;
-remote delivery is tracked by the corresponding PR. The [review record](bootstrap-capability-config-review.md)
+delivery is merged in PR #871. The [review record](bootstrap-capability-config-review.md)
 records 41 distinct related passing cases, 38 differential cases and the existing
 joint-activation fixture correction. The remaining-scope inventory now closes
 this bounded D2 round with explicit retention decisions; it does not claim all
@@ -130,9 +145,9 @@ The accepted R1.1 [E1 Catalog adapter module design](catalog-adapter-module.md)
 aligns the production Coding module name with its responsibility while retaining
 a forwarding compatibility module. Source migration and equivalent inventory
 updates, 54 focused passing tests, three controlled compatibility probes and
-three-view independent code review are complete locally. Current source
+three-view independent code review are complete, with delivery merged in PR #872. Current source
 navigation and evidence are linked from the [E1 review](catalog-adapter-module-review.md);
-remote delivery is tracked by the corresponding PR.
+the old module and compatibility names remain supported.
 
 ## Authority Order
 
