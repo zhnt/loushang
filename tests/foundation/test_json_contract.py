@@ -136,6 +136,22 @@ def test_validate_json_value_accepts_strict_json_without_copying() -> None:
     assert validate_json_value(source, name="payload") is None
 
 
+def test_validate_json_value_allows_shared_noncyclic_containers() -> None:
+    shared = {"items": [1, "hello"]}
+
+    assert validate_json_value([shared, shared], name="payload") is None
+
+
+def test_validate_json_value_preserves_first_error_in_mapping_order() -> None:
+    source = {"first": object(), 1: "later"}
+
+    with pytest.raises(JsonValueError) as exc_info:
+        validate_json_value(source, name="payload")
+
+    assert exc_info.value.path == "payload.first"
+    assert exc_info.value.value_type == "object"
+
+
 @pytest.mark.parametrize(
     ("value", "path", "value_type"),
     [
