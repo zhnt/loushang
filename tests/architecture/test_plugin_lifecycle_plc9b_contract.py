@@ -3212,7 +3212,9 @@ def test_plc9b3e3c1_posix_materialization_is_rooted_role_safe_and_executable() -
     index = _source(INDEX)
     acquisition = _source(BOUNDED_ACQUISITION)
     transfer = _source(TREE_TRANSFER)
-    posix_store = _source(POSIX_MATERIALIZATION)
+    posix_store = _source(POSIX_MATERIALIZATION) + _source(
+        OWNER_KERNEL_ROOT / "_materialization_shared.py"
+    )
     runtime = _source(STAGING_SET_RUNTIME)
     component_tests = _source(POSIX_MATERIALIZATION_TEST)
     wheel_tests = _source(Path("tests/harness/resources/packages/test_plc9b_wheel.py"))
@@ -3321,7 +3323,9 @@ def test_plc9b3e3c1_posix_materialization_is_rooted_role_safe_and_executable() -
 def test_plc9b3e3c2_windows_materialization_is_rooted_role_safe_and_native() -> None:
     contract = _source(CONTRACT)
     windows_primitives = _source(WINDOWS_QUARANTINE)
-    windows_store = _source(WINDOWS_MATERIALIZATION)
+    windows_store = _source(WINDOWS_MATERIALIZATION) + _source(
+        OWNER_KERNEL_ROOT / "_materialization_shared.py"
+    )
     component_tests = _source(WINDOWS_MATERIALIZATION_TEST)
     adversarial_tests = _source(ADVERSARIAL_TEST)
     workflow = _source(WINDOWS_WORKFLOW)
@@ -3486,10 +3490,10 @@ def test_plc9b3e3c3_settlement_authority_is_durable_exact_and_store_private() ->
         assert "self._settlement_journal.owner_lock()" in store
         assert "finish_verified_tree(" in store
         assert "self._settlement_journal.authorizes(" in store
-        assert "validate_receipt_at_root(" in store
+        assert "validate_receipt_at_root(" in shared
         assert "plugin_lifecycle._materialization_shared import" in store
-        assert "validate_dependency_receipt" in store
-        assert "validate_root_receipt" in store
+        assert "validate_dependency_receipt" in shared
+        assert "validate_root_receipt" in shared
         assert "receipt_probe" in store
         assert "_settled" not in store
     assert "renameat2" in posix_store

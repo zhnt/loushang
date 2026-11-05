@@ -25,6 +25,8 @@ acceptance does not establish writable release or performance readiness.
 
 ## Start Here
 
+- [Source Consolidation Delivery](source-consolidation-delivery.md) freezes the
+  50,000-line reduction baseline, accounting rules and incremental evidence.
 - [Transcript Admission Publication and Recovery](key-designs/transcript-admission-publication.md)
   defines complete witness publication before data creation, local diagnostics,
   and identity-checked restoration of a missing record from a retained backup.
