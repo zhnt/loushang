@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from loushang.coding._resource_catalog_shadow import (
+from loushang.coding._resource_catalog_adapter import (
     CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
     CodingResourceCatalogSourcePolicy,
     canonical_coding_resource_catalog_source_policy,

@@ -26,7 +26,7 @@ PRODUCT_COMPOSITION_ASSEMBLY_PATH = Path(
 )
 EXTENSION_RESOURCE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_extension_source.py"
 EXTENSION_RESOURCE_RUNTIME_PATH = Path("src/loushang/harness/extensions/resources.py")
-CODING_SHADOW_ADAPTER_PATH = Path("src/loushang/coding/_resource_catalog_shadow.py")
+CODING_SHADOW_ADAPTER_PATH = Path("src/loushang/coding/_resource_catalog_adapter.py")
 CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
 CODING_BASE_PRODUCT_COMPOSITION_PATH = Path(
     "src/loushang/coding/_base_product_composition.py"
