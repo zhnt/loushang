@@ -4,7 +4,7 @@
 
 - Authority: accepted — 用户明确要求按 R2 实施，接受范围限本专项的内部读取与核验收敛，不改变现有公开或持久合同。
 - Design status: accepted；R1 经三个 xhigh agent 独立初评，R2 修订后原评审者复核关闭设计发现；实施授权为“请你按照R2开发实施”。
-- Implementation status: locally-implemented；共享 scanner 与两个平台读取 Adapter 已落地并完成三视角代码审查，验证记录见评审记录。Windows native 与 partial retry 验收仍待补充；M1a/M1b 不重新开发。
+- Implementation status: locally-implemented；共享 scanner 与两个平台读取 Adapter 已落地并完成三视角代码审查，验证记录见评审记录。固定源码的 Windows native 与 partial retry 补验已通过，见[证据记录](materialization-platform-evidence.md#7-一次性-actions-执行验收与入口退出2026-11-05)；M1a/M1b 不重新开发。
 - Owner: Harness package lifecycle。
 - 源码基线：main `f8e46275565cf33f6ca945cb1b60200767162847`；2026-11-04 静态核查。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。采用职责、运行失败、数据兼容三个视角；没有重跑平台或模型试验。
