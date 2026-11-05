@@ -8,11 +8,11 @@ from typing import Literal, TypeAlias
 from loushang.harness.resources.packages.plugin_lifecycle.adoption import (
     PackageLegacyStateEvidenceV1,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
-    PackageOfflineRestoreSnapshotEvidenceV1,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
     PackagePosixEpochSnapshotEvidenceStore,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.snapshot_records import (
+    PackageOfflineRestoreSnapshotEvidenceV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_snapshot import (
     PackageWindowsEpochSnapshotEvidenceStore,

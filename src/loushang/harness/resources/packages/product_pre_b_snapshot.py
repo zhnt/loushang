@@ -15,9 +15,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
     PackageEpochRuntimeLeaseRegistry,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
-    PackageOfflineRestoreSnapshotEvidenceV1,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordination import (
     PackagePosixEpochCutoverCoordination,
 )
@@ -34,6 +31,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot i
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_pre_fence_registration import (
     PackagePosixPreFenceRegistrationOwner,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.snapshot_records import (
+    PackageOfflineRestoreSnapshotEvidenceV1,
 )
 
 
