@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json as stdlib_json
 import math
-from collections.abc import Callable
-from typing import TypeAlias, cast
+from collections.abc import Callable, Iterable
+from typing import Any, TypeAlias, cast
 
 JSONPrimitive: TypeAlias = str | int | float | bool | None
 JSONValue: TypeAlias = JSONPrimitive | list["JSONValue"] | dict[str, "JSONValue"]
@@ -91,49 +91,60 @@ class _JsonRejection(Exception):
 def _validate_json_value_fast(value: object, *, seen: set[int]) -> None:
     """Single-pass strict JSON check mirroring ``_require_json_value`` rules."""
 
-    if value is None:
-        return
     value_type = type(value)
-    if value_type is str:
-        try:
-            cast(str, value).encode("utf-8")
-        except UnicodeEncodeError as exc:
-            raise _JsonRejection from exc
-        return
-    if value_type is bool:
-        return
-    if value_type is int:
-        try:
-            str(value)
-        except ValueError as exc:
-            raise _JsonRejection from exc
-        return
-    if value_type is float:
-        if not math.isfinite(cast(float, value)):
-            raise _JsonRejection
-        return
+    object_id = None
     if value_type is list or value_type is dict:
+        if not value:
+            return
         object_id = id(value)
         if object_id in seen:
             raise _JsonRejection
         seen.add(object_id)
-        try:
-            if value_type is list:
-                for item in cast(list[object], value):
-                    _validate_json_value_fast(item, seen=seen)
-            else:
-                for key, item in cast(dict[object, object], value).items():
-                    if type(key) is not str:
-                        raise _JsonRejection
+    try:
+        items: Iterable[object]
+        container: Any = value
+        if value_type is dict:
+            for key in container:
+                if type(key) is not str:
+                    raise _JsonRejection
+                if not key.isascii():
                     try:
                         key.encode("utf-8")
                     except UnicodeEncodeError as exc:
                         raise _JsonRejection from exc
+            items = container.values()
+        elif value_type is list:
+            items = container
+        else:
+            items = (value,)
+
+        item: Any
+        for item in items:
+            item_type = type(item)
+            if item_type is str:
+                if not item.isascii():
+                    try:
+                        item.encode("utf-8")
+                    except UnicodeEncodeError as exc:
+                        raise _JsonRejection from exc
+            elif item_type is dict or item_type is list:
+                if item:
                     _validate_json_value_fast(item, seen=seen)
-        finally:
+            elif item is None or item_type is bool:
+                continue
+            elif item_type is int:
+                try:
+                    str(item)
+                except ValueError as exc:
+                    raise _JsonRejection from exc
+            elif item_type is float:
+                if not math.isfinite(item):
+                    raise _JsonRejection
+            else:
+                raise _JsonRejection
+    finally:
+        if object_id is not None:
             seen.discard(object_id)
-        return
-    raise _JsonRejection
 
 
 def _require_json_value(

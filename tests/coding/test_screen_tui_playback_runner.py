@@ -278,9 +278,7 @@ def test_screen_tui_playback_runner_writes_layered_multiagent_diagnostics(
         .splitlines()
     ]
     classifications = [
-        row
-        for row in messaging_rows
-        if row["event"] == "completion.classified"
+        row for row in messaging_rows if row["event"] == "completion.classified"
     ]
     assert classifications == [
         {
@@ -426,7 +424,7 @@ def test_screen_tui_playback_runner_runs_child_approval_scenario(capsys) -> None
     exit_code = run_playback_cli(["multiagent-child-approval"])
 
     captured = capsys.readouterr()
-    assert exit_code == 0
+    assert exit_code == 0, (captured.out, captured.err)
     assert "PASS multiagent-child-approval" in captured.out
 
 

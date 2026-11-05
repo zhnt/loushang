@@ -41,9 +41,13 @@ def _create_cli_session(
     *,
     mode: CapabilityMountMode,
     no_tools: bool = False,
+    lsp_mode: CapabilityMountMode | None = None,
 ):
     tmp_path.mkdir(parents=True, exist_ok=True)
-    settings = SettingsManager(ControlConfig(capabilities={"coding.arch": mode}))
+    capabilities = {"coding.arch": mode}
+    if lsp_mode is not None:
+        capabilities["coding.lsp"] = lsp_mode
+    settings = SettingsManager(ControlConfig(capabilities=capabilities))
     services = create_services(settings_manager=settings)
     registry = build_builtin_tool_registry(settings_manager=settings)
     runtime = default_runtime_builder(
@@ -270,7 +274,7 @@ def test_arch_and_lsp_share_one_product_composition_and_session_graph(
     package.mkdir()
     (package / "__init__.py").write_text("from . import child\n", encoding="utf-8")
     (package / "child.py").write_text("VALUE = 1\n", encoding="utf-8")
-    session = _create_cli_session(tmp_path, mode="always")
+    session = _create_cli_session(tmp_path, mode="always", lsp_mode="always")
     assembly = session._coding_capability_plugin_assembly
 
     assert assembly is not None
