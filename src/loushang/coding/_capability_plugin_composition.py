@@ -23,7 +23,7 @@ from loushang.coding._plugin_lifecycle import (
     CodingPluginSessionLease,
     package_revision_ref,
 )
-from loushang.coding._resource_catalog_shadow import (
+from loushang.coding._resource_catalog_adapter import (
     complete_coding_package_plugin_selection_seed,
 )
 from loushang.coding.plugin_dependency_grants import (

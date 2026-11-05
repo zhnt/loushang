@@ -124,7 +124,7 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
         Path("src/loushang/coding/plugin_local_discovery.py"),
         # Original Session fingerprints its selected snapshot for Resume use.
         Path("src/loushang/coding/session/agent_session.py"),
-        Path("src/loushang/coding/_resource_catalog_shadow.py"),
+        Path("src/loushang/coding/_resource_catalog_adapter.py"),
         # Product-selected Store bytes enter through this explicit Catalog source.
         Path("src/loushang/harness/resource_catalog/product_snapshot_source.py"),
         RESOURCE_ROOT / "_loader_pipeline.py",

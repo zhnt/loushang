@@ -60,7 +60,7 @@ from loushang.coding._product_capability_plugin_composition import (
     prepare_coding_builtin_product_composition,
     prepare_coding_product_capability_plugin_composition,
 )
-from loushang.coding._resource_catalog_shadow import (
+from loushang.coding._resource_catalog_adapter import (
     CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
     CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
     CodingResourceCatalogAdmissionError,

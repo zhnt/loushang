@@ -23,7 +23,7 @@ from loushang.harness.resources._catalog_records import NativeHostOrigin
 from loushang.plugin._coding_data_wheel_validation import validate_coding_data_wheel
 
 from ._plugin_lifecycle import resolve_coding_plugin_lifecycle_state_layout
-from ._resource_catalog_shadow import (
+from ._resource_catalog_adapter import (
     CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
     CodingResourceCatalogAdmissionError,
     build_coding_initial_resource_catalog_adapter,
