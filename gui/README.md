@@ -23,8 +23,8 @@ remains in C1/B2 as described in the
 
 ## Toolchain
 
-- Node.js 24.19.0
-- pnpm 11.19.0
+- Node.js 24.22.2
+- npm 11.19.1
 - Rust 1.98.1 with rustfmt and Clippy
 - Tauri 2 and React 19, resolved by the committed lock files
 
@@ -34,17 +34,18 @@ Windows SDK.
 
 ## Commands
 
-Run all commands from the repository root:
+Node.js includes npm. If the bundled npm differs from the pinned version, run
+`npm install --global npm@11.19.1`. Run all commands from the repository root:
 
 ```text
-pnpm --dir gui run doctor
-pnpm --dir gui run bootstrap
-pnpm --dir gui run dev:web
-pnpm --dir gui run dev
-pnpm --dir gui run dev:fixture-native
-pnpm --dir gui run test
-pnpm --dir gui run check
-pnpm --dir gui run build
+npm --prefix gui run doctor
+npm --prefix gui run bootstrap
+npm --prefix gui run dev:web
+npm --prefix gui run dev
+npm --prefix gui run dev:fixture-native
+npm --prefix gui run test
+npm --prefix gui run check
+npm --prefix gui run build
 ```
 
 `dev:web` starts only the browser shell. `dev` starts the native Tauri window.
@@ -89,8 +90,8 @@ For an opt-in desktop acceptance run, first build the release executable and
 then launch an isolated real AppHost plus two real mux/session projections:
 
 ```text
-pnpm --dir gui run build
-pnpm --dir gui run accept:live-native
+npm --prefix gui run build
+npm --prefix gui run accept:live-native
 ```
 
 The second command opens a visible HarnessGUI window and keeps the shared
@@ -108,7 +109,7 @@ To exercise the same isolated AppHost with the saved Coding default model and
 its existing credential, run the explicit provider acceptance instead:
 
 ```text
-pnpm --dir gui run accept:live-provider
+npm --prefix gui run accept:live-provider
 ```
 
 This command resolves the model through the normal layered AI ModelRegistry and
@@ -125,7 +126,7 @@ disconnect/resynchronization and cooperative desktop-exit lifecycle. The
 automated integration check additionally submits through the production desktop
 control bridge. Windows display scaling remains outside this slice.
 
-For a standalone offline executable, use `pnpm --dir gui run build:fixture-native`
+For a standalone offline executable, use `npm --prefix gui run build:fixture-native`
 from the repository root. Do not substitute a plain `cargo build`: that bypasses
 the Tauri frontend build and production protocol configuration and can produce a
 window that expects a running localhost development server.
@@ -133,15 +134,15 @@ window that expects a running localhost development server.
 ## Browser layout playback
 
 For the optional Python → Rust → TypeScript C1 execution contract slices,
-see [contract probe](contracts/README.md) and run `pnpm --dir gui run check:contract`.
+see [contract probe](contracts/README.md) and run `npm --prefix gui run check:contract`.
 It is separate from default checks and does not connect the GUI to AppHost.
 
 From the repository root:
 
 ```text
-pnpm --dir gui run test:layout:install
-pnpm --dir gui run test:layout
-pnpm --dir gui exec playwright show-report
+npm --prefix gui run test:layout:install
+npm --prefix gui run test:layout
+npm --prefix gui exec -- playwright show-report gui/playwright-report
 ```
 
 The layout suite starts its own loopback-only Vite server on port 1421 and
@@ -235,7 +236,7 @@ Remaining acceptance work:
 
 `gui/**` and `scripts/gui/**` now select the dedicated `gui` check, alongside
 documentation checks. Ordinary README changes remain documentation-only. The
-local gate and the Ubuntu GUI workflow invoke `pnpm --dir gui run check` only.
+local gate and the Ubuntu GUI workflow invoke `npm --prefix gui run check` only.
 They do not install browsers, run Rust checks or build a native executable.
 GUI-only workflow edits select GUI plus CI routing/syntax checks, not TUI or
 Harness checks. Changes to shared gate infrastructure still intentionally

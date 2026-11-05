@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "ai.loushang.harnessgui",
   "build": {
-    "beforeDevCommand": "pnpm dev:web",
+    "beforeDevCommand": "npm run dev:web",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build:web",
+    "beforeBuildCommand": "npm run build:web",
     "frontendDist": "../dist"
   },
   "app": {

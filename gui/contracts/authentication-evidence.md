@@ -40,7 +40,7 @@ capacity, concurrent response reader or cancellation ownership.
 From the GUI lane root:
 
 ```text
-pnpm --dir gui run check:auth-contract
+npm --prefix gui run check:auth-contract
 cargo +1.98.1 test --locked --offline --manifest-path gui/contracts/rust/Cargo.toml --bin auth_probe
 ```
 

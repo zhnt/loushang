@@ -536,7 +536,7 @@ export class MockAppClient implements FixturePlaybackPort {
             taskId: "task-verify",
             kind: "command",
             label: "Ran the deterministic GUI check",
-            detail: "pnpm run check",
+            detail: "npm run check",
             status: "completed",
             durationLabel: "6s",
           },

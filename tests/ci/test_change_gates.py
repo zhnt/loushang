@@ -71,7 +71,7 @@ class ScopeTests(unittest.TestCase):
         )
 
     def test_gui_code_and_tooling_select_only_gui_and_docs(self):
-        for path in ("gui/src/App.tsx", "gui/src-tauri/Cargo.lock", "gui/pnpm-lock.yaml", "scripts/gui/run.mjs"):
+        for path in ("gui/src/App.tsx", "gui/src-tauri/Cargo.lock", "gui/package-lock.json", "scripts/gui/run.mjs"):
             with self.subTest(path=path):
                 self.assertEqual(self.selected(path), {"docs", "gui"})
                 self.assertTrue(selector.select([path])["workflows"]["gui"])
@@ -79,8 +79,8 @@ class ScopeTests(unittest.TestCase):
 
     def test_gui_runner_uses_the_package_check_without_make(self):
         (command,) = runner.commands("gui")
-        self.assertEqual(command[1:], ["--dir", "gui", "run", "check"])
-        self.assertIn("pnpm", command[0])
+        self.assertEqual(command[1:], ["--prefix", "gui", "run", "check"])
+        self.assertIn(Path(command[0]).name.lower(), {"npm", "npm.cmd", "npm.exe"})
 
     def test_gui_workflow_does_not_select_runtime_suites(self):
         self.assertEqual(self.selected(".github/workflows/gui-quality.yml"), {"docs", "gui", "ci"})
@@ -92,7 +92,7 @@ class ScopeTests(unittest.TestCase):
 
     def test_gui_default_workflow_stays_lightweight(self):
         workflow = (ROOT / ".github/workflows/gui-quality.yml").read_text()
-        self.assertIn("pnpm --dir gui run check", workflow)
+        self.assertIn("npm --prefix gui run check", workflow)
         for heavy in ("rustup", "test:layout", "build:fixture-native", "check:full"):
             self.assertNotIn(heavy, workflow)
     def setUp(self):
