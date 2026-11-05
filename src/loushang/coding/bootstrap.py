@@ -1479,6 +1479,42 @@ def _create_agent_session(
             tool_registry=session_tool_registry,
             tools=construction_tools,
         )
+
+        def build_product_capability_configurations(
+            selected_ids: list[str],
+        ) -> dict[str, CodingLspPluginConfigV1 | CodingArchPluginConfigV1]:
+            """Reuse config expressions without transferring state ownership."""
+
+            configurations: dict[
+                str, CodingLspPluginConfigV1 | CodingArchPluginConfigV1
+            ] = {}
+            if "coding.lsp.default" in selected_ids:
+                configurations["coding.lsp.default"] = (
+                    CodingLspPluginConfigV1.from_runtime_inputs(
+                        workspace_root=session_manager.get_cwd(),
+                        definitions=resolved_lsp_definitions,
+                        baseline_environment=resolved_lsp_environment,
+                    )
+                )
+            if "coding.arch.default" in selected_ids:
+                configurations["coding.arch.default"] = (
+                    CodingArchPluginConfigV1.from_runtime_inputs(
+                        workspace_root=session_manager.get_cwd(),
+                        private_data_root=(
+                            Path(arch_private_ephemeral_state.name)
+                            if arch_private_ephemeral_state is not None
+                            else prepare_coding_product_arch_private_data_root(
+                                resolve_coding_plugin_lifecycle_state_layout(
+                                    session_manager.get_cwd()
+                                ),
+                                product_runtime,
+                                session_id=session_id,
+                            )
+                        ),
+                    )
+                )
+            return configurations
+
         base_selection = product_runtime.capture_plugin_desired_selection_for(
             "coding.base"
         )
@@ -1550,34 +1586,9 @@ def _create_agent_session(
                         session_manager, session_id=session_id
                     )
                 )
-                no_base_configurations: dict[
-                    str, CodingLspPluginConfigV1 | CodingArchPluginConfigV1
-                ] = {}
-                if "coding.lsp.default" in enabled_capability_ids:
-                    no_base_configurations["coding.lsp.default"] = (
-                        CodingLspPluginConfigV1.from_runtime_inputs(
-                            workspace_root=session_manager.get_cwd(),
-                            definitions=resolved_lsp_definitions,
-                            baseline_environment=resolved_lsp_environment,
-                        )
-                    )
-                if "coding.arch.default" in enabled_capability_ids:
-                    no_base_configurations["coding.arch.default"] = (
-                        CodingArchPluginConfigV1.from_runtime_inputs(
-                            workspace_root=session_manager.get_cwd(),
-                            private_data_root=(
-                                Path(arch_private_ephemeral_state.name)
-                                if arch_private_ephemeral_state is not None
-                                else prepare_coding_product_arch_private_data_root(
-                                    resolve_coding_plugin_lifecycle_state_layout(
-                                        session_manager.get_cwd()
-                                    ),
-                                    product_runtime,
-                                    session_id=session_id,
-                                )
-                            ),
-                        )
-                    )
+                no_base_configurations = build_product_capability_configurations(
+                    enabled_capability_ids
+                )
                 try:
                     capability_plugin_preparation = (
                         prepare_coding_product_capability_plugin_composition(
@@ -1741,34 +1752,9 @@ def _create_agent_session(
                     session_id=session_id,
                 )
             )
-            configurations: dict[
-                str, CodingLspPluginConfigV1 | CodingArchPluginConfigV1
-            ] = {}
-            if "coding.lsp.default" in enabled_capability_ids:
-                configurations["coding.lsp.default"] = (
-                    CodingLspPluginConfigV1.from_runtime_inputs(
-                        workspace_root=session_manager.get_cwd(),
-                        definitions=resolved_lsp_definitions,
-                        baseline_environment=resolved_lsp_environment,
-                    )
-                )
-            if "coding.arch.default" in enabled_capability_ids:
-                configurations["coding.arch.default"] = (
-                    CodingArchPluginConfigV1.from_runtime_inputs(
-                        workspace_root=session_manager.get_cwd(),
-                        private_data_root=(
-                            Path(arch_private_ephemeral_state.name)
-                            if arch_private_ephemeral_state is not None
-                            else prepare_coding_product_arch_private_data_root(
-                                resolve_coding_plugin_lifecycle_state_layout(
-                                    session_manager.get_cwd()
-                                ),
-                                product_runtime,
-                                session_id=session_id,
-                            )
-                        ),
-                    )
-                )
+            configurations = build_product_capability_configurations(
+                enabled_capability_ids
+            )
             try:
                 builtin_product_preparation = (
                     prepare_coding_builtin_product_composition(

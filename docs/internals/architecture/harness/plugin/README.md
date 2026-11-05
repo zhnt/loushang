@@ -113,6 +113,17 @@ the existing main caller-inventory failure with the original exact-set assertion
 local full cross-package validation remains unfinished in the review record.
 Broader bootstrap convergence remains outside this first slice.
 
+The [D2 remaining-scope inventory](composition-route-inputs-remaining.md)
+distinguishes existing shared preparation from policy/lifetime differences and
+identified the bounded Coding bootstrap configuration slice implemented below.
+
+The accepted R1.1 [D2-B1 bootstrap configuration design](bootstrap-capability-config.md)
+uses one local function at the two original B call positions, retaining original
+expression order, Store/private-directory checks and cleanup ownership. Implementation, focused validation and three-view code review are complete;
+remote delivery is tracked by the corresponding PR. The [review record](bootstrap-capability-config-review.md)
+records 41 distinct related passing cases, 38 differential cases and the existing
+joint-activation fixture correction. This does not mark all of D2 complete.
+
 ## Authority Order
 
 When documents disagree, use this order:
