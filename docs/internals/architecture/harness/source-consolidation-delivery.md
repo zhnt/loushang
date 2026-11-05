@@ -3,7 +3,8 @@
 ## Status And Objective
 
 - Authority: delivery evidence; existing capability contracts remain authoritative.
-- Design status: accepted for the internal Store consolidation described below.
+- Design status: accepted for the internal Store and record-field consolidation
+  described below; durable contracts remain unchanged.
 - Implementation status: partial; the 50,000-line objective is not achieved.
 - Responsible implementer and internal reviewer: Codex, under the user's task.
 - Method consulted: local archmethod master at
@@ -127,3 +128,60 @@ execution remains outstanding and must use the existing platform coverage before
 integrated delivery. The unchanged check planner selects broad validation for
 the architecture inventory and new development-tool paths; this batch's focused
 results do not establish that all selected GUI/TUI/host/platform checks passed.
+
+## Batch 002: Inert Record Field Traversal
+
+54 existing lifecycle record decoders now share field traversal through the
+private `_record_schema.py` helper. Their 480 field declarations supply the
+constructor attribute, original diagnostic label and original value decoder.
+Conventional camel-case keys are derived once per declaration; all keys were
+checked against the original allowed-field sets before applying this change.
+Object admission still runs through each record's original `_exact_dict` or
+`_wire_object` helper, before decoding in the original constructor argument order.
+
+These are static field descriptions, not generated record implementations. The
+existing record classes, constructors, cross-field validation, encoding,
+fingerprints, version constants and exports remain in their original modules.
+Custom decoders remain explicit. There are no new dependencies or external
+Product implementations, and no test assertion or Actions configuration changes.
+
+Per-record review retained six small explicit decoders whose shared-field forms
+offered no aggregate source reduction. These include native Store identities
+that are decoded frequently. This avoids adding traversal overhead where the
+existing implementation is already concise. Shared traversal has a fixed
+dispatch cost; this batch does not claim a startup performance improvement.
+
+| Accounting item | Lines |
+| --- | ---: |
+| Batch 002 Resources net reduction, including its new helper | 661 |
+| Outside-Harness Product source increase | 0 |
+| Effective cumulative reduction | 1,187 |
+| Remaining to cumulative objective | 48,813 |
+
+Local validation:
+
+- Record, transaction, Store, recovery and owner regressions: 203 + 140 passed.
+- Existing Plugin architecture and import-boundary regressions: 269 passed.
+- Existing workspace storage, legacy policy reopen and pre-B snapshot routes:
+  27 passed.
+- Complete existing adversarial suite: 176 passed, one failed. The exact failure,
+  `test_posix_local_wheel_product_composition_uses_live_epoch_and_owners[session-False]`,
+  was reproduced on the clean frozen baseline `739f947d6`: the fixture exposes
+  `standard` but expects a `review` Skill. The assertion and test route remain
+  unchanged; it is not classified as a passing result.
+- A repository-external old/new decoder experiment exercised valid fixtures for
+  all 60 considered records, then compared missing/extra fields, wrong scalar
+  types, nested values and constructor failures: 176,288 comparisons, zero
+  mismatches. After retaining the six explicit decoders, the affected four-module
+  regression subset passed 86 cases, with 28,583 further comparisons across all
+  60 records and zero mismatches.
+- AST comparison preserves 513 existing helper/class definitions apart from
+  the selected decoder bodies, including all fields, validation and encoding.
+  All original decoder signatures/decorators and 13 explicit export lists remain
+  intact. Ruff, formatting, focused mypy, source dependency freshness and the
+  nine documentation invariants passed.
+
+The batch-local check plan selects Harness, architecture and existing native/host
+routes. It does not select AI; the branch's prior AI result belongs to Batch 001.
+Outstanding integrated platform validation and the cumulative 50,000-line target
+remain open.

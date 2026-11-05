@@ -16,6 +16,10 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import TYPE_CHECKING, Protocol, cast
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -73,26 +77,10 @@ class PackageVerifiedTreeEntryV1:
     def from_dict(cls, value: object) -> PackageVerifiedTreeEntryV1:
         document = _exact_dict(
             value,
-            fields={
-                "byteCount",
-                "contentDigest",
-                "entryVersion",
-                "logicalPath",
-            },
+            fields=_VERIFIED_TREE_ENTRY_V1_SCHEMA.keys,
             name="Package verified-tree entry",
         )
-        return cls(
-            logical_path=_wire_string(
-                document["logicalPath"], name="verified logical path"
-            ),
-            content_digest=_wire_string(
-                document["contentDigest"], name="verified content digest"
-            ),
-            byte_count=_wire_int(document["byteCount"], name="verified byte count"),
-            entry_version=_wire_int(
-                document["entryVersion"], name="verified-tree entry version"
-            ),
-        )
+        return _VERIFIED_TREE_ENTRY_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -623,3 +611,14 @@ def _wire_string(value: object, *, name: str) -> str:
     if not isinstance(value, str) or not value:
         raise TypeError(f"{name} must be a non-empty string")
     return value
+
+
+_VERIFIED_TREE_ENTRY_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("logical_path", "verified logical path"),
+        RecordField("content_digest", "verified content digest"),
+        RecordField("byte_count", "verified byte count", _wire_int),
+        RecordField("entry_version", "verified-tree entry version", _wire_int),
+    ),
+)

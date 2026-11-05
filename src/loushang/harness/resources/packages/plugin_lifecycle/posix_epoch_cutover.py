@@ -18,6 +18,10 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceError,
     PackageEpochFenceJournal,
@@ -87,10 +91,7 @@ class PackageEpochCutoverQuiescenceReceiptV1:
             self.active_pre_fence_registration_ids
         ):
             raise ValueError("Package quiescence evidence roles overlap")
-        if (
-            self.receipt_version
-            != PACKAGE_EPOCH_CUTOVER_QUIESCENCE_RECEIPT_VERSION
-        ):
+        if self.receipt_version != PACKAGE_EPOCH_CUTOVER_QUIESCENCE_RECEIPT_VERSION:
             raise ValueError("Unsupported Package epoch quiescence receipt")
         if self.receipt_id != _fingerprint(self._identity_dict()):
             raise ValueError("Package epoch quiescence receipt does not match")
@@ -131,8 +132,7 @@ class PackageEpochCutoverQuiescenceReceiptV1:
     def first_active_evidence(self) -> str:
         values = tuple(
             sorted(
-                self.active_runtime_lease_ids
-                + self.active_pre_fence_registration_ids
+                self.active_runtime_lease_ids + self.active_pre_fence_registration_ids
             )
         )
         if not values:
@@ -144,9 +144,7 @@ class PackageEpochCutoverQuiescenceReceiptV1:
             store_id=self.store_id,
             owner_revision=self.owner_revision,
             active_runtime_lease_ids=self.active_runtime_lease_ids,
-            active_pre_fence_registration_ids=(
-                self.active_pre_fence_registration_ids
-            ),
+            active_pre_fence_registration_ids=(self.active_pre_fence_registration_ids),
             receipt_version=self.receipt_version,
         )
 
@@ -157,36 +155,10 @@ class PackageEpochCutoverQuiescenceReceiptV1:
     def from_dict(cls, value: object) -> PackageEpochCutoverQuiescenceReceiptV1:
         document = _wire_object(
             value,
-            expected={
-                "receiptId",
-                "storeId",
-                "ownerRevision",
-                "activeRuntimeLeaseIds",
-                "activePreFenceRegistrationIds",
-                "receiptVersion",
-            },
+            expected=_EPOCH_CUTOVER_QUIESCENCE_RECEIPT_V1_SCHEMA.keys,
             name="Package epoch quiescence receipt",
         )
-        return cls(
-            receipt_id=_wire_string(document["receiptId"], name="receipt id"),
-            store_id=_wire_string(document["storeId"], name="store id"),
-            owner_revision=_wire_int(
-                document["ownerRevision"],
-                name="owner revision",
-            ),
-            active_runtime_lease_ids=_wire_string_tuple(
-                document["activeRuntimeLeaseIds"],
-                name="active runtime lease ids",
-            ),
-            active_pre_fence_registration_ids=_wire_string_tuple(
-                document["activePreFenceRegistrationIds"],
-                name="active pre-fence registration ids",
-            ),
-            receipt_version=_wire_int(
-                document["receiptVersion"],
-                name="receipt version",
-            ),
-        )
+        return _EPOCH_CUTOVER_QUIESCENCE_RECEIPT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -272,42 +244,10 @@ class PackageEpochCutoverSnapshotReceiptV1:
     def from_dict(cls, value: object) -> PackageEpochCutoverSnapshotReceiptV1:
         document = _wire_object(
             value,
-            expected={
-                "receiptId",
-                "storeId",
-                "legacyRootIdentity",
-                "quiescenceReceiptId",
-                "snapshotId",
-                "snapshotRevision",
-                "entryCount",
-                "byteCount",
-                "receiptVersion",
-            },
+            expected=_EPOCH_CUTOVER_SNAPSHOT_RECEIPT_V1_SCHEMA.keys,
             name="Package epoch snapshot receipt",
         )
-        return cls(
-            receipt_id=_wire_string(document["receiptId"], name="receipt id"),
-            store_id=_wire_string(document["storeId"], name="store id"),
-            legacy_root_identity=_wire_string(
-                document["legacyRootIdentity"],
-                name="legacy root identity",
-            ),
-            quiescence_receipt_id=_wire_string(
-                document["quiescenceReceiptId"],
-                name="quiescence receipt id",
-            ),
-            snapshot_id=_wire_string(document["snapshotId"], name="snapshot id"),
-            snapshot_revision=_wire_int(
-                document["snapshotRevision"],
-                name="snapshot revision",
-            ),
-            entry_count=_wire_int(document["entryCount"], name="entry count"),
-            byte_count=_wire_int(document["byteCount"], name="byte count"),
-            receipt_version=_wire_int(
-                document["receiptVersion"],
-                name="receipt version",
-            ),
-        )
+        return _EPOCH_CUTOVER_SNAPSHOT_RECEIPT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -380,9 +320,7 @@ class PackagePosixEpochCutoverRequestV1:
             raise ValueError("Prior Package epoch fence store changed")
         prior_epoch = 0 if prior_fence is None else prior_fence.epoch
         prior_fence_id = None if prior_fence is None else prior_fence.fence_id
-        prior_fence_revision = (
-            0 if prior_fence is None else prior_fence.fence_revision
-        )
+        prior_fence_revision = 0 if prior_fence is None else prior_fence.fence_revision
         values = _cutover_request_identity(
             store_id=store_id,
             prior_epoch=prior_epoch,
@@ -430,53 +368,10 @@ class PackagePosixEpochCutoverRequestV1:
     def from_dict(cls, value: object) -> PackagePosixEpochCutoverRequestV1:
         document = _wire_object(
             value,
-            expected={
-                "requestId",
-                "storeId",
-                "priorEpoch",
-                "priorFenceId",
-                "priorFenceRevision",
-                "expectedLegacyRootIdentity",
-                "namespaceId",
-                "minimumRuntimeVersion",
-                "minimumRuntimeProtocolEpoch",
-                "requestVersion",
-            },
+            expected=_POSIX_EPOCH_CUTOVER_REQUEST_V1_SCHEMA.keys,
             name="POSIX Package epoch cutover request",
         )
-        return cls(
-            request_id=_wire_string(document["requestId"], name="request id"),
-            store_id=_wire_string(document["storeId"], name="store id"),
-            prior_epoch=_wire_int(document["priorEpoch"], name="prior epoch"),
-            prior_fence_id=_wire_optional_string(
-                document["priorFenceId"],
-                name="prior fence id",
-            ),
-            prior_fence_revision=_wire_int(
-                document["priorFenceRevision"],
-                name="prior fence revision",
-            ),
-            expected_legacy_root_identity=_wire_string(
-                document["expectedLegacyRootIdentity"],
-                name="expected legacy root identity",
-            ),
-            namespace_id=_wire_string(
-                document["namespaceId"],
-                name="namespace id",
-            ),
-            minimum_runtime_version=_wire_string(
-                document["minimumRuntimeVersion"],
-                name="minimum runtime version",
-            ),
-            minimum_runtime_protocol_epoch=_wire_int(
-                document["minimumRuntimeProtocolEpoch"],
-                name="minimum runtime protocol epoch",
-            ),
-            request_version=_wire_int(
-                document["requestVersion"],
-                name="request version",
-            ),
-        )
+        return _POSIX_EPOCH_CUTOVER_REQUEST_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -580,60 +475,10 @@ class PackagePosixEpochRootSwitchReceiptV1:
     def from_dict(cls, value: object) -> PackagePosixEpochRootSwitchReceiptV1:
         document = _wire_object(
             value,
-            expected={
-                "switchReceiptId",
-                "requestId",
-                "storeId",
-                "priorEpoch",
-                "nextEpoch",
-                "legacyRootIdentity",
-                "fencedRootIdentity",
-                "namespaceId",
-                "quiescenceReceiptId",
-                "snapshotReceiptId",
-                "switchAuthority",
-                "receiptVersion",
-            },
+            expected=_POSIX_EPOCH_ROOT_SWITCH_RECEIPT_V1_SCHEMA.keys,
             name="POSIX Package root-switch receipt",
         )
-        return cls(
-            switch_receipt_id=_wire_string(
-                document["switchReceiptId"],
-                name="switch receipt id",
-            ),
-            request_id=_wire_string(document["requestId"], name="request id"),
-            store_id=_wire_string(document["storeId"], name="store id"),
-            prior_epoch=_wire_int(document["priorEpoch"], name="prior epoch"),
-            next_epoch=_wire_int(document["nextEpoch"], name="next epoch"),
-            legacy_root_identity=_wire_string(
-                document["legacyRootIdentity"],
-                name="legacy root identity",
-            ),
-            fenced_root_identity=_wire_string(
-                document["fencedRootIdentity"],
-                name="fenced root identity",
-            ),
-            namespace_id=_wire_string(
-                document["namespaceId"],
-                name="namespace id",
-            ),
-            quiescence_receipt_id=_wire_string(
-                document["quiescenceReceiptId"],
-                name="quiescence receipt id",
-            ),
-            snapshot_receipt_id=_wire_string(
-                document["snapshotReceiptId"],
-                name="snapshot receipt id",
-            ),
-            switch_authority=_wire_string(
-                document["switchAuthority"],
-                name="switch authority",
-            ),
-            receipt_version=_wire_int(
-                document["receiptVersion"],
-                name="receipt version",
-            ),
-        )
+        return _POSIX_EPOCH_ROOT_SWITCH_RECEIPT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -705,41 +550,10 @@ class PackagePosixEpochCutoverFailureV1:
     def from_dict(cls, value: object) -> PackagePosixEpochCutoverFailureV1:
         document = _wire_object(
             value,
-            expected={
-                "failureId",
-                "requestId",
-                "evidenceRef",
-                "barrier",
-                "code",
-                "operatorAction",
-                "failureVersion",
-            },
+            expected=_POSIX_EPOCH_CUTOVER_FAILURE_V1_SCHEMA.keys,
             name="POSIX Package epoch cutover failure",
         )
-        return cls(
-            failure_id=_wire_string(document["failureId"], name="failure id"),
-            request_id=_wire_string(document["requestId"], name="request id"),
-            evidence_ref=_wire_string(
-                document["evidenceRef"],
-                name="evidence ref",
-            ),
-            barrier=cast(
-                PackagePosixEpochCutoverBarrier,
-                _wire_string(document["barrier"], name="barrier"),
-            ),
-            code=cast(
-                Literal["package_runtime_epoch_unsupported"],
-                _wire_string(document["code"], name="code"),
-            ),
-            operator_action=cast(
-                PackageEpochCutoverOperatorAction,
-                _wire_string(document["operatorAction"], name="operator action"),
-            ),
-            failure_version=_wire_int(
-                document["failureVersion"],
-                name="failure version",
-            ),
-        )
+        return _POSIX_EPOCH_CUTOVER_FAILURE_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -960,7 +774,10 @@ class PackagePosixEpochCutoverOwner:
                     epoch_identity = _directory_native_identity(epochs_fd)
                     selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
                     try:
-                        if _directory_identity(selected_fd) != source.fenced_root_identity:
+                        if (
+                            _directory_identity(selected_fd)
+                            != source.fenced_root_identity
+                        ):
                             raise _identity_changed()
                     finally:
                         os.close(selected_fd)
@@ -973,7 +790,10 @@ class PackagePosixEpochCutoverOwner:
                 try:
                     selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
                     try:
-                        if _directory_identity(selected_fd) != source.fenced_root_identity:
+                        if (
+                            _directory_identity(selected_fd)
+                            != source.fenced_root_identity
+                        ):
                             raise _identity_changed()
                     finally:
                         os.close(selected_fd)
@@ -1112,9 +932,7 @@ class PackagePosixEpochCutoverOwner:
             return replay
         self._validate_prior(request, current)
         try:
-            exclusive = self._coordination.exclusive_quiescence(
-                store_id=self._store_id
-            )
+            exclusive = self._coordination.exclusive_quiescence(store_id=self._store_id)
             with exclusive as quiescence:
                 locked_current = self._journal.current(self._store_id)
                 replay = self._exact_replay(request, locked_current)
@@ -1220,9 +1038,7 @@ class PackagePosixEpochCutoverOwner:
                 fenced_root_identity=new_identity,
                 namespace_id=request.namespace_id,
                 minimum_runtime_version=request.minimum_runtime_version,
-                minimum_runtime_protocol_epoch=(
-                    request.minimum_runtime_protocol_epoch
-                ),
+                minimum_runtime_protocol_epoch=(request.minimum_runtime_protocol_epoch),
                 quiescence_receipt_id=quiescence.receipt_id,
                 snapshot_receipt_id=snapshot.receipt_id,
                 root_switch_receipt_id=switch.switch_receipt_id,
@@ -1305,8 +1121,7 @@ class PackagePosixEpochCutoverOwner:
             or epoch_request.legacy_root_identity
             != request.expected_legacy_root_identity
             or epoch_request.namespace_id != request.namespace_id
-            or epoch_request.minimum_runtime_version
-            != request.minimum_runtime_version
+            or epoch_request.minimum_runtime_version != request.minimum_runtime_version
             or epoch_request.minimum_runtime_protocol_epoch
             != request.minimum_runtime_protocol_epoch
         ):
@@ -1388,8 +1203,7 @@ class _PinnedPosixAuthority:
         descriptors = _open_ancestor_chain(root)
         try:
             identities = tuple(
-                _directory_native_identity(descriptor)
-                for descriptor in descriptors
+                _directory_native_identity(descriptor) for descriptor in descriptors
             )
             if expected_identities is not None and identities != expected_identities:
                 raise _identity_changed()
@@ -1508,8 +1322,7 @@ def _validate_snapshot(
 ) -> None:
     if not isinstance(snapshot, PackageEpochCutoverSnapshotReceiptV1) or (
         snapshot.store_id != request.store_id
-        or snapshot.legacy_root_identity
-        != request.expected_legacy_root_identity
+        or snapshot.legacy_root_identity != request.expected_legacy_root_identity
         or snapshot.quiescence_receipt_id != quiescence.receipt_id
     ):
         raise PackagePosixEpochCutoverError(
@@ -1519,12 +1332,7 @@ def _validate_snapshot(
 
 
 def _directory_open_flags() -> int:
-    return (
-        os.O_RDONLY
-        | os.O_DIRECTORY
-        | os.O_NOFOLLOW
-        | getattr(os, "O_CLOEXEC", 0)
-    )
+    return os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
 
 
 def _directory_native_identity(descriptor: int) -> _NativeIdentity:
@@ -1607,9 +1415,7 @@ def _quiescence_identity(
         "storeId": store_id,
         "ownerRevision": owner_revision,
         "activeRuntimeLeaseIds": list(active_runtime_lease_ids),
-        "activePreFenceRegistrationIds": list(
-            active_pre_fence_registration_ids
-        ),
+        "activePreFenceRegistrationIds": list(active_pre_fence_registration_ids),
         "receiptVersion": receipt_version,
     }
 
@@ -1767,9 +1573,7 @@ def _wire_object(
     expected: set[str],
     name: str,
 ) -> dict[str, object]:
-    if not isinstance(value, dict) or any(
-        not isinstance(key, str) for key in value
-    ):
+    if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
         raise TypeError(f"{name} must be an object")
     document = cast(dict[str, object], value)
     if set(document) != expected:
@@ -1813,3 +1617,92 @@ __all__ = [
     "PackagePosixEpochCutoverResultV1",
     "PackagePosixEpochRootSwitchReceiptV1",
 ]
+
+
+_EPOCH_CUTOVER_QUIESCENCE_RECEIPT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("receipt_id", "receipt id"),
+        RecordField("store_id", "store id"),
+        RecordField("owner_revision", "owner revision", _wire_int),
+        RecordField(
+            "active_runtime_lease_ids", "active runtime lease ids", _wire_string_tuple
+        ),
+        RecordField(
+            "active_pre_fence_registration_ids",
+            "active pre-fence registration ids",
+            _wire_string_tuple,
+        ),
+        RecordField("receipt_version", "receipt version", _wire_int),
+    ),
+)
+
+
+_EPOCH_CUTOVER_SNAPSHOT_RECEIPT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("receipt_id", "receipt id"),
+        RecordField("store_id", "store id"),
+        RecordField("legacy_root_identity", "legacy root identity"),
+        RecordField("quiescence_receipt_id", "quiescence receipt id"),
+        RecordField("snapshot_id", "snapshot id"),
+        RecordField("snapshot_revision", "snapshot revision", _wire_int),
+        RecordField("entry_count", "entry count", _wire_int),
+        RecordField("byte_count", "byte count", _wire_int),
+        RecordField("receipt_version", "receipt version", _wire_int),
+    ),
+)
+
+
+_POSIX_EPOCH_CUTOVER_REQUEST_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("request_id", "request id"),
+        RecordField("store_id", "store id"),
+        RecordField("prior_epoch", "prior epoch", _wire_int),
+        RecordField("prior_fence_id", "prior fence id", _wire_optional_string),
+        RecordField("prior_fence_revision", "prior fence revision", _wire_int),
+        RecordField("expected_legacy_root_identity", "expected legacy root identity"),
+        RecordField("namespace_id", "namespace id"),
+        RecordField("minimum_runtime_version", "minimum runtime version"),
+        RecordField(
+            "minimum_runtime_protocol_epoch",
+            "minimum runtime protocol epoch",
+            _wire_int,
+        ),
+        RecordField("request_version", "request version", _wire_int),
+    ),
+)
+
+
+_POSIX_EPOCH_ROOT_SWITCH_RECEIPT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("switch_receipt_id", "switch receipt id"),
+        RecordField("request_id", "request id"),
+        RecordField("store_id", "store id"),
+        RecordField("prior_epoch", "prior epoch", _wire_int),
+        RecordField("next_epoch", "next epoch", _wire_int),
+        RecordField("legacy_root_identity", "legacy root identity"),
+        RecordField("fenced_root_identity", "fenced root identity"),
+        RecordField("namespace_id", "namespace id"),
+        RecordField("quiescence_receipt_id", "quiescence receipt id"),
+        RecordField("snapshot_receipt_id", "snapshot receipt id"),
+        RecordField("switch_authority", "switch authority"),
+        RecordField("receipt_version", "receipt version", _wire_int),
+    ),
+)
+
+
+_POSIX_EPOCH_CUTOVER_FAILURE_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("failure_id", "failure id"),
+        RecordField("request_id", "request id"),
+        RecordField("evidence_ref", "evidence ref"),
+        RecordField("barrier", "barrier"),
+        RecordField("code", "code"),
+        RecordField("operator_action", "operator action"),
+        RecordField("failure_version", "failure version", _wire_int),
+    ),
+)

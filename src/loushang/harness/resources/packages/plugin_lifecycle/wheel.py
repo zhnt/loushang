@@ -20,6 +20,10 @@ from hashlib import new as new_digest
 from hashlib import sha256
 from typing import BinaryIO, Literal, NoReturn, cast
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     AcquiredPackageCandidate,
     AuthenticatedSourceEnvelopeV1,
@@ -130,47 +134,10 @@ class PackageInspectionBudgetV1:
     def from_dict(cls, value: object) -> PackageInspectionBudgetV1:
         document = _exact_dict(
             value,
-            fields={
-                "budgetVersion",
-                "maxEntries",
-                "maxEntryExpandedBytes",
-                "maxMetadataBytes",
-                "maxPathComponentLength",
-                "maxPathComponents",
-                "maxPathLength",
-                "maxTotalExpandedBytes",
-                "maxWallTimeMs",
-            },
+            fields=_INSPECTION_BUDGET_V1_SCHEMA.keys,
             name="Package inspection budget",
         )
-        return cls(
-            max_entries=_wire_int(document["maxEntries"], name="entry budget"),
-            max_total_expanded_bytes=_wire_int(
-                document["maxTotalExpandedBytes"],
-                name="total expansion budget",
-            ),
-            max_entry_expanded_bytes=_wire_int(
-                document["maxEntryExpandedBytes"],
-                name="entry expansion budget",
-            ),
-            max_path_length=_wire_int(
-                document["maxPathLength"], name="path length budget"
-            ),
-            max_path_component_length=_wire_int(
-                document["maxPathComponentLength"],
-                name="path component length budget",
-            ),
-            max_path_components=_wire_int(
-                document["maxPathComponents"], name="path component budget"
-            ),
-            max_metadata_bytes=_wire_int(
-                document["maxMetadataBytes"], name="metadata budget"
-            ),
-            max_wall_time_ms=_wire_int(
-                document["maxWallTimeMs"], name="wall-clock budget"
-            ),
-            budget_version=_wire_int(document["budgetVersion"], name="budget version"),
-        )
+        return _INSPECTION_BUDGET_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1403,3 +1370,21 @@ def _wire_string(value: object, *, name: str) -> str:
     if not isinstance(value, str) or not value:
         raise TypeError(f"{name} must be a non-empty string")
     return value
+
+
+_INSPECTION_BUDGET_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("max_entries", "entry budget", _wire_int),
+        RecordField("max_total_expanded_bytes", "total expansion budget", _wire_int),
+        RecordField("max_entry_expanded_bytes", "entry expansion budget", _wire_int),
+        RecordField("max_path_length", "path length budget", _wire_int),
+        RecordField(
+            "max_path_component_length", "path component length budget", _wire_int
+        ),
+        RecordField("max_path_components", "path component budget", _wire_int),
+        RecordField("max_metadata_bytes", "metadata budget", _wire_int),
+        RecordField("max_wall_time_ms", "wall-clock budget", _wire_int),
+        RecordField("budget_version", "budget version", _wire_int),
+    ),
+)
