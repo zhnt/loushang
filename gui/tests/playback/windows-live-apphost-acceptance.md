@@ -15,7 +15,7 @@ Windows display scaling, or the complete fixture workflow.
 The release executable was started through:
 
 ```text
-pnpm --dir gui run accept:live-native
+npm --prefix gui run accept:live-native
 ```
 
 The launcher created separate `gui-desktop-acceptance` and

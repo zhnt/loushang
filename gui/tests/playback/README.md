@@ -1,8 +1,11 @@
 # GUI-B1 playback evidence
 
 The committed case manifest is the minimum first-slice inventory. L0 and L1
-run under `pnpm run test`; L2 requires the named native platform and cannot be
+run under `npm run test`; L2 requires the named native platform and cannot be
 replaced by the Web Mock.
+
+Current commands and pinned toolchain versions are documented in the
+[GUI README](../../README.md). The baseline below retains its original tools.
 
 ## Windows baseline — 2026-09-10
 

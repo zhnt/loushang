@@ -33,7 +33,7 @@ The existing numeric wire contract is unchanged; no float or string is sent.
 ## Evidence
 
 ```text
-pnpm --dir gui run check:attachment-contract
+npm --prefix gui run check:attachment-contract
 ```
 
 Twenty Windows loopback scenarios pass: two-member success, already-attached,
