@@ -22,6 +22,7 @@ from loushang.apphost import (
     ScopedProductRuntimeV1,
     SessionBindingKeyV1,
 )
+from loushang.harness.runtime import await_owned_task
 from loushang.harness.worker import ProductWorkerActivationReceiptV1
 
 from ._product_worker_canary import CodingProductWorkerCanaryStatusV1
@@ -354,7 +355,7 @@ class CodingAppHostProductFactoryV1:
     async def _settle_unpublished(self, owner: _WorkerAttemptOwner) -> None:
         operation = asyncio.create_task(owner.close())
         try:
-            await _await_owned_close(operation)
+            await await_owned_task(operation)
         except asyncio.CancelledError:
             self._active.discard(owner)
             self._debt.discard(owner)
@@ -425,23 +426,6 @@ def _candidate_facts(
     if type(key) is not SessionBindingKeyV1:
         raise CodingAppHostProductError(code="coding_apphost_candidate_invalid")
     return key, opaque
-
-
-async def _await_owned_close(operation: asyncio.Task[None]) -> None:
-    """Join an owned close despite repeated cancellation of its caller."""
-
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not operation.done():
-        try:
-            await asyncio.shield(operation)
-        except asyncio.CancelledError as error:
-            if caller is None or caller.cancelling() == 0:
-                return operation.result()
-            cancellation = error
-    operation.result()
-    if cancellation is not None:
-        raise cancellation
 
 
 def _require_receipt_binding(
