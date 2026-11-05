@@ -11,7 +11,7 @@ from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import Protocol
 
 from loushang.ai.types import AssistantMessage, UserMessage
 from loushang.foundation.platform_paths import resolve_platform_paths
@@ -67,6 +67,7 @@ from loushang.harness.runtime import (
     RuntimeProfileLayerGrant,
     RuntimeProfileResolver,
     SessionOperationResult,
+    await_owned_task,
 )
 from loushang.harness.transcript import (
     AgentTranscriptSessionCatalog,
@@ -96,8 +97,6 @@ CODING_EXPERIENCE_ID = "coding"
 _MAX_PREVIEW_CACHE = 256
 _MAX_CODING_CONTINUITY_IMPORT_BYTES = 64 * 1024 * 1024
 _RUNTIME_BINDING_ATTRIBUTE = "_loushang_coding_continuity"
-
-T = TypeVar("T")
 
 
 class CodingContinuityRuntimePort(Protocol):
@@ -211,7 +210,7 @@ class CodingContinuityActivationBridge:
         except BaseException as cleanup_error:
             try:
                 abort_task = asyncio.create_task(prepared.abort())
-                await _await_owned_task_cancellation_atomic(abort_task)
+                await await_owned_task(abort_task)
             except BaseException as abort_error:
                 cleanup_error.add_note(
                     "Coding continuity prepared-operation abort also failed: "
@@ -1096,7 +1095,7 @@ class _CodingPreparedSessionSettlement:
             return
         abort_task = asyncio.create_task(self.prepared.abort())
         try:
-            await _await_owned_task_cancellation_atomic(abort_task)
+            await await_owned_task(abort_task)
         except BaseException:
             if _task_completed_successfully(abort_task):
                 self._abort_complete = True
@@ -1293,7 +1292,7 @@ async def _remove_private_continuity_payload_atomic(
     task = asyncio.create_task(
         asyncio.to_thread(_remove_private_continuity_payload, staged)
     )
-    await _await_owned_task_cancellation_atomic(task)
+    await await_owned_task(task)
 
 
 async def _write_private_continuity_payload_atomic(
@@ -1333,33 +1332,13 @@ async def _write_private_continuity_payload_atomic(
         raise cancellation
 
 
-async def _await_owned_task_cancellation_atomic(
-    task: asyncio.Task[T],
-) -> T:
-    """Join an owned cleanup task before propagating caller cancellation."""
-
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as exc:
-            if caller is None or caller.cancelling() == 0:
-                return task.result()
-            cancellation = exc
-    result = task.result()
-    if cancellation is not None:
-        raise cancellation
-    return result
-
-
 async def _retry_coding_continuity_reservation_atomic(
     runtime: object,
     reservation: _CodingContinuityBindingReservation,
 ) -> tuple[str, ...]:
     cleanup_task = asyncio.create_task(reservation.retry_cleanup())
     try:
-        return await _await_owned_task_cancellation_atomic(cleanup_task)
+        return await await_owned_task(cleanup_task)
     except asyncio.CancelledError:
         if cleanup_task.done() and not cleanup_task.cancelled():
             try:
@@ -1393,7 +1372,7 @@ async def shutdown_coding_continuity(runtime: object) -> None:
         return
     shutdown_task = asyncio.create_task(composition.shutdown())
     try:
-        await _await_owned_task_cancellation_atomic(shutdown_task)
+        await await_owned_task(shutdown_task)
     except asyncio.CancelledError:
         if shutdown_task.done() and not shutdown_task.cancelled():
             try:

@@ -1,3 +1,6 @@
+from loushang.harness.runtime._owned_tasks import (
+    _await_cancellation_atomic as await_owned_task,
+)
 from loushang.harness.runtime.bindings import (
     ProductRuntimeBindings,
     RuntimeBindingLease,
@@ -111,6 +114,7 @@ from loushang.harness.runtime.turn import (
 from loushang.harness.runtime.types import HostSnapshot, QueueMode, RunState
 
 __all__ = [
+    "await_owned_task",
     "OwnerGenerationRetirementReceipt",
     "AGENT_TRANSCRIPT_PROFILE_SLOT",
     "COMMAND_PACKS_SLOT",
