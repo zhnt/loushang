@@ -45,6 +45,13 @@ evidence through the original management ledgers. Coding retains its evidence
 source, fixed report policy and outer lock; Graph cleanup, family release and
 fenced Product runtime disposal retain their original owners and retry state.
 
+The bounded [Product composition input preparation](plugin/composition-route-inputs.md)
+keeps owner grouping, structural supplied-binding checks, ordering and selection
+seed construction in the existing private Session assembly. Coding retains its
+original candidate-projection call, exact owner policy, restricted defaults and
+error adapter. The original admission/compiler, workspace selector and owner
+lifetimes remain separate; input preparation issues no execution authorization.
+
 ## Accepted Capability Graph Target (Mount Runtime Implemented)
 
 The implemented owner table above remains authoritative for current code. The

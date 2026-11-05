@@ -103,6 +103,16 @@ Product labels and locks, Graph cleanup, family release and fenced runtime
 leases keep their existing owners. Focused regression, local differential and
 journal reentry validation, and independent code reviews are complete.
 
+The accepted first slice of the [D2 route and composition-input design](composition-route-inputs.md)
+distinguishes existing storage selection from composition shape and preserves
+the original selector, factory/binding and admission chain. Its first
+slice separates shared owner-input preparation from Coding trust/default policy
+inside the existing assembly path. The bounded implementation, independent
+code review and focused regression are complete. A follow-up correction closes
+the existing main caller-inventory failure with the original exact-set assertion;
+local full cross-package validation remains unfinished in the review record.
+Broader bootstrap convergence remains outside this first slice.
+
 ## Authority Order
 
 When documents disagree, use this order:
