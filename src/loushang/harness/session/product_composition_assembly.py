@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
+from typing import Literal, Protocol, cast
 
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCapabilityConsumerRequirementPreview,
@@ -14,9 +15,12 @@ from loushang.harness.capabilities.consumer_requirements import (
 )
 from loushang.harness.capabilities.contracts import CapabilityDefinition
 from loushang.harness.capabilities.contribution_admission import (
+    CatalogConsumerContributionSpec,
     OwnerContributionAdmissionRecord,
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
+    OwnerContributionKind,
+    ResourceContributionSpec,
 )
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderAdmissionRecord,
@@ -219,6 +223,88 @@ class ProductPluginSelectionSeed:
         object.__setattr__(self, "packages", packages)
         object.__setattr__(self, "bindings", bindings)
         object.__setattr__(self, "owner_bindings", owners)
+
+
+OwnerCompletionRejection = Literal[
+    "invalid_package_resource_declaration",
+    "invalid_product_owner_binding_kind",
+    "duplicate_product_owner_binding",
+    "product_owner_binding_extra",
+]
+
+
+class ProductContributionOwnerResolver(Protocol):
+    """Product policy for one grouped owner's exact binding or default."""
+
+    def __call__(
+        self,
+        *,
+        owner_id: str,
+        contribution_kind: OwnerContributionKind,
+        trust_classes: set[str],
+        collection_ids: set[str],
+        supplied_binding: ProductContributionOwnerBinding | None,
+    ) -> ProductContributionOwnerBinding: ...
+
+
+def _complete_product_plugin_selection_seed(
+    seed: ProductPluginPlanSeed,
+    *,
+    selection: PluginSelection,
+    candidates: tuple[OwnerContributionCandidateEnvelope, ...],
+    resolve_owner: ProductContributionOwnerResolver,
+    reject: Callable[[OwnerCompletionRejection], Exception],
+) -> ProductPluginSelectionSeed:
+    """Group already-projected inputs without making Product policy decisions."""
+
+    owner_collections: dict[tuple[str, OwnerContributionKind], set[str]] = {}
+    owner_trust_classes: dict[tuple[str, OwnerContributionKind], set[str]] = {}
+    for candidate in candidates:
+        contribution = candidate.contribution
+        if not isinstance(
+            contribution,
+            ResourceContributionSpec | CatalogConsumerContributionSpec,
+        ):
+            raise reject("invalid_package_resource_declaration")
+        owner_key = (candidate.owner_id, candidate.contribution_kind)
+        owner_collections.setdefault(owner_key, set()).add(contribution.collection_id)
+        owner_trust_classes.setdefault(owner_key, set()).add(
+            candidate.source_trust_class
+        )
+    supplied: dict[
+        tuple[str, OwnerContributionKind], ProductContributionOwnerBinding
+    ] = {}
+    for binding in seed.owner_bindings:
+        owner_id, raw_contribution_kind, _ = binding.owner_key
+        if raw_contribution_kind not in PLUGIN_OWNER_CONTRIBUTION_KINDS:
+            raise reject("invalid_product_owner_binding_kind")
+        contribution_kind = cast(OwnerContributionKind, raw_contribution_kind)
+        owner_key = (owner_id, contribution_kind)
+        if owner_key in supplied:
+            raise reject("duplicate_product_owner_binding")
+        supplied[owner_key] = binding
+
+    if set(supplied) - set(owner_collections):
+        raise reject("product_owner_binding_extra")
+
+    owner_bindings_list: list[ProductContributionOwnerBinding] = []
+    for owner_key, collection_ids in sorted(owner_collections.items()):
+        owner_bindings_list.append(
+            resolve_owner(
+                owner_id=owner_key[0],
+                contribution_kind=owner_key[1],
+                trust_classes=owner_trust_classes[owner_key],
+                collection_ids=collection_ids,
+                supplied_binding=supplied.get(owner_key),
+            )
+        )
+    owner_bindings = tuple(owner_bindings_list)
+    return ProductPluginSelectionSeed(
+        selection=selection,
+        packages=seed.packages,
+        bindings=seed.bindings,
+        owner_bindings=owner_bindings,
+    )
 
 
 def _validate_product_plugin_seed_evidence(

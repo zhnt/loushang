@@ -155,8 +155,19 @@ The current calls are:
   the refresh paths read only the previous compatibility projection identity
   while holding the Catalog lock to return an invocation-local publication
   receipt and distinguish committed publication from rollback on cancellation
-  or cleanup failure; and
+  or cleanup failure;
+- `SessionToolController.render_execution_prompt` reads the injected current
+  Resource projection to render an invocation-local restricted tool prompt through
+  the same assembler. It checks the tool subset against the current selection;
+  it does not rediscover or publish Resources, replace the Session prompt, or
+  change the active tool selection; and
 - `create_tool_prompt_rebuilder.rebuild`.
+
+2026-11-05 inventory correction: the invocation-local renderer already exists
+in main `ff29a80e4`; its omission from this list and `EXPECTED_CALL_SITES` was a
+stale inventory, not a new Resource ingress. The executable check still compares
+the complete scanned caller set for exact equality. No scanner, assertion,
+workflow, trigger or runtime behavior changes accompany this correction.
 
 RCP4 changes these to a read-only captured-generation projection or focused
 Consumer. RCP5 removes Resource/Skill compatibility getter authority.
