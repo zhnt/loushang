@@ -84,3 +84,23 @@ The actual native screenshot is retained locally at
   used X11. This does not prove a manual Wayland input defect.
 
 This run records findings only; it does not modify product behavior or CI gates.
+
+## Retry after user changed the model
+
+On 2026-11-06, the saved default model was changed to `openai · gpt-6.1-sol`.
+Restarting the previous test service preserved its two members, but the GUI
+remained in reconnecting state without a Session; that recovery problem was not
+diagnosed or counted as passing. Old state was preserved. A separate real CLI
+service and initial member were prepared under `/tmp/loushang-gui-real-ui-retry/`.
+
+The actual GUI model selector confirmed `openai · gpt-6.1-sol · Reasoning`.
+The prompt `Reply only GUI-REAL-RETRY-1106. Do not use tools.` was entered using
+native clipboard/keyboard interaction, its actual draft text verified, and
+the real Send button clicked. The GUI again showed `Execution Failed` without
+an assistant response. The resulting structured call record confirmed
+`modelId=gpt-6.1-sol`, `endpointId=openai-responses`, and the same
+`credit_balance_exhausted` / `insufficient_quota` rejection. Thus the model change
+took effect, but did not resolve the provider quota failure.
+
+Screenshot: `gui/test-results/real-ui/provider-retry-failed.png` (local, ignored).
+The GUI was closed normally and the isolated retry service was stopped.
