@@ -4,19 +4,39 @@
 This repository uses a `src/` layout. Core package code lives in `src/loushang/`, with AI-facing modules under `src/loushang/ai/`, agent code under `src/loushang/agent/`, and coding/session infrastructure under `src/loushang/coding/`. Tests live in `tests/`. Runnable examples live in `examples/ai/`, with supporting scripts in `scripts/` and exploratory work in `spikes/`. Architecture and design notes belong in `docs/`.
 
 ## Worktree Lane Conventions
-Use long-lived worktree lanes for major module work:
+Every task must have its own task branch and a separate, dedicated worktree.
+Create both before editing; do not switch between task branches in a shared
+worktree or reuse another task's worktree. Continuing the same task may reuse
+its existing branch/worktree pair. Name the worktree directory to match or
+clearly correspond to the branch, for example `feature/gui-i18n` with
+`.worktrees/gui-i18n`, or `feature/task-worktree-isolation` with
+`.worktrees/task-worktree-isolation`.
 
-- `/home/dev/lsspace/loushang` is the control/integration lane. It normally stays on `main` and is used for progress management, direction coordination, final verification, merge/push, and small integration-only edits.
-- `.worktrees/tui` is the long-lived Native TUI lane. For TUI-dominant work, create or switch task branches inside this lane.
-- `.worktrees/gui` is the long-lived HarnessGUI lane. For the Tauri/Rust host, React/TypeScript frontend, desktop developer tooling, and GUI-only integration work, create or switch task branches inside this lane. Use `lane/gui` as its integration branch and keep unfinished GUI work out of `main`.
-- `.worktrees/code` is the long-lived V1 code hardening lane. For coding/runtime/session/tool/policy/diagnostics-dominant work, create or switch task branches inside this lane.
-- `.worktrees/harness` is the long-lived cross-product harness lane. For `loushang.harness`, product-neutral shared substrate, coding-to-harness migration, tool/approval/presentation/resource/context boundary work, and harness architecture docs, create or switch task branches inside this lane. Use `lane/harness` as an integration branch and keep unfinished harness migration out of `main`; see `docs/internals/architecture/harness/development-workflow.md`.
-- `.worktrees/method` is the long-lived method/work-runtime lane when method-layer work is active. For `loushang.method`, method execution semantics, MethodPlan/WorkEvent projection, and work/method integration work, create or switch task branches inside this lane.
-- `.worktrees/ai` is the long-lived AI/provider lane when AI-layer work is active. For AI/provider/model/usage/auth work, create or switch task branches inside this lane.
-- `.worktrees/agent` is the long-lived agent-runtime lane when agent-layer work is active. For agent loop/session orchestration/queue/tool-call semantics work, create or switch task branches inside this lane.
-- `.worktrees/ontology` is the long-lived ontology lane. For `loushang.ontology`, operational ontology infrastructure, semantic schema/runtime, ontology actions/functions, standards interoperability, data fusion, and ontology architecture docs, create or switch task branches inside this lane. Use `lane/ontology` as its integration branch and keep it synchronized with the control lane's latest `main`.
+Long-lived lanes are reserved for module integration, coordination, and
+verification; task implementation happens in dedicated task worktrees:
 
-Only the control lane should normally check out `main`. Other lanes should use task branches based on `main` or `origin/main`, except GUI feature branches, which start from the latest `lane/gui` as described in `gui/AGENTS.md`. Lanes should regularly incorporate the latest `main`; shared integration branches should use merges rather than rewriting published history. Before switching branches in any lane, check dirty state and preserve user changes.
+- The repository root is the control/integration lane. It normally stays on `main` and is used for progress management, direction coordination, final verification, merge/push, and integration of completed task changes.
+- `.worktrees/tui` is the long-lived Native TUI lane. For TUI-dominant work, use a dedicated task branch and worktree associated with this lane.
+- `.worktrees/gui` is the long-lived HarnessGUI lane. For the Tauri/Rust host, React/TypeScript frontend, desktop developer tooling, and GUI-only integration work, use a dedicated task branch and worktree associated with this lane. Use `lane/gui` as its integration branch and keep unfinished GUI work out of `main`.
+- `.worktrees/code` is the long-lived V1 code hardening lane. For coding/runtime/session/tool/policy/diagnostics-dominant work, use a dedicated task branch and worktree associated with this lane.
+- `.worktrees/harness` is the long-lived cross-product harness lane. For `loushang.harness`, product-neutral shared substrate, coding-to-harness migration, tool/approval/presentation/resource/context boundary work, and harness architecture docs, use a dedicated task branch and worktree associated with this lane. Use `lane/harness` as an integration branch and keep unfinished harness migration out of `main`; see `docs/internals/architecture/harness/development-workflow.md`.
+- `.worktrees/method` is the long-lived method/work-runtime lane when method-layer work is active. For `loushang.method`, method execution semantics, MethodPlan/WorkEvent projection, and work/method integration work, use a dedicated task branch and worktree associated with this lane.
+- `.worktrees/ai` is the long-lived AI/provider lane when AI-layer work is active. For AI/provider/model/usage/auth work, use a dedicated task branch and worktree associated with this lane.
+- `.worktrees/agent` is the long-lived agent-runtime lane when agent-layer work is active. For agent loop/session orchestration/queue/tool-call semantics work, use a dedicated task branch and worktree associated with this lane.
+- `.worktrees/ontology` is the long-lived ontology lane. For `loushang.ontology`, operational ontology infrastructure, semantic schema/runtime, ontology actions/functions, standards interoperability, data fusion, and ontology architecture docs, use a dedicated task branch and worktree associated with this lane. Use `lane/ontology` as its integration branch and keep it synchronized with the control lane's latest `main`.
+
+Only the control lane should normally check out `main`. Long-lived module
+lanes keep their integration branches (for example `lane/gui` or
+`lane/harness`); do not check out task branches in those worktrees. Create task
+branches from `main` or `origin/main`, or from the module's integration branch
+when its workflow requires it, and regularly incorporate updates from that
+base. GUI feature branches start from the latest `lane/gui` as described in
+`gui/AGENTS.md`. Shared integration branches merge updates rather than
+rewriting published history. Before creating or resuming a task worktree,
+inspect `git worktree list`
+and the relevant worktrees' dirty state; preserve existing user changes and
+branch/worktree assignments. Existing tasks in shared lanes must be moved to
+dedicated worktrees with their changes preserved before further implementation.
 
 Task worktrees are short-lived and must be associated with an issue, PR, or named delivery objective. After delivery closes, verify that the worktree is clean and its branch has no commits outside the accepted target branch, then remove it with `git worktree remove` and delete the local branch with `git branch -d`. Do not use force deletion to bypass failed safety checks. After moving the workspace root, repair existing registrations with `git worktree repair --relative-paths <path>` and do not prune registrations before confirming that the physical worktree directories are obsolete.
 

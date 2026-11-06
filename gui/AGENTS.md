@@ -5,10 +5,12 @@
 Use `lane/gui` as the shared integration branch for the current GUI improvement
 work. The long-lived `.worktrees/gui` lane normally checks out `lane/gui`.
 Create GUI feature branches from the latest `lane/gui` and name them
-`feature/gui-<topic>` (for example, `feature/gui-app-icons`). For sequential
-work, the GUI lane may temporarily check out a feature branch; use separate
-task worktrees for parallel features. Check dirty state and preserve existing
-changes before switching branches.
+`feature/gui-<topic>` (for example, `feature/gui-app-icons`). Every feature
+requires its own dedicated worktree, for example `.worktrees/gui-app-icons`,
+whether work is sequential or parallel. Keep `.worktrees/gui` on `lane/gui`
+for integration and verification; do not switch task branches in that shared
+worktree. Check dirty state and preserve existing changes before creating or
+resuming a task worktree.
 
 Run the checks appropriate to each feature before merging it into `lane/gui`.
 Collect a coherent delivery batch there, then perform combined native build,

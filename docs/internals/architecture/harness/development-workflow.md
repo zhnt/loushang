@@ -39,6 +39,12 @@ into `main` does.
   Keep dependency-ordered foundation, engine, adapter, and closure commits on
   that branch instead of creating one branch per leaf type or compatibility
   shim.
+- Give each task branch a separate, dedicated worktree whose directory name
+  matches or clearly corresponds to the branch, for example
+  `harness/resource-package-runtime` in
+  `.worktrees/harness-resource-package-runtime`. Keep `.worktrees/harness`
+  on `lane/harness` for integration and verification; never switch task
+  branches in that shared worktree.
 - Open PRs for those task branches against `lane/harness`, not `main`.
 - Do not merge `lane/harness` into `code`, `tui`, `agent`, `ai`, or `method`
   lanes.
@@ -63,11 +69,14 @@ explicitly part of the harness migration.
 
 This keeps unfinished harness work from affecting:
 
-- coding hardening in `.worktrees/code`;
-- terminal UI work in `.worktrees/tui`;
-- low-level agent loop work in `.worktrees/agent`;
-- provider/model/auth work in `.worktrees/ai`;
-- method/work-runtime work in `.worktrees/method`.
+- coding hardening associated with the `code` lane;
+- terminal UI work associated with the `tui` lane;
+- low-level agent loop work associated with the `agent` lane;
+- provider/model/auth work associated with the `ai` lane;
+- method/work-runtime work associated with the `method` lane.
+
+Each task uses its own branch and worktree; these lane names identify module
+ownership and integration, not shared task working directories.
 
 `lane/harness` may temporarily contain intermediate states that are acceptable
 inside the harness integration branch but not acceptable on `main`.
