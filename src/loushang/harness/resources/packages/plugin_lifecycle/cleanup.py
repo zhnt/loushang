@@ -6,8 +6,9 @@ import json
 import re
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -21,6 +22,11 @@ from loushang.harness.journal import (
     journal_file_lock,
     journal_file_read_lock,
     load_jsonl,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+    decode_nullable,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     PackageQuarantineCleanupTargetV1,
@@ -94,42 +100,10 @@ class PackageQuarantineCleanupStatusV1:
     def from_dict(cls, value: object) -> PackageQuarantineCleanupStatusV1:
         document = _exact_dict(
             value,
-            fields={
-                "cleanupRevision",
-                "disposition",
-                "failure",
-                "rejectionCode",
-                "rejectionStage",
-                "statusVersion",
-                "target",
-            },
+            fields=_QUARANTINE_CLEANUP_STATUS_V1_SCHEMA.keys,
             name="Package quarantine cleanup status",
         )
-        return cls(
-            target=PackageQuarantineCleanupTargetV1.from_dict(document["target"]),
-            rejection_code=_wire_string(
-                document["rejectionCode"], name="rejection code"
-            ),
-            rejection_stage=cast(
-                PackageLifecyclePhase,
-                _wire_string(document["rejectionStage"], name="rejection stage"),
-            ),
-            disposition=cast(
-                CleanupDisposition,
-                _wire_string(document["disposition"], name="cleanup disposition"),
-            ),
-            cleanup_revision=_wire_int(
-                document["cleanupRevision"], name="cleanup revision"
-            ),
-            failure=(
-                None
-                if document["failure"] is None
-                else PackageLifecycleFailureV1.from_dict(document["failure"])
-            ),
-            status_version=_wire_int(
-                document["statusVersion"], name="cleanup status version"
-            ),
-        )
+        return _QUARANTINE_CLEANUP_STATUS_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,26 +138,10 @@ class PackageQuarantineCleanupRecordV1:
     def from_dict(cls, value: object) -> PackageQuarantineCleanupRecordV1:
         document = _exact_dict(
             value,
-            fields={
-                "priorCleanupRevision",
-                "recordRevision",
-                "recordVersion",
-                "status",
-            },
+            fields=_QUARANTINE_CLEANUP_RECORD_V1_SCHEMA.keys,
             name="Package quarantine cleanup record",
         )
-        return cls(
-            record_revision=_wire_int(
-                document["recordRevision"], name="cleanup record revision"
-            ),
-            prior_cleanup_revision=_wire_int(
-                document["priorCleanupRevision"], name="prior cleanup revision"
-            ),
-            status=PackageQuarantineCleanupStatusV1.from_dict(document["status"]),
-            record_version=_wire_int(
-                document["recordVersion"], name="cleanup record version"
-            ),
-        )
+        return _QUARANTINE_CLEANUP_RECORD_V1_SCHEMA.decode(cls, document)
 
 
 def _encode_record(record: PackageQuarantineCleanupRecordV1) -> dict[str, object]:
@@ -315,9 +273,7 @@ class PackageQuarantineCleanupJournal:
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
             create_lock=False,
         ):
-            statuses = _project(
-                self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
-            )
+            statuses = _project(self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY))
         return tuple(
             statuses[cleanup_id]
             for cleanup_id in sorted(statuses)
@@ -519,3 +475,33 @@ __all__ = [
     "PackageQuarantineCleanupRecordV1",
     "PackageQuarantineCleanupStatusV1",
 ]
+
+
+_QUARANTINE_CLEANUP_STATUS_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("target", decoder=PackageQuarantineCleanupTargetV1.from_dict),
+        RecordField("rejection_code", "rejection code"),
+        RecordField("rejection_stage", "rejection stage"),
+        RecordField("disposition", "cleanup disposition"),
+        RecordField("cleanup_revision", "cleanup revision", _wire_int),
+        RecordField(
+            "failure",
+            decoder=partial(
+                decode_nullable, decoder=PackageLifecycleFailureV1.from_dict
+            ),
+        ),
+        RecordField("status_version", "cleanup status version", _wire_int),
+    ),
+)
+
+
+_QUARANTINE_CLEANUP_RECORD_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("record_revision", "cleanup record revision", _wire_int),
+        RecordField("prior_cleanup_revision", "prior cleanup revision", _wire_int),
+        RecordField("status", decoder=PackageQuarantineCleanupStatusV1.from_dict),
+        RecordField("record_version", "cleanup record version", _wire_int),
+    ),
+)

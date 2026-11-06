@@ -6,6 +6,7 @@ import json
 import re
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from typing import Literal, Protocol, cast
@@ -22,6 +23,12 @@ from loushang.harness.journal import (
     journal_file_lock,
     journal_file_read_lock,
     load_jsonl,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+    decode_nullable,
+    decode_tuple,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.commit_admission import (
     PackageCommitAdmissionPort,
@@ -221,61 +228,10 @@ class PackageDesiredStateCommitRequestV1:
     def from_dict(cls, value: object) -> PackageDesiredStateCommitRequestV1:
         document = _exact_dict(
             value,
-            fields={
-                "attemptEpoch",
-                "commandFingerprint",
-                "commandId",
-                "committedSetId",
-                "desiredRequestId",
-                "expectedInventoryRevision",
-                "installationId",
-                "operationFingerprint",
-                "operationId",
-                "pluginId",
-                "productId",
-                "requestFingerprint",
-                "requestVersion",
-                "rootRef",
-                "scopeId",
-            },
+            fields=_DESIRED_STATE_COMMIT_REQUEST_V1_SCHEMA.keys,
             name="Package desired-state commit request",
         )
-        return cls(
-            desired_request_id=_wire_string(
-                document["desiredRequestId"], name="desired request id"
-            ),
-            command_id=_wire_string(document["commandId"], name="command id"),
-            command_fingerprint=_wire_string(
-                document["commandFingerprint"], name="command fingerprint"
-            ),
-            expected_inventory_revision=_wire_int(
-                document["expectedInventoryRevision"],
-                name="expected inventory revision",
-            ),
-            operation_id=_wire_string(
-                document["operationId"], name="operation identity"
-            ),
-            operation_fingerprint=_wire_string(
-                document["operationFingerprint"], name="operation fingerprint"
-            ),
-            request_fingerprint=_wire_string(
-                document["requestFingerprint"], name="request fingerprint"
-            ),
-            attempt_epoch=_wire_int(document["attemptEpoch"], name="attempt epoch"),
-            product_id=_wire_string(document["productId"], name="Product identity"),
-            scope_id=_wire_string(document["scopeId"], name="scope identity"),
-            installation_id=_wire_string(
-                document["installationId"], name="Installation identity"
-            ),
-            plugin_id=_wire_string(document["pluginId"], name="Plugin identity"),
-            committed_set_id=_wire_string(
-                document["committedSetId"], name="committed set id"
-            ),
-            root_ref=PluginRevisionRefV1.from_dict(document["rootRef"]),
-            request_version=_wire_int(
-                document["requestVersion"], name="request version"
-            ),
-        )
+        return _DESIRED_STATE_COMMIT_REQUEST_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -339,30 +295,10 @@ class PackageDesiredStateCommitReceiptV1:
     def from_dict(cls, value: object) -> PackageDesiredStateCommitReceiptV1:
         document = _exact_dict(
             value,
-            fields={
-                "inventoryRevision",
-                "ownerIdentity",
-                "ownerRevision",
-                "receiptId",
-                "receiptVersion",
-                "request",
-            },
+            fields=_DESIRED_STATE_COMMIT_RECEIPT_V1_SCHEMA.keys,
             name="Package desired-state commit receipt",
         )
-        return cls(
-            receipt_id=_wire_string(document["receiptId"], name="receipt id"),
-            request=PackageDesiredStateCommitRequestV1.from_dict(document["request"]),
-            inventory_revision=_wire_int(
-                document["inventoryRevision"], name="inventory revision"
-            ),
-            owner_identity=_wire_string(
-                document["ownerIdentity"], name="owner identity"
-            ),
-            owner_revision=_wire_int(document["ownerRevision"], name="owner revision"),
-            receipt_version=_wire_int(
-                document["receiptVersion"], name="receipt version"
-            ),
-        )
+        return _DESIRED_STATE_COMMIT_RECEIPT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -438,36 +374,10 @@ class PackageDesiredStateCommitFailureV1:
     def from_dict(cls, value: object) -> PackageDesiredStateCommitFailureV1:
         document = _exact_dict(
             value,
-            fields={
-                "code",
-                "failureId",
-                "failureVersion",
-                "observedInventoryRevision",
-                "ownerIdentity",
-                "ownerRevision",
-                "request",
-            },
+            fields=_DESIRED_STATE_COMMIT_FAILURE_V1_SCHEMA.keys,
             name="Package desired-state commit failure",
         )
-        return cls(
-            failure_id=_wire_string(document["failureId"], name="failure id"),
-            request=PackageDesiredStateCommitRequestV1.from_dict(document["request"]),
-            observed_inventory_revision=_wire_int(
-                document["observedInventoryRevision"],
-                name="observed inventory revision",
-            ),
-            owner_identity=_wire_string(
-                document["ownerIdentity"], name="owner identity"
-            ),
-            owner_revision=_wire_int(document["ownerRevision"], name="owner revision"),
-            code=cast(
-                Literal["package_desired_revision_conflict"],
-                _wire_string(document["code"], name="failure code"),
-            ),
-            failure_version=_wire_int(
-                document["failureVersion"], name="failure version"
-            ),
-        )
+        return _DESIRED_STATE_COMMIT_FAILURE_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -548,35 +458,10 @@ class PackageDesiredStateCommitResultV1:
     def from_dict(cls, value: object) -> PackageDesiredStateCommitResultV1:
         document = _exact_dict(
             value,
-            fields={
-                "desiredRequestId",
-                "disposition",
-                "failure",
-                "receipt",
-                "resultVersion",
-            },
+            fields=_DESIRED_STATE_COMMIT_RESULT_V1_SCHEMA.keys,
             name="Package desired-state commit result",
         )
-        return cls(
-            desired_request_id=_wire_string(
-                document["desiredRequestId"], name="desired request id"
-            ),
-            disposition=cast(
-                PackageDesiredStateCommitDisposition,
-                _wire_string(document["disposition"], name="disposition"),
-            ),
-            receipt=(
-                None
-                if document["receipt"] is None
-                else PackageDesiredStateCommitReceiptV1.from_dict(document["receipt"])
-            ),
-            failure=(
-                None
-                if document["failure"] is None
-                else PackageDesiredStateCommitFailureV1.from_dict(document["failure"])
-            ),
-            result_version=_wire_int(document["resultVersion"], name="result version"),
-        )
+        return _DESIRED_STATE_COMMIT_RESULT_V1_SCHEMA.decode(cls, document)
 
 
 class PackageDesiredStateCommitPort(Protocol):
@@ -707,34 +592,10 @@ class PackageRetentionHandoffRequestV1:
     def from_dict(cls, value: object) -> PackageRetentionHandoffRequestV1:
         document = _exact_dict(
             value,
-            fields={
-                "admissionReceipt",
-                "admissionRequest",
-                "desiredRequest",
-                "handoffId",
-                "requestVersion",
-                "transactionPinReceipt",
-            },
+            fields=_RETENTION_HANDOFF_REQUEST_V1_SCHEMA.keys,
             name="Package retention handoff request",
         )
-        return cls(
-            handoff_id=_wire_string(document["handoffId"], name="handoff id"),
-            admission_request=PackageCommitAdmissionRequestV1.from_dict(
-                document["admissionRequest"]
-            ),
-            admission_receipt=PackageCommitAdmissionReceiptV1.from_dict(
-                document["admissionReceipt"]
-            ),
-            transaction_pin_receipt=PackageTransactionPinReceiptV1.from_dict(
-                document["transactionPinReceipt"]
-            ),
-            desired_request=PackageDesiredStateCommitRequestV1.from_dict(
-                document["desiredRequest"]
-            ),
-            request_version=_wire_int(
-                document["requestVersion"], name="request version"
-            ),
-        )
+        return _RETENTION_HANDOFF_REQUEST_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -860,53 +721,10 @@ class PackageDependencyPinRequestV1:
     def from_dict(cls, value: object) -> PackageDependencyPinRequestV1:
         document = _exact_dict(
             value,
-            fields={
-                "admissionId",
-                "attemptEpoch",
-                "committedSetId",
-                "dependencyRefs",
-                "handoffId",
-                "operationId",
-                "pinRequestId",
-                "pinSetId",
-                "publicationReceiptId",
-                "requestVersion",
-                "rootRef",
-                "transactionPinReceiptId",
-            },
+            fields=_DEPENDENCY_PIN_REQUEST_V1_SCHEMA.keys,
             name="Package dependency pin request",
         )
-        return cls(
-            pin_request_id=_wire_string(
-                document["pinRequestId"], name="pin request id"
-            ),
-            handoff_id=_wire_string(document["handoffId"], name="handoff id"),
-            operation_id=_wire_string(
-                document["operationId"], name="operation identity"
-            ),
-            attempt_epoch=_wire_int(document["attemptEpoch"], name="attempt epoch"),
-            admission_id=_wire_string(document["admissionId"], name="admission id"),
-            publication_receipt_id=_wire_string(
-                document["publicationReceiptId"], name="publication receipt id"
-            ),
-            committed_set_id=_wire_string(
-                document["committedSetId"], name="committed set id"
-            ),
-            transaction_pin_receipt_id=_wire_string(
-                document["transactionPinReceiptId"], name="transaction pin receipt id"
-            ),
-            pin_set_id=_wire_string(document["pinSetId"], name="pin set id"),
-            root_ref=PluginRevisionRefV1.from_dict(document["rootRef"]),
-            dependency_refs=tuple(
-                VerifiedArtifactRefV1.from_dict(item)
-                for item in _wire_list(
-                    document["dependencyRefs"], name="dependency refs"
-                )
-            ),
-            request_version=_wire_int(
-                document["requestVersion"], name="request version"
-            ),
-        )
+        return _DEPENDENCY_PIN_REQUEST_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1163,58 +981,10 @@ class PackageDependencyPinReceiptV1:
     def from_dict(cls, value: object) -> PackageDependencyPinReceiptV1:
         document = _exact_dict(
             value,
-            fields={
-                "dependencyPinsLive",
-                "desiredReceiptId",
-                "leaseRevision",
-                "ownerIdentity",
-                "ownerRevision",
-                "pinIds",
-                "priorReceiptId",
-                "receiptId",
-                "receiptVersion",
-                "request",
-                "state",
-                "transactionPinReceipt",
-                "transitionEvidenceRef",
-            },
+            fields=_DEPENDENCY_PIN_RECEIPT_V1_SCHEMA.keys,
             name="Package dependency pin receipt",
         )
-        return cls(
-            receipt_id=_wire_string(document["receiptId"], name="receipt id"),
-            request=PackageDependencyPinRequestV1.from_dict(document["request"]),
-            pin_ids=tuple(
-                _wire_string(item, name="pin id")
-                for item in _wire_list(document["pinIds"], name="pin ids")
-            ),
-            owner_identity=_wire_string(
-                document["ownerIdentity"], name="owner identity"
-            ),
-            owner_revision=_wire_int(document["ownerRevision"], name="owner revision"),
-            lease_revision=_wire_int(document["leaseRevision"], name="lease revision"),
-            state=cast(
-                PackageDependencyPinState,
-                _wire_string(document["state"], name="pin state"),
-            ),
-            dependency_pins_live=_wire_bool(
-                document["dependencyPinsLive"], name="dependency pin liveness"
-            ),
-            transaction_pin_receipt=PackageTransactionPinReceiptV1.from_dict(
-                document["transactionPinReceipt"]
-            ),
-            prior_receipt_id=_wire_optional_string(
-                document["priorReceiptId"], name="prior receipt id"
-            ),
-            desired_receipt_id=_wire_optional_string(
-                document["desiredReceiptId"], name="desired receipt id"
-            ),
-            transition_evidence_ref=_wire_optional_string(
-                document["transitionEvidenceRef"], name="transition evidence ref"
-            ),
-            receipt_version=_wire_int(
-                document["receiptVersion"], name="receipt version"
-            ),
-        )
+        return _DEPENDENCY_PIN_RECEIPT_V1_SCHEMA.decode(cls, document)
 
 
 class PackageRetentionSettlementPort(Protocol):
@@ -1489,57 +1259,10 @@ class PackageRetentionHandoffReceiptV1:
     def from_dict(cls, value: object) -> PackageRetentionHandoffReceiptV1:
         document = _exact_dict(
             value,
-            fields={
-                "dependencyPinReceipt",
-                "desiredFailure",
-                "desiredReceipt",
-                "handoffRevision",
-                "priorReceiptId",
-                "receiptId",
-                "receiptVersion",
-                "request",
-                "state",
-            },
+            fields=_RETENTION_HANDOFF_RECEIPT_V1_SCHEMA.keys,
             name="Package retention handoff receipt",
         )
-        return cls(
-            receipt_id=_wire_string(document["receiptId"], name="receipt id"),
-            request=PackageRetentionHandoffRequestV1.from_dict(document["request"]),
-            state=cast(
-                PackageRetentionHandoffState,
-                _wire_string(document["state"], name="handoff state"),
-            ),
-            handoff_revision=_wire_int(
-                document["handoffRevision"], name="handoff revision"
-            ),
-            prior_receipt_id=_wire_optional_string(
-                document["priorReceiptId"], name="prior receipt id"
-            ),
-            dependency_pin_receipt=(
-                None
-                if document["dependencyPinReceipt"] is None
-                else PackageDependencyPinReceiptV1.from_dict(
-                    document["dependencyPinReceipt"]
-                )
-            ),
-            desired_receipt=(
-                None
-                if document["desiredReceipt"] is None
-                else PackageDesiredStateCommitReceiptV1.from_dict(
-                    document["desiredReceipt"]
-                )
-            ),
-            desired_failure=(
-                None
-                if document["desiredFailure"] is None
-                else PackageDesiredStateCommitFailureV1.from_dict(
-                    document["desiredFailure"]
-                )
-            ),
-            receipt_version=_wire_int(
-                document["receiptVersion"], name="receipt version"
-            ),
-        )
+        return _RETENTION_HANDOFF_RECEIPT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1704,50 +1427,10 @@ class PackageRetentionHandoffFailureV1:
     def from_dict(cls, value: object) -> PackageRetentionHandoffFailureV1:
         document = _exact_dict(
             value,
-            fields={
-                "attemptEpoch",
-                "code",
-                "evidenceRef",
-                "failureId",
-                "failureVersion",
-                "handoffId",
-                "handoffReceiptId",
-                "operatorAction",
-                "phase",
-                "retryDomain",
-                "retryable",
-            },
+            fields=_RETENTION_HANDOFF_FAILURE_V1_SCHEMA.keys,
             name="Package retention handoff failure",
         )
-        return cls(
-            failure_id=_wire_string(document["failureId"], name="failure id"),
-            handoff_id=_wire_string(document["handoffId"], name="handoff id"),
-            handoff_receipt_id=_wire_optional_string(
-                document["handoffReceiptId"], name="handoff receipt id"
-            ),
-            attempt_epoch=_wire_int(document["attemptEpoch"], name="attempt epoch"),
-            phase=cast(
-                PackageRetentionHandoffFailurePhase,
-                _wire_string(document["phase"], name="failure phase"),
-            ),
-            code=cast(
-                PackageRetentionHandoffCode,
-                _wire_string(document["code"], name="failure code"),
-            ),
-            retryable=_wire_bool(document["retryable"], name="retryability"),
-            retry_domain=cast(
-                Literal["none", "handoff"],
-                _wire_string(document["retryDomain"], name="retry domain"),
-            ),
-            operator_action=cast(
-                Literal["none", "retry"],
-                _wire_string(document["operatorAction"], name="operator action"),
-            ),
-            evidence_ref=_wire_string(document["evidenceRef"], name="evidence ref"),
-            failure_version=_wire_int(
-                document["failureVersion"], name="failure version"
-            ),
-        )
+        return _RETENTION_HANDOFF_FAILURE_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1870,38 +1553,10 @@ class PackageRetentionHandoffResultV1:
     def from_dict(cls, value: object) -> PackageRetentionHandoffResultV1:
         document = _exact_dict(
             value,
-            fields={
-                "code",
-                "disposition",
-                "failure",
-                "handoffId",
-                "receipt",
-                "resultVersion",
-            },
+            fields=_RETENTION_HANDOFF_RESULT_V1_SCHEMA.keys,
             name="Package retention handoff result",
         )
-        return cls(
-            handoff_id=_wire_string(document["handoffId"], name="handoff id"),
-            disposition=cast(
-                PackageRetentionHandoffDisposition,
-                _wire_string(document["disposition"], name="disposition"),
-            ),
-            code=cast(
-                PackageRetentionHandoffCode,
-                _wire_string(document["code"], name="result code"),
-            ),
-            receipt=(
-                None
-                if document["receipt"] is None
-                else PackageRetentionHandoffReceiptV1.from_dict(document["receipt"])
-            ),
-            failure=(
-                None
-                if document["failure"] is None
-                else PackageRetentionHandoffFailureV1.from_dict(document["failure"])
-            ),
-            result_version=_wire_int(document["resultVersion"], name="result version"),
-        )
+        return _RETENTION_HANDOFF_RESULT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -3009,3 +2664,232 @@ __all__ = [
     "PackageRetentionHandoffResultV1",
     "PackageRetentionSettlementPort",
 ]
+
+
+_DESIRED_STATE_COMMIT_REQUEST_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("desired_request_id", "desired request id"),
+        RecordField("command_id", "command id"),
+        RecordField("command_fingerprint", "command fingerprint"),
+        RecordField(
+            "expected_inventory_revision", "expected inventory revision", _wire_int
+        ),
+        RecordField("operation_id", "operation identity"),
+        RecordField("operation_fingerprint", "operation fingerprint"),
+        RecordField("request_fingerprint", "request fingerprint"),
+        RecordField("attempt_epoch", "attempt epoch", _wire_int),
+        RecordField("product_id", "Product identity"),
+        RecordField("scope_id", "scope identity"),
+        RecordField("installation_id", "Installation identity"),
+        RecordField("plugin_id", "Plugin identity"),
+        RecordField("committed_set_id", "committed set id"),
+        RecordField("root_ref", decoder=PluginRevisionRefV1.from_dict),
+        RecordField("request_version", "request version", _wire_int),
+    ),
+)
+
+
+_DESIRED_STATE_COMMIT_RECEIPT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("receipt_id", "receipt id"),
+        RecordField("request", decoder=PackageDesiredStateCommitRequestV1.from_dict),
+        RecordField("inventory_revision", "inventory revision", _wire_int),
+        RecordField("owner_identity", "owner identity"),
+        RecordField("owner_revision", "owner revision", _wire_int),
+        RecordField("receipt_version", "receipt version", _wire_int),
+    ),
+)
+
+
+_DESIRED_STATE_COMMIT_FAILURE_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("failure_id", "failure id"),
+        RecordField("request", decoder=PackageDesiredStateCommitRequestV1.from_dict),
+        RecordField(
+            "observed_inventory_revision", "observed inventory revision", _wire_int
+        ),
+        RecordField("owner_identity", "owner identity"),
+        RecordField("owner_revision", "owner revision", _wire_int),
+        RecordField("code", "failure code"),
+        RecordField("failure_version", "failure version", _wire_int),
+    ),
+)
+
+
+_DESIRED_STATE_COMMIT_RESULT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("desired_request_id", "desired request id"),
+        RecordField("disposition", "disposition"),
+        RecordField(
+            "receipt",
+            decoder=partial(
+                decode_nullable, decoder=PackageDesiredStateCommitReceiptV1.from_dict
+            ),
+        ),
+        RecordField(
+            "failure",
+            decoder=partial(
+                decode_nullable, decoder=PackageDesiredStateCommitFailureV1.from_dict
+            ),
+        ),
+        RecordField("result_version", "result version", _wire_int),
+    ),
+)
+
+
+_RETENTION_HANDOFF_REQUEST_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("handoff_id", "handoff id"),
+        RecordField(
+            "admission_request", decoder=PackageCommitAdmissionRequestV1.from_dict
+        ),
+        RecordField(
+            "admission_receipt", decoder=PackageCommitAdmissionReceiptV1.from_dict
+        ),
+        RecordField(
+            "transaction_pin_receipt", decoder=PackageTransactionPinReceiptV1.from_dict
+        ),
+        RecordField(
+            "desired_request", decoder=PackageDesiredStateCommitRequestV1.from_dict
+        ),
+        RecordField("request_version", "request version", _wire_int),
+    ),
+)
+
+
+_RETENTION_HANDOFF_RECEIPT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("receipt_id", "receipt id"),
+        RecordField("request", decoder=PackageRetentionHandoffRequestV1.from_dict),
+        RecordField("state", "handoff state"),
+        RecordField("handoff_revision", "handoff revision", _wire_int),
+        RecordField("prior_receipt_id", "prior receipt id", _wire_optional_string),
+        RecordField(
+            "dependency_pin_receipt",
+            decoder=partial(
+                decode_nullable, decoder=PackageDependencyPinReceiptV1.from_dict
+            ),
+        ),
+        RecordField(
+            "desired_receipt",
+            decoder=partial(
+                decode_nullable, decoder=PackageDesiredStateCommitReceiptV1.from_dict
+            ),
+        ),
+        RecordField(
+            "desired_failure",
+            decoder=partial(
+                decode_nullable, decoder=PackageDesiredStateCommitFailureV1.from_dict
+            ),
+        ),
+        RecordField("receipt_version", "receipt version", _wire_int),
+    ),
+)
+
+
+_RETENTION_HANDOFF_FAILURE_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("failure_id", "failure id"),
+        RecordField("handoff_id", "handoff id"),
+        RecordField("handoff_receipt_id", "handoff receipt id", _wire_optional_string),
+        RecordField("attempt_epoch", "attempt epoch", _wire_int),
+        RecordField("phase", "failure phase"),
+        RecordField("code", "failure code"),
+        RecordField("retryable", "retryability", _wire_bool),
+        RecordField("retry_domain", "retry domain"),
+        RecordField("operator_action", "operator action"),
+        RecordField("evidence_ref", "evidence ref"),
+        RecordField("failure_version", "failure version", _wire_int),
+    ),
+)
+
+
+_RETENTION_HANDOFF_RESULT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("handoff_id", "handoff id"),
+        RecordField("disposition", "disposition"),
+        RecordField("code", "result code"),
+        RecordField(
+            "receipt",
+            decoder=partial(
+                decode_nullable, decoder=PackageRetentionHandoffReceiptV1.from_dict
+            ),
+        ),
+        RecordField(
+            "failure",
+            decoder=partial(
+                decode_nullable, decoder=PackageRetentionHandoffFailureV1.from_dict
+            ),
+        ),
+        RecordField("result_version", "result version", _wire_int),
+    ),
+)
+
+
+_DEPENDENCY_PIN_REQUEST_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("pin_request_id", "pin request id"),
+        RecordField("handoff_id", "handoff id"),
+        RecordField("operation_id", "operation identity"),
+        RecordField("attempt_epoch", "attempt epoch", _wire_int),
+        RecordField("admission_id", "admission id"),
+        RecordField("publication_receipt_id", "publication receipt id"),
+        RecordField("committed_set_id", "committed set id"),
+        RecordField("transaction_pin_receipt_id", "transaction pin receipt id"),
+        RecordField("pin_set_id", "pin set id"),
+        RecordField("root_ref", decoder=PluginRevisionRefV1.from_dict),
+        RecordField(
+            "dependency_refs",
+            decoder=partial(
+                decode_tuple,
+                list_decoder=_wire_list,
+                list_label="dependency refs",
+                item_decoder=VerifiedArtifactRefV1.from_dict,
+                item_label=None,
+            ),
+        ),
+        RecordField("request_version", "request version", _wire_int),
+    ),
+)
+
+
+_DEPENDENCY_PIN_RECEIPT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("receipt_id", "receipt id"),
+        RecordField("request", decoder=PackageDependencyPinRequestV1.from_dict),
+        RecordField(
+            "pin_ids",
+            decoder=partial(
+                decode_tuple,
+                list_decoder=_wire_list,
+                list_label="pin ids",
+                item_decoder=_wire_string,
+                item_label="pin id",
+            ),
+        ),
+        RecordField("owner_identity", "owner identity"),
+        RecordField("owner_revision", "owner revision", _wire_int),
+        RecordField("lease_revision", "lease revision", _wire_int),
+        RecordField("state", "pin state"),
+        RecordField("dependency_pins_live", "dependency pin liveness", _wire_bool),
+        RecordField(
+            "transaction_pin_receipt", decoder=PackageTransactionPinReceiptV1.from_dict
+        ),
+        RecordField("prior_receipt_id", "prior receipt id", _wire_optional_string),
+        RecordField("desired_receipt_id", "desired receipt id", _wire_optional_string),
+        RecordField(
+            "transition_evidence_ref", "transition evidence ref", _wire_optional_string
+        ),
+        RecordField("receipt_version", "receipt version", _wire_int),
+    ),
+)

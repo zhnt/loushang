@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
-from typing import Protocol
+from typing import Protocol, cast
 
 from loushang.harness.resources.packages.plugin_lifecycle.journal import (
     PackageLifecycleJournal,
@@ -19,6 +19,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleRequestV1,
     PackageLifecycleRetryRequestV1,
     PackageLifecycleStatusV1,
+    canonical_json_bytes,
     classify_package_request,
 )
 
@@ -305,6 +306,41 @@ def _disabled_status(request: PackageLifecycleRequestV1) -> PackageLifecycleStat
         journal_revision=0,
         attempt_revision=0,
         classification=classification,
+        failure=failure,
+    )
+
+
+def _local_refusal(
+    status: PackageLifecycleStatusV1,
+    *,
+    code: str,
+) -> PackageLifecycleStatusV1:
+    evidence_ref = sha256(
+        canonical_json_bytes(
+            {
+                "attemptEpoch": status.attempt_epoch,
+                "code": code,
+                "operationId": status.operation_id,
+                "requestFingerprint": status.request_fingerprint,
+                "stage": status.phase,
+            }
+        )
+    ).hexdigest()
+    failure = PackageLifecycleFailureV1.for_operation(
+        code,
+        stage=cast(PackageLifecyclePhase, status.phase),
+        operation_id=status.operation_id,
+        evidence_ref=evidence_ref,
+    )
+    return PackageLifecycleStatusV1(
+        operation_id=status.operation_id,
+        request_fingerprint=status.request_fingerprint,
+        phase=status.phase,
+        disposition="rejected",
+        attempt_epoch=status.attempt_epoch,
+        journal_revision=status.journal_revision,
+        attempt_revision=status.attempt_revision,
+        classification=status.classification,
         failure=failure,
     )
 

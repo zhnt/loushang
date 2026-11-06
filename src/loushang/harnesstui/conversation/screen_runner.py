@@ -450,19 +450,21 @@ async def run_conversation_screen(
                                     stdout=stdout,
                                     exit_code=exit_code,
                                 )
-                    elif isinstance(resumed, ConversationFollowupResult):
-                        if handle_followup is not None:
-                            exit_code = await run_text_handler(
-                                handle_followup,
-                                resumed.text,
-                                attachments=resumed.attachments,
+                    elif (
+                        isinstance(resumed, ConversationFollowupResult)
+                        and handle_followup is not None
+                    ):
+                        exit_code = await run_text_handler(
+                            handle_followup,
+                            resumed.text,
+                            attachments=resumed.attachments,
+                        )
+                        if exit_code is not None:
+                            return finish(
+                                runtime=runtime,
+                                stdout=stdout,
+                                exit_code=exit_code,
                             )
-                            if exit_code is not None:
-                                return finish(
-                                    runtime=runtime,
-                                    stdout=stdout,
-                                    exit_code=exit_code,
-                                )
                     if resumed is not None and resumed.render_requested:
                         _request_runtime_render(runtime, "input")
                 if (

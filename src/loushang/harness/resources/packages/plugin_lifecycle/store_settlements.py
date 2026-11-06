@@ -23,6 +23,10 @@ from loushang.harness.journal import (
     journal_file_read_lock,
     load_jsonl,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     PluginRevisionRefV1,
 )
@@ -279,54 +283,10 @@ class PackageStoreSettlementRecordV1:
     def from_dict(cls, value: object) -> PackageStoreSettlementRecordV1:
         document = _exact_dict(
             value,
-            fields={
-                "directoryIdentities",
-                "fileIdentities",
-                "finalName",
-                "manifest",
-                "receipt",
-                "recordRevision",
-                "recordVersion",
-                "rootIdentities",
-                "settlementId",
-                "stagingName",
-                "storeIdentity",
-                "storeRole",
-                "treeIdentity",
-            },
+            fields=_STORE_SETTLEMENT_RECORD_V1_SCHEMA.keys,
             name="Package Store settlement record",
         )
-        return cls(
-            record_revision=_wire_int(
-                document["recordRevision"], name="settlement record revision"
-            ),
-            settlement_id=_wire_string(
-                document["settlementId"], name="Store settlement identity"
-            ),
-            store_role=_wire_role(document["storeRole"]),
-            store_identity=_wire_string(
-                document["storeIdentity"], name="Package Store identity"
-            ),
-            root_identities=_wire_native_identities(document["rootIdentities"]),
-            tree_identity=PackageStoreNativeIdentityV1.from_dict(
-                document["treeIdentity"]
-            ),
-            directory_identities=_wire_entry_identities(
-                document["directoryIdentities"]
-            ),
-            file_identities=_wire_entry_identities(document["fileIdentities"]),
-            final_name=_wire_string(
-                document["finalName"], name="Package Store final name"
-            ),
-            staging_name=_wire_string(
-                document["stagingName"], name="Package Store staging name"
-            ),
-            manifest=PackageVerifiedTreeManifestV1.from_dict(document["manifest"]),
-            receipt=PackageArtifactStagingReceiptV1.from_dict(document["receipt"]),
-            record_version=_wire_int(
-                document["recordVersion"], name="settlement record version"
-            ),
-        )
+        return _STORE_SETTLEMENT_RECORD_V1_SCHEMA.decode(cls, document)
 
 
 def _encode_record(record: PackageStoreSettlementRecordV1) -> dict[str, object]:
@@ -425,18 +385,28 @@ class PackageStoreGcTombstoneV1:
         document = _exact_dict(
             value,
             fields={
-                "finalName", "journalRevision", "recordKind", "recordVersion",
-                "settlementId", "stableRefId", "storeIdentity", "storeRole",
+                "finalName",
+                "journalRevision",
+                "recordKind",
+                "recordVersion",
+                "settlementId",
+                "stableRefId",
+                "storeIdentity",
+                "storeRole",
                 "tombstoneId",
             },
             name="Package Store GC tombstone",
         )
         return cls(
-            journal_revision=_wire_int(document["journalRevision"], name="journal revision"),
+            journal_revision=_wire_int(
+                document["journalRevision"], name="journal revision"
+            ),
             settlement_id=_wire_string(document["settlementId"], name="settlement id"),
             stable_ref_id=_wire_string(document["stableRefId"], name="stable ref id"),
             store_role=_wire_role(document["storeRole"]),
-            store_identity=_wire_string(document["storeIdentity"], name="Store identity"),
+            store_identity=_wire_string(
+                document["storeIdentity"], name="Store identity"
+            ),
             final_name=_wire_string(document["finalName"], name="final name"),
             tombstone_id=_wire_string(document["tombstoneId"], name="tombstone id"),
             record_kind=cast(Literal["store_gc_tombstone"], document["recordKind"]),
@@ -444,7 +414,9 @@ class PackageStoreGcTombstoneV1:
         )
 
 
-StoreJournalEvent: TypeAlias = PackageStoreSettlementRecordV1 | PackageStoreGcTombstoneV1
+StoreJournalEvent: TypeAlias = (
+    PackageStoreSettlementRecordV1 | PackageStoreGcTombstoneV1
+)
 
 
 def _decode_store_event(value: object) -> StoreJournalEvent:
@@ -511,8 +483,7 @@ class PackageStoreSettlementJournal:
         root_identities: tuple[NativeIdentity, ...],
     ) -> None:
         expected = tuple(
-            PackageStoreNativeIdentityV1.from_native(value)
-            for value in root_identities
+            PackageStoreNativeIdentityV1.from_native(value) for value in root_identities
         )
         with self._exclusive():
             self._require_store_binding(
@@ -532,8 +503,7 @@ class PackageStoreSettlementJournal:
         """Verify the configured Store root without repairing its journal."""
 
         expected = tuple(
-            PackageStoreNativeIdentityV1.from_native(value)
-            for value in root_identities
+            PackageStoreNativeIdentityV1.from_native(value) for value in root_identities
         )
         self._require_store_binding(
             tuple(
@@ -563,7 +533,9 @@ class PackageStoreSettlementJournal:
         with self._exclusive():
             events = self._load_events_unlocked()
             records = tuple(
-                item for item in events if isinstance(item, PackageStoreSettlementRecordV1)
+                item
+                for item in events
+                if isinstance(item, PackageStoreSettlementRecordV1)
             )
             expected_root = tuple(
                 PackageStoreNativeIdentityV1.from_native(value)
@@ -658,7 +630,9 @@ class PackageStoreSettlementJournal:
         with self._exclusive():
             events = self._load_events_unlocked()
             records = tuple(
-                item for item in events if isinstance(item, PackageStoreSettlementRecordV1)
+                item
+                for item in events
+                if isinstance(item, PackageStoreSettlementRecordV1)
             )
             self._require_store_binding(
                 records,
@@ -701,7 +675,9 @@ class PackageStoreSettlementJournal:
         with self._exclusive():
             events = self._load_events_unlocked()
             records = tuple(
-                item for item in events if isinstance(item, PackageStoreSettlementRecordV1)
+                item
+                for item in events
+                if isinstance(item, PackageStoreSettlementRecordV1)
             )
             self._require_store_binding(
                 records,
@@ -803,7 +779,8 @@ class PackageStoreSettlementJournal:
                 )
             existing = next(
                 (
-                    item for item in events
+                    item
+                    for item in events
                     if isinstance(item, PackageStoreGcTombstoneV1)
                     and item.stable_ref_id == settlement.receipt.stable_ref.ref_id
                 ),
@@ -843,13 +820,14 @@ class PackageStoreSettlementJournal:
         if not isinstance(receipt, PackageArtifactStagingReceiptV1):
             raise TypeError("Package artifact staging receipt is required")
         expected_root = tuple(
-            PackageStoreNativeIdentityV1.from_native(value)
-            for value in root_identities
+            PackageStoreNativeIdentityV1.from_native(value) for value in root_identities
         )
         with self._exclusive():
             events = self._load_events_unlocked()
             records = tuple(
-                item for item in events if isinstance(item, PackageStoreSettlementRecordV1)
+                item
+                for item in events
+                if isinstance(item, PackageStoreSettlementRecordV1)
             )
             self._require_store_binding(
                 records,
@@ -880,8 +858,7 @@ class PackageStoreSettlementJournal:
         if not isinstance(receipt, PackageArtifactStagingReceiptV1):
             raise TypeError("Package artifact staging receipt is required")
         expected_root = tuple(
-            PackageStoreNativeIdentityV1.from_native(value)
-            for value in root_identities
+            PackageStoreNativeIdentityV1.from_native(value) for value in root_identities
         )
         events = self.read_events()
         records = tuple(
@@ -986,13 +963,18 @@ def _validate_settlement_binding(record: PackageStoreSettlementRecordV1) -> None
     request = record.receipt.staging_request
     stable_ref = record.receipt.stable_ref
     manifest = record.manifest
-    expected_role = "root" if isinstance(stable_ref, PluginRevisionRefV1) else "dependency"
+    expected_role = (
+        "root" if isinstance(stable_ref, PluginRevisionRefV1) else "dependency"
+    )
     if (
         record.store_role != expected_role
         or stable_ref.store_identity != record.store_identity
         or stable_ref.store_revision
         not in (
-            {f"tree:{manifest.manifest_id}", dependency_content_store_revision(manifest)}
+            {
+                f"tree:{manifest.manifest_id}",
+                dependency_content_store_revision(manifest),
+            }
             if record.store_role == "dependency"
             else {f"tree:{manifest.manifest_id}"}
         )
@@ -1113,7 +1095,8 @@ def _validate_events(events: tuple[StoreJournalEvent, ...]) -> None:
         if event.journal_revision != journal_revision:
             raise ValueError("Package Store GC tombstone revisions are not contiguous")
         matching = [
-            item for item in settlements
+            item
+            for item in settlements
             if item.settlement_id == event.settlement_id
             and item.receipt.stable_ref.ref_id == event.stable_ref_id
             and item.store_role == event.store_role
@@ -1249,8 +1232,10 @@ def _exact_dict(
     fields: set[str],
     name: str,
 ) -> dict[str, object]:
-    if not isinstance(value, dict) or set(value) != fields or not all(
-        isinstance(key, str) for key in value
+    if (
+        not isinstance(value, dict)
+        or set(value) != fields
+        or not all(isinstance(key, str) for key in value)
     ):
         raise TypeError(f"{name} is invalid")
     return value
@@ -1344,3 +1329,23 @@ __all__ = [
     "dependency_content_store_revision",
     "same_content_dependency_settlement",
 ]
+
+
+_STORE_SETTLEMENT_RECORD_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("record_revision", "settlement record revision", _wire_int),
+        RecordField("settlement_id", "Store settlement identity"),
+        RecordField("store_role", decoder=_wire_role),
+        RecordField("store_identity", "Package Store identity"),
+        RecordField("root_identities", decoder=_wire_native_identities),
+        RecordField("tree_identity", decoder=PackageStoreNativeIdentityV1.from_dict),
+        RecordField("directory_identities", decoder=_wire_entry_identities),
+        RecordField("file_identities", decoder=_wire_entry_identities),
+        RecordField("final_name", "Package Store final name"),
+        RecordField("staging_name", "Package Store staging name"),
+        RecordField("manifest", decoder=PackageVerifiedTreeManifestV1.from_dict),
+        RecordField("receipt", decoder=PackageArtifactStagingReceiptV1.from_dict),
+        RecordField("record_version", "settlement record version", _wire_int),
+    ),
+)
