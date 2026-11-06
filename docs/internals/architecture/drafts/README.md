@@ -31,6 +31,7 @@ Current live references:
 
 Standalone drafts:
 
+- [Loushang 软件形态与运行架构设计 0.0.1](loushang-software-form-and-runtime-architecture.md)
 - [GUI 原生开发交接：Windows / macOS](gui-native-development-handoff.md)
 - [Loushang GUI Requirements](gui-requirements.md)
 - [HarnessGUI Interface Specification](gui-interface-specification.md)

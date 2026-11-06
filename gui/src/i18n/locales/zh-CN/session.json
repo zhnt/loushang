@@ -1,0 +1,80 @@
+{
+  "notice": {
+    "loading": "正在加载快照…",
+    "fixtureReady": "测试快照已加载，未运行后端。",
+    "liveReady": "已连接到 AppHost。",
+    "created": "已创建并连接新会话。",
+    "liveUpdated": "AppHost 事件已更新。",
+    "modelsUnavailable": "无法获取 AppHost 模型列表。",
+    "emptyPrompt": "发送前请输入提示词。",
+    "unknownSubmission": "无法确认提交结果，草稿已保留；请重新同步后重试。",
+    "fixtureAccepted": "测试提示词已接收，可逐步推进回放。",
+    "liveAccepted": "AppHost 已接收提示词。",
+    "submitFailed": "无法确认提交结果，草稿已保留。",
+    "noEvent": "没有待回放的测试事件。",
+    "fixtureInterrupted": "测试执行已中断。",
+    "interruptRequested": "已请求中断。",
+    "interruptRejected": "中断请求未被接受。",
+    "interruptFailed": "中断失败，请重新同步后重试。",
+    "modelRejected": "模型切换被拒绝，会话仍使用原模型。",
+    "creating": "已创建新会话，正在重新连接更新后的工作区…",
+    "createFailed": "无法创建新会话。",
+    "rejected": "提交被拒绝。",
+    "playback": "回放：{{label}}。",
+    "modelChanged": "会话模型已切换为 {{model}}。",
+    "interruptReason": "中断请求未被接受。"
+  },
+  "composer": {
+    "fixturePlaceholder": "输入测试提示词…",
+    "livePlaceholder": "向在线智能体发送消息…",
+    "attachUnavailable": "无法添加附件",
+    "attachHint": "暂不支持附件",
+    "fixtureAccess": "测试访问",
+    "liveControl": "AppHost 控制",
+    "interrupt": "中断",
+    "send": "发送",
+    "stopHint": "停止执行",
+    "sendHint": "发送 (Ctrl+Enter)",
+    "messageFor": "发送给 {{title}} 的消息"
+  },
+  "models": {
+    "label": "会话模型",
+    "changeHint": "切换当前会话的模型",
+    "unavailable": "模型列表不可用",
+    "none": "未选择模型 · 暂不支持推理强度",
+    "endpoint": "端点：{{endpoint}}",
+    "option": "{{provider}} · {{model}}",
+    "reasoningOption": "{{provider}} · {{model}} · 推理"
+  },
+  "transcript": {
+    "label": "会话记录",
+    "you": "你",
+    "harness": "Harness",
+    "waiting": "正在等待输出…",
+    "message": "{{role}}消息"
+  },
+  "fixture": {
+    "controls": "测试回放控制",
+    "deterministic": "确定性测试数据",
+    "advance": "推进测试回放",
+    "queued_other": "待回放 {{count, number}} 个事件",
+    "summary_other": "测试回放 · 待回放 {{count, number}} 个事件"
+  },
+  "bridge": {
+    "web-mock": "浏览器模拟",
+    "locked": "原生桥接已锁定",
+    "verified": "Rust 调用与事件已验证"
+  },
+  "sync": {
+    "fixture": "正在同步测试数据…",
+    "live": "正在连接 AppHost…",
+    "disconnected": "连接已断开。",
+    "retry": "重新同步测试数据"
+  },
+  "diagnostic": {
+    "title": "同步已中断，请重新同步后继续。",
+    "details": "诊断详情"
+  },
+  "emptySession": "没有可用的会话。",
+  "opening": "正在打开 loushang…"
+}

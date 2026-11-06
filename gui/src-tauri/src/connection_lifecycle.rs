@@ -10,6 +10,8 @@ pub(crate) struct ConnectionLifecycle(Mutex<Phase>);
 enum Phase {
     #[default]
     Idle,
+    // Constructed by start; production admission is not wired yet.
+    #[cfg_attr(not(test), allow(dead_code))]
     Reading(ReadWorker<()>),
     Closing,
     Closed(Result<(), WorkerFailure>),
@@ -23,6 +25,7 @@ pub(crate) enum ExitAction {
 
 impl ConnectionLifecycle {
     // Kept native-only until admission and snapshot publication are wired.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn start(
         &self,
         work: impl FnOnce(ReadStop) -> Result<(), ()> + Send + 'static,

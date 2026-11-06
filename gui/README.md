@@ -21,6 +21,21 @@ the same authenticated controller connection. Further cross-language and real-se
 remains in C1/B2 as described in the
 [engineering plan](../docs/internals/architecture/drafts/gui-engineering-bootstrap-plan.md).
 
+## Application icons
+
+The user-facing product name is `loushang`, configured by Tauri's `productName`
+and window title, the HTML title and the React brand/loading text. Internal
+Cargo/npm package names remain `harness-gui` / `@loushang/harness-gui`, and the
+application identifier stays `ai.loushang.harnessgui`. On Linux, verify the
+application-menu and Dock labels after installing the bundle; an unregistered
+development executable may still be labelled by its binary name.
+
+The built-in Loushang artwork replaces the Tauri starter icons for native
+packaging and window defaults. Browser previews use the same artwork as a
+favicon. Source assets, regeneration instructions and the future user override
+boundary are documented in [branding assets](assets/branding/README.md).
+System tray and notification behavior are not implemented by this asset change.
+
 ## Toolchain
 
 - Node.js 24.22.2
@@ -171,13 +186,37 @@ decision, not a claim about Codex's internal layout implementation.
 
 The desktop frame uses one custom title/menu row with native minimize,
 maximize/restore and close commands, plus a Tauri drag region. Native decorations
-are disabled; web-only previews disable window controls. Back/forward and menu
-labels are still fixture placeholders, not implemented navigation or menus.
-The sidebar toggle supports Ctrl+B; its separator supports pointer dragging,
+are disabled. Web access omits the entire desktop title/menu row and uses the
+full viewport height. The sidebar toggle lives in the sidebar brand row; when
+collapsed, a 48 px rail keeps the reopen button at the top and the fixture user
+avatar at the bottom. Ctrl+B
+also toggles it. Back/forward in the desktop row navigate this instance's
+Session selection history, retaining per-Session drafts and view state. A new
+selection after going back drops the forward history; missing Sessions are
+skipped and changing the client/service context resets the history.
+
+Desktop File/Edit/View/Help menus provide capability-gated new Session,
+composer focus, window close, copy selection/select all, sidebar/environment
+visibility, keyboard help and an About dialog. Clipboard failures are reported
+without changing the selected text. Menu buttons support keyboard navigation,
+Escape and outside-click dismissal. File/Edit/View/Help entries are grouped
+with separators, shortcut hints and aligned checkmarks. Unimplemented actions
+(including new windows, project/folder opening, settings, edit history,
+terminal, tabs, zoom and external help) stay visibly disabled. Existing new
+Session, close/quit, work-panel toggle and history actions also support their
+advertised desktop shortcuts; shortcuts are not installed in the web shell.
+Native dragging, maximize and close use
+the existing Tauri window permissions. Web users keep browser-provided editing
+and window controls and the in-page Session/sidebar/panel controls.
+The sidebar separator supports pointer dragging,
 Left/Right arrow adjustment (200–420 px) and double-click reset to 280 px.
 Collapsed sidebars retain their width within the current GUI instance.
 The environment summary is a separate floating surface with links to Changes
-and Subagents. The right panel hosts Tasks/Subagents/Review; the bottom-panel
+and Subagents. The Session header spans both the conversation and right-panel
+columns, so opening a panel or collapsing the sidebar does not pull its controls
+away from the window's right edge. Only the body reserves right-panel width;
+narrow layouts stack that panel below the conversation. The right panel hosts
+Tasks/Subagents/Review; the bottom-panel
 button is explicitly unavailable. Native drag, resize, maximize/restore, keyboard
 focus and scaled layout still require Windows acceptance.
 
@@ -245,3 +284,58 @@ for its other owners.
 
 Do not treat passing DOM playback tests as native visual acceptance or as C1/B2
 real-service validation.
+
+## Interface languages
+
+The GUI ships `en-US` and `zh-CN` resources locally. The sidebar language selector
+supports Follow system, 简体中文 and English. `loushang.gui.language` stores only
+that device-local preference; existing workspaces, session content and settings
+are not migrated. Native startup reads the OS locale through the official Tauri
+OS plugin with only `os:allow-locale`; web preview uses `navigator.languages`.
+System preference is resolved at startup and when selected, not continuously.
+Explicit English variants map to en-US; simplified Chinese variants map to
+zh-CN; explicit Traditional Chinese is not silently mapped to Simplified.
+Unknown locales fall back to English. UI language does not set AI reply language.
+
+Use `useTranslation` with semantic string keys. JSON files under `src/i18n/locales`
+are the source of truth, organized into shell/session/workspace/panels/common.
+Use complete messages and named interpolation values; plural messages use
+`count`. Do not translate user content, model output, paths, identifiers or raw
+diagnostic details. Keep product error headings and instructions translatable.
+Save UI notice keys and necessary parameters, not already translated strings.
+Do not add translation dependencies to connection or submission effects.
+
+```text
+npm run i18n:extract
+npm run i18n:types
+npm run i18n:status
+npm run check:i18n
+npm run test:coverage
+```
+
+Review extraction changes before accepting them. `i18n:types` uses the official
+CLI to generate literal resource types; `src/i18n/types.d.ts` adds strict key
+checking. String-key API is the project convention. Type tests prove invalid
+keys and incorrect interpolation names fail. With the installed versions,
+omitting the options argument entirely is not reliably rejected by TypeScript;
+the CLI call-site checker also has a custom-namespace limitation. The small
+`check-resources.mjs` supplement checks literal calls with omitted options,
+including plural bases, and rejects blank/missing translations and missing
+locale-specific plural forms. Official CLI lint checks placeholder consistency.
+It is not a general dynamic-expression analyzer; use explicit typed mappings.
+
+Do not consider English fallback proof of translation completeness. Review
+source wording changes and corresponding translations together in Git Diff.
+Brand names, language autonyms and fixture account names have narrowly scoped
+lint exceptions. New required PR checks are not added by these local commands.
+`check:i18n` remains an explicit local validation command.
+
+Terminology: Session = 会话; Workspace = 工作区; Task = 任务;
+Run = 运行; Agent = 智能体; Subagent = 子智能体; Review = 审阅.
+The current File/Edit/View/Help row is React-rendered, not a Rust native menu.
+No duplicate Rust dictionary or new menu/tray system is introduced. Future
+native surfaces must reuse the same translation data with a mechanism suitable
+for their initialization timing.
+
+See [i18n delivery evidence](tests/playback/i18n-acceptance.md) for the observed
+validation scope and native limitations.

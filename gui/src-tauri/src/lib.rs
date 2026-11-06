@@ -43,7 +43,9 @@ fn fixture_bridge_handshake(app: tauri::AppHandle) -> Result<FixtureBridgeReceip
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().manage(Arc::new(ConnectionLifecycle::default()));
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_os::init())
+        .manage(Arc::new(ConnectionLifecycle::default()));
     #[cfg(windows)]
     let builder = builder.manage(live_bridge::LiveLaunchState::from_process());
     #[cfg(all(windows, feature = "fixture-bridge"))]

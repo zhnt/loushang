@@ -1,0 +1,76 @@
+{
+  "execution": {
+    "details": "在线执行详情",
+    "title": "执行",
+    "source": "来源",
+    "notObserved": "未观测到",
+    "finalCursor": "最终游标",
+    "notTerminal": "尚未终止",
+    "requested": "已请求",
+    "notRequested": "未请求",
+    "transcript": "会话记录",
+    "truncated": "已截断",
+    "completeSnapshot": "完整快照",
+    "status": "执行{{status}}",
+    "revision": "修订 {{revision}}"
+  },
+  "header": {
+    "actions": "会话操作",
+    "shareUnavailable": "分享不可用",
+    "share": "⇧ 分享",
+    "toggleEnvironment": "切换环境面板",
+    "bottomUnavailable": "底部面板不可用",
+    "bottomHint": "当前测试模式不支持底部面板",
+    "openDock": "打开工作面板",
+    "toggleDock": "切换右侧面板"
+  },
+  "activity": {
+    "label": "运行活动",
+    "summary": "活动：{{activities, number}} · 失败：{{failures, number}}"
+  },
+  "progress": {
+    "tasks": "运行任务",
+    "step": "步骤 {{current, number}} / {{total, number}}",
+    "complete": "已完成 {{completed, number}} / {{total, number}}"
+  },
+  "changes": {
+    "label": "测试变更",
+    "review": "审阅",
+    "readOnly": "只读测试数据 · 无法操作仓库",
+    "edited_other": "已编辑 {{count, number}} 个文件"
+  },
+  "review": {
+    "closeQuickLook": "关闭快速预览",
+    "openFull": "打开完整审阅 →",
+    "projection": "变更集视图",
+    "label": "只读审阅",
+    "commit": "提交或推送",
+    "noDiff": "没有可用的差异测试数据。",
+    "quickLook": "快速预览 {{title}}"
+  },
+  "dock": {
+    "title": "工作面板",
+    "close": "关闭工作面板",
+    "panels": "工作面板选项卡",
+    "tasks": "任务",
+    "agents": "子智能体"
+  },
+  "tasks": {
+    "projection": "任务视图",
+    "details": "任务详情",
+    "assignedAgents": "关联的智能体运行",
+    "summary_other": "{{status}} · {{count, number}} 项任务",
+    "activities_other": "{{count, number}} 项活动"
+  },
+  "agents": {
+    "projection": "智能体运行视图",
+    "details": "智能体运行详情",
+    "noSummary": "没有测试摘要。",
+    "assignedTasks": "关联任务",
+    "summary_other": "{{count, number}} 个智能体运行 · 身份独立于任务"
+  },
+  "layout": {
+    "sidebarWidth": "侧边栏宽度",
+    "workspace": "会话工作区"
+  }
+}

@@ -58,9 +58,9 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.queryByText("git · main")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Work Dock" }));
     const dock = screen.getByLabelText("Work Dock");
-    for (const [label, facet] of [["Tasks", "tasks"], ["Subagents", "agents"], ["Review", "changes"]]) {
+    for (const label of ["Tasks", "Subagents", "Review"]) {
       await user.click(within(dock).getByRole("button", { name: label }));
-      expect(within(dock).getByText(new RegExp(`${facet} capability`))).toBeVisible();
+      expect(within(dock).getByText(new RegExp(`${label} capability`))).toBeVisible();
     }
     view.rerender(<HarnessGui client={withSnapshot(client, snapshot)} />);
     expect(await screen.findByLabelText("Fixture changes")).toBeVisible();
@@ -356,7 +356,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     const taskList = screen.getByLabelText("Run tasks");
     expect(within(taskList).getByRole("button", { name: /Inspect GUI workspace/ })).toBeVisible();
 
-    const activity = screen.getByRole("button", { name: /Build the Workspace.*3 activities/ });
+    const activity = screen.getByRole("button", { name: /Build the Workspace.*Activities: 3/ });
     await user.click(activity);
     const timeline = screen.getByLabelText("Run activity");
     expect(within(timeline).getByText(/rg -n.*SessionSnapshot/)).toBeVisible();

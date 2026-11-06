@@ -25,3 +25,7 @@ contracts/rust/target/
 *.njsproj
 *.sln
 *.sw?
+
+# Local internationalization verification artifacts
+coverage/
+.metrics/

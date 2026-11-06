@@ -1,0 +1,63 @@
+{
+  "sidebar": {
+    "navigation": "Workspace and Session navigation",
+    "searchUnavailable": "Search unavailable",
+    "searchHint": "Search is unavailable in the offline fixture",
+    "creating": "Creating…",
+    "newSession": "New Session",
+    "shortcuts": "Application shortcuts",
+    "prHint": "Pull requests are unavailable in the offline fixture",
+    "scheduleHint": "Scheduling is unavailable in the offline fixture",
+    "pluginsHint": "Plugins are unavailable in the offline fixture",
+    "pullRequests": "Pull requests",
+    "scheduled": "Scheduled",
+    "plugins": "Plugins",
+    "fixtureBanner": "Fixture data · no backend",
+    "liveBanner": "Live AppHost · controlled",
+    "workspaces": "Workspaces",
+    "attached": "Attached AppHost sessions",
+    "mux": "AppHost mux",
+    "workspaceUnavailable": "Workspace details unavailable",
+    "recent": "Recent",
+    "offline": "Offline fixture",
+    "live": "Live · AppHost",
+    "plain": "plain",
+    "unread": "Unread updates",
+    "stale": "Stale · was {{status}}",
+    "sessionLabel": "{{title}} · {{status}}"
+  },
+  "environment": {
+    "summary": "Environment summary",
+    "title": "Environment",
+    "close": "Close environment",
+    "changesLink": "Changes →",
+    "agentsLink": "Subagents →",
+    "details": "Environment details",
+    "fixture": "Fixture projection",
+    "workspace": "Workspace",
+    "unavailable": "Unavailable",
+    "root": "Root",
+    "vcs": "Version control",
+    "none": "None",
+    "application": "Application",
+    "member": "Mux / member",
+    "session": "Session",
+    "generation": "Generation",
+    "capabilities": "Capabilities",
+    "unavailableValue": "unavailable",
+    "artifacts": "Artifacts"
+  },
+  "capability": {
+    "workspace": "workspace capability (missing, unavailable or incompatible)",
+    "missing": "{{capability}} capability (missing, unavailable or incompatible)"
+  },
+  "live": {
+    "context": "AppHost session context",
+    "identity": "Accepted AppHost identity",
+    "product": "Product",
+    "scope": "Scope",
+    "fingerprint": "Scope fingerprint",
+    "mux": "Mux",
+    "service": "Service"
+  }
+}
