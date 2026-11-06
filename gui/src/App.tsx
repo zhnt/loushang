@@ -576,7 +576,7 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession
   return (
     <aside className="session-rail" aria-label="Workspace and Session navigation">
       <div className="brand-row">
-        <span className="brand-name"><strong>HarnessGUI</strong><UiIcon name="chevron-down" /></span>
+        <span className="brand-name"><strong>loushang</strong><UiIcon name="chevron-down" /></span>
         <button className="brand-search" type="button" aria-label="Search unavailable" title="Search is unavailable in the offline fixture" disabled><UiIcon name="search" /></button>
       </div>
       <button className="new-session" type="button" onClick={onNewSession}
@@ -1124,7 +1124,7 @@ function App() {
       });
     return () => { active = false; };
   }, [fixture]);
-  return client ? <HarnessGui client={client} /> : <div className="empty-state">Opening HarnessGUI…</div>;
+  return client ? <HarnessGui client={client} /> : <div className="empty-state">Opening loushang…</div>;
 }
 
 export default App;

@@ -23,6 +23,13 @@ remains in C1/B2 as described in the
 
 ## Application icons
 
+The user-facing product name is `loushang`, configured by Tauri's `productName`
+and window title, the HTML title and the React brand/loading text. Internal
+Cargo/npm package names remain `harness-gui` / `@loushang/harness-gui`, and the
+application identifier stays `ai.loushang.harnessgui`. On Linux, verify the
+application-menu and Dock labels after installing the bundle; an unregistered
+development executable may still be labelled by its binary name.
+
 The built-in Loushang artwork replaces the Tauri starter icons for native
 packaging and window defaults. Browser previews use the same artwork as a
 favicon. Source assets, regeneration instructions and the future user override
