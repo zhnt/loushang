@@ -50,6 +50,8 @@ class PackageStorePinnedRootPort(Protocol):
 
     def close(self) -> None: ...
 
+    def validate_visible(self) -> None: ...
+
     def read_file(
         self,
         settlement: PackageStoreSettlementRecordV1,

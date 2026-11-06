@@ -3,7 +3,7 @@
 ## Status And Objective
 
 - Authority: delivery evidence; existing capability contracts remain authoritative.
-- Design status: accepted for the internal Store, record-field, epoch-workflow,
+- Design status: accepted for the internal Store/sink, record-field, epoch-workflow,
   lockfile and binding-journal consolidation below; durable contracts remain unchanged.
 - Implementation status: partial; the 50,000-line objective is not achieved.
 - Responsible implementer and internal reviewer: Codex, under the user's task.
@@ -355,3 +355,61 @@ The unchanged check planner selects additional broad suites for the architecture
 inventory path, including GUI, Coding, Harness, hosting and native platform
 coverage. Those complete broad suites and native Windows execution are not
 claimed by this focused batch.
+
+## Batch 006: Verified Tree Sink Lifecycle
+
+The native POSIX and Windows sinks duplicated initialization, ordered file
+admission, callback ownership, completion, abort and handle release. They also
+duplicated the preparation checks for tombstones, staging-name collisions,
+existing final trees and journal-authorized dependency reuse.
+
+`_tree_sink.py` now owns this lifecycle once. Both concrete sinks inherit it and
+retain native staging creation, file/directory creation, identity validation,
+publication and owned-tree removal. The root protocol documents the existing
+visibility check; native roots already implement it. No new journal, ledger,
+durable format, identity scheme or execution route is introduced.
+
+Native differences remain intact, including POSIX mkdir/no-replace rename and
+fsync behavior, Windows creation/access flags, reparse checks, and each platform's
+publication error handling. Abort still preserves a renamed, authorized tree;
+active-file abort, descriptor close, root close and owner-lock release retain
+their original order and failure behavior. The native modules retain their
+existing identity and completion helper bindings, including `_stable_ref`.
+
+Implementation review under the same method revision accepts this internal
+consolidation. The ten moved method bodies are equivalent after native type-alias
+normalization. All 95 retained native function/method definitions and eight
+public Store classes have identical ASTs. Each native staging-creation body is
+also identical to its original block; shared preparation delegates to the same
+native entry lookup and existing root tree-validation operation.
+
+| Accounting item | Lines |
+| --- | ---: |
+| Batch 006 Resources net reduction | 131 |
+| Outside-Harness Product source increase | 0 |
+| Effective cumulative reduction | 1,757 |
+| Remaining to cumulative objective | 48,243 |
+
+Local validation:
+
+- Existing materialization/transfer/staging cases: 52 passed, 27 Windows-native
+  cases skipped on Linux. One parity case exposed the removed `_stable_ref`
+  module binding; it was restored as a direct shared-function alias and the
+  failed case passed its focused rerun.
+- Existing architecture regressions and that parity case: 105 passed.
+- Existing real Product local-source transaction and dependency-backed staging
+  recovery adversarial cases: two passed, 175 unrelated cases deselected.
+- Repository-external sink comparison: 1,082 state/callback comparisons, zero
+  mismatches across both platform workflows and both Store roles. It injects
+  OSError, ValueError and KeyboardInterrupt at callback boundaries, preserving
+  return/error behavior, intermediate state, native preparation flags and close
+  order. Simulated Windows traces do not establish native Windows execution.
+- Ruff, focused mypy, source dependency freshness, nine documentation invariants,
+  changed-document links and whitespace checks passed. This batch's unchanged
+  check plan does not select AI; the previous batch's passing AI evidence is not
+  counted as a new run.
+
+The existing contract's three sink predicates follow their implementation into
+the shared sink source. No assertion is removed and no native sink inventory,
+test route, trigger, platform or workflow is expanded. The broad/native checks
+selected by the unchanged planner remain separate from this focused evidence.

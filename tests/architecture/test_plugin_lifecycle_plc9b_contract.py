@@ -3485,11 +3485,14 @@ def test_plc9b3e3c3_settlement_authority_is_durable_exact_and_store_private() ->
     assert "settlement_journal.settlements_for_receipt" in shared
     assert "settlement_journal.read_settlements_for_receipt" in shared
     assert "settlement_journal.authorize(" in shared
+    tree_sink = _source(
+        Path("src/loushang/harness/resources/packages/plugin_lifecycle/_tree_sink.py")
+    )
     for store in (posix_store, windows_store):
-        assert "settlement_journal: PackageStoreSettlementJournal" in store
+        assert "settlement_journal: PackageStoreSettlementJournal" in tree_sink
         assert "self._settlement_journal.owner_lock()" in store
-        assert "finish_verified_tree(" in store
-        assert "self._settlement_journal.authorizes(" in store
+        assert "finish_verified_tree(" in tree_sink
+        assert "self._settlement_journal.authorizes(" in tree_sink
         assert "validate_receipt_at_root(" in shared
         assert "plugin_lifecycle._materialization_shared import" in store
         assert "validate_dependency_receipt" in shared
