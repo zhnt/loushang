@@ -21,6 +21,14 @@ the same authenticated controller connection. Further cross-language and real-se
 remains in C1/B2 as described in the
 [engineering plan](../docs/internals/architecture/drafts/gui-engineering-bootstrap-plan.md).
 
+## Application icons
+
+The built-in Loushang artwork replaces the Tauri starter icons for native
+packaging and window defaults. Browser previews use the same artwork as a
+favicon. Source assets, regeneration instructions and the future user override
+boundary are documented in [branding assets](assets/branding/README.md).
+System tray and notification behavior are not implemented by this asset change.
+
 ## Toolchain
 
 - Node.js 24.22.2

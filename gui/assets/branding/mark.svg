@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1254" height="1254" viewBox="0 0 1254 1254">
+<title>Loushang transparent mark — smooth contour reconstruction</title>
+<defs>
+ <linearGradient id="roof" x1="400" y1="450" x2="960" y2="670" gradientUnits="userSpaceOnUse"><stop stop-color="#f8faff"/><stop offset=".57" stop-color="#e7f1ff"/><stop offset="1" stop-color="#37c7ff"/></linearGradient>
+ <linearGradient id="lower" x1="720" y1="586" x2="790" y2="766" gradientUnits="userSpaceOnUse"><stop stop-color="#b7f5fc"/><stop offset=".6" stop-color="#48c6f5"/><stop offset="1" stop-color="#229ef5"/></linearGradient>
+ <linearGradient id="wave" x1="145" y1="850" x2="1020" y2="850" gradientUnits="userSpaceOnUse"><stop stop-color="#1036b9"/><stop offset=".48" stop-color="#2678ff"/><stop offset=".8" stop-color="#39e4ff"/><stop offset="1" stop-color="#32c7fa"/></linearGradient>
+</defs>
+<path fill="url(#roof)" d="M221 664 C353 624 471 555 549 474 C651 464 750 410 790 353 L781 465 C777 490 820 531 857 558 C898 588 943 607 985 614 C895 619 808 558 756 492 C629 599 467 686 316 715 C292 721 277 712 221 664 Z"/>
+<path fill="url(#lower)" d="M497 740 C595 704 690 648 749 588 C818 649 921 690 1027 706 C999 732 970 753 947 751 C873 744 796 714 745 690 C665 723 579 738 497 740 Z"/>
+<path fill="url(#wave)" d="M145 896 C339 783 530 763 683 792 C819 815 930 852 1020 893 C906 843 787 826 677 825 C496 823 305 862 145 896 Z"/>
+</svg>
