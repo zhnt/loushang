@@ -3,7 +3,8 @@
 Date: 2026-11-06 (Asia/Shanghai)
 Branch: `feature/gui-i18n`, based on GUI delivery head `e870ad1ee` (includes
 `lane/gui` and the already committed icon work). Delivery is on the task branch;
-integration into `lane/gui` remains a separate step.
+implementation commit `1a52f4048` is now integrated into `lane/gui`, while
+delivery into `main` remains pending.
 
 ## Implemented scope
 
@@ -130,3 +131,64 @@ possible UI state; source review, runtime paths and platform evidence are report
 separately.
 No new tray, notification, multi-window or dynamic system-language mechanism is
 claimed. Follow-system is resolved at startup and when selected.
+
+## Focus and scroll follow-up — 2026-11-06
+
+Worktree: `.worktrees/gui-i18n-acceptance`; branch:
+`feature/gui-i18n-acceptance`, based on `lane/gui` at `a087fd213`.
+
+Added a browser regression with a scrollable transcript, editor draft and text
+selection. Repeated language updates preserve editor focus, selection endpoints,
+draft and scroll offset. Selecting a language through the actual selector also
+preserves selector focus and transcript scroll. The editor-focused portion uses
+the language API because clicking the selector intentionally transfers focus.
+
+Observed validation: new Playwright scenario passed using Chromium from
+`/tmp/loushang-playwright`; `npm run check` passed TypeScript and all 75 tests
+across 12 files. No production behavior or PR gates changed.
+
+Real Windows/macOS execution and native IME/clipboard/draft acceptance remain
+pending. This Linux environment has fcitx5, but no completed native composition
+test is claimed. The earlier AT-SPI EditableText limitation remains unresolved.
+Browser selection assertions do not establish native candidate-window behavior.
+
+Internal review: implementation agent reviewed the observable assertions and
+integration status for this test-only follow-up. This does not assert user
+acceptance or cross-platform completion.
+
+## Native input follow-up — 2026-11-06
+
+Performed in `.worktrees/gui-native-input-acceptance`, branch
+`feature/gui-native-input-acceptance`, based on `lane/gui` at `400a5af37`.
+Used the existing local debug fixture executable copied to an isolated test
+location, SHA-256
+`2bd7f4d1e2d8e616a4cd336d94cb877678eb6bb2f1f093b3b05534d64b82ccc2`.
+This was not a new release build. Test application XDG settings/data/cache were
+isolated. Native Linux/XWayland, GTK/WebKit and fcitx5/rime were exercised.
+
+Observed passes using actual native keyboard events and AT-SPI text assertions:
+
+- Typing `nihao` and selecting with Space committed `你好` to the native editor.
+- Switching the actual language selector to English and back to Chinese retained
+  the committed draft and updated UI labels.
+- Native Ctrl+A/Ctrl+C copied `你好`; moving the caret and pressing Ctrl+V
+  produced `你好你好`. Switching language afterward retained the pasted draft.
+
+The runner checked that the test process owned the target window and verified
+keyboard focus before each key. Earlier focus loss aborted input rather than
+sending keys to another window. Both application and clipboard reader needed
+`GDK_BACKEND=x11`: the initial reader using the default backend could not confirm
+the copied text. The passing run establishes same-X11 clipboard behavior only,
+not interoperability with other Wayland applications. Clipboard content was not
+logged; the runner restored the prior text or empty state. Test windows were
+closed after execution.
+
+Evidence: ignored `gui/test-results/native-input/` holds the runner, result JSON
+and composition screenshot; full temporary artifacts are under
+`/tmp/loushang-native-input-acceptance/`. The screenshot did not establish the
+candidate popup's visual correctness, and AT-SPI exposed no composition text
+before committing. Candidate-window layout, changing language during an
+uncommitted composition, cross-Wayland clipboard behavior, and Windows/macOS
+native input remain unverified. These results supersede the earlier blanket
+statement that native draft input and clipboard had no coverage; they do not
+establish full native IME acceptance.
