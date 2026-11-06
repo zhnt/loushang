@@ -1,17 +1,13 @@
 //! Create one Session through the production desktop control path, then reattach.
-#[cfg(windows)]
 #[allow(dead_code, unused_imports)]
 #[path = "../../../../src-tauri/src/app_client/mod.rs"]
 mod app_client;
-#[cfg(windows)]
 #[path = "../../../../src-tauri/src/read_stop.rs"]
 mod read_stop;
-#[cfg(windows)]
 #[allow(dead_code)]
 #[path = "../../../../src-tauri/src/read_worker.rs"]
 mod read_worker;
 
-#[cfg(windows)]
 fn main() {
     use std::cell::{Cell, RefCell};
 
@@ -108,9 +104,4 @@ fn main() {
         eprintln!("create Session probe failed");
         std::process::exit(1);
     }
-}
-
-#[cfg(not(windows))]
-fn main() {
-    std::process::exit(2);
 }

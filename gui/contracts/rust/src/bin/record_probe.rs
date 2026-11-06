@@ -1,13 +1,10 @@
 //! Native fixture-file admission experiment. No endpoint discovery or connection.
-#[cfg(windows)]
 #[path = "../../../../src-tauri/src/app_client/record_native.rs"]
 mod native;
-#[cfg(windows)]
 #[allow(dead_code)]
 #[path = "../../../../src-tauri/src/app_client/record_value.rs"]
 mod record_value;
 
-#[cfg(windows)]
 fn main() {
     use sha2::{Digest, Sha256};
     let arguments: Vec<_> = std::env::args_os().collect();
@@ -33,9 +30,4 @@ fn main() {
             std::process::exit(1);
         }
     }
-}
-#[cfg(not(windows))]
-fn main() {
-    eprintln!("Windows record admission unavailable");
-    std::process::exit(1);
 }

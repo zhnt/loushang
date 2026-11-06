@@ -12,7 +12,7 @@ Sessions, isolated per-Session drafts, active Run and Task progress, expandable
 Activity details, distinct root/subagent AgentRuns, and read-only ChangeSet
 review through a central Quick Look and the Work Dock. Every sample value is
 labelled as fixture data. It does not read a repository, start a Python backend,
-or request a model. An opt-in B2 Windows launch can attach to an
+or request a model. An opt-in B2 native launch can attach to an
 existing AppHost, install one barriered initial Session snapshot, publish
 validated ongoing event rounds with authoritative replacement snapshots, and
 reconnect through a fresh snapshot after transport loss or an event gap. It can
@@ -100,6 +100,13 @@ fresh snapshot and membership barrier. A submit with an uncertain response is
 looked up by its stable submission ID after reconnect and is never replayed
 automatically. The draft is cleared only after acceptance is known; commands are
 blocked until the resulting authoritative event or snapshot advances the Session.
+
+Windows and POSIX desktops share the native connection, authentication, Session
+and reconnect implementation. Only private-file admission is platform-specific,
+behind one native record port; POSIX uses rustix and the existing AppServer
+owner-only/no-follow rules. Linux has local integration evidence; macOS and
+Windows still require native verification of this revision. See
+[cross-platform bridge evidence](tests/playback/cross-platform-bridge.md).
 
 For an opt-in desktop acceptance run, first build the release executable and
 then launch an isolated real AppHost plus two real mux/session projections:

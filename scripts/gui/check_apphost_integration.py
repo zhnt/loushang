@@ -1,18 +1,19 @@
-"""Opt-in Windows Rust client / real Coding AppHost integration, no model calls."""
+"""Opt-in native Rust client / real Coding AppHost integration, no model calls."""
 
 from __future__ import annotations
 
 import asyncio
 import json
-import os
 import subprocess
 import tempfile
 from pathlib import Path
 from secrets import token_hex
 
+from native_tools import cargo_path, native_binary
+
 from loushang.agent import synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
-from loushang.ai.model import Capabilities, Model
+from loushang.ai.model import Capabilities, Endpoint, Model, ModelRegistry, Provider
 from loushang.ai.types import AssistantMessage, TextPart, Usage
 from loushang.apphost import (
     AdmissionIdentityV1,
@@ -59,11 +60,11 @@ from loushang.harness.config.agent import SettingsManager
 
 ROOT = Path(__file__).resolve().parents[2]
 CRATE = ROOT / "gui/contracts/rust"
-EXE = CRATE / "target/debug/connection_probe.exe"
-SNAPSHOT_EXE = CRATE / "target/debug/snapshot_probe.exe"
-EVENT_EXE = CRATE / "target/debug/event_probe.exe"
-CONTROL_EXE = CRATE / "target/debug/control_probe.exe"
-CREATE_SESSION_EXE = CRATE / "target/debug/create_session_probe.exe"
+EXE = native_binary(CRATE / "target/debug", "connection_probe")
+SNAPSHOT_EXE = native_binary(CRATE / "target/debug", "snapshot_probe")
+EVENT_EXE = native_binary(CRATE / "target/debug", "event_probe")
+CONTROL_EXE = native_binary(CRATE / "target/debug", "control_probe")
+CREATE_SESSION_EXE = native_binary(CRATE / "target/debug", "create_session_probe")
 
 
 class InstalledPin:
@@ -163,6 +164,24 @@ async def initial_snapshot(root):
     return snapshot
 
 
+def completed_snapshot(round_value, prompt):
+    # A replacement snapshot may cover events produced after the event read.
+    # Require the requested prompt and actual assistant response at a successful cut.
+    return any(
+        snapshot["source"]["observation"]["status"] == "succeeded"
+        and snapshot["executions"]["active"] is None
+        and any(
+            record["text"] == prompt
+            for record in snapshot["source"]["source"]["records"]
+        )
+        and any(
+            record["text"] == "real AppHost event round"
+            for record in snapshot["source"]["source"]["records"]
+        )
+        for snapshot in round_value["sessions"]
+    )
+
+
 async def event_round(root, trigger):
     process = await asyncio.create_subprocess_exec(
         str(EVENT_EXE),
@@ -184,10 +203,8 @@ async def event_round(root, trigger):
                 round_value = json.loads(await process.stdout.readline())
                 assert round_value["type"] == "round"
                 rounds.append(round_value["payload"])
-                if any(
-                    event.get("source", {}).get("kind") == "turn_completed"
-                    for member in round_value["payload"]["members"]
-                    for event in member["events"]
+                if completed_snapshot(
+                    round_value["payload"], "publish one deterministic event round"
                 ):
                     break
         stdout, stderr = await asyncio.wait_for(process.communicate(), 8)
@@ -233,10 +250,8 @@ async def control_round(root, session_id):
                 value = json.loads(line)
                 assert value["type"] == "round"
                 rounds.append(value["payload"])
-                if any(
-                    event.get("source", {}).get("kind") == "turn_completed"
-                    for member in value["payload"]["members"]
-                    for event in member["events"]
+                if completed_snapshot(
+                    value["payload"], "submit through the desktop control bridge"
                 ):
                     break
         stdout, stderr = await asyncio.wait_for(process.communicate(), 8)
@@ -270,6 +285,30 @@ async def create_session(root, source_session_id):
 
 
 async def run(root):
+    model = Model(
+        id="no-network",
+        name="No network",
+        provider="faux",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(
+            input=("text",), context_window=128000, max_tokens=4096
+        ),
+    )
+    registry = ModelRegistry.from_providers(
+        {
+            "faux": Provider(
+                id="faux",
+                endpoints={
+                    "anthropic-messages": Endpoint(
+                        id="anthropic-messages",
+                        provider="faux",
+                        api="anthropic-messages",
+                        models={model.id: model},
+                    )
+                },
+            )
+        }
+    )
     launch = CodingHostedLaunchV1(
         root, root / "app", "gui.integration", root / "cwd", root / "home"
     )
@@ -301,20 +340,13 @@ async def run(root):
         ),
         session_factory=CodingRealHostedSessionFactoryV1(
             services_factory=lambda cwd: create_services(
+                ai_model_registry=registry,
                 settings_manager=SettingsManager(
                     global_settings_path=root / "settings.json",
                     project_settings_path=cwd / ".loushang/settings.json",
-                )
-            ),
-            model=Model(
-                id="no-network",
-                name="No network",
-                provider="faux",
-                endpoint="anthropic-messages",
-                capabilities=Capabilities(
-                    input=("text",), context_window=128000, max_tokens=4096
                 ),
             ),
+            model=model,
             stream_fn=deterministic_stream,
             tools=[],
         ),
@@ -408,6 +440,7 @@ async def run(root):
         print(
             "Real AppHost: Rust snapshot/detach and independent mux passed", flush=True
         )
+
         async def trigger_turn():
             application = app._application
             service = application._service
@@ -425,7 +458,8 @@ async def run(root):
                 "publish one deterministic event round",
                 "gui-event-round",
             )
-            await registry.wait(session._execution, record)
+            outcome = await registry.wait(session._execution, record)
+            assert outcome.status.value == "succeeded", outcome
 
         initial, rounds = await event_round(root / "connection", trigger_turn)
         round_value = rounds[-1]
@@ -440,14 +474,7 @@ async def run(root):
         assert int(round_value["sessions"][0]["source"]["source"]["cursor"]) >= int(
             initial["sessions"][0]["source"]["source"]["cursor"]
         )
-        kinds = {
-            event["source"]["kind"]
-            for value in rounds
-            for member in value["members"]
-            for event in member["events"]
-            if "source" in event
-        }
-        assert "turn_started" in kinds and "turn_completed" in kinds
+        assert completed_snapshot(round_value, "publish one deterministic event round")
         assert "attachmentId" not in json.dumps(round_value)
         assert "controllerGeneration" not in json.dumps(round_value)
         assert local.accepting
@@ -456,14 +483,9 @@ async def run(root):
             flush=True,
         )
         controlled = await control_round(root / "connection", gui_session_id)
-        controlled_kinds = {
-            event["source"]["kind"]
-            for value in controlled
-            for member in value["members"]
-            for event in member["events"]
-            if "source" in event
-        }
-        assert {"user_message", "assistant_message", "turn_completed"} <= controlled_kinds
+        assert completed_snapshot(
+            controlled[-1], "submit through the desktop control bridge"
+        )
         print(
             "Real AppHost: desktop submit reached Coding AgentSession and streamed back",
             flush=True,
@@ -540,11 +562,9 @@ async def run(root):
 
 
 if __name__ == "__main__":
-    if os.name != "nt":
-        raise SystemExit("This native integration requires Windows")
     subprocess.run(
         [
-            str(Path.home() / ".cargo/bin/cargo.exe"),
+            str(cargo_path()),
             "+1.98.1",
             "build",
             "--locked",

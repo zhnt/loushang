@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import subprocess
 import tempfile
 import time
 from pathlib import Path
+
+from native_tools import cargo_path, native_binary
 
 from loushang.appserver.execution.codec import execution_hello
 from loushang.appserver.framing import (
@@ -27,7 +28,7 @@ from loushang.appserver.protocol import SessionScopeV1
 
 ROOT = Path(__file__).resolve().parents[2]
 CRATE = ROOT / "gui/contracts/rust"
-EXE = CRATE / "target/debug/connection_probe.exe"
+EXE = native_binary(CRATE / "target/debug", "connection_probe")
 
 
 async def scenario(root: Path, attack: str) -> None:
@@ -154,15 +155,13 @@ async def run(parent: Path) -> None:
     for attack in attacks:
         await scenario(parent / attack, attack)
         print(f"Connection lifecycle: {attack} + fresh client passed", flush=True)
-    print("Windows loopback lifecycle: 8 scenarios / 16 connections passed")
+    print("Native loopback lifecycle: 8 scenarios / 16 connections passed")
 
 
 if __name__ == "__main__":
-    if os.name != "nt":
-        raise SystemExit("Connection lifecycle fixture requires Windows")
     subprocess.run(
         [
-            str(Path.home() / ".cargo/bin/cargo.exe"),
+            str(cargo_path()),
             "+1.98.1",
             "build",
             "--locked",
