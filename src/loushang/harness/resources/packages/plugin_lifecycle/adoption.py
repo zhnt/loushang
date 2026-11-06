@@ -15,6 +15,10 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import Literal, Protocol, cast
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.commit_admission import (
     PackagePublicationReceiptV1,
 )
@@ -132,40 +136,10 @@ class PackageLegacyStateEvidenceV1:
     def from_dict(cls, value: object) -> PackageLegacyStateEvidenceV1:
         document = _wire_object(
             value,
-            expected={
-                "byteCount",
-                "coveredDomains",
-                "entryCount",
-                "evidenceId",
-                "evidenceVersion",
-                "legacyRootIdentity",
-                "stateDigest",
-                "storeId",
-            },
+            expected=_LEGACY_STATE_EVIDENCE_V1_SCHEMA.keys,
             name="legacy Package state evidence",
         )
-        return cls(
-            evidence_id=_wire_string(document["evidenceId"], name="evidence id"),
-            store_id=_wire_string(document["storeId"], name="store id"),
-            legacy_root_identity=_wire_string(
-                document["legacyRootIdentity"],
-                name="legacy root identity",
-            ),
-            state_digest=_wire_string(
-                document["stateDigest"],
-                name="state digest",
-            ),
-            entry_count=_wire_int(document["entryCount"], name="entry count"),
-            byte_count=_wire_int(document["byteCount"], name="byte count"),
-            covered_domains=_wire_string_tuple(
-                document["coveredDomains"],
-                name="covered domains",
-            ),
-            evidence_version=_wire_int(
-                document["evidenceVersion"],
-                name="evidence version",
-            ),
-        )
+        return _LEGACY_STATE_EVIDENCE_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -553,30 +527,10 @@ class PackageLegacyAdoptionReceiptV1:
     def from_dict(cls, value: object) -> PackageLegacyAdoptionReceiptV1:
         document = _wire_object(
             value,
-            expected={
-                "legacyStateEvidenceId",
-                "publication",
-                "receiptId",
-                "receiptVersion",
-                "requestId",
-            },
+            expected=_LEGACY_ADOPTION_RECEIPT_V1_SCHEMA.keys,
             name="legacy Package adoption receipt",
         )
-        return cls(
-            receipt_id=_wire_string(document["receiptId"], name="receipt id"),
-            request_id=_wire_string(document["requestId"], name="request id"),
-            legacy_state_evidence_id=_wire_string(
-                document["legacyStateEvidenceId"],
-                name="legacy state evidence id",
-            ),
-            publication=PackagePublicationReceiptV1.from_dict(
-                document["publication"]
-            ),
-            receipt_version=_wire_int(
-                document["receiptVersion"],
-                name="receipt version",
-            ),
-        )
+        return _LEGACY_ADOPTION_RECEIPT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -663,8 +617,7 @@ class PackageLegacyAdoptionFailureV1:
         if (
             status.failure is None
             or status.operation_id != request.operation_id
-            or status.request_fingerprint
-            != request.transaction_request_fingerprint
+            or status.request_fingerprint != request.transaction_request_fingerprint
             or status.attempt_epoch != request.expected_attempt_epoch
             or status.classification is None
             or status.classification.decision != "plugin_bound"
@@ -778,8 +731,7 @@ class PackageLegacyAdoptionResultV1:
                 or self.failure is None
                 or self.failure.request_id != self.request_id
                 or self.code != self.failure.code
-                or (self.disposition == "retryable_failure")
-                != self.failure.retryable
+                or (self.disposition == "retryable_failure") != self.failure.retryable
             ):
                 raise ValueError("Failed Package adoption result is inconsistent")
         else:
@@ -996,8 +948,7 @@ class PackageLegacyAdoptionOwner:
             and current.fence_revision == request.current_fence_revision
             and current.epoch == request.current_epoch
             and current.fenced_root_identity == request.current_root_identity
-            and current.request.legacy_root_identity
-            == request.legacy_root_identity
+            and current.request.legacy_root_identity == request.legacy_root_identity
         )
 
     @staticmethod
@@ -1038,8 +989,7 @@ def _publication_matches_request(
 ) -> bool:
     return (
         publication.operation_id == request.operation_id
-        and publication.request_fingerprint
-        == request.transaction_request_fingerprint
+        and publication.request_fingerprint == request.transaction_request_fingerprint
         and publication.classification_fingerprint
         == request.expected_classification_fingerprint
         and publication.attempt_epoch == request.expected_attempt_epoch
@@ -1260,3 +1210,30 @@ def _require_non_negative(value: int, *, name: str) -> None:
 
 
 __all__ = ()
+
+
+_LEGACY_STATE_EVIDENCE_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("evidence_id", "evidence id"),
+        RecordField("store_id", "store id"),
+        RecordField("legacy_root_identity", "legacy root identity"),
+        RecordField("state_digest", "state digest"),
+        RecordField("entry_count", "entry count", _wire_int),
+        RecordField("byte_count", "byte count", _wire_int),
+        RecordField("covered_domains", "covered domains", _wire_string_tuple),
+        RecordField("evidence_version", "evidence version", _wire_int),
+    ),
+)
+
+
+_LEGACY_ADOPTION_RECEIPT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("receipt_id", "receipt id"),
+        RecordField("request_id", "request id"),
+        RecordField("legacy_state_evidence_id", "legacy state evidence id"),
+        RecordField("publication", decoder=PackagePublicationReceiptV1.from_dict),
+        RecordField("receipt_version", "receipt version", _wire_int),
+    ),
+)

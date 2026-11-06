@@ -8,6 +8,10 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import NoReturn, Protocol, cast
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     AuthenticatedSourceEnvelopeV1,
     BoundedAcquisitionReceiptV1,
@@ -152,37 +156,10 @@ class PackageDependencySelectionRequestV1:
     def from_dict(cls, value: object) -> PackageDependencySelectionRequestV1:
         document = _exact_dict(
             value,
-            fields={
-                "attemptEpoch",
-                "operationId",
-                "parentNodeId",
-                "requestFingerprint",
-                "requestVersion",
-                "requirement",
-                "resolutionEnvironmentFingerprint",
-            },
+            fields=_DEPENDENCY_SELECTION_REQUEST_V1_SCHEMA.keys,
             name="dependency selection request",
         )
-        return cls(
-            operation_id=_wire_string(document["operationId"], name="operation id"),
-            attempt_epoch=_wire_int(document["attemptEpoch"], name="attempt epoch"),
-            parent_node_id=_wire_string(
-                document["parentNodeId"], name="parent node id"
-            ),
-            request_fingerprint=_wire_string(
-                document["requestFingerprint"], name="request fingerprint"
-            ),
-            resolution_environment_fingerprint=_wire_string(
-                document["resolutionEnvironmentFingerprint"],
-                name="resolution environment fingerprint",
-            ),
-            requirement=NormalizedPackageRequirementV1.from_dict(
-                document["requirement"]
-            ),
-            request_version=_wire_int(
-                document["requestVersion"], name="request version"
-            ),
-        )
+        return _DEPENDENCY_SELECTION_REQUEST_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,60 +262,10 @@ class PackageDependencySelectionV1:
     def from_dict(cls, value: object) -> PackageDependencySelectionV1:
         document = _exact_dict(
             value,
-            fields={
-                "attemptEpoch",
-                "canonicalSourceIdentity",
-                "expectedArtifactDigest",
-                "operationId",
-                "parentNodeId",
-                "projectName",
-                "requestFingerprint",
-                "requirementFingerprint",
-                "resolutionEnvironmentFingerprint",
-                "resolverId",
-                "resolverRevision",
-                "selectionVersion",
-                "version",
-                "wheelFilename",
-            },
+            fields=_DEPENDENCY_SELECTION_V1_SCHEMA.keys,
             name="dependency selection",
         )
-        return cls(
-            operation_id=_wire_string(document["operationId"], name="operation id"),
-            attempt_epoch=_wire_int(document["attemptEpoch"], name="attempt epoch"),
-            parent_node_id=_wire_string(
-                document["parentNodeId"], name="parent node id"
-            ),
-            request_fingerprint=_wire_string(
-                document["requestFingerprint"], name="request fingerprint"
-            ),
-            resolution_environment_fingerprint=_wire_string(
-                document["resolutionEnvironmentFingerprint"],
-                name="resolution environment fingerprint",
-            ),
-            requirement_fingerprint=_wire_string(
-                document["requirementFingerprint"], name="requirement fingerprint"
-            ),
-            project_name=_wire_string(document["projectName"], name="project name"),
-            version=_wire_string(document["version"], name="version"),
-            canonical_source_identity=_wire_string(
-                document["canonicalSourceIdentity"], name="Source identity"
-            ),
-            wheel_filename=_wire_string(
-                document["wheelFilename"], name="wheel filename"
-            ),
-            expected_artifact_digest=_wire_string(
-                document["expectedArtifactDigest"],
-                name="expected artifact digest",
-            ),
-            resolver_id=_wire_string(document["resolverId"], name="resolver id"),
-            resolver_revision=_wire_string(
-                document["resolverRevision"], name="resolver revision"
-            ),
-            selection_version=_wire_int(
-                document["selectionVersion"], name="selection version"
-            ),
-        )
+        return _DEPENDENCY_SELECTION_V1_SCHEMA.decode(cls, document)
 
 
 class PackageDependencyResolverPort(Protocol):
@@ -943,9 +870,7 @@ class PackageRecursiveClosureOwner:
                 code="package_closure_artifact_invalid",
             )
         if durable_only and (
-            source_evidence is None
-            or receipt is None
-            or durable_verified is None
+            source_evidence is None or receipt is None or durable_verified is None
         ):
             raise PackageClosureVerificationError(
                 "Package dependency recovery evidence is incomplete",
@@ -1286,3 +1211,42 @@ __all__ = [
     "PackageRecursiveClosureRequestV2",
     "VerifiedPackageClosureCandidate",
 ]
+
+
+_DEPENDENCY_SELECTION_REQUEST_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("operation_id", "operation id"),
+        RecordField("attempt_epoch", "attempt epoch", _wire_int),
+        RecordField("parent_node_id", "parent node id"),
+        RecordField("request_fingerprint", "request fingerprint"),
+        RecordField(
+            "resolution_environment_fingerprint", "resolution environment fingerprint"
+        ),
+        RecordField("requirement", decoder=NormalizedPackageRequirementV1.from_dict),
+        RecordField("request_version", "request version", _wire_int),
+    ),
+)
+
+
+_DEPENDENCY_SELECTION_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("operation_id", "operation id"),
+        RecordField("attempt_epoch", "attempt epoch", _wire_int),
+        RecordField("parent_node_id", "parent node id"),
+        RecordField("request_fingerprint", "request fingerprint"),
+        RecordField(
+            "resolution_environment_fingerprint", "resolution environment fingerprint"
+        ),
+        RecordField("requirement_fingerprint", "requirement fingerprint"),
+        RecordField("project_name", "project name"),
+        RecordField("version", "version"),
+        RecordField("canonical_source_identity", "Source identity"),
+        RecordField("wheel_filename", "wheel filename"),
+        RecordField("expected_artifact_digest", "expected artifact digest"),
+        RecordField("resolver_id", "resolver id"),
+        RecordField("resolver_revision", "resolver revision"),
+        RecordField("selection_version", "selection version", _wire_int),
+    ),
+)

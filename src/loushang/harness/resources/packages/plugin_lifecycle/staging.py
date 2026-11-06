@@ -23,6 +23,10 @@ from loushang.harness.journal import (
     journal_file_read_lock,
     load_jsonl,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     VerifiedClosurePlanNodeV2,
     VerifiedClosurePlanV2,
@@ -143,42 +147,10 @@ class PackagePluginRootTargetV1:
     def from_dict(cls, value: object) -> PackagePluginRootTargetV1:
         document = _exact_dict(
             value,
-            fields={
-                "authorityId",
-                "authorityRevision",
-                "installationId",
-                "operationId",
-                "pluginId",
-                "productId",
-                "requestFingerprint",
-                "scopeId",
-                "targetId",
-                "targetVersion",
-            },
+            fields=_PLUGIN_ROOT_TARGET_V1_SCHEMA.keys,
             name="Package Plugin root target",
         )
-        return cls(
-            target_id=_wire_string(document["targetId"], name="target id"),
-            operation_id=_wire_string(
-                document["operationId"], name="operation identity"
-            ),
-            request_fingerprint=_wire_string(
-                document["requestFingerprint"], name="request fingerprint"
-            ),
-            product_id=_wire_string(document["productId"], name="Product identity"),
-            scope_id=_wire_string(document["scopeId"], name="scope identity"),
-            installation_id=_wire_string(
-                document["installationId"], name="Installation identity"
-            ),
-            plugin_id=_wire_string(document["pluginId"], name="Plugin identity"),
-            authority_id=_wire_string(
-                document["authorityId"], name="authority identity"
-            ),
-            authority_revision=_wire_string(
-                document["authorityRevision"], name="authority revision"
-            ),
-            target_version=_wire_int(document["targetVersion"], name="target version"),
-        )
+        return _PLUGIN_ROOT_TARGET_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -901,3 +873,20 @@ __all__ = [
     "PackagePluginRootStagingPort",
     "PackagePluginRootTargetV1",
 ]
+
+
+_PLUGIN_ROOT_TARGET_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("target_id", "target id"),
+        RecordField("operation_id", "operation identity"),
+        RecordField("request_fingerprint", "request fingerprint"),
+        RecordField("product_id", "Product identity"),
+        RecordField("scope_id", "scope identity"),
+        RecordField("installation_id", "Installation identity"),
+        RecordField("plugin_id", "Plugin identity"),
+        RecordField("authority_id", "authority identity"),
+        RecordField("authority_revision", "authority revision"),
+        RecordField("target_version", "target version", _wire_int),
+    ),
+)

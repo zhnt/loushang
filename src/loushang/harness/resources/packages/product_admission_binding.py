@@ -7,24 +7,16 @@ recovery must refuse. The same admitted runtime can fill that gap on replay.
 
 from __future__ import annotations
 
-import json
 import re
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
-    SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
     JournalCodecError,
-    JournalFileError,
-    JournalLoadPolicy,
-    JsonlSnapshot,
-    append_jsonl_record,
     journal_file_lock,
-    journal_file_read_lock,
-    load_jsonl,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeAdmissionReceiptV1,
@@ -34,10 +26,12 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleStatusV1,
     canonical_json_bytes,
 )
+from loushang.harness.resources.packages.product_binding_journal import (
+    _ProductBindingJournal,
+)
 
 PACKAGE_PRODUCT_ADMISSION_BINDING_VERSION = 1
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
-_READ_ONLY_LOAD_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 
 
 class PackageProductAdmissionBindingJournalError(RuntimeError):
@@ -131,17 +125,17 @@ def _decode(value: object) -> PackageProductAdmissionBindingV1:
 _CODEC = FunctionalJournalRecordCodec(encoder=_encode, decoder=_decode)
 
 
-class PackageProductAdmissionBindingJournal:
+class PackageProductAdmissionBindingJournal(
+    _ProductBindingJournal[PackageProductAdmissionBindingV1]
+):
     """Product sole writer for original admission-to-lease identity."""
 
-    def __init__(self, path: str | Path) -> None:
-        self._path = Path(path).resolve()
-        self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+    _codec = _CODEC
+    _label = "Product admission binding"
+    _corrupt_code = "package_product_admission_binding_corrupt"
 
-    @property
-    def path(self) -> Path:
-        return self._path
+    def _record_key(self, record: PackageProductAdmissionBindingV1) -> str:
+        return record.operation_id
 
     def bind(
         self,
@@ -200,13 +194,7 @@ class PackageProductAdmissionBindingJournal:
                 request_fingerprint=request.request_fingerprint,
                 admission=admission,
             )
-            append_jsonl_record(
-                self._path,
-                record,
-                record_codec=_CODEC,
-                format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                durability=self._unlocked_durability,
-            )
+            self._append_record(record)
             return record
 
     def read_binding(self, operation_id: str) -> PackageProductAdmissionBindingV1 | None:
@@ -214,48 +202,12 @@ class PackageProductAdmissionBindingJournal:
 
         if not isinstance(operation_id, str) or not operation_id:
             raise ValueError("Product admission binding operation id is required")
-        with journal_file_read_lock(
-            self._path,
-            "shared",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-            create_lock=False,
-        ):
-            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+        records = self._read_only_records()
         return next(
             (record for record in records if record.operation_id == operation_id),
             None,
         )
 
-    def _load_unlocked(
-        self, *, load_policy: JournalLoadPolicy | None = None
-    ) -> tuple[PackageProductAdmissionBindingV1, ...]:
-        if not self._path.exists():
-            return ()
-        try:
-            snapshot: JsonlSnapshot[None, PackageProductAdmissionBindingV1] = (
-                load_jsonl(
-                    self._path,
-                    record_codec=_CODEC,
-                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                    durability=self._unlocked_durability,
-                    load_policy=load_policy or self._load_policy,
-                )
-            )
-            records = snapshot.records
-            for line in self._path.read_text(encoding="utf-8").splitlines():
-                if line:
-                    json.loads(line, object_pairs_hook=_unique_json_object)
-            if any(
-                record.record_revision != revision
-                for revision, record in enumerate(records, start=1)
-            ) or len({record.operation_id for record in records}) != len(records):
-                raise ValueError("Product admission binding history changed")
-            return records
-        except (JournalCodecError, JournalFileError, OSError, UnicodeError, TypeError, ValueError) as exc:
-            raise self._error(
-                "Product admission binding journal is corrupt",
-                code="package_product_admission_binding_corrupt",
-            ) from exc
 
     def _error(
         self, message: str, *, code: str
@@ -263,12 +215,3 @@ class PackageProductAdmissionBindingJournal:
         return PackageProductAdmissionBindingJournalError(
             message, code=code, path=self._path
         )
-
-
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Product admission binding contains duplicate JSON keys")
-        result[key] = value
-    return result

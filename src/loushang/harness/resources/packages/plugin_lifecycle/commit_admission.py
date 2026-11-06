@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import partial
 from hashlib import sha256
-from typing import Literal, Protocol, cast
+from typing import Literal, Protocol
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+    decode_nullable,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     CommittedPackageSetRefV1,
     PackageStableRefV1,
@@ -111,8 +117,7 @@ class PackagePublicationReceiptV1:
             or committed.scope_id != self.scope_id
             or committed.installation_id != self.installation_id
             or committed.plugin_id != self.plugin_id
-            or committed.classification_fingerprint
-            != self.classification_fingerprint
+            or committed.classification_fingerprint != self.classification_fingerprint
         ):
             raise ValueError("Package publication receipt context changed")
         if self.receipt_version != PACKAGE_PUBLICATION_RECEIPT_VERSION:
@@ -198,60 +203,10 @@ class PackagePublicationReceiptV1:
     def from_dict(cls, value: object) -> PackagePublicationReceiptV1:
         document = _exact_dict(
             value,
-            fields={
-                "attemptEpoch",
-                "classificationFingerprint",
-                "commitStatusRevision",
-                "committedSet",
-                "installationId",
-                "operationFingerprint",
-                "operationId",
-                "pluginId",
-                "productId",
-                "receiptId",
-                "receiptVersion",
-                "requestFingerprint",
-                "scopeId",
-                "transactionPinReceiptId",
-            },
+            fields=_PUBLICATION_RECEIPT_V1_SCHEMA.keys,
             name="Package publication receipt",
         )
-        return cls(
-            receipt_id=_wire_string(document["receiptId"], name="receipt id"),
-            operation_id=_wire_string(
-                document["operationId"], name="operation identity"
-            ),
-            operation_fingerprint=_wire_string(
-                document["operationFingerprint"], name="operation fingerprint"
-            ),
-            request_fingerprint=_wire_string(
-                document["requestFingerprint"], name="request fingerprint"
-            ),
-            attempt_epoch=_wire_int(document["attemptEpoch"], name="attempt epoch"),
-            product_id=_wire_string(document["productId"], name="Product identity"),
-            scope_id=_wire_string(document["scopeId"], name="scope identity"),
-            installation_id=_wire_string(
-                document["installationId"], name="Installation identity"
-            ),
-            plugin_id=_wire_string(document["pluginId"], name="Plugin identity"),
-            classification_fingerprint=_wire_string(
-                document["classificationFingerprint"],
-                name="classification fingerprint",
-            ),
-            committed_set=CommittedPackageSetRefV1.from_dict(
-                document["committedSet"]
-            ),
-            transaction_pin_receipt_id=_wire_string(
-                document["transactionPinReceiptId"],
-                name="transaction pin receipt id",
-            ),
-            commit_status_revision=_wire_int(
-                document["commitStatusRevision"], name="commit status revision"
-            ),
-            receipt_version=_wire_int(
-                document["receiptVersion"], name="receipt version"
-            ),
-        )
+        return _PUBLICATION_RECEIPT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -377,7 +332,10 @@ class PackageCommitAdmissionRequestV1:
         )
 
     def to_dict(self) -> dict[str, object]:
-        return {"admissionRequestId": self.admission_request_id, **self._identity_dict()}
+        return {
+            "admissionRequestId": self.admission_request_id,
+            **self._identity_dict(),
+        }
 
     @classmethod
     def from_dict(cls, value: object) -> PackageCommitAdmissionRequestV1:
@@ -458,9 +416,7 @@ class PackageCommitAdmissionFailureV1:
     admission_request_id: str
     operation_id: str
     evidence_ref: str
-    code: Literal["package_commit_admission_denied"] = (
-        "package_commit_admission_denied"
-    )
+    code: Literal["package_commit_admission_denied"] = "package_commit_admission_denied"
     failure_version: int = PACKAGE_COMMIT_ADMISSION_FAILURE_VERSION
 
     def __post_init__(self) -> None:
@@ -513,35 +469,10 @@ class PackageCommitAdmissionFailureV1:
     def from_dict(cls, value: object) -> PackageCommitAdmissionFailureV1:
         document = _exact_dict(
             value,
-            fields={
-                "admissionRequestId",
-                "code",
-                "evidenceRef",
-                "failureId",
-                "failureVersion",
-                "operationId",
-            },
+            fields=_COMMIT_ADMISSION_FAILURE_V1_SCHEMA.keys,
             name="Package commit admission failure",
         )
-        return cls(
-            failure_id=_wire_string(document["failureId"], name="failure id"),
-            admission_request_id=_wire_string(
-                document["admissionRequestId"], name="admission request id"
-            ),
-            operation_id=_wire_string(
-                document["operationId"], name="operation identity"
-            ),
-            evidence_ref=_wire_string(
-                document["evidenceRef"], name="evidence ref"
-            ),
-            code=cast(
-                Literal["package_commit_admission_denied"],
-                _wire_string(document["code"], name="failure code"),
-            ),
-            failure_version=_wire_int(
-                document["failureVersion"], name="failure version"
-            ),
-        )
+        return _COMMIT_ADMISSION_FAILURE_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -623,44 +554,10 @@ class PackageCommitAdmissionReceiptV1:
     def from_dict(cls, value: object) -> PackageCommitAdmissionReceiptV1:
         document = _exact_dict(
             value,
-            fields={
-                "admissionId",
-                "admissionRequestId",
-                "closureLockDigest",
-                "committedSetId",
-                "operationFingerprint",
-                "publicationReceiptId",
-                "receiptVersion",
-                "rootRef",
-                "transactionPinReceiptId",
-            },
+            fields=_COMMIT_ADMISSION_RECEIPT_V1_SCHEMA.keys,
             name="Package commit admission receipt",
         )
-        return cls(
-            admission_id=_wire_string(document["admissionId"], name="admission id"),
-            admission_request_id=_wire_string(
-                document["admissionRequestId"], name="admission request id"
-            ),
-            publication_receipt_id=_wire_string(
-                document["publicationReceiptId"], name="publication receipt id"
-            ),
-            operation_fingerprint=_wire_string(
-                document["operationFingerprint"], name="operation fingerprint"
-            ),
-            committed_set_id=_wire_string(
-                document["committedSetId"], name="committed set id"
-            ),
-            closure_lock_digest=_wire_string(
-                document["closureLockDigest"], name="closure lock digest"
-            ),
-            transaction_pin_receipt_id=_wire_string(
-                document["transactionPinReceiptId"], name="transaction pin receipt id"
-            ),
-            root_ref=PluginRevisionRefV1.from_dict(document["rootRef"]),
-            receipt_version=_wire_int(
-                document["receiptVersion"], name="receipt version"
-            ),
-        )
+        return _COMMIT_ADMISSION_RECEIPT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -734,42 +631,10 @@ class PackageCommitAdmissionResultV1:
     def from_dict(cls, value: object) -> PackageCommitAdmissionResultV1:
         document = _exact_dict(
             value,
-            fields={
-                "admissionRequestId",
-                "code",
-                "disposition",
-                "failure",
-                "receipt",
-                "resultVersion",
-            },
+            fields=_COMMIT_ADMISSION_RESULT_V1_SCHEMA.keys,
             name="Package commit admission result",
         )
-        return cls(
-            admission_request_id=_wire_string(
-                document["admissionRequestId"], name="admission request id"
-            ),
-            disposition=cast(
-                PackageCommitAdmissionDisposition,
-                _wire_string(document["disposition"], name="disposition"),
-            ),
-            code=cast(
-                PackageCommitAdmissionCode,
-                _wire_string(document["code"], name="admission code"),
-            ),
-            receipt=(
-                None
-                if document["receipt"] is None
-                else PackageCommitAdmissionReceiptV1.from_dict(document["receipt"])
-            ),
-            failure=(
-                None
-                if document["failure"] is None
-                else PackageCommitAdmissionFailureV1.from_dict(document["failure"])
-            ),
-            result_version=_wire_int(
-                document["resultVersion"], name="result version"
-            ),
-        )
+        return _COMMIT_ADMISSION_RESULT_V1_SCHEMA.decode(cls, document)
 
 
 class PackageCommitAdmissionPort(Protocol):
@@ -1049,8 +914,7 @@ def _pin_targets_match_lock(
             or target.distribution != node.plan_node.distribution
             or target.version != node.plan_node.version
             or target.artifact_digest != node.plan_node.artifact_digest
-            or target.extraction_tree_digest
-            != node.plan_node.extraction_tree_digest
+            or target.extraction_tree_digest != node.plan_node.extraction_tree_digest
             or target.wheel_evidence_fingerprint
             != node.plan_node.wheel_evidence_fingerprint
         ):
@@ -1173,3 +1037,76 @@ def _require_safe_id(value: str, *, name: str) -> None:
 def _require_positive(value: int, *, name: str) -> None:
     if type(value) is not int or value <= 0:
         raise ValueError(f"{name} must be positive")
+
+
+_PUBLICATION_RECEIPT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("receipt_id", "receipt id"),
+        RecordField("operation_id", "operation identity"),
+        RecordField("operation_fingerprint", "operation fingerprint"),
+        RecordField("request_fingerprint", "request fingerprint"),
+        RecordField("attempt_epoch", "attempt epoch", _wire_int),
+        RecordField("product_id", "Product identity"),
+        RecordField("scope_id", "scope identity"),
+        RecordField("installation_id", "Installation identity"),
+        RecordField("plugin_id", "Plugin identity"),
+        RecordField("classification_fingerprint", "classification fingerprint"),
+        RecordField("committed_set", decoder=CommittedPackageSetRefV1.from_dict),
+        RecordField("transaction_pin_receipt_id", "transaction pin receipt id"),
+        RecordField("commit_status_revision", "commit status revision", _wire_int),
+        RecordField("receipt_version", "receipt version", _wire_int),
+    ),
+)
+
+
+_COMMIT_ADMISSION_FAILURE_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("failure_id", "failure id"),
+        RecordField("admission_request_id", "admission request id"),
+        RecordField("operation_id", "operation identity"),
+        RecordField("evidence_ref", "evidence ref"),
+        RecordField("code", "failure code"),
+        RecordField("failure_version", "failure version", _wire_int),
+    ),
+)
+
+
+_COMMIT_ADMISSION_RECEIPT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("admission_id", "admission id"),
+        RecordField("admission_request_id", "admission request id"),
+        RecordField("publication_receipt_id", "publication receipt id"),
+        RecordField("operation_fingerprint", "operation fingerprint"),
+        RecordField("committed_set_id", "committed set id"),
+        RecordField("closure_lock_digest", "closure lock digest"),
+        RecordField("transaction_pin_receipt_id", "transaction pin receipt id"),
+        RecordField("root_ref", decoder=PluginRevisionRefV1.from_dict),
+        RecordField("receipt_version", "receipt version", _wire_int),
+    ),
+)
+
+
+_COMMIT_ADMISSION_RESULT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("admission_request_id", "admission request id"),
+        RecordField("disposition", "disposition"),
+        RecordField("code", "admission code"),
+        RecordField(
+            "receipt",
+            decoder=partial(
+                decode_nullable, decoder=PackageCommitAdmissionReceiptV1.from_dict
+            ),
+        ),
+        RecordField(
+            "failure",
+            decoder=partial(
+                decode_nullable, decoder=PackageCommitAdmissionFailureV1.from_dict
+            ),
+        ),
+        RecordField("result_version", "result version", _wire_int),
+    ),
+)

@@ -14,6 +14,10 @@ from pathlib import Path
 from typing import BinaryIO, Literal, Protocol, cast
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
     canonicalize_source_identity,
@@ -195,65 +199,10 @@ class AuthenticatedSourceEnvelopeV1:
     def from_dict(cls, value: object) -> AuthenticatedSourceEnvelopeV1:
         document = _exact_dict(
             value,
-            fields={
-                "authenticationDecision",
-                "authorityId",
-                "canonicalSourceIdentity",
-                "captureEpoch",
-                "envelopeVersion",
-                "expectedArtifactDigest",
-                "nodeId",
-                "operationId",
-                "originKind",
-                "policyRevision",
-                "redirectPolicyRevision",
-                "requestedLocatorDigest",
-            },
+            fields=_AUTHENTICATED_SOURCE_ENVELOPE_V1_SCHEMA.keys,
             name="authenticated Source envelope",
         )
-        return cls(
-            operation_id=_wire_string(document["operationId"], name="operation id"),
-            node_id=_wire_string(document["nodeId"], name="node id"),
-            canonical_source_identity=_wire_string(
-                document["canonicalSourceIdentity"],
-                name="canonical Source identity",
-            ),
-            origin_kind=cast(
-                SourceOriginKind,
-                _wire_string(document["originKind"], name="Source origin kind"),
-            ),
-            authentication_decision=cast(
-                SourceAuthenticationDecision,
-                _wire_string(
-                    document["authenticationDecision"],
-                    name="Source authentication decision",
-                ),
-            ),
-            authority_id=_wire_string(
-                document["authorityId"], name="Source authority id"
-            ),
-            requested_locator_digest=_wire_string(
-                document["requestedLocatorDigest"],
-                name="requested locator digest",
-            ),
-            expected_artifact_digest=_wire_optional_string(
-                document["expectedArtifactDigest"],
-                name="expected artifact digest",
-            ),
-            redirect_policy_revision=_wire_string(
-                document["redirectPolicyRevision"],
-                name="redirect policy revision",
-            ),
-            policy_revision=_wire_string(
-                document["policyRevision"], name="Source policy revision"
-            ),
-            capture_epoch=_wire_positive(
-                document["captureEpoch"], name="Source capture epoch"
-            ),
-            envelope_version=_wire_int(
-                document["envelopeVersion"], name="Source envelope version"
-            ),
-        )
+        return _AUTHENTICATED_SOURCE_ENVELOPE_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -334,23 +283,10 @@ class SourceAdapterResultV1:
     def from_dict(cls, value: object) -> SourceAdapterResultV1:
         document = _exact_dict(
             value,
-            fields={"adapterRevision", "disposition", "resultVersion"},
+            fields=_SOURCE_ADAPTER_RESULT_V1_SCHEMA.keys,
             name="Source adapter result",
         )
-        return cls(
-            disposition=cast(
-                SourceAdapterDisposition,
-                _wire_string(
-                    document["disposition"], name="Source adapter disposition"
-                ),
-            ),
-            adapter_revision=_wire_string(
-                document["adapterRevision"], name="Source adapter revision"
-            ),
-            result_version=_wire_int(
-                document["resultVersion"], name="Source adapter result version"
-            ),
-        )
+        return _SOURCE_ADAPTER_RESULT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -382,28 +318,10 @@ class PackageAcquisitionBudgetV1:
     def from_dict(cls, value: object) -> PackageAcquisitionBudgetV1:
         document = _exact_dict(
             value,
-            fields={
-                "budgetVersion",
-                "maxRedirects",
-                "maxRequests",
-                "maxTransportBytes",
-                "maxWallTimeMs",
-            },
+            fields=_ACQUISITION_BUDGET_V1_SCHEMA.keys,
             name="Package acquisition budget",
         )
-        return cls(
-            max_transport_bytes=_wire_positive(
-                document["maxTransportBytes"], name="transport byte budget"
-            ),
-            max_requests=_wire_positive(document["maxRequests"], name="request budget"),
-            max_redirects=_wire_nonnegative(
-                document["maxRedirects"], name="redirect budget"
-            ),
-            max_wall_time_ms=_wire_positive(
-                document["maxWallTimeMs"], name="wall-clock budget"
-            ),
-            budget_version=_wire_int(document["budgetVersion"], name="budget version"),
-        )
+        return _ACQUISITION_BUDGET_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -471,55 +389,10 @@ class BoundedAcquisitionReceiptV1:
     def from_dict(cls, value: object) -> BoundedAcquisitionReceiptV1:
         document = _exact_dict(
             value,
-            fields={
-                "actualByteCount",
-                "actualByteDigest",
-                "adapterResult",
-                "attemptEpoch",
-                "budgets",
-                "disposition",
-                "envelopeFingerprint",
-                "nodeId",
-                "operationId",
-                "receiptVersion",
-                "redirectCount",
-                "requestCount",
-                "sinkIdentity",
-            },
+            fields=_BOUNDED_ACQUISITION_RECEIPT_V1_SCHEMA.keys,
             name="bounded acquisition receipt",
         )
-        return cls(
-            operation_id=_wire_string(document["operationId"], name="operation id"),
-            attempt_epoch=_wire_positive(
-                document["attemptEpoch"], name="attempt epoch"
-            ),
-            node_id=_wire_string(document["nodeId"], name="node id"),
-            envelope_fingerprint=_wire_string(
-                document["envelopeFingerprint"], name="envelope fingerprint"
-            ),
-            actual_byte_digest=_wire_string(
-                document["actualByteDigest"], name="actual byte digest"
-            ),
-            actual_byte_count=_wire_nonnegative(
-                document["actualByteCount"], name="actual byte count"
-            ),
-            request_count=_wire_positive(
-                document["requestCount"], name="request count"
-            ),
-            redirect_count=_wire_nonnegative(
-                document["redirectCount"], name="redirect count"
-            ),
-            budgets=PackageAcquisitionBudgetV1.from_dict(document["budgets"]),
-            sink_identity=_wire_string(document["sinkIdentity"], name="sink identity"),
-            adapter_result=SourceAdapterResultV1.from_dict(document["adapterResult"]),
-            disposition=cast(
-                Literal["complete"],
-                _wire_string(document["disposition"], name="disposition"),
-            ),
-            receipt_version=_wire_int(
-                document["receiptVersion"], name="receipt version"
-            ),
-        )
+        return _BOUNDED_ACQUISITION_RECEIPT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -588,34 +461,10 @@ class PackageQuarantineCleanupTargetV1:
     def from_dict(cls, value: object) -> PackageQuarantineCleanupTargetV1:
         document = _exact_dict(
             value,
-            fields={
-                "attemptEpoch",
-                "attemptIdentity",
-                "attemptName",
-                "cleanupId",
-                "nodeId",
-                "operationId",
-                "storeIdentity",
-                "targetVersion",
-            },
+            fields=_QUARANTINE_CLEANUP_TARGET_V1_SCHEMA.keys,
             name="Package quarantine cleanup target",
         )
-        return cls(
-            operation_id=_wire_string(document["operationId"], name="operation id"),
-            attempt_epoch=_wire_positive(
-                document["attemptEpoch"], name="attempt epoch"
-            ),
-            node_id=_wire_string(document["nodeId"], name="node id"),
-            store_identity=_wire_identity(
-                document["storeIdentity"], name="store identity"
-            ),
-            attempt_identity=_wire_identity(
-                document["attemptIdentity"], name="attempt identity"
-            ),
-            attempt_name=_wire_string(document["attemptName"], name="attempt name"),
-            cleanup_id=_wire_string(document["cleanupId"], name="cleanup id"),
-            target_version=_wire_int(document["targetVersion"], name="target version"),
-        )
+        return _QUARANTINE_CLEANUP_TARGET_V1_SCHEMA.decode(cls, document)
 
 
 class BoundedAcquisitionSinkPort(Protocol):
@@ -2519,3 +2368,83 @@ __all__ = [
     "PackageSourceAuthorityPort",
     "SourceAdapterResultV1",
 ]
+
+
+_AUTHENTICATED_SOURCE_ENVELOPE_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("operation_id", "operation id"),
+        RecordField("node_id", "node id"),
+        RecordField("canonical_source_identity", "canonical Source identity"),
+        RecordField("origin_kind", "Source origin kind"),
+        RecordField("authentication_decision", "Source authentication decision"),
+        RecordField("authority_id", "Source authority id"),
+        RecordField("requested_locator_digest", "requested locator digest"),
+        RecordField(
+            "expected_artifact_digest",
+            "expected artifact digest",
+            _wire_optional_string,
+        ),
+        RecordField("redirect_policy_revision", "redirect policy revision"),
+        RecordField("policy_revision", "Source policy revision"),
+        RecordField("capture_epoch", "Source capture epoch", _wire_positive),
+        RecordField("envelope_version", "Source envelope version", _wire_int),
+    ),
+)
+
+
+_SOURCE_ADAPTER_RESULT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("disposition", "Source adapter disposition"),
+        RecordField("adapter_revision", "Source adapter revision"),
+        RecordField("result_version", "Source adapter result version", _wire_int),
+    ),
+)
+
+
+_ACQUISITION_BUDGET_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("max_transport_bytes", "transport byte budget", _wire_positive),
+        RecordField("max_requests", "request budget", _wire_positive),
+        RecordField("max_redirects", "redirect budget", _wire_nonnegative),
+        RecordField("max_wall_time_ms", "wall-clock budget", _wire_positive),
+        RecordField("budget_version", "budget version", _wire_int),
+    ),
+)
+
+
+_BOUNDED_ACQUISITION_RECEIPT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("operation_id", "operation id"),
+        RecordField("attempt_epoch", "attempt epoch", _wire_positive),
+        RecordField("node_id", "node id"),
+        RecordField("envelope_fingerprint", "envelope fingerprint"),
+        RecordField("actual_byte_digest", "actual byte digest"),
+        RecordField("actual_byte_count", "actual byte count", _wire_nonnegative),
+        RecordField("request_count", "request count", _wire_positive),
+        RecordField("redirect_count", "redirect count", _wire_nonnegative),
+        RecordField("budgets", decoder=PackageAcquisitionBudgetV1.from_dict),
+        RecordField("sink_identity", "sink identity"),
+        RecordField("adapter_result", decoder=SourceAdapterResultV1.from_dict),
+        RecordField("disposition", "disposition"),
+        RecordField("receipt_version", "receipt version", _wire_int),
+    ),
+)
+
+
+_QUARANTINE_CLEANUP_TARGET_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("operation_id", "operation id"),
+        RecordField("attempt_epoch", "attempt epoch", _wire_positive),
+        RecordField("node_id", "node id"),
+        RecordField("store_identity", "store identity", _wire_identity),
+        RecordField("attempt_identity", "attempt identity", _wire_identity),
+        RecordField("attempt_name", "attempt name"),
+        RecordField("cleanup_id", "cleanup id"),
+        RecordField("target_version", "target version", _wire_int),
+    ),
+)
