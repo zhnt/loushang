@@ -4,7 +4,8 @@
 
 - Authority: delivery evidence; existing capability contracts remain authoritative.
 - Design status: accepted for the internal Store/sink, record-field, epoch-workflow,
-  lockfile and binding-journal consolidation below; durable contracts remain unchanged.
+  lockfile, binding-journal and local-refusal consolidation below; durable contracts
+  remain unchanged.
 - Implementation status: partial; the 50,000-line objective is not achieved.
 - Responsible implementer and internal reviewer: Codex, under the user's task.
 - Method consulted: local archmethod master at
@@ -446,3 +447,46 @@ yield without additional per-call state or indirection. Continue evaluating
 duplicate transaction/state ownership rather than expanding this rejected
 mechanism. The accepted cumulative reduction remains 1,757 lines; 48,243 lines
 remain to the objective. No test, workflow or gate changed in this experiment.
+
+## Batch 008: Attempt-Local Refusal Ownership
+
+Closure, transaction-pin and staging phase owners each defined the same
+attempt-local refusal operation. All three hashed the same five evidence fields
+and constructed the same immutable rejected status. They now directly import
+one implementation from the existing lifecycle owner. No wrapper, new state,
+context map, schema or additional call layer is introduced.
+
+The shared function has the exact original signature and body. Its evidence
+digest still binds attempt epoch, code, operation id, request fingerprint and
+phase. Each caller retains its existing refusal code and control flow. The
+artifact owner's separate explicit-evidence refusal remains separate: its
+evidence reference is a different input contract.
+
+Review also retained normal closure execution and pinned reacquisition as
+distinct operations. Execution can bind/append resolution evidence and advance
+phases. Reacquisition must rebuild from existing evidence without Source or
+resolver authority, then recheck durable basis, plan and current status. Those
+differences are capabilities, not redundant state to delete.
+
+| Accounting item | Lines |
+| --- | ---: |
+| Batch 008 Resources net reduction | 70 |
+| Outside-Harness Product source increase | 0 |
+| Effective cumulative reduction | 1,827 |
+| Remaining to cumulative objective | 48,173 |
+
+Codex accepts this internal implementation under the existing capability and
+compatibility contracts. Local validation:
+
+- Owner, artifact, closure, transaction-pin, staging and existing lifecycle
+  architecture regressions: 127 passed.
+- All 65 retained function/method bodies and four explicit export lists remain
+  AST-identical. Each of the three removed functions is AST-identical to the
+  shared function, including its signature. Runtime inspection of the actual
+  worktree confirms that the three imports reference that same function object.
+- Ruff, focused mypy, source dependency freshness, nine documentation invariants,
+  changed-document links and whitespace checks passed.
+
+No test, workflow, route, trigger or gate changes. The unchanged planner does
+not select AI for this batch. Broader/native checks selected for these source
+paths have not all been run; this focused evidence is not full goal acceptance.
