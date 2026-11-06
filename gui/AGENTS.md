@@ -1,5 +1,30 @@
 # HarnessGUI Contributor Notes
 
+## Branch and integration workflow
+
+Use `lane/gui` as the shared integration branch for the current GUI improvement
+work. The long-lived `.worktrees/gui` lane normally checks out `lane/gui`.
+Create GUI feature branches from the latest `lane/gui` and name them
+`feature/gui-<topic>` (for example, `feature/gui-app-icons`). For sequential
+work, the GUI lane may temporarily check out a feature branch; use separate
+task worktrees for parallel features. Check dirty state and preserve existing
+changes before switching branches.
+
+Run the checks appropriate to each feature before merging it into `lane/gui`.
+Collect a coherent delivery batch there, then perform combined native build,
+layout and desktop acceptance appropriate to the changed surfaces before
+opening a PR from `lane/gui` to `main`. Do not send individual GUI features
+directly to `main` during this workflow. Keep a record of validation results
+and unresolved limitations in the delivery PR; automated web tests do not
+establish native desktop acceptance.
+
+Regularly merge the latest `main` into `lane/gui`; do not rebase or force-push
+the shared integration branch. This workflow does not add or expand mandatory
+PR gates. GUI changes that cross shared contracts or subsystem boundaries
+still follow their existing review and validation requirements.
+
+## Ownership and validation
+
 Keep this directory Product-neutral. React/TypeScript owns presentation,
 UI-local state, and client-facing ports. Rust owns the Tauri bridge, native
 desktop integration, and later App Contract adapters. Neither side owns or
