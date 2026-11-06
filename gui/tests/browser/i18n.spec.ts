@@ -9,7 +9,7 @@ for (const width of [700, 1100, 1440]) {
     await input.fill("Draft remains unchanged 世界");
     const menu = page.locator("#interface-language");
     await menu.selectOption("zh-CN");
-    await expect(page.getByText("文件", { exact: true })).toBeAttached();
+    await expect(page.getByText("界面语言", { exact: true })).toBeAttached();
     await expect(input).toHaveValue("Draft remains unchanged 世界");
     await expect(page.getByRole("button", { name: "中断", exact: true })).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
@@ -36,7 +36,7 @@ for (const width of [700, 1100, 1440]) {
     await expect(menu).toHaveValue("en-US");
     await menu.selectOption("zh-CN");
     await page.reload();
-    await expect(page.getByText("文件", { exact: true })).toBeAttached();
+    await expect(page.getByText("界面语言", { exact: true })).toBeAttached();
   });
 }
 

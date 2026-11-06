@@ -5,6 +5,8 @@ import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } fro
 import "./App.css";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
+import { isTauri } from "@tauri-apps/api/core";
+import { useSessionHistory } from "./useSessionHistory";
 import { createMockAppClient } from "./client/mockAppClient";
 import { createNativeLiveClient, nativeLiveAvailable } from "./client/nativeLiveClient";
 import { probeFixtureBridge, type BridgeProbe } from "./client/nativeFixtureBridge";
@@ -61,7 +63,16 @@ const dockTabs = [
 export function HarnessGui({ client }: HarnessGuiProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const fixture = fixturePlayback(client);
+  const native = isTauri();
+  const { t: shellText } = useTranslation("shell");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const previousSidebarOpen = useRef(true);
+  useEffect(() => {
+    if (previousSidebarOpen.current !== sidebarOpen) {
+      document.querySelector<HTMLButtonElement>(sidebarOpen ? ".brand-actions .frame-icon" : ".sidebar-reopen")?.focus();
+      previousSidebarOpen.current = sidebarOpen;
+    }
+  }, [sidebarOpen]);
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [environmentOpen, setEnvironmentOpen] = useState(true);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
@@ -219,6 +230,8 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   }, [state.local.quickLookDocumentId]);
 
   const selectedId = state.local.selectedSessionId;
+  const historyOwner = state.remote.source.kind === "live" ? JSON.stringify([state.remote.source.serviceInstanceId, state.remote.source.muxSpaceId]) : client;
+  const history = useSessionHistory(historyOwner, selectedId, state.remote.sessions, (sessionId) => dispatch({ type: "session.selected", sessionId }));
   const panelOpen = state.local.dockOpen && state.local.dockTab !== "environment";
   useEffect(() => { if (panelOpen) setEnvironmentOpen(false); }, [panelOpen]);
   const rightVisible = environmentOpen || panelOpen;
@@ -389,11 +402,18 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   }
 
   return (
-    <div className="desktop-shell">
-      <DesktopFrame sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((open) => !open)} />
+    <div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}>
+      <DesktopFrame sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((open) => !open)}
+        {...history}
+        onNewSession={client.createSession && state.remote.connection === "connected" && !createPending ? () => { void createSession(); } : undefined}
+        onFocusComposer={selected ? () => document.getElementById("message-input")?.focus() : undefined}
+        environmentOpen={environmentOpen}
+        onToggleEnvironment={selected ? () => setEnvironmentOpen((open) => !open) : undefined} />
+      {!sidebarOpen ? <button className="sidebar-reopen frame-icon" aria-label={shellText("toggleSidebar")} title={shellText("toggleSidebarHint")} onClick={() => setSidebarOpen(true)}><PanelIcon side="left" /></button> : null}
       <main style={{ "--rail-width": `${sidebarOpen ? sidebarWidth : 0}px`, "--right-width": `${rightWidth}px` } as React.CSSProperties} className={`app-shell desktop-layout${sidebarOpen ? "" : " sidebar-closed"}${rightVisible ? " right-visible" : " dock-closed"}${stackedRight ? " right-stacked" : ""}`}>
         <div className="sidebar-container" hidden={!sidebarOpen}>
         <Sidebar
+          onToggleSidebar={() => setSidebarOpen(false)}
           state={state}
           bridgeProbe={bridgeProbe}
           onSelect={(sessionId) => dispatch({ type: "session.selected", sessionId })}
@@ -586,6 +606,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
 }
 
 interface SidebarProps {
+  readonly onToggleSidebar: () => void;
   readonly state: GuiState;
   readonly bridgeProbe: BridgeProbe;
   readonly onSelect: (sessionId: string) => void;
@@ -595,14 +616,18 @@ interface SidebarProps {
   readonly newSessionPending: boolean;
 }
 
-function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending }: SidebarProps) {
+function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar }: SidebarProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
+  const { t: shellText } = useTranslation("shell");
   return (
     <aside className="session-rail" aria-label={t("workspace:sidebar.navigation")}>
       <div className="brand-row">
         {/* i18next-instrument-ignore-next-line: product name */}
         <span className="brand-name"><strong>loushang</strong><UiIcon name="chevron-down" /></span>
-        <button className="brand-search" type="button" aria-label={t("workspace:sidebar.searchUnavailable")} title={t("workspace:sidebar.searchHint")} disabled><UiIcon name="search" /></button>
+        <div className="brand-actions">
+          <button className="brand-search" type="button" aria-label={t("workspace:sidebar.searchUnavailable")} title={t("workspace:sidebar.searchHint")} disabled><UiIcon name="search" /></button>
+          <button className="frame-icon" type="button" aria-label={shellText("toggleSidebar")} title={shellText("toggleSidebarHint")} aria-expanded="true" onClick={onToggleSidebar}><PanelIcon side="left" /></button>
+        </div>
       </div>
       <button className="new-session" type="button" onClick={onNewSession}
         disabled={!newSessionEnabled || newSessionPending}>

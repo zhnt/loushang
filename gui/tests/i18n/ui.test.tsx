@@ -16,7 +16,7 @@ it("switches all active UI without losing the draft or reconnecting the client",
   await user.selectOptions(screen.getByRole("combobox", { name: "Interface language" }), "zh-CN");
   expect(await screen.findByRole("button", { name: "中断" })).toBeEnabled();
   expect(screen.getByPlaceholderText("输入测试提示词…")).toHaveValue("keep this draft");
-  expect(screen.getByText("文件")).toBeInTheDocument();
+  expect(screen.getByText("界面语言")).toBeInTheDocument();
   expect(document.documentElement.lang).toBe("zh-CN");
   await waitFor(() => expect(localStorage.getItem("loushang.gui.language")).toBe("zh-CN"));
   expect(snapshot).toHaveBeenCalledOnce();
@@ -48,7 +48,7 @@ it("keeps the active language usable when preference saving fails", async () => 
   try {
     await user.selectOptions(screen.getByRole("combobox", { name: "Interface language" }), "zh-CN");
     expect(await screen.findByText("当前窗口已切换语言，但未能保存语言偏好。")).toBeInTheDocument();
-    expect(screen.getByText("文件")).toBeInTheDocument();
+    expect(screen.getByText("界面语言")).toBeInTheDocument();
   } finally { save.mockRestore(); }
 });
 

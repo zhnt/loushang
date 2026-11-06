@@ -11,7 +11,7 @@ describe("desktop frame", () => {
     const user = userEvent.setup();
     render(<HarnessGui client={createMockAppClient()} />);
     await screen.findByRole("heading", { name: "GUI development" });
-    for (const name of ["Search unavailable", "Pull requests", "Scheduled", "Plugins", "Back", "Forward"]) {
+    for (const name of ["Search unavailable", "Pull requests", "Scheduled", "Plugins"]) {
       const button = screen.getByRole("button", { name });
       expect(button).toBeDisabled();
       expect(button.querySelector("svg")).toHaveAttribute("viewBox", "0 0 24 24");
@@ -77,7 +77,8 @@ describe("desktop frame", () => {
     expect(separator).toHaveAttribute("aria-valuenow", "290");
     fireEvent.doubleClick(separator);
     expect(separator).toHaveAttribute("aria-valuenow", "280");
-    expect(within(screen.getByLabelText("Application menu")).getByRole("button", { name: "Minimize window" })).toBeDisabled();
+    expect(screen.queryByLabelText("Application menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Minimize window" })).not.toBeInTheDocument();
   });
 
   it("separates environment and work panel controls and links to Review", async () => {

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { UiIcon } from "./UiIcon";
+import { FrameMenu, type FrameActions } from "./FrameMenu";
 
 export function PanelIcon({ side }: { side: "left" | "right" | "bottom" | "environment" }) {
   return <svg aria-hidden="true" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.2">
@@ -38,7 +39,7 @@ function useNativeWindow(native: boolean) {
   return { maximized, error, setError };
 }
 
-export function DesktopFrame({ sidebarOpen, onToggleSidebar }: { sidebarOpen: boolean; onToggleSidebar: () => void }) {
+export function DesktopFrame({ onBack, onForward, ...actions }: FrameActions & { onBack?: () => void; onForward?: () => void }) {
   const { t } = useTranslation("shell");
   const native = isTauri();
   const { maximized, error, setError } = useNativeWindow(native);
@@ -46,12 +47,12 @@ export function DesktopFrame({ sidebarOpen, onToggleSidebar }: { sidebarOpen: bo
     try { await getCurrentWindow()[action](); setError(null); }
     catch { setError("actionFailed"); }
   }
+  if (!native) return null;
   return <>
     <header className="native-frame" aria-label={t("applicationMenu")}>
-      <button className="frame-icon" aria-label={t("toggleSidebar")} title={t("toggleSidebarHint")} aria-pressed={sidebarOpen} onClick={onToggleSidebar}><PanelIcon side="left" /></button>
-      <button className="frame-icon" aria-label={t("back")} disabled><UiIcon name="back" /></button>
-      <button className="frame-icon" aria-label={t("forward")} disabled><UiIcon name="forward" /></button>
-      <nav aria-label={t("mainMenu")}><span>{t("file")}</span><span>{t("edit")}</span><span>{t("view")}</span><span>{t("help")}</span></nav>
+      <button className="frame-icon" aria-label={t("back")} title={t("back")} disabled={!onBack} onClick={onBack}><UiIcon name="back" /></button>
+      <button className="frame-icon" aria-label={t("forward")} title={t("forward")} disabled={!onForward} onClick={onForward}><UiIcon name="forward" /></button>
+      <FrameMenu {...actions} onClose={() => { void control("close"); }} />
       <div className="window-drag-region" data-tauri-drag-region title={t("dragWindow")} />
       <div className="window-controls">
         <button aria-label={t("minimize")} disabled={!native} onClick={() => void control("minimize")}><WindowIcon action="minimize" /></button>
