@@ -1,5 +1,8 @@
 # Real Linux GUI → standalone AppHost acceptance
 
+Latest result: **real provider reply passed on the second configuration retry**;
+see the final section. Earlier failed attempts below remain historical evidence.
+
 Date: 2026-11-06. Implementation tested: `6320e8d84` on
 `feature/gui-cross-platform-bridge`, Ubuntu 26.10.
 
@@ -104,3 +107,29 @@ took effect, but did not resolve the provider quota failure.
 
 Screenshot: `gui/test-results/real-ui/provider-retry-failed.png` (local, ignored).
 The GUI was closed normally and the isolated retry service was stopped.
+
+## Second configuration retry — successful real reply
+
+On 2026-11-06, after another user configuration change, a fresh standalone
+`loushang-mux ... serve` process and initial real member were prepared under
+`/tmp/loushang-gui-real-ui-retry2/`. The same native release GUI connected to
+`gui-real-ui-retry2`. No synthetic model or submission probe was used.
+
+The actual model selector still displayed `openai · gpt-6.1-sol · Reasoning`.
+Native clipboard/keyboard interaction entered
+`Reply only GUI-REAL-RETRY2-1106. Do not use tools.`; the draft was verified and
+the real Send button clicked once. Both the accessibility tree and captured
+native window showed the assistant reply **`GUI-REAL-RETRY2-1106`** and
+**`Execution succeeded`**, revision 3, while remaining Connected.
+
+The resulting structured model-call record confirmed `providerId=openai`,
+`modelId=gpt-6.1-sol`, **`endpointId=coding-responses`**, and
+`disposition=completed` without a failure. The earlier rejected requests had used
+`openai-responses`; a model label alone did not distinguish these configurations.
+
+Screenshot: `gui/test-results/real-ui/provider-retry2.png` (local, ignored).
+The GUI was closed using its actual Close window button. A subsequent CLI list
+still reached AppHost; the isolated service was then stopped normally. This
+establishes one real UI → standalone AppHost → provider → UI reply round trip.
+It does not resolve the first-session bootstrap, error presentation or old-state
+reconnection findings recorded above.
