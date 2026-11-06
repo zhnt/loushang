@@ -784,9 +784,9 @@ PLC9_CLOSURE_BOUNDARY_SINKS = (
         {"path_read": 1},
     ),
     (
-        "resources/packages/product_admission_binding.py",
-        "PackageProductAdmissionBindingJournal._load_unlocked",
-        "PackageProductAdmissionBindingJournal",
+        "resources/packages/product_binding_journal.py",
+        "_ProductBindingJournal._load_unlocked",
+        "product-admission-binding-journal",
         {"json_decode": 1, "path_read": 1},
     ),
     (
@@ -808,28 +808,10 @@ PLC9_CLOSURE_BOUNDARY_SINKS = (
         {"path_read": 1},
     ),
     (
-        "resources/packages/product_pinned_adoption_binding.py",
-        "PackageProductPinnedAdoptionBindingJournal._load_unlocked",
-        "PackageProductPinnedAdoptionBindingJournal",
-        {"json_decode": 1, "path_read": 1},
-    ),
-    (
         "resources/packages/product_pre_b_snapshot.py",
         "PackageProductPreBSnapshotOwner.cutover_from_legacy",
         "PackageProductPreBSnapshotOwner",
         {"path_read": 1},
-    ),
-    (
-        "resources/packages/product_rebind_admission_binding.py",
-        "PackageProductRebindAdmissionBindingJournal._load_unlocked",
-        "PackageProductRebindAdmissionBindingJournal",
-        {"json_decode": 1, "path_read": 1},
-    ),
-    (
-        "resources/packages/product_staging_adoption_binding.py",
-        "PackageProductStagingAdoptionBindingJournal._load_unlocked",
-        "PackageProductStagingAdoptionBindingJournal",
-        {"json_decode": 1, "path_read": 1},
     ),
     (
         "resources/packages/product_windows_epoch_guard.py",
@@ -875,18 +857,15 @@ PLC9_CLOSURE_BOUNDARY_SINKS = (
     ),
 )
 PLC9_CLOSURE_BOUNDARY_OWNERS = {
+    "product-admission-binding-journal",
     "PackageDependencyGcRepairJournal",
     "PackageDependencyGcRepairReviewJournal",
     "PackageEpochRuntimeLeaseRegistry",
     "PackagePosixEpochSnapshotEvidenceStore",
     "PackagePosixEpochSnapshotOwner",
     "PackagePosixPreFenceRegistrationOwner",
-    "PackageProductAdmissionBindingJournal",
-    "PackageProductPinnedAdoptionBindingJournal",
     "PackageProductPosixFencedRuntimeOwner",
     "PackageProductPreBSnapshotOwner",
-    "PackageProductRebindAdmissionBindingJournal",
-    "PackageProductStagingAdoptionBindingJournal",
     "PackageProductWindowsFencedRuntimeOwner",
     "PackageProductWindowsPreBSnapshotOwner",
     "PackageWindowsEpochRuntimeLeaseRegistry",

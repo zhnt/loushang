@@ -3,8 +3,8 @@
 ## Status And Objective
 
 - Authority: delivery evidence; existing capability contracts remain authoritative.
-- Design status: accepted for the internal Store, record-field, epoch-workflow
-  and lockfile consolidation described below; durable contracts remain unchanged.
+- Design status: accepted for the internal Store, record-field, epoch-workflow,
+  lockfile and binding-journal consolidation below; durable contracts remain unchanged.
 - Implementation status: partial; the 50,000-line objective is not achieved.
 - Responsible implementer and internal reviewer: Codex, under the user's task.
 - Method consulted: local archmethod master at
@@ -288,3 +288,70 @@ synchronous and asynchronous backend bodies were also reviewed: moving the
 whole operation to a worker or driving an async operation synchronously would
 change execution/cancellation behavior; no such adapter was introduced for line
 count savings.
+
+## Batch 005: Product Admission Binding Journal Workflows
+
+Four Product binding journals duplicated construction, durable append, read-only
+locking, strict JSON membership checks and monotonic/unique history validation.
+The rebind, pinned-adoption and staging-adoption journals also duplicated their
+fixed-decision lookup, idempotent replay and append-once workflow.
+
+Private typed classes in `product_binding_journal.py` now own those mechanics.
+The four public journals retain separate files, record types, codecs, errors and
+admission authority. The shared code cannot select a Package decision. This is
+an internal implementation consolidation under the existing Product lifecycle
+contract, accepted by Codex within the user's authorized scope; no new durable
+boundary or schema is accepted here.
+
+Material policy differences remain explicit:
+
+- Original admission retains its request/status classification checks and its
+  admission identity check after existing-record lookup, in the original order.
+- Rebind compares the admission request; it does not require equality of the
+  proposed lease snapshot. Pinned adoption also checks that snapshot identity.
+- Staging adoption compares the entire admission receipt for fixed-decision
+  replay. It retains its stricter conflict behavior.
+- Proposal reads still create neither a missing log nor a lock, and never repair
+  an incomplete tail. Writer-side repair and append remain under the original
+  exclusive lock. Duplicate JSON keys, gaps and reused identities still reject.
+
+All four record classes, four error classes and eight codec functions retain
+identical ASTs. All 19 public method signatures, including construction and path
+access, retain their parameters, annotations, defaults and decorators.
+
+| Accounting item | Lines |
+| --- | ---: |
+| Batch 005 Resources net reduction | 227 |
+| Outside-Harness Product source increase | 0 |
+| Effective cumulative reduction | 1,626 |
+| Remaining to cumulative objective | 48,374 |
+
+Local validation:
+
+- Existing Product lifecycle/rebind regressions: 70 passed.
+- Existing real Store staging recovery, third-admission handoff and native
+  adoption adversarial cases: five passed, 172 unrelated cases deselected.
+- Architecture regressions: 103 passed on the first run. One failed because
+  the shared module's initial `_product_` name violated the existing `product_`
+  importer rule. The module was renamed to comply; that rule and the boundary
+  inventory both passed their focused rerun. No rule was relaxed.
+- Repository-external old/new journal audit: 225 comparisons, zero mismatches
+  across 52 cases, including byte-identical writes, replay, read-only absence,
+  malformed/duplicate JSON, revision gaps, incomplete tails, writer repair and
+  injected append failure. Error classes, codes and causes agree. A changed,
+  valid receipt with the same request/snapshot specifically verifies staging's
+  full-receipt conflict policy against the other request-only comparisons.
+- Ruff, focused mypy, dependency freshness, nine documentation invariants,
+  changed-document links and whitespace checks passed.
+- Existing `check-ai`, selected by the unchanged planner: 937 passed, seven live
+  cases deselected; total coverage 90.77%, runtime core 90.76%. All original
+  coverage thresholds passed.
+
+The existing sink inventory now classifies the one shared read/JSON decode site
+instead of its four duplicate callers. All 502 assertion ASTs in that test file
+are unchanged. No workflow, route, platform, trigger or new gate is introduced;
+the local differential audit remains outside Product and CI configuration.
+The unchanged check planner selects additional broad suites for the architecture
+inventory path, including GUI, Coding, Harness, hosting and native platform
+coverage. Those complete broad suites and native Windows execution are not
+claimed by this focused batch.
