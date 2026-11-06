@@ -413,3 +413,36 @@ The existing contract's three sink predicates follow their implementation into
 the shared sink source. No assertion is removed and no native sink inventory,
 test route, trigger, platform or workflow is expanded. The broad/native checks
 selected by the unchanged planner remain separate from this focused evidence.
+
+## Investigation 007: Rejected Constructor-Context Generalization
+
+The next experiment applied shared field traversal to 24 more records across
+nine Plugin-management and Package modules, covering 201 constructor fields.
+It preserved each original object/version admission, enum preprocessing and
+exception boundary. A proposed extension supplied prevalidated locals through
+a per-call context map and constant defaults through field factories.
+
+The prototype passed 110 existing desired-state, instance-runtime, Package,
+retirement, enablement-migration, epoch and commit-admission cases, and focused
+mypy on ten files. That established basic compatibility, not acceptance of the
+new abstraction. Per-record accounting found four conversions increased source
+size; most remaining conversions saved only a few lines before shared overhead.
+The extra context maps, factory callbacks and cross-module dependency did not
+justify that yield or meet this delivery's simultaneous complexity-reduction
+requirement.
+
+The complete formatted prototype, including its new helper/import costs, would
+have reduced Product source by only 105 lines. Its accepted reduction is zero.
+
+Codex rejects this generalization within the delegated internal review. All ten
+experimental Product files were restored byte-for-byte to `c04c6e5aa`; no
+prototype reduction is credited, and no new schema capability ships. The
+accepted shared traversal from Batch 002 retains its existing scope. The local
+patch and per-record accounting are retained outside Product for review.
+
+This finding removes broad constructor-context schema expansion from the next
+implementation choices unless new evidence establishes substantially better
+yield without additional per-call state or indirection. Continue evaluating
+duplicate transaction/state ownership rather than expanding this rejected
+mechanism. The accepted cumulative reduction remains 1,757 lines; 48,243 lines
+remain to the objective. No test, workflow or gate changed in this experiment.
