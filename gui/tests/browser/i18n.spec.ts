@@ -132,3 +132,38 @@ test("open panels and raw documents survive language changes through complete pl
   await page.screenshot({ path: "test-results/layout/i18n-full-playback.png", fullPage: true });
   expect(errors).toEqual([]);
 });
+
+test("language updates preserve editor focus, selection and transcript scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 700 });
+  await page.goto("/");
+  const input = page.getByRole("textbox");
+  await input.fill("保留 draft selection 世界");
+  // Force a scrollable viewport without changing transcript content or app state.
+  await page.addStyleTag({ content: ".transcript { height: 100px !important; max-height: 100px !important; flex: none !important; overflow-y: auto !important; }" });
+  const transcript = page.locator(".transcript");
+  await transcript.evaluate((element) => { element.scrollTop = 40; });
+  await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await input.focus();
+  await input.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(3, 8));
+  const before = await transcript.evaluate((element) => element.scrollTop);
+  for (const language of ["zh-CN", "en-US"]) {
+    // Exercise the language update while the editor owns focus; clicking the
+    // selector deliberately transfers focus and is tested separately below.
+    await page.evaluate(async (language) => {
+      const modulePath = "/src/i18n/index.ts";
+      const { i18n } = await import(modulePath);
+      await i18n.changeLanguage(language);
+    }, language);
+    await expect(input).toHaveAttribute("placeholder", language === "zh-CN" ? "输入测试提示词…" : "Type a fixture prompt…");
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue("保留 draft selection 世界");
+    expect(await input.evaluate((element: HTMLTextAreaElement) => [element.selectionStart, element.selectionEnd])).toEqual([3, 8]);
+    expect(Math.abs(await transcript.evaluate((element) => element.scrollTop) - before)).toBeLessThanOrEqual(1);
+  }
+  const selector = page.locator("#interface-language");
+  await selector.focus();
+  await selector.selectOption("zh-CN");
+  await expect(selector).toBeEnabled();
+  await expect(selector).toBeFocused();
+  expect(Math.abs(await transcript.evaluate((element) => element.scrollTop) - before)).toBeLessThanOrEqual(1);
+});

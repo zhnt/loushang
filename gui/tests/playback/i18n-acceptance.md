@@ -3,7 +3,8 @@
 Date: 2026-11-06 (Asia/Shanghai)
 Branch: `feature/gui-i18n`, based on GUI delivery head `e870ad1ee` (includes
 `lane/gui` and the already committed icon work). Delivery is on the task branch;
-integration into `lane/gui` remains a separate step.
+implementation commit `1a52f4048` is now integrated into `lane/gui`, while
+delivery into `main` remains pending.
 
 ## Implemented scope
 
@@ -130,3 +131,27 @@ possible UI state; source review, runtime paths and platform evidence are report
 separately.
 No new tray, notification, multi-window or dynamic system-language mechanism is
 claimed. Follow-system is resolved at startup and when selected.
+
+## Focus and scroll follow-up — 2026-11-06
+
+Worktree: `.worktrees/gui-i18n-acceptance`; branch:
+`feature/gui-i18n-acceptance`, based on `lane/gui` at `a087fd213`.
+
+Added a browser regression with a scrollable transcript, editor draft and text
+selection. Repeated language updates preserve editor focus, selection endpoints,
+draft and scroll offset. Selecting a language through the actual selector also
+preserves selector focus and transcript scroll. The editor-focused portion uses
+the language API because clicking the selector intentionally transfers focus.
+
+Observed validation: new Playwright scenario passed using Chromium from
+`/tmp/loushang-playwright`; `npm run check` passed TypeScript and all 75 tests
+across 12 files. No production behavior or PR gates changed.
+
+Real Windows/macOS execution and native IME/clipboard/draft acceptance remain
+pending. This Linux environment has fcitx5, but no completed native composition
+test is claimed. The earlier AT-SPI EditableText limitation remains unresolved.
+Browser selection assertions do not establish native candidate-window behavior.
+
+Internal review: implementation agent reviewed the observable assertions and
+integration status for this test-only follow-up. This does not assert user
+acceptance or cross-platform completion.
