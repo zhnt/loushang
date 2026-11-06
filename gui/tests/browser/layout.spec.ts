@@ -25,6 +25,7 @@ async function verifyLayout(page: Page, info: TestInfo, mode: string) {
       composer: rect(".composer"), transcript: rect(".transcript"),
       message: rect(".message.assistant"), changes: rect(".change-card"),
       playback: rect(".playback-strip"), pane: rect(".conversation-pane"),
+      header: rect(".conversation-header"), headerActions: rect(".header-actions"),
       right: document.querySelector(".environment-popover, .work-dock") ? rect(".environment-popover, .work-dock") : null,
       stacked: document.querySelector("main")!.classList.contains("right-stacked"),
       viewport: innerWidth, overflow: document.documentElement.scrollWidth > innerWidth,
@@ -38,10 +39,14 @@ async function verifyLayout(page: Page, info: TestInfo, mode: string) {
     expect(Math.abs(item.right - geometry.composer.right), `${mode}: right edges`).toBeLessThanOrEqual(1);
   }
   expect(geometry.overflow, `${mode}: horizontal overflow`).toBe(false);
+  expect(Math.abs(geometry.header.right - geometry.viewport), `${mode}: shared header reaches right edge`).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.headerActions.right - (geometry.viewport - 12)), `${mode}: toolbar stays at right edge`).toBeLessThanOrEqual(1);
+  expect(geometry.header.bottom).toBeLessThanOrEqual(geometry.pane.top + 1);
   expect(geometry.composer.right).toBeLessThanOrEqual(geometry.viewport + 1);
   expect(geometry.transcript.bottom).toBeLessThanOrEqual(geometry.playback.top + 1);
   expect(geometry.playback.bottom).toBeLessThanOrEqual(geometry.composer.top + 1);
   if (geometry.right) {
+    expect(geometry.right.top).toBeGreaterThanOrEqual(geometry.header.bottom - 1);
     if (geometry.stacked) expect(geometry.right.top).toBeGreaterThanOrEqual(geometry.pane.bottom - 1);
     else expect(geometry.right.left).toBeGreaterThanOrEqual(geometry.pane.right - 1);
   }

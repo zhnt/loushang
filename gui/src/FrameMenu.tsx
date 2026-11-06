@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type Resources from "./i18n/generated/resources";
 
 export interface FrameActions {
   onNewSession?: () => void;
   onFocusComposer?: () => void;
   onToggleEnvironment?: () => void;
+  onToggleDock?: () => void;
+  dockOpen?: boolean;
+  onBack?: () => void;
+  onForward?: () => void;
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
   environmentOpen?: boolean;
@@ -13,6 +18,8 @@ export interface FrameActions {
 
 type MenuName = "file" | "edit" | "view" | "help";
 const names: MenuName[] = ["file", "edit", "view", "help"];
+type Label = keyof Resources["shell"];
+interface MenuEntry { label: Label; action?: () => void; shortcut?: string; checked?: boolean; submenu?: boolean }
 
 export function FrameMenu(actions: FrameActions) {
   const { t } = useTranslation("shell");
@@ -24,6 +31,21 @@ export function FrameMenu(actions: FrameActions) {
   const selection = useRef("");
   const editor = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if (event.isComposing || event.repeat || event.altKey || !(event.ctrlKey || event.metaKey) || event.shiftKey) return;
+      const key = event.key.toLowerCase();
+      const action = key === "n" ? actions.onNewSession
+        : key === "w" || key === "q" ? actions.onClose
+          : key === "j" ? actions.onToggleDock
+            : key === "[" ? actions.onBack : key === "]" ? actions.onForward
+              : key === "/" ? () => { setOpen(null); returnFocus.current = root.current?.querySelector<HTMLButtonElement>('[data-menu="help"]') ?? null; setHelp("shortcuts"); } : undefined;
+      if (action) { event.preventDefault(); action(); }
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  }, [actions.onNewSession, actions.onClose, actions.onToggleDock, actions.onBack, actions.onForward]);
 
   useEffect(() => {
     const capture = (event: FocusEvent) => {
@@ -84,6 +106,36 @@ export function FrameMenu(actions: FrameActions) {
     try { await navigator.clipboard.writeText(selection.current); setCopyFailed(false); }
     catch { setCopyFailed(true); }
   }
+  const entry = (label: Label, action?: () => void, shortcut?: string, checked?: boolean): MenuEntry => ({ label, action, shortcut, checked });
+  const groups: Record<MenuName, MenuEntry[][]> = {
+    file: [
+      [entry("newWindow"), entry("newSession", actions.onNewSession, "Ctrl+N"), entry("temporarySession", undefined, "Ctrl+Shift+N"), entry("newProject")],
+      [entry("openFolder", undefined, "Ctrl+O"), entry("focusComposer", actions.onFocusComposer), entry("close", actions.onClose, "Ctrl+W")],
+      [entry("settings", undefined, "Ctrl+,")],
+      [entry("signOut"), entry("quitApp", actions.onClose, "Ctrl+Q")],
+    ],
+    edit: [
+      [entry("undo", undefined, "Ctrl+Z"), entry("redo", undefined, "Ctrl+Shift+Z")],
+      [entry("cut", undefined, "Ctrl+X"), entry("copySelection", selection.current && typeof navigator.clipboard?.writeText === "function" ? () => { void copy(); } : undefined, "Ctrl+C"), entry("paste", undefined, "Ctrl+V"), entry("deleteSelection")],
+      [entry("selectAll", selectAll, "Ctrl+A")],
+    ],
+    view: [
+      [entry("toggleSidebar", actions.onToggleSidebar, "Ctrl+B", actions.sidebarOpen), entry("toggleDock", actions.onToggleDock, "Ctrl+J", actions.dockOpen ?? false), entry("pinPanel"), entry("openTerminal", undefined, "Ctrl+`"), entry("toggleEnvironment", actions.onToggleEnvironment, undefined, actions.environmentOpen ?? false), entry("toggleNavigation", undefined, "Ctrl+Shift+E"), entry("switchChatTabs")],
+      [{ label: "browser", submenu: true }],
+      [entry("find", undefined, "Ctrl+F")],
+      [entry("back", actions.onBack, "Ctrl+["), entry("forward", actions.onForward, "Ctrl+]")],
+      [entry("previousSidebarItem", undefined, "Alt+Ctrl+["), entry("nextSidebarItem", undefined, "Alt+Ctrl+]")],
+      [entry("previousTab", undefined, "Ctrl+Shift+["), entry("nextTab", undefined, "Ctrl+Shift+]")],
+      [entry("zoomIn", undefined, "Ctrl+Shift+="), entry("zoomOut", undefined, "Ctrl+-"), entry("actualSize", undefined, "Ctrl+0")],
+      [entry("fullscreen", undefined, "F11")],
+    ],
+    help: [
+      [entry("documentation"), entry("shortcuts", () => showHelp("shortcuts"), "Ctrl+/"), entry("whatsNew")],
+      [entry("troubleshooting"), entry("systemStatus"), entry("feedback")],
+      [entry("taskManager"), entry("performanceTrace")],
+      [entry("about", () => showHelp("about"))],
+    ],
+  };
   return <>
     <nav ref={root} className="frame-menus" aria-label={t("mainMenu")}
       onKeyDown={(event) => {
@@ -109,23 +161,18 @@ export function FrameMenu(actions: FrameActions) {
             const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length;
             items[next]?.focus();
           }}>
-          {name === "file" ? <>
-            <button role="menuitem" disabled={!actions.onNewSession} onClick={() => run(() => actions.onNewSession?.())}>{t("newSession")}</button>
-            <button role="menuitem" disabled={!actions.onFocusComposer} onClick={() => run(() => actions.onFocusComposer?.())}>{t("focusComposer")}</button>
-            {actions.onClose ? <button role="menuitem" onClick={() => run(() => actions.onClose?.())}>{t("close")}</button> : null}
-          </> : null}
-          {name === "edit" ? <>
-            <button role="menuitem" disabled={!selection.current || !navigator.clipboard?.writeText} onClick={() => run(() => { void copy(); })}>{t("copySelection")}</button>
-            <button role="menuitem" onClick={() => run(selectAll)}>{t("selectAll")}</button>
-          </> : null}
-          {name === "view" ? <>
-            <button role="menuitemcheckbox" aria-checked={actions.sidebarOpen} onClick={() => run(actions.onToggleSidebar)}>{t("toggleSidebar")}<kbd>{t("sidebarShortcut")}</kbd></button>
-            <button role="menuitemcheckbox" aria-checked={actions.environmentOpen ?? false} disabled={!actions.onToggleEnvironment} onClick={() => run(() => actions.onToggleEnvironment?.())}>{t("toggleEnvironment")}</button>
-          </> : null}
-          {name === "help" ? <>
-            <button role="menuitem" onClick={() => run(() => showHelp("shortcuts"))}>{t("shortcuts")}</button>
-            <button role="menuitem" onClick={() => run(() => showHelp("about"))}>{t("about")}</button>
-          </> : null}
+          {groups[name].map((group, index) => <div className="frame-menu-group" key={index}>
+            {index > 0 ? <div role="separator" className="frame-menu-separator" /> : null}
+            {group.map((item) => <button key={item.label} role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+              aria-label={t(item.label)} aria-checked={item.checked} aria-haspopup={item.submenu ? "menu" : undefined}
+              disabled={!item.action} title={!item.action ? t("actionUnavailable") : undefined}
+              onClick={() => { if (item.action) run(item.action); }}>
+              <span className="menu-check" aria-hidden="true">{item.checked ? "✓" : ""}</span>
+              <span className="menu-label">{t(item.label)}</span>
+              {item.shortcut ? <kbd aria-hidden="true">{item.shortcut}</kbd> : null}
+              {item.submenu ? <span aria-hidden="true">›</span> : null}
+            </button>)}
+          </div>)}
         </div> : null}
       </div>)}
     </nav>

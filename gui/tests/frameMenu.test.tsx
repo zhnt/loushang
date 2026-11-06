@@ -14,7 +14,7 @@ it("gates new Session by capability and focuses the composer", async () => {
   const view = render(<FrameMenu sidebarOpen onToggleSidebar={() => {}} onFocusComposer={focus} />);
   await user.click(screen.getByRole("button", { name: "File" }));
   expect(screen.getByRole("menuitem", { name: "New session" })).toBeDisabled();
-  expect(screen.queryByRole("menuitem", { name: "Close window" })).not.toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Close window" })).toBeDisabled();
   await user.click(screen.getByRole("menuitem", { name: "Focus message input" }));
   expect(focus).toHaveBeenCalledOnce();
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
@@ -89,4 +89,29 @@ it("selects the draft without changing it", async () => {
   await user.click(screen.getByRole("menuitem", { name: "Select all" }));
   await waitFor(() => expect(draft).toHaveFocus());
   expect([draft.selectionStart, draft.selectionEnd]).toEqual([0, 5]);
+});
+
+it("groups the reference menu entries and keeps unimplemented actions disabled", async () => {
+  const user = userEvent.setup();
+  render(<FrameMenu sidebarOpen onToggleSidebar={() => {}} />);
+  for (const [menu, labels] of [
+    ["File", ["New window", "New temporary session", "New project…", "Open folder", "Settings", "Sign out"]],
+    ["Edit", ["Undo", "Redo", "Cut", "Paste", "Delete"]],
+    ["View", ["Toggle panel pinning", "Open terminal", "Find", "Zoom in", "Zoom out", "Actual size", "Toggle full screen"]],
+    ["Help", ["Documentation", "What’s new", "Troubleshooting", "System status", "Feedback", "Task manager", "Start performance trace"]],
+  ] as const) {
+    await user.click(screen.getByRole("button", { name: menu }));
+    for (const label of labels) expect(screen.getByRole("menuitem", { name: label })).toBeDisabled();
+    expect(screen.getAllByRole("separator").length).toBeGreaterThan(0);
+    await user.keyboard("{Escape}");
+  }
+});
+
+it("connects advertised application shortcuts to existing actions", () => {
+  const create = vi.fn(), close = vi.fn(), dock = vi.fn(), back = vi.fn(), forward = vi.fn();
+  render(<FrameMenu sidebarOpen onToggleSidebar={() => {}} onNewSession={create} onClose={close} onToggleDock={dock} onBack={back} onForward={forward} />);
+  for (const key of ["n", "j", "[", "]", "w", "q"]) fireEvent.keyDown(window, { key, ctrlKey: true });
+  expect(create).toHaveBeenCalledOnce(); expect(dock).toHaveBeenCalledOnce(); expect(back).toHaveBeenCalledOnce(); expect(forward).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledTimes(2);
+  fireEvent.keyDown(window, { key: "n", ctrlKey: true, isComposing: true });
+  expect(create).toHaveBeenCalledOnce();
 });

@@ -13,6 +13,13 @@ for (const width of [700, 1440]) {
     const reopen = page.getByRole("button", { name: "Toggle sidebar" });
     await expect(reopen).toBeVisible();
     await expect(reopen).toBeFocused();
+    const rail = page.getByLabel("Collapsed sidebar", { exact: true });
+    await expect(rail).toBeVisible();
+    expect((await rail.boundingBox())!.width).toBe(48);
+    const avatar = rail.getByRole("img", { name: "User avatar" });
+    await expect(avatar).toBeVisible();
+    expect((await avatar.boundingBox())!.y).toBeGreaterThan(800);
+    await page.screenshot({ path: info.outputPath("collapsed-rail.png"), fullPage: true });
     await reopen.click();
     await expect(page.getByLabel("Workspace and Session navigation", { exact: true })).toBeVisible();
     await expect(page.locator(".brand-row").getByRole("button", { name: "Toggle sidebar" })).toBeFocused();
@@ -58,12 +65,25 @@ test("desktop shell renders menus and Session history with a simulated native br
   await expect(page.getByRole("textbox")).toBeFocused();
   await page.getByRole("button", { name: "View", exact: true }).click();
   await expect(page.getByRole("menuitemcheckbox", { name: /Toggle sidebar/ })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Open terminal" })).toBeDisabled();
+  await expect(page.getByRole("menuitem", { name: "Toggle full screen" })).toBeDisabled();
   await page.screenshot({ path: info.outputPath("desktop-menu.png"), fullPage: true });
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Help", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Documentation" })).toBeDisabled();
   await page.getByRole("menuitem", { name: "About loushang" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.locator("#interface-language").selectOption("zh-CN");
+  await page.getByRole("button", { name: "切换侧边栏" }).click();
+  await page.setViewportSize({ width: 1440, height: 720 });
+  for (const [label, filename] of [["文件", "file"], ["编辑", "edit"], ["视图", "view"], ["帮助", "help"]]) {
+    await page.getByRole("button", { name: label, exact: true }).click();
+    const bounds = (await page.getByRole("menu", { name: label }).boundingBox())!;
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(720);
+    await page.screenshot({ path: info.outputPath(`menu-${filename}-zh.png`), fullPage: true });
+    await page.keyboard.press("Escape");
+  }
   expect(errors).toEqual([]);
 });

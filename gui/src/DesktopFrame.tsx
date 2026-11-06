@@ -52,7 +52,7 @@ export function DesktopFrame({ onBack, onForward, ...actions }: FrameActions & {
     <header className="native-frame" aria-label={t("applicationMenu")}>
       <button className="frame-icon" aria-label={t("back")} title={t("back")} disabled={!onBack} onClick={onBack}><UiIcon name="back" /></button>
       <button className="frame-icon" aria-label={t("forward")} title={t("forward")} disabled={!onForward} onClick={onForward}><UiIcon name="forward" /></button>
-      <FrameMenu {...actions} onClose={() => { void control("close"); }} />
+      <FrameMenu {...actions} onBack={onBack} onForward={onForward} onClose={() => { void control("close"); }} />
       <div className="window-drag-region" data-tauri-drag-region title={t("dragWindow")} />
       <div className="window-controls">
         <button aria-label={t("minimize")} disabled={!native} onClick={() => void control("minimize")}><WindowIcon action="minimize" /></button>

@@ -69,7 +69,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const previousSidebarOpen = useRef(true);
   useEffect(() => {
     if (previousSidebarOpen.current !== sidebarOpen) {
-      document.querySelector<HTMLButtonElement>(sidebarOpen ? ".brand-actions .frame-icon" : ".sidebar-reopen")?.focus();
+      document.querySelector<HTMLButtonElement>(sidebarOpen ? ".brand-actions .frame-icon" : ".collapsed-rail .frame-icon")?.focus();
       previousSidebarOpen.current = sidebarOpen;
     }
   }, [sidebarOpen]);
@@ -236,7 +236,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   useEffect(() => { if (panelOpen) setEnvironmentOpen(false); }, [panelOpen]);
   const rightVisible = environmentOpen || panelOpen;
   const rightWidth = environmentOpen ? 330 : 380;
-  const remainingWidth = viewportWidth - (sidebarOpen && viewportWidth > 760 ? sidebarWidth : 0);
+  const remainingWidth = viewportWidth - (sidebarOpen && viewportWidth > 760 ? sidebarWidth : 48);
   const stackedRight = rightVisible && remainingWidth < rightWidth + 360;
   const tasksAvailable = hasCapability(state, "tasks");
   const changesAvailable = hasCapability(state, "changes");
@@ -408,9 +408,15 @@ export function HarnessGui({ client }: HarnessGuiProps) {
         onNewSession={client.createSession && state.remote.connection === "connected" && !createPending ? () => { void createSession(); } : undefined}
         onFocusComposer={selected ? () => document.getElementById("message-input")?.focus() : undefined}
         environmentOpen={environmentOpen}
-        onToggleEnvironment={selected ? () => setEnvironmentOpen((open) => !open) : undefined} />
-      {!sidebarOpen ? <button className="sidebar-reopen frame-icon" aria-label={shellText("toggleSidebar")} title={shellText("toggleSidebarHint")} onClick={() => setSidebarOpen(true)}><PanelIcon side="left" /></button> : null}
-      <main style={{ "--rail-width": `${sidebarOpen ? sidebarWidth : 0}px`, "--right-width": `${rightWidth}px` } as React.CSSProperties} className={`app-shell desktop-layout${sidebarOpen ? "" : " sidebar-closed"}${rightVisible ? " right-visible" : " dock-closed"}${stackedRight ? " right-stacked" : ""}`}>
+        onToggleEnvironment={selected ? () => { if (!environmentOpen) dispatch({ type: "dock.closed" }); setEnvironmentOpen((open) => !open); } : undefined}
+        dockOpen={panelOpen}
+        onToggleDock={selected ? () => { setEnvironmentOpen(false); dispatch(panelOpen ? { type: "dock.closed" } : { type: "dock.opened", tab: state.local.dockTab === "environment" ? "tasks" : state.local.dockTab }); } : undefined} />
+      <main style={{ "--rail-width": `${sidebarOpen ? sidebarWidth : 48}px`, "--right-width": `${rightWidth}px` } as React.CSSProperties} className={`app-shell desktop-layout${sidebarOpen ? "" : " sidebar-closed"}${rightVisible ? " right-visible" : " dock-closed"}${stackedRight ? " right-stacked" : ""}`}>
+        {!sidebarOpen ? <aside className="collapsed-rail" aria-label={shellText("collapsedSidebar")}>
+          <button className="frame-icon" aria-label={shellText("toggleSidebar")} title={shellText("toggleSidebarHint")} aria-expanded="false" onClick={() => setSidebarOpen(true)}><PanelIcon side="left" /></button>
+          {/* i18next-instrument-ignore-next-line: fixture avatar initial */}
+          <div className="user-avatar" role="img" aria-label={shellText("userAvatar")}>Z</div>
+        </aside> : null}
         <div className="sidebar-container" hidden={!sidebarOpen}>
         <Sidebar
           onToggleSidebar={() => setSidebarOpen(false)}
@@ -431,6 +437,18 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           onPointerUp={() => { sidebarDrag.current = null; }} onPointerCancel={() => { sidebarDrag.current = null; }} onLostPointerCapture={() => { sidebarDrag.current = null; }} />
         </div>
 
+        {selected ? <SessionHeader
+          session={selected}
+          connection={state.remote.connection}
+          dockOpen={panelOpen}
+          environmentOpen={environmentOpen}
+          onEnvironment={() => { if (!environmentOpen) dispatch({ type: "dock.closed" }); setEnvironmentOpen((open) => !open); }}
+          onOpenDock={() => {
+            setEnvironmentOpen(false);
+            dispatch(panelOpen ? { type: "dock.closed" } : { type: "dock.opened", tab: state.local.dockTab === "environment" ? "tasks" : state.local.dockTab });
+          }}
+        /> : null}
+
         <section ref={conversationRef} style={{ "--content-gutter": `${contentMetrics.gutter}px`, "--scrollbar-width": `${contentMetrics.scrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label={t("panels:layout.workspace")}>
           {syncing || state.diagnostic || state.remote.connection === "disconnected" ? (
             <div className="diagnostic" role="status">
@@ -441,17 +459,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           ) : null}
           {selected ? (
             <>
-              <SessionHeader
-                session={selected}
-                connection={state.remote.connection}
-                dockOpen={panelOpen}
-                environmentOpen={environmentOpen}
-                onEnvironment={() => { if (!environmentOpen) dispatch({ type: "dock.closed" }); setEnvironmentOpen((open) => !open); }}
-                onOpenDock={() => {
-                  setEnvironmentOpen(false);
-                  dispatch(panelOpen ? { type: "dock.closed" } : { type: "dock.opened", tab: state.local.dockTab === "environment" ? "tasks" : state.local.dockTab });
-                }}
-              />
+
               <div className="transcript" aria-label={t("session:transcript.label")} aria-live="polite" ref={transcriptRef}
                 onScroll={(event) => dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: event.currentTarget.scrollTop })}>
                 {selected.messages.map((message) => (

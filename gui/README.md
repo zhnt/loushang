@@ -188,7 +188,8 @@ The desktop frame uses one custom title/menu row with native minimize,
 maximize/restore and close commands, plus a Tauri drag region. Native decorations
 are disabled. Web access omits the entire desktop title/menu row and uses the
 full viewport height. The sidebar toggle lives in the sidebar brand row; when
-collapsed, a reopen button remains at the conversation's upper left. Ctrl+B
+collapsed, a 48 px rail keeps the reopen button at the top and the fixture user
+avatar at the bottom. Ctrl+B
 also toggles it. Back/forward in the desktop row navigate this instance's
 Session selection history, retaining per-Session drafts and view state. A new
 selection after going back drops the forward history; missing Sessions are
@@ -198,14 +199,24 @@ Desktop File/Edit/View/Help menus provide capability-gated new Session,
 composer focus, window close, copy selection/select all, sidebar/environment
 visibility, keyboard help and an About dialog. Clipboard failures are reported
 without changing the selected text. Menu buttons support keyboard navigation,
-Escape and outside-click dismissal. Native dragging, maximize and close use
+Escape and outside-click dismissal. File/Edit/View/Help entries are grouped
+with separators, shortcut hints and aligned checkmarks. Unimplemented actions
+(including new windows, project/folder opening, settings, edit history,
+terminal, tabs, zoom and external help) stay visibly disabled. Existing new
+Session, close/quit, work-panel toggle and history actions also support their
+advertised desktop shortcuts; shortcuts are not installed in the web shell.
+Native dragging, maximize and close use
 the existing Tauri window permissions. Web users keep browser-provided editing
 and window controls and the in-page Session/sidebar/panel controls.
 The sidebar separator supports pointer dragging,
 Left/Right arrow adjustment (200–420 px) and double-click reset to 280 px.
 Collapsed sidebars retain their width within the current GUI instance.
 The environment summary is a separate floating surface with links to Changes
-and Subagents. The right panel hosts Tasks/Subagents/Review; the bottom-panel
+and Subagents. The Session header spans both the conversation and right-panel
+columns, so opening a panel or collapsing the sidebar does not pull its controls
+away from the window's right edge. Only the body reserves right-panel width;
+narrow layouts stack that panel below the conversation. The right panel hosts
+Tasks/Subagents/Review; the bottom-panel
 button is explicitly unavailable. Native drag, resize, maximize/restore, keyboard
 focus and scaled layout still require Windows acceptance.
 
