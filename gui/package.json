@@ -35,15 +35,24 @@
     "accept:live-native": "uv run python ../scripts/gui/run_live_apphost_acceptance.py",
     "accept:live-provider": "uv run python ../scripts/gui/run_live_apphost_acceptance.py --live-provider --evidence-dir gui/test-results/live-provider-desktop",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "i18n:extract": "i18next-cli extract",
+    "i18n:types": "i18next-cli types",
+    "i18n:status": "i18next-cli status",
+    "check:i18n": "i18next-cli types --ci && i18next-cli lint && i18next-cli status && node scripts/check-resources.mjs",
+    "test:coverage": "vitest run --coverage --coverage.reporter=lcov --coverage.reporter=text"
   },
   "dependencies": {
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-os": "2.3.1",
+    "i18next": "26.7.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "@tauri-apps/api": "^2"
+    "react-i18next": "17.1.13"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
+    "@tauri-apps/cli": "^2",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -51,10 +60,11 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
+    "@vitest/coverage-v8": "4.1.11",
+    "i18next-cli": "1.85.1",
     "jsdom": "^27.2.0",
     "typescript": "~6.0.3",
     "vite": "^8.0.16",
-    "vitest": "^4.0.17",
-    "@tauri-apps/cli": "^2"
+    "vitest": "^4.0.17"
   }
 }

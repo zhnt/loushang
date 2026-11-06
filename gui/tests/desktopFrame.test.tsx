@@ -7,6 +7,8 @@ const native = vi.hoisted(() => ({
 }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => native }));
+import { i18n } from "../src/i18n";
+import { act } from "@testing-library/react";
 import { DesktopFrame } from "../src/DesktopFrame";
 
 describe("native frame commands", () => {
@@ -40,4 +42,37 @@ describe("native frame commands", () => {
     await user.click(restore);
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Window action failed"));
   });
+});
+
+it("updates existing desktop controls without reinstalling native listeners", async () => {
+  const user = userEvent.setup();
+  native.onResized.mockClear();
+  native.minimize.mockClear();
+  render(<DesktopFrame sidebarOpen onToggleSidebar={() => {}} />);
+  await act(() => i18n.changeLanguage("zh-CN"));
+  expect(screen.getByText("文件")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "最小化窗口" }));
+  expect(native.minimize).toHaveBeenCalledOnce();
+  expect(native.onResized).toHaveBeenCalledOnce();
+});
+it("localizes a window-state failure already visible when the language changes", async () => {
+  native.isMaximized.mockRejectedValueOnce(new Error("unavailable"));
+  render(<DesktopFrame sidebarOpen onToggleSidebar={() => {}} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Window state unavailable");
+  await act(() => i18n.changeLanguage("zh-CN"));
+  expect(screen.getByRole("alert")).toHaveTextContent("无法获取窗口状态");
+});
+it("reports an unavailable native resize subscription", async () => {
+  native.onResized.mockRejectedValueOnce(new Error("unavailable"));
+  render(<DesktopFrame sidebarOpen onToggleSidebar={() => {}} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Window resize notifications unavailable");
+});
+it("releases a native subscription that resolves after unmount", async () => {
+  let subscribed: ((stop: () => void) => void) | undefined;
+  native.onResized.mockImplementationOnce(() => new Promise((resolve) => { subscribed = resolve; }));
+  const stop = vi.fn();
+  const view = render(<DesktopFrame sidebarOpen onToggleSidebar={() => {}} />);
+  view.unmount();
+  await act(async () => { subscribed?.(stop); });
+  expect(stop).toHaveBeenCalledOnce();
 });

@@ -260,3 +260,58 @@ for its other owners.
 
 Do not treat passing DOM playback tests as native visual acceptance or as C1/B2
 real-service validation.
+
+## Interface languages
+
+The GUI ships `en-US` and `zh-CN` resources locally. The sidebar language selector
+supports Follow system, 简体中文 and English. `loushang.gui.language` stores only
+that device-local preference; existing workspaces, session content and settings
+are not migrated. Native startup reads the OS locale through the official Tauri
+OS plugin with only `os:allow-locale`; web preview uses `navigator.languages`.
+System preference is resolved at startup and when selected, not continuously.
+Explicit English variants map to en-US; simplified Chinese variants map to
+zh-CN; explicit Traditional Chinese is not silently mapped to Simplified.
+Unknown locales fall back to English. UI language does not set AI reply language.
+
+Use `useTranslation` with semantic string keys. JSON files under `src/i18n/locales`
+are the source of truth, organized into shell/session/workspace/panels/common.
+Use complete messages and named interpolation values; plural messages use
+`count`. Do not translate user content, model output, paths, identifiers or raw
+diagnostic details. Keep product error headings and instructions translatable.
+Save UI notice keys and necessary parameters, not already translated strings.
+Do not add translation dependencies to connection or submission effects.
+
+```text
+npm run i18n:extract
+npm run i18n:types
+npm run i18n:status
+npm run check:i18n
+npm run test:coverage
+```
+
+Review extraction changes before accepting them. `i18n:types` uses the official
+CLI to generate literal resource types; `src/i18n/types.d.ts` adds strict key
+checking. String-key API is the project convention. Type tests prove invalid
+keys and incorrect interpolation names fail. With the installed versions,
+omitting the options argument entirely is not reliably rejected by TypeScript;
+the CLI call-site checker also has a custom-namespace limitation. The small
+`check-resources.mjs` supplement checks literal calls with omitted options,
+including plural bases, and rejects blank/missing translations and missing
+locale-specific plural forms. Official CLI lint checks placeholder consistency.
+It is not a general dynamic-expression analyzer; use explicit typed mappings.
+
+Do not consider English fallback proof of translation completeness. Review
+source wording changes and corresponding translations together in Git Diff.
+Brand names, language autonyms and fixture account names have narrowly scoped
+lint exceptions. New required PR checks are not added by these local commands.
+`check:i18n` remains an explicit local validation command.
+
+Terminology: Session = 会话; Workspace = 工作区; Task = 任务;
+Run = 运行; Agent = 智能体; Subagent = 子智能体; Review = 审阅.
+The current File/Edit/View/Help row is React-rendered, not a Rust native menu.
+No duplicate Rust dictionary or new menu/tray system is introduced. Future
+native surfaces must reuse the same translation data with a mechanism suitable
+for their initialization timing.
+
+See [i18n delivery evidence](tests/playback/i18n-acceptance.md) for the observed
+validation scope and native limitations.

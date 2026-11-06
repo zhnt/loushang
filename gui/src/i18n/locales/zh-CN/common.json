@@ -1,0 +1,34 @@
+{
+  "status": {
+    "idle": "空闲",
+    "running": "运行中",
+    "waiting": "等待输入",
+    "interrupted": "已中断",
+    "failed": "失败",
+    "completed": "已完成",
+    "cancelled": "已取消",
+    "pending": "待处理",
+    "succeeded": "已成功",
+    "streaming": "生成中",
+    "root": "主智能体",
+    "subagent": "子智能体",
+    "assistant": "助手",
+    "user": "用户",
+    "diff": "差异",
+    "markdown": "Markdown",
+    "text": "文本",
+    "sent": "已发送",
+    "complete": "已完成",
+    "accepted": "已接受"
+  },
+  "connection": {
+    "connected": "已连接",
+    "disconnected": "已断开",
+    "resync": "需要重新同步"
+  },
+  "openItem": "打开 {{title}} →",
+  "unavailableTitle": "{{label}}不可用",
+  "unavailableExplanation": "当前会话未提供已确认的数据，界面不会根据会话文字推断这些数据。",
+  "additions": "+{{value, number}}",
+  "deletions": "-{{value, number}}"
+}

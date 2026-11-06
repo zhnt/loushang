@@ -1,0 +1,23 @@
+{
+  "language": "Interface language",
+  "system": "Follow system",
+  "saveFailed": "Language changed for this window, but the preference could not be saved.",
+  "applicationMenu": "Application menu",
+  "toggleSidebar": "Toggle sidebar",
+  "toggleSidebarHint": "Toggle sidebar (Ctrl+B)",
+  "back": "Back",
+  "forward": "Forward",
+  "mainMenu": "Main menu",
+  "file": "File",
+  "edit": "Edit",
+  "view": "View",
+  "help": "Help",
+  "dragWindow": "Drag window; double-click to maximize or restore",
+  "minimize": "Minimize window",
+  "restore": "Restore window",
+  "maximize": "Maximize window",
+  "close": "Close window",
+  "stateUnavailable": "Window state unavailable",
+  "resizeUnavailable": "Window resize notifications unavailable",
+  "actionFailed": "Window action failed. Please retry."
+}

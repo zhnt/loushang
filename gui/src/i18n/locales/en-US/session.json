@@ -1,0 +1,82 @@
+{
+  "notice": {
+    "loading": "Loading snapshot…",
+    "fixtureReady": "Fixture snapshot installed. No backend is running.",
+    "liveReady": "Live AppHost connection installed.",
+    "created": "New Session created and attached.",
+    "liveUpdated": "Live AppHost event round installed.",
+    "modelsUnavailable": "The AppHost model catalog is unavailable.",
+    "emptyPrompt": "Enter a fixture prompt before sending.",
+    "unknownSubmission": "Submission outcome is unknown. The draft was preserved; resynchronize before retrying.",
+    "fixtureAccepted": "Fixture accepted the prompt. Advance it step by step.",
+    "liveAccepted": "AppHost accepted the prompt.",
+    "submitFailed": "Submit failed before its outcome could be confirmed. The draft was preserved.",
+    "noEvent": "No fixture event is waiting.",
+    "fixtureInterrupted": "Fixture execution interrupted.",
+    "interruptRequested": "Interrupt requested.",
+    "interruptRejected": "Interrupt was not accepted.",
+    "interruptFailed": "Interrupt failed. Resynchronize before retrying.",
+    "modelRejected": "Model change was rejected. The Session kept its previous model.",
+    "creating": "New Session created. Reattaching to the updated workspace…",
+    "createFailed": "New Session could not be created.",
+    "rejected": "Submission rejected.",
+    "playback": "Playback: {{label}}.",
+    "modelChanged": "Session model changed to {{model}}.",
+    "interruptReason": "Interrupt was not accepted."
+  },
+  "composer": {
+    "fixturePlaceholder": "Type a fixture prompt…",
+    "livePlaceholder": "Message the live Agent…",
+    "attachUnavailable": "Attach file unavailable",
+    "attachHint": "Attachments are unavailable",
+    "fixtureAccess": "Fixture access",
+    "liveControl": "AppHost control",
+    "interrupt": "Interrupt",
+    "send": "Send",
+    "stopHint": "Stop execution",
+    "sendHint": "Send (Ctrl+Enter)",
+    "messageFor": "Message for {{title}}"
+  },
+  "models": {
+    "label": "Session model",
+    "changeHint": "Change the model for this Session",
+    "unavailable": "Model catalog unavailable",
+    "none": "No model · Effort unavailable",
+    "endpoint": "Endpoint: {{endpoint}}",
+    "option": "{{provider}} · {{model}}",
+    "reasoningOption": "{{provider}} · {{model}} · Reasoning"
+  },
+  "transcript": {
+    "label": "Session transcript",
+    "you": "You",
+    "harness": "Harness",
+    "waiting": "Waiting for output…",
+    "message": "{{role}} message"
+  },
+  "fixture": {
+    "controls": "Fixture playback controls",
+    "deterministic": "Deterministic fixture",
+    "advance": "Advance fixture",
+    "queued_one": "{{count, number}} queued event",
+    "queued_other": "{{count, number}} queued events",
+    "summary_one": "Fixture playback · {{count, number}} queued event",
+    "summary_other": "Fixture playback · {{count, number}} queued events"
+  },
+  "bridge": {
+    "web-mock": "Web Mock",
+    "locked": "Native bridge locked",
+    "verified": "Rust invoke + event verified"
+  },
+  "sync": {
+    "fixture": "Synchronizing fixture…",
+    "live": "Connecting to AppHost…",
+    "disconnected": "Disconnected.",
+    "retry": "Resynchronize fixture"
+  },
+  "diagnostic": {
+    "title": "Synchronization interrupted. Resynchronize to continue.",
+    "details": "Diagnostic details"
+  },
+  "emptySession": "No Session is available.",
+  "opening": "Opening loushang…"
+}

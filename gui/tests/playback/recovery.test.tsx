@@ -39,7 +39,7 @@ describe("fixture synchronization", () => {
     });
     expect(await screen.findByRole("button", { name: "Step 2 / 4" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Resynchronize fixture" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Build the Workspace.*4 activities/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Build the Workspace.*Activities: 4/ })).toBeVisible();
   });
 
   it("retries after failure, preserves drafts and buffers events during recovery", async () => {
@@ -55,12 +55,15 @@ describe("fixture synchronization", () => {
       fixture.setDrop(false);
       await fixture.source.advanceFixture();
     });
+    expect(screen.getByText(/Synchronization interrupted/)).toBeVisible();
+    await user.click(screen.getByText("Diagnostic details"));
     expect(screen.getByText(/cursor gap/)).toBeVisible();
     expect(screen.getByRole("button", { name: "Interrupt" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Resynchronize fixture" }));
     expect(screen.getByRole("button", { name: "Resynchronize fixture" })).toBeDisabled();
     await act(async () => { fixture.requests[1].reject(new Error("offline")); });
-    expect(screen.getByText(/synchronization failed/)).toBeVisible();
+    expect(screen.getByText(/Synchronization interrupted/)).toBeVisible();
+    expect(screen.getByText(/synchronization failed/)).toBeInTheDocument();
     expect(input).toHaveValue("Keep this draft");
     await user.click(screen.getByRole("button", { name: "Resynchronize fixture" }));
     const snapshot = await fixture.source.snapshot();
@@ -68,7 +71,7 @@ describe("fixture synchronization", () => {
       await fixture.source.advanceFixture();
       fixture.requests[2].resolve(snapshot);
     });
-    expect(await screen.findByRole("button", { name: /Build the Workspace.*5 activities/ })).toBeVisible();
+    expect(await screen.findByRole("button", { name: /Build the Workspace.*Activities: 5/ })).toBeVisible();
     expect(screen.getByRole("button", { name: "Interrupt" })).toBeEnabled();
     expect(input).toHaveValue("Keep this draft");
     expect(screen.queryByRole("button", { name: "Resynchronize fixture" })).not.toBeInTheDocument();

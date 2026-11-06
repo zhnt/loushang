@@ -1,0 +1,23 @@
+{
+  "language": "界面语言",
+  "system": "跟随系统",
+  "saveFailed": "当前窗口已切换语言，但未能保存语言偏好。",
+  "applicationMenu": "应用菜单",
+  "toggleSidebar": "切换侧边栏",
+  "toggleSidebarHint": "切换侧边栏 (Ctrl+B)",
+  "back": "后退",
+  "forward": "前进",
+  "mainMenu": "主菜单",
+  "file": "文件",
+  "edit": "编辑",
+  "view": "视图",
+  "help": "帮助",
+  "dragWindow": "拖动窗口；双击最大化或还原",
+  "minimize": "最小化窗口",
+  "restore": "还原窗口",
+  "maximize": "最大化窗口",
+  "close": "关闭窗口",
+  "stateUnavailable": "无法获取窗口状态",
+  "resizeUnavailable": "无法接收窗口大小变化通知",
+  "actionFailed": "窗口操作失败，请重试。"
+}

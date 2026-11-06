@@ -1,3 +1,6 @@
+import { i18n } from "./i18n";
+import { useTranslation } from "react-i18next";
+import { LanguageSelect } from "./i18n/LanguageSelect";
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import "./App.css";
 import { UiIcon } from "./UiIcon";
@@ -20,6 +23,24 @@ import type {
 } from "./client/model";
 import { emptyGuiState, guiReducer, hasCapability, type DockTab, type GuiState } from "./client/state";
 
+type NoticeKey = `notice.${keyof typeof import("./i18n/locales/en-US/session.json")["notice"]}`;
+type Notice =
+  | { key: Exclude<NoticeKey, "notice.rejected" | "notice.interruptReason" | "notice.playback" | "notice.modelChanged"> }
+  | { key: "notice.rejected" | "notice.interruptReason"; params: { reason: string } }
+  | { key: "notice.playback"; params: { label: string } }
+  | { key: "notice.modelChanged"; params: { model: string } };
+
+function NoticeText({ notice }: { notice: Notice }) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
+  switch (notice.key) {
+    case "notice.rejected":
+    case "notice.interruptReason": return <>{t(notice.key)}{notice.params.reason ? <span> {t("session:diagnostic.details")}: <code>{notice.params.reason}</code></span> : null}</>;
+    case "notice.playback": return t(notice.key, notice.params);
+    case "notice.modelChanged": return t(notice.key, notice.params);
+    default: return t(notice.key);
+  }
+}
+
 interface HarnessGuiProps {
   readonly client: HarnessClientUiPort | FixturePlaybackPort;
 }
@@ -30,14 +51,15 @@ function fixturePlayback(client: HarnessClientUiPort): FixturePlaybackPort | nul
     : null;
 }
 
-const dockTabs: readonly { id: DockTab; label: string; glyph: string }[] = [
-  { id: "environment", label: "Environment", glyph: "◎" },
-  { id: "tasks", label: "Tasks", glyph: "☷" },
-  { id: "agents", label: "Subagents", glyph: "✣" },
-  { id: "review", label: "Review", glyph: "▣" },
-];
+const dockTabs = [
+  { id: "environment", label: "workspace:environment.title", glyph: "◎" },
+  { id: "tasks", label: "panels:dock.tasks", glyph: "☷" },
+  { id: "agents", label: "panels:dock.agents", glyph: "✣" },
+  { id: "review", label: "panels:changes.review", glyph: "▣" },
+] as const;
 
 export function HarnessGui({ client }: HarnessGuiProps) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const fixture = fixturePlayback(client);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(280);
@@ -61,7 +83,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     return () => window.removeEventListener("keydown", keydown);
   }, []);
   const [state, dispatch] = useReducer(guiReducer, undefined, emptyGuiState);
-  const [notice, setNotice] = useState("Loading snapshot…");
+  const [notice, setNotice] = useState<Notice>({ key: "notice.loading" });
   const [syncing, setSyncing] = useState(true);
   const refreshRef = useRef<(() => void) | null>(null);
   const syncPendingRef = useRef(true);
@@ -107,8 +129,8 @@ export function HarnessGui({ client }: HarnessGuiProps) {
         for (const event of buffered) dispatch({ type: "event.received", event });
         setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
         setNotice(snapshot.source.kind === "fixture"
-          ? "Fixture snapshot installed. No backend is running."
-          : "Live AppHost connection installed.");
+          ? { key: "notice.fixtureReady" }
+          : { key: "notice.liveReady" });
       } catch {
         if (active) dispatch({
           type: "sync.failed",
@@ -142,9 +164,9 @@ export function HarnessGui({ client }: HarnessGuiProps) {
         createdSessionRef.current = null;
         dispatch({ type: "session.selected", sessionId: createdSessionId });
         setCreatePending(false);
-        setNotice("New Session created and attached.");
+        setNotice({ key: "notice.created" });
       } else {
-        setNotice("Live AppHost event round installed.");
+        setNotice({ key: "notice.liveUpdated" });
       }
       setSyncing(false);
     }) ?? (() => undefined);
@@ -213,7 +235,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     void client.sessionModels(selectedId).then((models) => {
       if (active) setSessionModels(models);
     }).catch(() => {
-      if (active) setNotice("The AppHost model catalog is unavailable.");
+      if (active) setNotice({ key: "notice.modelsUnavailable" });
     });
     return () => { active = false; };
   }, [client, selectedId, state.remote.connection]);
@@ -257,7 +279,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     if (!selected || syncPendingRef.current || controlPendingRef.current || !mutationsAllowed || selected.status === "running") return;
     const text = state.local.drafts[selected.id] ?? "";
     if (!text.trim()) {
-      setNotice("Enter a fixture prompt before sending.");
+      setNotice({ key: "notice.emptyPrompt" });
       return;
     }
     const submissionId = fixture
@@ -269,18 +291,18 @@ export function HarnessGui({ client }: HarnessGuiProps) {
       const receipt = await client.submitText({ sessionId: selected.id, submissionId, text });
       if (!receipt.accepted) {
         setNotice(receipt.reason === "submission_outcome_unknown"
-          ? "Submission outcome is unknown. The draft was preserved; resynchronize before retrying."
-          : `Submission rejected${receipt.reason ? `: ${receipt.reason}` : "."}`);
+          ? { key: "notice.unknownSubmission" }
+          : { key: "notice.rejected", params: { reason: receipt.reason ?? "" } });
         return;
       }
       dispatch({ type: "draft.submitted", sessionId: selected.id, expected: text });
       if (!fixture) setAwaitingPublication({ sessionId: selected.id, cursor: selected.cursor });
       setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
       setNotice(fixture
-        ? "Fixture accepted the prompt. Advance it step by step."
-        : "AppHost accepted the prompt.");
+        ? { key: "notice.fixtureAccepted" }
+        : { key: "notice.liveAccepted" });
     } catch {
-      setNotice("Submit failed before its outcome could be confirmed. The draft was preserved.");
+      setNotice({ key: "notice.submitFailed" });
     } finally {
       controlPendingRef.current = false;
       setControlPending(null);
@@ -291,11 +313,11 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     if (!fixture || syncPendingRef.current || !mutationsAllowed) return;
     const step = await fixture.advanceFixture();
     if (!step) {
-      setNotice("No fixture event is waiting.");
+      setNotice({ key: "notice.noEvent" });
       return;
     }
     setRemainingSteps(step.remaining);
-    setNotice(`Playback: ${step.label}.`);
+    setNotice({ key: "notice.playback", params: { label: step.label } });
   }
 
   async function interrupt(): Promise<void> {
@@ -306,10 +328,10 @@ export function HarnessGui({ client }: HarnessGuiProps) {
       const receipt = await client.interrupt(selected.id);
       setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
       setNotice(receipt.accepted
-        ? (fixture ? "Fixture execution interrupted." : "Interrupt requested.")
-        : (receipt.reason ?? "Interrupt was not accepted."));
+        ? (fixture ? { key: "notice.fixtureInterrupted" } : { key: "notice.interruptRequested" })
+        : { key: "notice.interruptReason", params: { reason: receipt.reason ?? "" } });
     } catch {
-      setNotice("Interrupt failed. Resynchronize before retrying.");
+      setNotice({ key: "notice.interruptFailed" });
     } finally {
       controlPendingRef.current = false;
       setControlPending(null);
@@ -323,9 +345,9 @@ export function HarnessGui({ client }: HarnessGuiProps) {
       const models = await client.selectModel(selected.id, modelId);
       setSessionModels(models);
       const choice = models.models.find((model) => model.id === models.currentId);
-      setNotice(`Session model changed to ${choice?.label ?? modelId}.`);
+      setNotice({ key: "notice.modelChanged", params: { model: choice?.label ?? modelId } });
     } catch {
-      setNotice("Model change was rejected. The Session kept its previous model.");
+      setNotice({ key: "notice.modelRejected" });
     } finally {
       setModelPending(false);
     }
@@ -338,17 +360,17 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     try {
       const receipt = await client.createSession({
         sourceSessionId: selected.id,
-        title: "New Session",
+        title: i18n.t("workspace:sidebar.newSession"),
       });
       createdSessionRef.current = receipt.sessionId;
-      setNotice("New Session created. Reattaching to the updated workspace…");
+      setNotice({ key: "notice.creating" });
       // Creation replaces the mux projection and invalidates the old controller.
       // Ask for another authoritative snapshot as a race-safe fallback in case
       // the automatic reconnect completed before the command reply reached UI.
       void client.requestResync?.().catch(() => undefined);
     } catch {
       setCreatePending(false);
-      setNotice("New Session could not be created.");
+      setNotice({ key: "notice.createFailed" });
     }
   }
 
@@ -380,7 +402,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           newSessionEnabled={Boolean(client.createSession) && state.remote.connection === "connected"}
           newSessionPending={createPending}
         />
-        <div className="sidebar-resizer" role="separator" aria-label="Sidebar width" aria-orientation="vertical" tabIndex={0}
+        <div className="sidebar-resizer" role="separator" aria-label={t("panels:layout.sidebarWidth")} aria-orientation="vertical" tabIndex={0}
           aria-valuemin={200} aria-valuemax={420} aria-valuenow={sidebarWidth}
           onDoubleClick={() => setSidebarWidth(280)}
           onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setSidebarWidth((width) => Math.max(200, Math.min(420, width + (event.key === "ArrowLeft" ? -10 : 10)))); } }}
@@ -389,11 +411,12 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           onPointerUp={() => { sidebarDrag.current = null; }} onPointerCancel={() => { sidebarDrag.current = null; }} onLostPointerCapture={() => { sidebarDrag.current = null; }} />
         </div>
 
-        <section ref={conversationRef} style={{ "--content-gutter": `${contentMetrics.gutter}px`, "--scrollbar-width": `${contentMetrics.scrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label="Session workspace">
+        <section ref={conversationRef} style={{ "--content-gutter": `${contentMetrics.gutter}px`, "--scrollbar-width": `${contentMetrics.scrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label={t("panels:layout.workspace")}>
           {syncing || state.diagnostic || state.remote.connection === "disconnected" ? (
             <div className="diagnostic" role="status">
-              <span>{syncing ? (fixture ? "Synchronizing fixture…" : "Connecting to AppHost…") : state.diagnostic ?? "Disconnected."}</span>
-              {fixture ? <button type="button" disabled={syncing} onClick={() => refreshRef.current?.()}>Resynchronize fixture</button> : null}
+              <span>{syncing ? (fixture ? t("session:sync.fixture") : t("session:sync.live")) : t("session:diagnostic.title")}</span>
+              {state.diagnostic ? <details><summary>{t("session:diagnostic.details")}</summary><pre>{state.diagnostic}</pre></details> : null}
+              {fixture ? <button type="button" disabled={syncing} onClick={() => refreshRef.current?.()}>{t("session:sync.retry")}</button> : null}
             </div>
           ) : null}
           {selected ? (
@@ -409,15 +432,15 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                   dispatch(panelOpen ? { type: "dock.closed" } : { type: "dock.opened", tab: state.local.dockTab === "environment" ? "tasks" : state.local.dockTab });
                 }}
               />
-              <div className="transcript" aria-label="Session transcript" aria-live="polite" ref={transcriptRef}
+              <div className="transcript" aria-label={t("session:transcript.label")} aria-live="polite" ref={transcriptRef}
                 onScroll={(event) => dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: event.currentTarget.scrollTop })}>
                 {selected.messages.map((message) => (
-                  <article className={`message ${message.role}`} key={message.id} aria-label={`${message.role} message`}>
+                  <article className={`message ${message.role}`} key={message.id} aria-label={t("session:transcript.message", { role: valueLabel(message.role) })}>
                     <div className="message-meta">
-                      <strong>{message.role === "user" ? "You" : "Harness"}</strong>
-                      <span>{message.phase}</span>
+                      <strong>{message.role === "user" ? t("session:transcript.you") : t("session:transcript.harness")}</strong>
+                      <span>{valueLabel(message.phase)}</span>
                     </div>
-                    <p>{message.content || "Waiting for output…"}</p>
+                    <p>{message.content || t("session:transcript.waiting")}</p>
                   </article>
                 ))}
                 {selected.execution ? <ExecutionDetail execution={selected.execution} /> : null}
@@ -452,15 +475,15 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                 />
               ) : null}
 
-              {fixture ? <details className="playback-strip" aria-label="Fixture playback controls">
-                <summary>Fixture playback · {remainingSteps} queued events</summary>
+              {fixture ? <details className="playback-strip" aria-label={t("session:fixture.controls")}>
+                <summary>{t("session:fixture.summary", { count: remainingSteps })}</summary>
                 <div className="playback-body">
                 <div>
-                  <strong>Deterministic fixture</strong>
-                  <span>{remainingSteps} queued event{remainingSteps === 1 ? "" : "s"}</span>
-                  <small>{bridgeProbe.label}</small>
+                  <strong>{t("session:fixture.deterministic")}</strong>
+                  <span>{t("session:fixture.queued", { count: remainingSteps })}</span>
+                  <small>{t(bridgeLabels[bridgeProbe.status])}</small>
                 </div>
-                <button type="button" disabled={!mutationsAllowed} onClick={() => void advance()}>Advance fixture</button>
+                <button type="button" disabled={!mutationsAllowed} onClick={() => void advance()}>{t("session:fixture.advance")}</button>
                 </div>
               </details> : null}
 
@@ -480,12 +503,12 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                     void submit();
                   }}
                 >
-                  <label className="visually-hidden" htmlFor="message-input">Message for {selected.title}</label>
+                  <label className="visually-hidden" htmlFor="message-input">{t("session:composer.messageFor", { title: selected.title })}</label>
                   <textarea
                     id="message-input"
                     rows={2}
                     value={state.local.drafts[selected.id] ?? ""}
-                    placeholder={state.remote.source.kind === "fixture" ? "Type a fixture prompt…" : "Message the live Agent…"}
+                    placeholder={state.remote.source.kind === "fixture" ? t("session:composer.fixturePlaceholder") : t("session:composer.livePlaceholder")}
                     onChange={(event) =>
                       dispatch({ type: "draft.changed", sessionId: selected.id, value: event.currentTarget.value })
                     }
@@ -497,29 +520,29 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                     }}
                   />
                   <div className="composer-actions">
-                    <button type="button" className="icon-button" aria-label="Attach file unavailable" title="Attachments are unavailable" disabled>＋</button>
-                    <span className="permission-label">◉ {state.remote.source.kind === "fixture" ? "Fixture access" : "AppHost control"}</span>
-                    <p className="visually-hidden" role="status">{notice}</p>
+                    <button type="button" className="icon-button" aria-label={t("session:composer.attachUnavailable")} title={t("session:composer.attachHint")} disabled>＋</button>
+                    <span className="permission-label">◉ {state.remote.source.kind === "fixture" ? t("session:composer.fixtureAccess") : t("session:composer.liveControl")}</span>
+                    <p className="visually-hidden" role="status"><NoticeText notice={notice} /></p>
                     <select
                       className="effort-selector"
-                      aria-label="Session model"
-                      title={sessionModels ? "Change the model for this Session" : "Model catalog unavailable"}
+                      aria-label={t("session:models.label")}
+                      title={sessionModels ? t("session:models.changeHint") : t("session:models.unavailable")}
                       value={sessionModels?.currentId ?? ""}
                       disabled={!sessionModels?.models.length || modelPending || selected.status === "running"}
                       onChange={(event) => void selectModel(event.currentTarget.value)}
                     >
-                      {!sessionModels?.currentId ? <option value="">No model · Effort unavailable</option> : null}
+                      {!sessionModels?.currentId ? <option value="">{t("session:models.none")}</option> : null}
                       {sessionModels?.models.map((model) => (
-                        <option key={model.id} value={model.id} title={`Endpoint: ${model.endpointId}`}>
-                          {model.provider} · {model.modelId}{model.supportsThinking ? " · Reasoning" : ""}
+                        <option key={model.id} value={model.id} title={t("session:models.endpoint", { endpoint: model.endpointId })}>
+                          {t(model.supportsThinking ? "session:models.reasoningOption" : "session:models.option", { provider: model.provider, model: model.modelId })}
                         </option>
                       ))}
                     </select>
                     <button
                       className="composer-submit"
                       type={selected.status === "running" ? "button" : "submit"}
-                      aria-label={selected.status === "running" ? "Interrupt" : "Send"}
-                      title={selected.status === "running" ? "Stop execution" : "Send (Ctrl+Enter)"}
+                      aria-label={selected.status === "running" ? t("session:composer.interrupt") : t("session:composer.send")}
+                      title={selected.status === "running" ? t("session:composer.stopHint") : t("session:composer.sendHint")}
                       disabled={!mutationsAllowed || (selected.status !== "running" && !(state.local.drafts[selected.id] ?? "").trim())}
                       onClick={selected.status === "running" ? () => void interrupt() : undefined}
                     >
@@ -531,18 +554,18 @@ export function HarnessGui({ client }: HarnessGuiProps) {
               </div>
             </>
           ) : (
-            <div className="empty-state">No Session is available.</div>
+            <div className="empty-state">{t("session:emptySession")}</div>
           )}
         </section>
 
-        {environmentOpen && selected ? <aside className="environment-popover" aria-label="Environment summary">
-          <header><span>Environment</span><button type="button" className="icon-close" aria-label="Close environment" onClick={() => setEnvironmentOpen(false)}><UiIcon name="close" /></button></header>
+        {environmentOpen && selected ? <aside className="environment-popover" aria-label={t("workspace:environment.summary")}>
+          <header><span>{t("workspace:environment.title")}</span><button type="button" className="icon-close" aria-label={t("workspace:environment.close")} onClick={() => setEnvironmentOpen(false)}><UiIcon name="close" /></button></header>
           {hasCapability(state, "workspace") ? <EnvironmentPanel state={state} session={selected} />
             : state.remote.source.kind === "live" ? <LiveContextPanel state={state} session={selected} />
-              : <UnavailablePanel label="workspace capability (missing, unavailable or incompatible)" />}
+              : <UnavailablePanel label={t("workspace:capability.workspace")} />}
           <div className="environment-links">
-            <button type="button" disabled={!changesAvailable || !selected.changeSet?.files.length} onClick={() => { const id = selected.changeSet?.files[0]?.documentId; if (id) openReview(id); }}>Changes →</button>
-            <button type="button" disabled={!hasCapability(state, "agents")} onClick={() => { setEnvironmentOpen(false); dispatch({ type: "dock.opened", tab: "agents" }); }}>Subagents →</button>
+            <button type="button" disabled={!changesAvailable || !selected.changeSet?.files.length} onClick={() => { const id = selected.changeSet?.files[0]?.documentId; if (id) openReview(id); }}>{t("workspace:environment.changesLink")}</button>
+            <button type="button" disabled={!hasCapability(state, "agents")} onClick={() => { setEnvironmentOpen(false); dispatch({ type: "dock.opened", tab: "agents" }); }}>{t("workspace:environment.agentsLink")}</button>
           </div>
         </aside> : null}
         {!environmentOpen && panelOpen && selected ? (
@@ -573,38 +596,40 @@ interface SidebarProps {
 }
 
 function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending }: SidebarProps) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   return (
-    <aside className="session-rail" aria-label="Workspace and Session navigation">
+    <aside className="session-rail" aria-label={t("workspace:sidebar.navigation")}>
       <div className="brand-row">
+        {/* i18next-instrument-ignore-next-line: product name */}
         <span className="brand-name"><strong>loushang</strong><UiIcon name="chevron-down" /></span>
-        <button className="brand-search" type="button" aria-label="Search unavailable" title="Search is unavailable in the offline fixture" disabled><UiIcon name="search" /></button>
+        <button className="brand-search" type="button" aria-label={t("workspace:sidebar.searchUnavailable")} title={t("workspace:sidebar.searchHint")} disabled><UiIcon name="search" /></button>
       </div>
       <button className="new-session" type="button" onClick={onNewSession}
         disabled={!newSessionEnabled || newSessionPending}>
-        <UiIcon name="new-session" /> {newSessionPending ? "Creating…" : "New Session"} <kbd aria-hidden="true">+</kbd>
+        <UiIcon name="new-session" /> {newSessionPending ? t("workspace:sidebar.creating") : t("workspace:sidebar.newSession")} <kbd aria-hidden="true">+</kbd>
       </button>
-      <nav className="sidebar-shortcuts" aria-label="Application shortcuts">
-        <button type="button" disabled title="Pull requests are unavailable in the offline fixture"><UiIcon name="pull-request" /><span>Pull requests</span></button>
-        <button type="button" disabled title="Scheduling is unavailable in the offline fixture"><UiIcon name="scheduled" /><span>Scheduled</span></button>
-        <button type="button" disabled title="Plugins are unavailable in the offline fixture"><UiIcon name="plugins" /><span>Plugins</span></button>
+      <nav className="sidebar-shortcuts" aria-label={t("workspace:sidebar.shortcuts")}>
+        <button type="button" disabled title={t("workspace:sidebar.prHint")}><UiIcon name="pull-request" /><span>{t("workspace:sidebar.pullRequests")}</span></button>
+        <button type="button" disabled title={t("workspace:sidebar.scheduleHint")}><UiIcon name="scheduled" /><span>{t("workspace:sidebar.scheduled")}</span></button>
+        <button type="button" disabled title={t("workspace:sidebar.pluginsHint")}><UiIcon name="plugins" /><span>{t("workspace:sidebar.plugins")}</span></button>
       </nav>
-      <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? "Fixture data · no backend" : "Live AppHost · controlled"}</div>
+      <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? t("workspace:sidebar.fixtureBanner") : t("workspace:sidebar.liveBanner")}</div>
 
-      <nav className="workspace-scroll" aria-label="Workspaces">
+      <nav className="workspace-scroll" aria-label={t("workspace:sidebar.workspaces")}>
         {!hasCapability(state, "workspace") ? state.remote.source.kind === "live" ? (
-          <section className="workspace-group" aria-label="Attached AppHost sessions">
+          <section className="workspace-group" aria-label={t("workspace:sidebar.attached")}>
             <div className="workspace-heading static">
               <span className="folder-glyph"><UiIcon name="folder" /></span>
-              <span>{state.remote.source.muxName ?? "AppHost mux"}</span>
+              <span>{state.remote.source.muxName ?? t("workspace:sidebar.mux")}</span>
             </div>
             <div className="session-list">
               {state.remote.sessionOrder.map((id) => <SessionButton key={id} session={state.remote.sessions[id]}
                 stale={isStale(state)} selected={id === state.local.selectedSessionId} unread={Boolean(state.local.unread[id])} onSelect={() => onSelect(id)} />)}
             </div>
-            <p className="section-label">Workspace details unavailable</p>
+            <p className="section-label">{t("workspace:sidebar.workspaceUnavailable")}</p>
           </section>
         ) : <>
-          <UnavailablePanel label="workspace capability (missing, unavailable or incompatible)" />
+          <UnavailablePanel label={t("workspace:capability.workspace")} />
           {state.remote.sessionOrder.map((id) => <SessionButton key={id} session={state.remote.sessions[id]}
             stale={isStale(state)} selected={id === state.local.selectedSessionId} unread={Boolean(state.local.unread[id])} onSelect={() => onSelect(id)} />)}
         </> : state.remote.workspaceOrder.map((workspaceId) => {
@@ -645,7 +670,7 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession
         })}
 
         <section className="recent-group">
-          <p className="section-label">Recent</p>
+          <p className="section-label">{t("workspace:sidebar.recent")}</p>
           {state.remote.recentSessionIds.map((sessionId) => {
             const session = state.remote.sessions[sessionId];
             return session ? (
@@ -657,9 +682,11 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession
         </section>
       </nav>
 
+      <LanguageSelect />
       <div className="rail-footer">
         <div className="user-avatar" aria-hidden="true">Z</div>
-        <div><strong>zhnt</strong><span title={state.remote.source.kind === "fixture" ? bridgeProbe.label : state.remote.source.serviceInstanceId}>{state.remote.source.kind === "fixture" ? "Offline fixture" : "Live · AppHost"}</span></div>
+        {/* i18next-instrument-ignore-next-line: fixture account name */}
+        <div><strong>zhnt</strong><span title={state.remote.source.kind === "fixture" ? t(bridgeLabels[bridgeProbe.status]) : state.remote.source.serviceInstanceId}>{state.remote.source.kind === "fixture" ? t("workspace:sidebar.offline") : t("workspace:sidebar.live")}</span></div>
         <span aria-hidden="true">⋯</span>
       </div>
     </aside>
@@ -667,7 +694,8 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession
 }
 
 function VcsBadge({ workspace }: { readonly workspace: WorkspaceSummary }) {
-  if (!workspace.vcs) return <span className="vcs-badge none">plain</span>;
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
+  if (!workspace.vcs) return <span className="vcs-badge none">{t("workspace:sidebar.plain")}</span>;
   return <span className={`vcs-badge ${workspace.vcs.kind}`}>{workspace.vcs.kind} · {workspace.vcs.label}</span>;
 }
 
@@ -678,18 +706,19 @@ function SessionButton({ session, selected, unread, stale, onSelect }: {
   readonly stale: boolean;
   readonly onSelect: () => void;
 }) {
-  const label = stale ? `Stale · was ${statusLabel(session.status)}` : statusLabel(session.status);
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
+  const label = stale ? t("workspace:sidebar.stale", { status: valueLabel(session.status) }) : valueLabel(session.status);
   return (
     <button
       className={`session-item${selected ? " selected" : ""}`}
       type="button"
       aria-current={selected ? "page" : undefined}
-      aria-label={`${session.title} · ${label}`}
+      aria-label={t("workspace:sidebar.sessionLabel", { title: session.title, status: label })}
       onClick={onSelect}
     >
       <span className="session-title">{session.title}</span>
       <StatusMark status={session.status} stale={stale} />
-      {unread ? <span className="unread-dot" aria-label="Unread updates" /> : null}
+      {unread ? <span className="unread-dot" aria-label={t("workspace:sidebar.unread")} /> : null}
     </button>
   );
 }
@@ -698,7 +727,8 @@ function StatusMark({ status, stale = false }: {
   readonly status: SessionSnapshot["status"];
   readonly stale?: boolean;
 }) {
-  const label = stale ? `Stale · was ${statusLabel(status)}` : statusLabel(status);
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
+  const label = stale ? t("workspace:sidebar.stale", { status: valueLabel(status) }) : valueLabel(status);
   return (
     <span className={`status-mark ${status}${stale ? " stale" : ""}`} title={label}>
       <span className="status-glyph" aria-hidden="true">{stale ? "–" : status === "running" ? "◌" : status === "waiting" ? "!" : status === "failed" ? "×" : ""}</span>
@@ -714,19 +744,20 @@ function isStale(state: GuiState): boolean {
 function ExecutionDetail({ execution }: {
   readonly execution: NonNullable<SessionSnapshot["execution"]>;
 }) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   return (
-    <details className="execution-detail" aria-label="Live execution details">
+    <details className="execution-detail" aria-label={t("panels:execution.details")}>
       <summary>
         <span className={`run-indicator ${execution.status}`} aria-hidden="true">◌</span>
-        <strong>Execution {execution.status}</strong>
-        <span>revision {execution.revision}</span>
+        <strong>{t("panels:execution.status", { status: valueLabel(execution.status) })}</strong>
+        <span>{t("panels:execution.revision", { revision: execution.revision })}</span>
       </summary>
       <dl>
-        <dt>Execution</dt><dd><code>{execution.id}</code></dd>
-        <dt>Source</dt><dd>{execution.sourceStatus ?? "not observed"}</dd>
-        <dt>Final cursor</dt><dd>{execution.finalCursor ?? "not terminal"}</dd>
-        <dt>Interrupt</dt><dd>{execution.interruptRequested ? "requested" : "not requested"}</dd>
-        <dt>Transcript</dt><dd>{execution.truncated ? "truncated" : "complete snapshot"}</dd>
+        <dt>{t("panels:execution.title")}</dt><dd><code>{execution.id}</code></dd>
+        <dt>{t("panels:execution.source")}</dt><dd>{(execution.sourceStatus ? valueLabel(execution.sourceStatus) : null) ?? t("panels:execution.notObserved")}</dd>
+        <dt>{t("panels:execution.finalCursor")}</dt><dd>{execution.finalCursor ?? t("panels:execution.notTerminal")}</dd>
+        <dt>{t("session:composer.interrupt")}</dt><dd>{execution.interruptRequested ? t("panels:execution.requested") : t("panels:execution.notRequested")}</dd>
+        <dt>{t("panels:execution.transcript")}</dt><dd>{execution.truncated ? t("panels:execution.truncated") : t("panels:execution.completeSnapshot")}</dd>
       </dl>
     </details>
   );
@@ -740,20 +771,21 @@ function SessionHeader({ session, connection, dockOpen, onOpenDock, environmentO
   readonly dockOpen: boolean;
   readonly onOpenDock: () => void;
 }) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const currentWorkspace = session.context.project;
   return (
     <header className="conversation-header">
       <div className="session-heading">
         <UiIcon name="folder" />
         <div><h1>{session.title}</h1><p>{currentWorkspace} · {session.context.muxId}</p></div>
-        <button type="button" aria-label="Session actions">•••</button>
+        <button type="button" aria-label={t("panels:header.actions")}><span aria-hidden="true">⋯</span></button>
       </div>
       <div className="header-actions">
-        <span className={`connection-chip ${connection}`}>{connectionLabel(connection)}</span>
-        <button type="button" aria-label="Share unavailable" disabled>⇧ Share</button>
-        <button type="button" aria-label="Toggle environment" title="Environment" aria-pressed={environmentOpen} onClick={onEnvironment}><PanelIcon side="environment" /></button>
-        <button type="button" aria-label="Bottom panel unavailable" title="Bottom panel unavailable in this fixture" disabled><PanelIcon side="bottom" /></button>
-        <button type="button" aria-label="Open Work Dock" title="Toggle right panel" aria-pressed={dockOpen} onClick={onOpenDock}><PanelIcon side="right" /></button>
+        <span className={`connection-chip ${connection}`} title={connectionLabel(connection)}>{connectionLabel(connection)}</span>
+        <button type="button" aria-label={t("panels:header.shareUnavailable")} disabled>{t("panels:header.share")}</button>
+        <button type="button" aria-label={t("panels:header.toggleEnvironment")} title={t("workspace:environment.title")} aria-pressed={environmentOpen} onClick={onEnvironment}><PanelIcon side="environment" /></button>
+        <button type="button" aria-label={t("panels:header.bottomUnavailable")} title={t("panels:header.bottomHint")} disabled><PanelIcon side="bottom" /></button>
+        <button type="button" aria-label={t("panels:header.openDock")} title={t("panels:header.toggleDock")} aria-pressed={dockOpen} onClick={onOpenDock}><PanelIcon side="right" /></button>
       </div>
     </header>
   );
@@ -765,12 +797,13 @@ function RunActivity({ run, expanded, onToggle, onSelectTask }: {
   readonly onToggle: () => void;
   readonly onSelectTask: (taskId: string) => void;
 }) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const failures = run.activities.filter((activity) => activity.status === "failed").length;
   return (
-    <section className="run-activity" aria-label="Run activity">
+    <section className="run-activity" aria-label={t("panels:activity.label")}>
       <button className="activity-summary" type="button" aria-expanded={expanded} onClick={onToggle}>
         <span className={`run-indicator ${run.status}`} aria-hidden="true">◌</span>
-        <span><strong>{run.title}</strong><small>{run.activities.length} activities · {failures} failures</small></span>
+        <span><strong>{run.title}</strong><small>{t("panels:activity.summary", { activities: run.activities.length, failures })}</small></span>
         <span aria-hidden="true">{expanded ? "⌃" : "⌄"}</span>
       </button>
       {expanded ? (
@@ -782,7 +815,7 @@ function RunActivity({ run, expanded, onToggle, onSelectTask }: {
                 <button type="button" onClick={() => onSelectTask(activity.taskId)}>{activity.label}</button>
                 {activity.detail ? <code>{activity.detail}</code> : null}
               </div>
-              <span>{activity.durationLabel ?? activity.status}</span>
+              <span>{activity.durationLabel ?? valueLabel(activity.status)}</span>
             </li>
           ))}
         </ol>
@@ -797,13 +830,14 @@ function TaskProgressControl({ run, open, onToggle, onSelect }: {
   readonly onToggle: () => void;
   readonly onSelect: (taskId: string) => void;
 }) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const currentIndex = run.currentTaskId ? run.tasks.findIndex((task) => task.id === run.currentTaskId) : -1;
   const completed = run.tasks.filter((task) => task.status === "completed").length;
-  const label = currentIndex >= 0 ? `Step ${currentIndex + 1} / ${run.tasks.length}` : `${completed} / ${run.tasks.length} complete`;
+  const label = currentIndex >= 0 ? t("panels:progress.step", { current: currentIndex + 1, total: run.tasks.length }) : t("panels:progress.complete", { completed, total: run.tasks.length });
   return (
     <div className="task-progress-wrap">
       {open ? (
-        <div className="task-popover" aria-label="Run tasks">
+        <div className="task-popover" aria-label={t("panels:progress.tasks")}>
           {run.tasks.map((task) => (
             <button type="button" key={task.id} className={task.id === run.currentTaskId ? "current" : ""} onClick={() => onSelect(task.id)}>
               <TaskStatusGlyph status={task.status} /><span>{task.title}</span>
@@ -823,22 +857,23 @@ function ChangeSetCard({ changeSet, onOpenFile, onOpenReview }: {
   readonly onOpenFile: (documentId: string, trigger: HTMLButtonElement) => void;
   readonly onOpenReview: () => void;
 }) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   return (
-    <section className="change-card" aria-label="Fixture changes">
+    <section className="change-card" aria-label={t("panels:changes.label")}>
       <header>
         <span className="change-icon" aria-hidden="true">▣</span>
-        <div><strong>Edited {changeSet.files.length} files</strong><small>{changeSet.scopeLabel}</small></div>
-        <span className="additions">+{changeSet.additions}</span><span className="deletions">-{changeSet.deletions}</span>
-        <button type="button" onClick={onOpenReview}>Review</button>
+        <div><strong>{t("panels:changes.edited", { count: changeSet.files.length })}</strong><small>{changeSet.scopeLabel}</small></div>
+        <span className="additions">{t("common:additions", { value: changeSet.additions })}</span><span className="deletions">{t("common:deletions", { value: changeSet.deletions })}</span>
+        <button type="button" onClick={onOpenReview}>{t("panels:changes.review")}</button>
       </header>
       <div className="change-files">
         {changeSet.files.map((file) => (
           <button type="button" key={file.id} onClick={(event) => onOpenFile(file.documentId, event.currentTarget)}>
-            <span>{file.path}</span><span className="additions">+{file.additions}</span><span className="deletions">-{file.deletions}</span>
+            <span>{file.path}</span><span className="additions">{t("common:additions", { value: file.additions })}</span><span className="deletions">{t("common:deletions", { value: file.deletions })}</span>
           </button>
         ))}
       </div>
-      <footer><code>{changeSet.revision}</code><span>Read-only fixture · repository actions unavailable</span></footer>
+      <footer><code>{changeSet.revision}</code><span>{t("panels:changes.readOnly")}</span></footer>
     </section>
   );
 }
@@ -848,11 +883,12 @@ function QuickLook({ document, onClose, onOpenReview }: {
   readonly onClose: () => void;
   readonly onOpenReview: () => void;
 }) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   return (
-    <aside className="quick-look" aria-label={`Quick look ${document.title}`}>
-      <header><strong>{document.title}</strong><button type="button" className="icon-close" onClick={onClose} aria-label="Close quick look"><UiIcon name="close" /></button></header>
+    <aside className="quick-look" aria-label={t("panels:review.quickLook", { title: document.title })}>
+      <header><strong>{document.title}</strong><button type="button" className="icon-close" onClick={onClose} aria-label={t("panels:review.closeQuickLook")}><UiIcon name="close" /></button></header>
       <DocumentView document={document} compact />
-      <footer><button type="button" onClick={onOpenReview}>Open full review →</button></footer>
+      <footer><button type="button" onClick={onOpenReview}>{t("panels:review.openFull")}</button></footer>
     </aside>
   );
 }
@@ -869,6 +905,7 @@ interface WorkDockProps {
 }
 
 function WorkDock(props: WorkDockProps) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const { state, session, selectedDocument, onClose, onTab, onSelectDocument, onSelectTask, onSelectAgent } = props;
   const facet = state.local.dockTab === "environment" ? "workspace" : state.local.dockTab === "review" ? "changes" : state.local.dockTab;
   const available = hasCapability(state, facet);
@@ -878,22 +915,22 @@ function WorkDock(props: WorkDockProps) {
     agentRuns: hasCapability(state, "agents") ? session.run.agentRuns : [],
   } : null;
   return (
-    <aside className={`work-dock${state.local.dockTab === "environment" ? " environment-card" : ""}`} aria-label="Work Dock">
+    <aside className={`work-dock${state.local.dockTab === "environment" ? " environment-card" : ""}`} aria-label={t("panels:dock.title")}>
       <header className="dock-header">
-        <strong>{dockTabs.find((tab) => tab.id === state.local.dockTab)?.label}</strong>
-        <button type="button" className="icon-close" onClick={onClose} aria-label="Close Work Dock"><UiIcon name="close" /></button>
+        <strong>{t(dockTabs.find((tab) => tab.id === state.local.dockTab)!.label)}</strong>
+        <button type="button" className="icon-close" onClick={onClose} aria-label={t("panels:dock.close")}><UiIcon name="close" /></button>
       </header>
-      <nav className="dock-tabs" aria-label="Work Dock panels">
+      <nav className="dock-tabs" aria-label={t("panels:dock.panels")}>
         {dockTabs.filter((tab) => tab.id !== "environment").map((tab) => (
           <button type="button" key={tab.id} aria-pressed={state.local.dockTab === tab.id} onClick={() => onTab(tab.id)}>
-            <span aria-hidden="true">{tab.glyph}</span><span>{tab.label}</span>
+            <span aria-hidden="true">{tab.glyph}</span><span>{t(tab.label)}</span>
           </button>
         ))}
       </nav>
       <div className="dock-content">
         {!available ? state.local.dockTab === "environment" && state.remote.source.kind === "live"
           ? <LiveContextPanel state={state} session={session} />
-          : <UnavailablePanel label={`${facet} capability (missing, unavailable or incompatible)`} /> : <>
+          : <UnavailablePanel label={t("workspace:capability.missing", { capability: capabilityLabel(facet) })} /> : <>
         {state.local.dockTab === "environment" ? <EnvironmentPanel state={state} session={session} /> : null}
         {state.local.dockTab === "tasks" ? (
           <TasksPanel run={visibleRun} selectedTaskId={state.local.selectedTaskId} onSelectTask={onSelectTask} onSelectAgent={onSelectAgent} />
@@ -911,24 +948,25 @@ function WorkDock(props: WorkDockProps) {
 }
 
 function EnvironmentPanel({ state, session }: { readonly state: GuiState; readonly session: SessionSnapshot }) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const workspace = state.remote.workspaces[session.workspaceId];
   return (
-    <section className="panel-stack" aria-label="Environment details">
-      <p className="fixture-panel-label">Fixture projection</p>
+    <section className="panel-stack" aria-label={t("workspace:environment.details")}>
+      <p className="fixture-panel-label">{t("workspace:environment.fixture")}</p>
       <dl className="detail-list">
-        <div><dt>Workspace</dt><dd>{workspace?.title ?? "Unavailable"}</dd></div>
-        <div><dt>Root</dt><dd>{workspace?.rootLabel ?? session.context.rootLabel}</dd></div>
-        <div><dt>Version control</dt><dd>{workspace?.vcs ? `${workspace.vcs.kind} · ${workspace.vcs.label}` : "None"}</dd></div>
-        <div><dt>Application</dt><dd>{session.context.applicationId}</dd></div>
-        <div><dt>Mux / member</dt><dd>{session.context.muxId} / {session.context.memberId}</dd></div>
-        <div><dt>Session</dt><dd>{session.context.sessionId}</dd></div>
-        <div><dt>Generation</dt><dd>{state.remote.generation}</dd></div>
+        <div><dt>{t("workspace:environment.workspace")}</dt><dd>{workspace?.title ?? t("workspace:environment.unavailable")}</dd></div>
+        <div><dt>{t("workspace:environment.root")}</dt><dd>{workspace?.rootLabel ?? session.context.rootLabel}</dd></div>
+        <div><dt>{t("workspace:environment.vcs")}</dt><dd>{workspace?.vcs ? `${workspace.vcs.kind} · ${workspace.vcs.label}` : t("workspace:environment.none")}</dd></div>
+        <div><dt>{t("workspace:environment.application")}</dt><dd>{session.context.applicationId}</dd></div>
+        <div><dt>{t("workspace:environment.member")}</dt><dd>{session.context.muxId} / {session.context.memberId}</dd></div>
+        <div><dt>{t("workspace:environment.session")}</dt><dd>{session.context.sessionId}</dd></div>
+        <div><dt>{t("workspace:environment.generation")}</dt><dd>{state.remote.generation}</dd></div>
       </dl>
-      <h2>Capabilities</h2>
+      <h2>{t("workspace:environment.capabilities")}</h2>
       <div className="capability-list">
         {state.remote.capabilities.map((capability) => (
           <span className={`capability ${capability.availability}`} key={capability.name}>
-            {capability.name} · {capability.version ?? "unavailable"}
+            {capabilityLabel(capability.name)} · {capability.version ?? t("workspace:environment.unavailableValue")}
           </span>
         ))}
       </div>
@@ -937,20 +975,21 @@ function EnvironmentPanel({ state, session }: { readonly state: GuiState; readon
 }
 
 function LiveContextPanel({ state, session }: { readonly state: GuiState; readonly session: SessionSnapshot }) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const source = state.remote.source;
   if (source.kind !== "live") return null;
   return (
-    <section className="panel-stack" aria-label="AppHost session context">
-      <p className="fixture-panel-label">Accepted AppHost identity</p>
+    <section className="panel-stack" aria-label={t("workspace:live.context")}>
+      <p className="fixture-panel-label">{t("workspace:live.identity")}</p>
       <dl className="detail-list">
-        <div><dt>Product</dt><dd>{session.context.project}</dd></div>
-        <div><dt>Scope</dt><dd>{session.context.scope ?? "Unavailable"}</dd></div>
-        <div><dt>Scope fingerprint</dt><dd>{session.context.scopeFingerprint ?? "Unavailable"}</dd></div>
-        <div><dt>Mux</dt><dd>{source.muxName ?? source.muxSpaceId}</dd></div>
-        <div><dt>Session</dt><dd>{session.context.sessionId}</dd></div>
-        <div><dt>Service</dt><dd>{source.serviceInstanceId}</dd></div>
+        <div><dt>{t("workspace:live.product")}</dt><dd>{session.context.project}</dd></div>
+        <div><dt>{t("workspace:live.scope")}</dt><dd>{session.context.scope ?? t("workspace:environment.unavailable")}</dd></div>
+        <div><dt>{t("workspace:live.fingerprint")}</dt><dd>{session.context.scopeFingerprint ?? t("workspace:environment.unavailable")}</dd></div>
+        <div><dt>{t("workspace:live.mux")}</dt><dd>{source.muxName ?? source.muxSpaceId}</dd></div>
+        <div><dt>{t("workspace:environment.session")}</dt><dd>{session.context.sessionId}</dd></div>
+        <div><dt>{t("workspace:live.service")}</dt><dd>{source.serviceInstanceId}</dd></div>
       </dl>
-      <UnavailablePanel label="workspace capability (missing, unavailable or incompatible)" />
+      <UnavailablePanel label={t("workspace:capability.workspace")} />
     </section>
   );
 }
@@ -961,11 +1000,12 @@ function TasksPanel({ run, selectedTaskId, onSelectTask, onSelectAgent }: {
   readonly onSelectTask: (taskId: string) => void;
   readonly onSelectAgent: (agentRunId: string) => void;
 }) {
-  if (!run) return <UnavailablePanel label="Task projection" />;
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
+  if (!run) return <UnavailablePanel label={t("panels:tasks.projection")} />;
   const selected = run.tasks.find((task) => task.id === selectedTaskId) ?? run.tasks[0];
   return (
-    <section className="panel-stack" aria-label="Task details">
-      <p className="fixture-panel-label">{run.status} · {run.tasks.length} Tasks</p>
+    <section className="panel-stack" aria-label={t("panels:tasks.details")}>
+      <p className="fixture-panel-label">{t("panels:tasks.summary", { status: valueLabel(run.status), count: run.tasks.length })}</p>
       <div className="task-tree">
         {run.tasks.map((task) => (
           <button type="button" key={task.id} className={task.id === selected?.id ? "selected" : ""} onClick={() => onSelectTask(task.id)}>
@@ -983,16 +1023,17 @@ function TaskDetail({ task, run, onSelectAgent }: {
   readonly run: RunProjection;
   readonly onSelectAgent: (agentRunId: string) => void;
 }) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const activities = run.activities.filter((activity) => task.activityIds.includes(activity.id));
   return (
     <article className="selection-detail">
-      <span className={`detail-status ${task.status}`}>{task.status}</span>
+      <span className={`detail-status ${task.status}`}>{valueLabel(task.status)}</span>
       <h2>{task.title}</h2>
-      <p>{activities.length} projected activities</p>
-      <h3>Assigned AgentRuns</h3>
+      <p>{t("panels:tasks.activities", { count: activities.length })}</p>
+      <h3>{t("panels:tasks.assignedAgents")}</h3>
       {task.assignedAgentRunIds.map((agentRunId) => {
         const agent = run.agentRuns.find((item) => item.id === agentRunId);
-        return agent ? <button type="button" key={agent.id} onClick={() => onSelectAgent(agent.id)}>Open {agent.label} →</button> : null;
+        return agent ? <button type="button" key={agent.id} onClick={() => onSelectAgent(agent.id)}>{t("common:openItem", { title: agent.label })}</button> : null;
       })}
     </article>
   );
@@ -1004,16 +1045,17 @@ function AgentsPanel({ run, selectedAgentRunId, onSelectAgent, onSelectTask }: {
   readonly onSelectAgent: (agentRunId: string) => void;
   readonly onSelectTask: (taskId: string) => void;
 }) {
-  if (!run) return <UnavailablePanel label="AgentRun projection" />;
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
+  if (!run) return <UnavailablePanel label={t("panels:agents.projection")} />;
   const selected = run.agentRuns.find((agent) => agent.id === selectedAgentRunId) ?? run.agentRuns[0];
   return (
-    <section className="panel-stack" aria-label="AgentRun details">
-      <p className="fixture-panel-label">{run.agentRuns.length} AgentRuns · identities remain separate from Tasks</p>
+    <section className="panel-stack" aria-label={t("panels:agents.details")}>
+      <p className="fixture-panel-label">{t("panels:agents.summary", { count: run.agentRuns.length })}</p>
       <div className="agent-tree">
         {run.agentRuns.map((agent) => (
           <button type="button" key={agent.id} className={agent.id === selected?.id ? "selected" : ""} onClick={() => onSelectAgent(agent.id)}>
             <span className={`agent-avatar ${agent.role}`} aria-hidden="true">{agent.role === "root" ? "H" : "R"}</span>
-            <span><strong>{agent.label}</strong><small>{agent.role} · {agent.status}</small></span>
+            <span><strong>{agent.label}</strong><small>{valueLabel(agent.role)} · {valueLabel(agent.status)}</small></span>
           </button>
         ))}
       </div>
@@ -1027,14 +1069,15 @@ function AgentDetail({ agent, run, onSelectTask }: {
   readonly run: RunProjection;
   readonly onSelectTask: (taskId: string) => void;
 }) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   return (
     <article className="selection-detail">
-      <span className={`detail-status ${agent.status}`}>{agent.status}</span>
-      <h2>{agent.label}</h2><p>{agent.summary ?? "No fixture summary."}</p>
-      <h3>Assigned Tasks</h3>
+      <span className={`detail-status ${agent.status}`}>{valueLabel(agent.status)}</span>
+      <h2>{agent.label}</h2><p>{agent.summary ?? t("panels:agents.noSummary")}</p>
+      <h3>{t("panels:agents.assignedTasks")}</h3>
       {agent.taskIds.map((taskId) => {
         const task = run.tasks.find((item) => item.id === taskId);
-        return task ? <button type="button" key={task.id} onClick={() => onSelectTask(task.id)}>Open {task.title} →</button> : null;
+        return task ? <button type="button" key={task.id} onClick={() => onSelectTask(task.id)}>{t("common:openItem", { title: task.title })}</button> : null;
       })}
     </article>
   );
@@ -1045,36 +1088,39 @@ function ReviewPanel({ session, selectedDocument, onSelectDocument }: {
   readonly selectedDocument: ReadonlyDocument | undefined;
   readonly onSelectDocument: (documentId: string) => void;
 }) {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const changeDocuments = session.changeSet?.files
     .map((file) => session.documents.find((document) => document.id === file.documentId))
     .filter((document): document is ReadonlyDocument => Boolean(document)) ?? [];
-  if (!session.changeSet) return <UnavailablePanel label="ChangeSet projection" />;
+  if (!session.changeSet) return <UnavailablePanel label={t("panels:review.projection")} />;
   const visibleDocument = selectedDocument?.kind === "diff" ? selectedDocument : changeDocuments[0];
   return (
-    <section className="review-panel" aria-label="Read-only review">
+    <section className="review-panel" aria-label={t("panels:review.label")}>
       <header>
-        <div><strong>{session.changeSet.scopeLabel}</strong><span><b>+{session.changeSet.additions}</b> <em>-{session.changeSet.deletions}</em></span></div>
-        <button type="button" disabled>Commit or push</button>
+        <div><strong>{session.changeSet.scopeLabel}</strong><span><b>{t("common:additions", { value: session.changeSet.additions })}</b> <em>{t("common:deletions", { value: session.changeSet.deletions })}</em></span></div>
+        <button type="button" disabled>{t("panels:review.commit")}</button>
       </header>
       <div className="review-files">
         {changeDocuments.map((document) => (
           <button type="button" key={document.id} className={document.id === visibleDocument?.id ? "selected" : ""} onClick={() => onSelectDocument(document.id)}>{document.title}</button>
         ))}
       </div>
-      {visibleDocument ? <DocumentView document={visibleDocument} /> : <p>No Diff fixture is available.</p>}
+      {visibleDocument ? <DocumentView document={visibleDocument} /> : <p>{t("panels:review.noDiff")}</p>}
     </section>
   );
 }
 
 function UnavailablePanel({ label }: { readonly label: string }) {
-  return <div className="unavailable-panel"><strong>{label} unavailable</strong><p>This Session has no accepted value. The GUI does not infer one from transcript text.</p></div>;
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
+  return <div className="unavailable-panel"><strong>{t("common:unavailableTitle", { label })}</strong><p>{t("common:unavailableExplanation")}</p></div>;
 }
 
 function DocumentView({ document, compact = false }: { readonly document: ReadonlyDocument; readonly compact?: boolean }) {
+  useTranslation(["session", "workspace", "panels", "common"]);
   const lines = document.content.split("\n");
   return (
     <article className={`document-view${compact ? " compact" : ""}`} aria-label={document.title}>
-      <header><span>{document.kind}</span><code>{document.revision}</code></header>
+      <header><span>{valueLabel(document.kind)}</span><code>{document.revision}</code></header>
       <p className="document-source">{document.sourceLabel}</p>
       <pre>{lines.map((line, index) => <span className={diffLineClass(document, line)} key={`${index}-${line}`}>{line || " "}{index < lines.length - 1 ? "\n" : ""}</span>)}</pre>
     </article>
@@ -1082,8 +1128,9 @@ function DocumentView({ document, compact = false }: { readonly document: Readon
 }
 
 function TaskStatusGlyph({ status }: { readonly status: TaskProjection["status"] }) {
+  useTranslation(["session", "workspace", "panels", "common"]);
   const glyph = status === "completed" ? "✓" : status === "running" ? "◌" : status === "failed" ? "×" : status === "cancelled" ? "–" : "○";
-  return <span className={`task-status ${status}`} aria-label={status}>{glyph}</span>;
+  return <span className={`task-status ${status}`} aria-label={valueLabel(status)}>{glyph}</span>;
 }
 
 function diffLineClass(document: ReadonlyDocument, line: string): string {
@@ -1102,15 +1149,50 @@ function findSelectedDocument(session: SessionSnapshot, selectedDocumentId: stri
   return session.documents.find((document) => document.id === selectedDocumentId) ?? session.documents[0];
 }
 
-function statusLabel(status: SessionSnapshot["status"]): string {
-  return { idle: "Idle", running: "Running", waiting: "Needs input", interrupted: "Interrupted", failed: "Failed" }[status];
+
+const bridgeLabels = { "web-mock": "session:bridge.web-mock", locked: "session:bridge.locked", verified: "session:bridge.verified" } as const;
+const valueLabels = {
+  "idle": "common:status.idle",
+  "running": "common:status.running",
+  "waiting": "common:status.waiting",
+  "interrupted": "common:status.interrupted",
+  "failed": "common:status.failed",
+  "completed": "common:status.completed",
+  "cancelled": "common:status.cancelled",
+  "pending": "common:status.pending",
+  "succeeded": "common:status.succeeded",
+  "streaming": "common:status.streaming",
+  "root": "common:status.root",
+  "subagent": "common:status.subagent",
+  "assistant": "common:status.assistant",
+  "user": "common:status.user",
+  "diff": "common:status.diff",
+  "markdown": "common:status.markdown",
+  "text": "common:status.text",
+  "sent": "common:status.sent",
+  "complete": "common:status.complete",
+  "accepted": "common:status.accepted"
+} as const;
+function valueLabel(value: keyof typeof valueLabels): string { return i18n.t(valueLabels[value]); }
+function capabilityLabel(value: string): string {
+  switch (value) {
+    case "workspace": return i18n.t("workspace:environment.workspace");
+    case "tasks": return i18n.t("panels:dock.tasks");
+    case "agents": return i18n.t("panels:dock.agents");
+    case "artifacts": return i18n.t("workspace:environment.artifacts");
+    case "changes": return i18n.t("panels:changes.review");
+    default: return value;
+  }
 }
 
+
+
 function connectionLabel(connection: string): string {
-  return { "fixture-offline": "Offline fixture", connected: "Connected", disconnected: "Disconnected", "resync-required": "Resync required" }[connection] ?? connection;
+  return { "fixture-offline": i18n.t("workspace:sidebar.offline"), connected: i18n.t("common:connection.connected"), disconnected: i18n.t("common:connection.disconnected"), "resync-required": i18n.t("common:connection.resync") }[connection] ?? connection;
 }
 
 function App() {
+  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const fixture = useMemo(() => createMockAppClient(), []);
   const [client, setClient] = useState<HarnessClientUiPort | FixturePlaybackPort | null>(null);
   useEffect(() => {
@@ -1124,7 +1206,7 @@ function App() {
       });
     return () => { active = false; };
   }, [fixture]);
-  return client ? <HarnessGui client={client} /> : <div className="empty-state">Opening loushang…</div>;
+  return client ? <HarnessGui client={client} /> : <div className="empty-state">{t("session:opening")}</div>;
 }
 
 export default App;

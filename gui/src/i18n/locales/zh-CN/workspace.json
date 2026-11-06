@@ -1,0 +1,63 @@
+{
+  "sidebar": {
+    "navigation": "工作区和会话导航",
+    "searchUnavailable": "搜索不可用",
+    "searchHint": "离线测试模式不支持搜索",
+    "creating": "正在创建…",
+    "newSession": "新会话",
+    "shortcuts": "应用快捷入口",
+    "prHint": "离线测试模式不支持拉取请求",
+    "scheduleHint": "离线测试模式不支持定时任务",
+    "pluginsHint": "离线测试模式不支持插件",
+    "pullRequests": "拉取请求",
+    "scheduled": "定时任务",
+    "plugins": "插件",
+    "fixtureBanner": "测试数据 · 无后端",
+    "liveBanner": "在线 AppHost · 受控",
+    "workspaces": "工作区",
+    "attached": "已连接的 AppHost 会话",
+    "mux": "AppHost 多路复用空间",
+    "workspaceUnavailable": "工作区详情不可用",
+    "recent": "最近使用",
+    "offline": "离线测试",
+    "live": "在线 · AppHost",
+    "plain": "普通目录",
+    "unread": "未读更新",
+    "stale": "数据已过期 · 此前为{{status}}",
+    "sessionLabel": "{{title}} · {{status}}"
+  },
+  "environment": {
+    "summary": "环境概览",
+    "title": "环境",
+    "close": "关闭环境面板",
+    "changesLink": "变更 →",
+    "agentsLink": "子智能体 →",
+    "details": "环境详情",
+    "fixture": "测试数据视图",
+    "workspace": "工作区",
+    "unavailable": "不可用",
+    "root": "根目录",
+    "vcs": "版本控制",
+    "none": "无",
+    "application": "应用",
+    "member": "多路复用空间 / 成员",
+    "session": "会话",
+    "generation": "代次",
+    "capabilities": "能力",
+    "unavailableValue": "不可用",
+    "artifacts": "产物"
+  },
+  "capability": {
+    "workspace": "工作区能力（缺失、不可用或不兼容）",
+    "missing": "{{capability}}能力（缺失、不可用或不兼容）"
+  },
+  "live": {
+    "context": "AppHost 会话上下文",
+    "identity": "已确认的 AppHost 身份",
+    "product": "产品",
+    "scope": "作用域",
+    "fingerprint": "作用域指纹",
+    "mux": "多路复用空间",
+    "service": "服务"
+  }
+}

@@ -24,7 +24,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; overflow: hidden; }
-button, textarea { font: inherit; }
+button, textarea, select { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: 0.48; }
 button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 220, 0.45); outline-offset: 2px; }
@@ -65,12 +65,12 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .brand-search { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #85888b; }
 .brand-search:disabled { opacity: 1; }
 .sidebar-shortcuts { flex-shrink: 0; display: grid; margin: 0 8px 8px; }
-.sidebar-shortcuts button { height: 32px; display: grid; grid-template-columns: 24px 1fr; align-items: center; padding: 0 9px; border: 0; border-radius: 8px; background: transparent; color: #343638; text-align: left; }
+.sidebar-shortcuts button { min-height: 32px; display: grid; grid-template-columns: 24px 1fr; align-items: center; padding: 6px 9px; border: 0; border-radius: 8px; background: transparent; color: #343638; text-align: left; }
 .new-session { flex-shrink: 0; }
 .environment-popover > header { align-items: center; }
 .desktop-shell button.icon-close { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #777a7e; }
 .desktop-shell button.icon-close:hover { background: #ececeb; color: #343638; }
-.new-session { height: 41px; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; margin: 7px 8px 3px; padding: 0 9px; border: 0; border-radius: 8px; color: #343638; background: transparent; text-align: left; font-size: 14px; }
+.new-session { min-height: 41px; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; margin: 7px 8px 3px; padding: 6px 9px; border: 0; border-radius: 8px; color: #343638; background: transparent; text-align: left; font-size: 14px; }
 .new-session:hover { background: #ebebea; }
 .new-session kbd { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid #d8d8d5; border-radius: 50%; color: #6e7174; background: #fff; font-size: 12px; }
 .fixture-banner { display: flex; align-items: center; gap: 7px; margin: 0 12px 8px; padding: 6px 8px; border-radius: 6px; color: #8a6a30; background: #fff8e9; font-size: 12px; }
@@ -107,7 +107,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .rail-footer strong { color: #343638; font-size: 13px; }
 .rail-footer span { color: #999b9d; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.conversation-pane { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: 49px minmax(180px, 1fr) auto auto; background: #fff; }
+.conversation-pane { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 49px minmax(180px, 1fr) auto auto; background: #fff; }
 .conversation-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--line); }
 .session-heading { min-width: 0; display: flex; align-items: center; gap: 9px; }
 .session-heading > div { min-width: 0; }
@@ -152,9 +152,9 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .activity-kind { color: #8a8d90; }
 
 .change-card { max-width: 760px; overflow: hidden; margin: 0 auto 22px; border: 1px solid var(--line-strong); border-radius: 11px; background: #fff; }
-.change-card > header { display: grid; grid-template-columns: 27px minmax(0, 1fr) auto auto auto; align-items: center; gap: 7px; padding: 10px; border-bottom: 1px solid var(--line); }
+.change-card > header { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 10px; border-bottom: 1px solid var(--line); }
 .change-icon { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 7px; background: #f1f1ef; }
-.change-card header > div { min-width: 0; display: grid; }
+.change-card header > div { flex: 1 1 140px; min-width: 0; display: grid; }
 .change-card strong { color: #3e4144; font-size: 13px; }
 .change-card small { color: #989a9c; font-size: 12px; }
 .change-card header button { margin-left: 5px; padding: 5px 9px; border: 1px solid var(--line-strong); border-radius: 7px; color: #484b4e; background: #fff; font-size: 12px; }
@@ -283,7 +283,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .composer textarea { padding: 3px 0 10px; }
 .composer:focus-within { border-color: #c3c5c8; }
 .composer .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-.effort-selector { margin-left: auto; padding: 6px 10px; border: 0; border-radius: 16px; background: #f5f5f5; color: #8c8e91; font-size: 12px; }
+.effort-selector { min-width: 0; max-width: calc(100% - 40px); margin-left: auto; padding: 6px 10px; border: 0; border-radius: 16px; background: #f5f5f5; color: #8c8e91; font-size: 12px; }
 .composer-submit { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; color: white; background: #222; }
 .composer-submit svg { width: 24px; height: 24px; }
 .composer-submit:disabled { background: #929292; }
@@ -351,3 +351,15 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
   .desktop-layout .session-rail { max-height: none; }
   .desktop-layout > .conversation-pane { grid-column: 2; min-height: 0; }
 }
+
+.language-setting { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; font-size: 12px; }
+.language-setting select { min-width: 0; max-width: 100%; flex: 1; color: inherit; background: var(--paper); border: 1px solid var(--line-strong); border-radius: 6px; padding: 4px; }
+.language-setting [role="status"] { flex-basis: 100%; }
+
+.diagnostic pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+
+.header-actions { flex-shrink: 0; }
+.connection-chip { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-actions button { white-space: nowrap; }
+.header-actions button:disabled { max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
+.change-card header > span, .change-card header > button { flex-shrink: 0; }

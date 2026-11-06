@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -19,39 +20,45 @@ function WindowIcon({ action }: { action: "minimize" | "maximize" | "restore" | 
   </svg>;
 }
 
-export function DesktopFrame({ sidebarOpen, onToggleSidebar }: { sidebarOpen: boolean; onToggleSidebar: () => void }) {
-  const native = isTauri();
+function useNativeWindow(native: boolean) {
   const [maximized, setMaximized] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<"stateUnavailable" | "resizeUnavailable" | "actionFailed" | null>(null);
   useEffect(() => {
     if (!native) return;
     let active = true;
     let unlisten: (() => void) | undefined;
     const window = getCurrentWindow();
     const update = async () => { const value = await window.isMaximized(); if (active) setMaximized(value); };
-    void update().catch(() => { if (active) setError("Window state unavailable"); });
+    void update().catch(() => { if (active) setError("stateUnavailable"); });
     void window.onResized(() => { void update().catch(() => {}); }).then((stop) => {
       if (active) unlisten = stop; else stop();
-    }).catch(() => { if (active) setError("Window resize notifications unavailable"); });
+    }).catch(() => { if (active) setError("resizeUnavailable"); });
     return () => { active = false; unlisten?.(); };
   }, [native]);
+  return { maximized, error, setError };
+}
+
+export function DesktopFrame({ sidebarOpen, onToggleSidebar }: { sidebarOpen: boolean; onToggleSidebar: () => void }) {
+  const { t } = useTranslation("shell");
+  const native = isTauri();
+  const { maximized, error, setError } = useNativeWindow(native);
   async function control(action: "minimize" | "toggleMaximize" | "close") {
-    try { await getCurrentWindow()[action](); setError(""); }
-    catch { setError("Window action failed. Please retry."); }
+    try { await getCurrentWindow()[action](); setError(null); }
+    catch { setError("actionFailed"); }
   }
   return <>
-    <header className="native-frame" aria-label="Application menu">
-      <button className="frame-icon" aria-label="Toggle sidebar" title="Toggle sidebar (Ctrl+B)" aria-pressed={sidebarOpen} onClick={onToggleSidebar}><PanelIcon side="left" /></button>
-      <button className="frame-icon" aria-label="Back" disabled><UiIcon name="back" /></button>
-      <button className="frame-icon" aria-label="Forward" disabled><UiIcon name="forward" /></button>
-      <nav aria-label="Main menu"><span>File</span><span>Edit</span><span>View</span><span>Help</span></nav>
-      <div className="window-drag-region" data-tauri-drag-region title="Drag window; double-click to maximize or restore" />
+    <header className="native-frame" aria-label={t("applicationMenu")}>
+      <button className="frame-icon" aria-label={t("toggleSidebar")} title={t("toggleSidebarHint")} aria-pressed={sidebarOpen} onClick={onToggleSidebar}><PanelIcon side="left" /></button>
+      <button className="frame-icon" aria-label={t("back")} disabled><UiIcon name="back" /></button>
+      <button className="frame-icon" aria-label={t("forward")} disabled><UiIcon name="forward" /></button>
+      <nav aria-label={t("mainMenu")}><span>{t("file")}</span><span>{t("edit")}</span><span>{t("view")}</span><span>{t("help")}</span></nav>
+      <div className="window-drag-region" data-tauri-drag-region title={t("dragWindow")} />
       <div className="window-controls">
-        <button aria-label="Minimize window" disabled={!native} onClick={() => void control("minimize")}><WindowIcon action="minimize" /></button>
-        <button aria-label={maximized ? "Restore window" : "Maximize window"} disabled={!native} onClick={() => void control("toggleMaximize")}><WindowIcon action={maximized ? "restore" : "maximize"} /></button>
-        <button className="window-close" aria-label="Close window" disabled={!native} onClick={() => void control("close")}><WindowIcon action="close" /></button>
+        <button aria-label={t("minimize")} disabled={!native} onClick={() => void control("minimize")}><WindowIcon action="minimize" /></button>
+        <button aria-label={maximized ? t("restore") : t("maximize")} disabled={!native} onClick={() => void control("toggleMaximize")}><WindowIcon action={maximized ? "restore" : "maximize"} /></button>
+        <button className="window-close" aria-label={t("close")} disabled={!native} onClick={() => void control("close")}><WindowIcon action="close" /></button>
       </div>
     </header>
-    {error ? <div role="alert" className="window-error">{error}</div> : null}
+    {error ? <div role="alert" className="window-error">{t(error)}</div> : null}
   </>;
 }

@@ -1,0 +1,34 @@
+{
+  "status": {
+    "idle": "Idle",
+    "running": "Running",
+    "waiting": "Needs input",
+    "interrupted": "Interrupted",
+    "failed": "Failed",
+    "completed": "completed",
+    "cancelled": "cancelled",
+    "pending": "pending",
+    "succeeded": "succeeded",
+    "streaming": "streaming",
+    "root": "root",
+    "subagent": "subagent",
+    "assistant": "assistant",
+    "user": "user",
+    "diff": "diff",
+    "markdown": "markdown",
+    "text": "text",
+    "sent": "sent",
+    "complete": "complete",
+    "accepted": "accepted"
+  },
+  "connection": {
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "resync": "Resync required"
+  },
+  "openItem": "Open {{title}} →",
+  "unavailableTitle": "{{label}} unavailable",
+  "unavailableExplanation": "This Session has no accepted value. The GUI does not infer one from transcript text.",
+  "additions": "+{{value, number}}",
+  "deletions": "-{{value, number}}"
+}

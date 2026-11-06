@@ -1,0 +1,80 @@
+{
+  "execution": {
+    "details": "Live execution details",
+    "title": "Execution",
+    "source": "Source",
+    "notObserved": "not observed",
+    "finalCursor": "Final cursor",
+    "notTerminal": "not terminal",
+    "requested": "requested",
+    "notRequested": "not requested",
+    "transcript": "Transcript",
+    "truncated": "truncated",
+    "completeSnapshot": "complete snapshot",
+    "status": "Execution {{status}}",
+    "revision": "revision {{revision}}"
+  },
+  "header": {
+    "actions": "Session actions",
+    "shareUnavailable": "Share unavailable",
+    "share": "⇧ Share",
+    "toggleEnvironment": "Toggle environment",
+    "bottomUnavailable": "Bottom panel unavailable",
+    "bottomHint": "Bottom panel unavailable in this fixture",
+    "openDock": "Open Work Dock",
+    "toggleDock": "Toggle right panel"
+  },
+  "activity": {
+    "label": "Run activity",
+    "summary": "Activities: {{activities, number}} · Failures: {{failures, number}}"
+  },
+  "progress": {
+    "tasks": "Run tasks",
+    "step": "Step {{current, number}} / {{total, number}}",
+    "complete": "{{completed, number}} / {{total, number}} complete"
+  },
+  "changes": {
+    "label": "Fixture changes",
+    "review": "Review",
+    "readOnly": "Read-only fixture · repository actions unavailable",
+    "edited_one": "Edited {{count, number}} file",
+    "edited_other": "Edited {{count, number}} files"
+  },
+  "review": {
+    "closeQuickLook": "Close quick look",
+    "openFull": "Open full review →",
+    "projection": "ChangeSet projection",
+    "label": "Read-only review",
+    "commit": "Commit or push",
+    "noDiff": "No Diff fixture is available.",
+    "quickLook": "Quick look {{title}}"
+  },
+  "dock": {
+    "title": "Work Dock",
+    "close": "Close Work Dock",
+    "panels": "Work Dock panels",
+    "tasks": "Tasks",
+    "agents": "Subagents"
+  },
+  "tasks": {
+    "projection": "Task projection",
+    "details": "Task details",
+    "assignedAgents": "Assigned AgentRuns",
+    "summary_one": "{{status}} · {{count, number}} Task",
+    "summary_other": "{{status}} · {{count, number}} Tasks",
+    "activities_one": "{{count, number}} projected activity",
+    "activities_other": "{{count, number}} projected activities"
+  },
+  "agents": {
+    "projection": "AgentRun projection",
+    "details": "AgentRun details",
+    "noSummary": "No fixture summary.",
+    "assignedTasks": "Assigned Tasks",
+    "summary_one": "{{count, number}} AgentRun · identities remain separate from Tasks",
+    "summary_other": "{{count, number}} AgentRuns · identities remain separate from Tasks"
+  },
+  "layout": {
+    "sidebarWidth": "Sidebar width",
+    "workspace": "Session workspace"
+  }
+}
