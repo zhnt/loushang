@@ -22,6 +22,10 @@ from loushang.harness.journal import (
     journal_file_lock,
     load_jsonl,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -207,75 +211,10 @@ class PackageEpochFenceRequestV1:
     def from_dict(cls, value: object) -> PackageEpochFenceRequestV1:
         document = _wire_object(
             value,
-            expected={
-                "cutoverId",
-                "storeId",
-                "priorEpoch",
-                "nextEpoch",
-                "priorFenceId",
-                "priorFenceRevision",
-                "legacyRootIdentity",
-                "fencedRootIdentity",
-                "namespaceId",
-                "minimumRuntimeVersion",
-                "minimumRuntimeProtocolEpoch",
-                "quiescenceReceiptId",
-                "snapshotReceiptId",
-                "rootSwitchReceiptId",
-                "requestVersion",
-            },
+            expected=_EPOCH_FENCE_REQUEST_V1_SCHEMA.keys,
             name="Package epoch fence request",
         )
-        return cls(
-            cutover_id=_wire_string(document["cutoverId"], name="cutover id"),
-            store_id=_wire_string(document["storeId"], name="store id"),
-            prior_epoch=_wire_int(document["priorEpoch"], name="prior epoch"),
-            next_epoch=_wire_int(document["nextEpoch"], name="next epoch"),
-            prior_fence_id=_wire_optional_string(
-                document["priorFenceId"],
-                name="prior fence id",
-            ),
-            prior_fence_revision=_wire_int(
-                document["priorFenceRevision"],
-                name="prior fence revision",
-            ),
-            legacy_root_identity=_wire_string(
-                document["legacyRootIdentity"],
-                name="legacy root identity",
-            ),
-            fenced_root_identity=_wire_string(
-                document["fencedRootIdentity"],
-                name="fenced root identity",
-            ),
-            namespace_id=_wire_string(
-                document["namespaceId"],
-                name="namespace id",
-            ),
-            minimum_runtime_version=_wire_string(
-                document["minimumRuntimeVersion"],
-                name="minimum runtime version",
-            ),
-            minimum_runtime_protocol_epoch=_wire_int(
-                document["minimumRuntimeProtocolEpoch"],
-                name="minimum runtime protocol epoch",
-            ),
-            quiescence_receipt_id=_wire_string(
-                document["quiescenceReceiptId"],
-                name="quiescence receipt id",
-            ),
-            snapshot_receipt_id=_wire_string(
-                document["snapshotReceiptId"],
-                name="snapshot receipt id",
-            ),
-            root_switch_receipt_id=_wire_string(
-                document["rootSwitchReceiptId"],
-                name="root-switch receipt id",
-            ),
-            request_version=_wire_int(
-                document["requestVersion"],
-                name="request version",
-            ),
-        )
+        return _EPOCH_FENCE_REQUEST_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -479,36 +418,10 @@ class PackageEpochRuntimeLeaseV1:
     def from_dict(cls, value: object) -> PackageEpochRuntimeLeaseV1:
         document = _wire_object(
             value,
-            expected={
-                "leaseId",
-                "runtimeId",
-                "runtimeEpoch",
-                "storeRootIdentity",
-                "registrationReceiptId",
-                "leaseVersion",
-            },
+            expected=_EPOCH_RUNTIME_LEASE_V1_SCHEMA.keys,
             name="Package epoch runtime lease",
         )
-        return cls(
-            lease_id=_wire_string(document["leaseId"], name="lease id"),
-            runtime_id=_wire_string(document["runtimeId"], name="runtime id"),
-            runtime_epoch=_wire_int(
-                document["runtimeEpoch"],
-                name="runtime epoch",
-            ),
-            store_root_identity=_wire_string(
-                document["storeRootIdentity"],
-                name="store root identity",
-            ),
-            registration_receipt_id=_wire_string(
-                document["registrationReceiptId"],
-                name="registration receipt id",
-            ),
-            lease_version=_wire_int(
-                document["leaseVersion"],
-                name="lease version",
-            ),
-        )
+        return _EPOCH_RUNTIME_LEASE_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -703,50 +616,10 @@ class PackageEpochRuntimeAdmissionRequestV1:
     def from_dict(cls, value: object) -> PackageEpochRuntimeAdmissionRequestV1:
         document = _wire_object(
             value,
-            expected={
-                "admissionRequestId",
-                "storeId",
-                "fenceId",
-                "runtimeId",
-                "runtimeVersion",
-                "runtimeProtocolEpoch",
-                "runtimeEpoch",
-                "storeRootIdentity",
-                "leaseId",
-                "requestVersion",
-            },
+            expected=_EPOCH_RUNTIME_ADMISSION_REQUEST_V1_SCHEMA.keys,
             name="Package epoch runtime admission request",
         )
-        return cls(
-            admission_request_id=_wire_string(
-                document["admissionRequestId"],
-                name="admission request id",
-            ),
-            store_id=_wire_string(document["storeId"], name="store id"),
-            fence_id=_wire_string(document["fenceId"], name="fence id"),
-            runtime_id=_wire_string(document["runtimeId"], name="runtime id"),
-            runtime_version=_wire_string(
-                document["runtimeVersion"],
-                name="runtime version",
-            ),
-            runtime_protocol_epoch=_wire_int(
-                document["runtimeProtocolEpoch"],
-                name="runtime protocol epoch",
-            ),
-            runtime_epoch=_wire_int(
-                document["runtimeEpoch"],
-                name="runtime epoch",
-            ),
-            store_root_identity=_wire_string(
-                document["storeRootIdentity"],
-                name="store root identity",
-            ),
-            lease_id=_wire_string(document["leaseId"], name="lease id"),
-            request_version=_wire_int(
-                document["requestVersion"],
-                name="request version",
-            ),
-        )
+        return _EPOCH_RUNTIME_ADMISSION_REQUEST_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -816,35 +689,10 @@ class PackageEpochRuntimeAdmissionReceiptV1:
     def from_dict(cls, value: object) -> PackageEpochRuntimeAdmissionReceiptV1:
         document = _wire_object(
             value,
-            expected={
-                "receiptId",
-                "request",
-                "fenceId",
-                "leaseSnapshotId",
-                "leaseOwnerRevision",
-                "receiptVersion",
-            },
+            expected=_EPOCH_RUNTIME_ADMISSION_RECEIPT_V1_SCHEMA.keys,
             name="Package epoch runtime admission receipt",
         )
-        return cls(
-            receipt_id=_wire_string(document["receiptId"], name="receipt id"),
-            request=PackageEpochRuntimeAdmissionRequestV1.from_dict(
-                document["request"]
-            ),
-            fence_id=_wire_string(document["fenceId"], name="fence id"),
-            lease_snapshot_id=_wire_string(
-                document["leaseSnapshotId"],
-                name="lease snapshot id",
-            ),
-            lease_owner_revision=_wire_int(
-                document["leaseOwnerRevision"],
-                name="lease owner revision",
-            ),
-            receipt_version=_wire_int(
-                document["receiptVersion"],
-                name="receipt version",
-            ),
-        )
+        return _EPOCH_RUNTIME_ADMISSION_RECEIPT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1569,9 +1417,7 @@ def _wire_object(
     expected: set[str],
     name: str,
 ) -> dict[str, object]:
-    if not isinstance(value, dict) or any(
-        not isinstance(key, str) for key in value
-    ):
+    if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
         raise TypeError(f"{name} must be an object")
     document = cast(dict[str, object], value)
     if set(document) != expected:
@@ -1619,3 +1465,72 @@ __all__ = [
     "PackageEpochRuntimeAdmissionResultV1",
     "PackageEpochRuntimeLeaseV1",
 ]
+
+
+_EPOCH_FENCE_REQUEST_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("cutover_id", "cutover id"),
+        RecordField("store_id", "store id"),
+        RecordField("prior_epoch", "prior epoch", _wire_int),
+        RecordField("next_epoch", "next epoch", _wire_int),
+        RecordField("prior_fence_id", "prior fence id", _wire_optional_string),
+        RecordField("prior_fence_revision", "prior fence revision", _wire_int),
+        RecordField("legacy_root_identity", "legacy root identity"),
+        RecordField("fenced_root_identity", "fenced root identity"),
+        RecordField("namespace_id", "namespace id"),
+        RecordField("minimum_runtime_version", "minimum runtime version"),
+        RecordField(
+            "minimum_runtime_protocol_epoch",
+            "minimum runtime protocol epoch",
+            _wire_int,
+        ),
+        RecordField("quiescence_receipt_id", "quiescence receipt id"),
+        RecordField("snapshot_receipt_id", "snapshot receipt id"),
+        RecordField("root_switch_receipt_id", "root-switch receipt id"),
+        RecordField("request_version", "request version", _wire_int),
+    ),
+)
+
+
+_EPOCH_RUNTIME_LEASE_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("lease_id", "lease id"),
+        RecordField("runtime_id", "runtime id"),
+        RecordField("runtime_epoch", "runtime epoch", _wire_int),
+        RecordField("store_root_identity", "store root identity"),
+        RecordField("registration_receipt_id", "registration receipt id"),
+        RecordField("lease_version", "lease version", _wire_int),
+    ),
+)
+
+
+_EPOCH_RUNTIME_ADMISSION_REQUEST_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("admission_request_id", "admission request id"),
+        RecordField("store_id", "store id"),
+        RecordField("fence_id", "fence id"),
+        RecordField("runtime_id", "runtime id"),
+        RecordField("runtime_version", "runtime version"),
+        RecordField("runtime_protocol_epoch", "runtime protocol epoch", _wire_int),
+        RecordField("runtime_epoch", "runtime epoch", _wire_int),
+        RecordField("store_root_identity", "store root identity"),
+        RecordField("lease_id", "lease id"),
+        RecordField("request_version", "request version", _wire_int),
+    ),
+)
+
+
+_EPOCH_RUNTIME_ADMISSION_RECEIPT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("receipt_id", "receipt id"),
+        RecordField("request", decoder=PackageEpochRuntimeAdmissionRequestV1.from_dict),
+        RecordField("fence_id", "fence id"),
+        RecordField("lease_snapshot_id", "lease snapshot id"),
+        RecordField("lease_owner_revision", "lease owner revision", _wire_int),
+        RecordField("receipt_version", "receipt version", _wire_int),
+    ),
+)

@@ -6,9 +6,17 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from hashlib import sha256
 from typing import Literal, cast
 from urllib.parse import SplitResult, urlsplit, urlunsplit
+
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+    decode_nullable,
+    decode_tuple,
+)
 
 PACKAGE_LIFECYCLE_REQUEST_VERSION = 1
 PACKAGE_LIFECYCLE_REQUEST_V2_VERSION = 2
@@ -206,31 +214,10 @@ class PackageClassificationBasisFactV1:
     def from_dict(cls, value: object) -> PackageClassificationBasisFactV1:
         document = _exact_dict(
             value,
-            fields={
-                "authorityId",
-                "factVersion",
-                "kind",
-                "ownerRevision",
-                "present",
-            },
+            fields=_CLASSIFICATION_BASIS_FACT_V1_SCHEMA.keys,
             name="Package classification basis fact",
         )
-        return cls(
-            kind=cast(
-                PackageClassificationBasisKind,
-                _wire_string(document["kind"], name="classification fact kind"),
-            ),
-            present=_wire_bool(document["present"], name="classification fact presence"),
-            authority_id=_wire_string(
-                document["authorityId"], name="classification authority id"
-            ),
-            owner_revision=_wire_string(
-                document["ownerRevision"], name="classification owner revision"
-            ),
-            fact_version=_wire_int(
-                document["factVersion"], name="classification fact version"
-            ),
-        )
+        return _CLASSIFICATION_BASIS_FACT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -337,9 +324,7 @@ class PackageLifecycleIngressRequestV1:
             scope_id=self.scope_id,
             requested_package=self.requested_package,
             requested_plugin_id=self.requested_plugin_id,
-            canonical_source_identity=canonicalize_source_identity(
-                self.source_locator
-            ),
+            canonical_source_identity=canonicalize_source_identity(self.source_locator),
             policy_revision=self.policy_revision,
             quota_profile_revision=self.quota_profile_revision,
             resolution_environment_fingerprint=(
@@ -421,57 +406,10 @@ class PackageLifecycleRequestV1:
     def from_dict(cls, value: object) -> PackageLifecycleRequestV1:
         document = _exact_dict(
             value,
-            fields={
-                "action",
-                "canonicalSourceIdentity",
-                "classificationFacts",
-                "operationId",
-                "policyRevision",
-                "productId",
-                "quotaProfileRevision",
-                "requestVersion",
-                "requestedPackage",
-                "requestedPluginId",
-                "resolutionEnvironmentFingerprint",
-                "scopeId",
-            },
+            fields=_LIFECYCLE_REQUEST_V1_SCHEMA.keys,
             name="Package lifecycle request",
         )
-        return cls(
-            operation_id=_wire_string(document["operationId"], name="operation id"),
-            action=cast(
-                PackageLifecycleAction,
-                _wire_string(document["action"], name="Package action"),
-            ),
-            product_id=_wire_string(document["productId"], name="Product id"),
-            scope_id=_wire_string(document["scopeId"], name="scope id"),
-            requested_package=_wire_string(
-                document["requestedPackage"], name="requested Package"
-            ),
-            requested_plugin_id=_wire_optional_string(
-                document["requestedPluginId"], name="requested Plugin id"
-            ),
-            canonical_source_identity=_wire_string(
-                document["canonicalSourceIdentity"],
-                name="canonical Source identity",
-            ),
-            policy_revision=_wire_string(
-                document["policyRevision"], name="Package policy revision"
-            ),
-            quota_profile_revision=_wire_string(
-                document["quotaProfileRevision"], name="quota profile revision"
-            ),
-            resolution_environment_fingerprint=_wire_string(
-                document["resolutionEnvironmentFingerprint"],
-                name="resolution environment fingerprint",
-            ),
-            classification_facts=PackageClassificationFactsV1.from_dict(
-                document["classificationFacts"]
-            ),
-            request_version=_wire_int(
-                document["requestVersion"], name="request version"
-            ),
-        )
+        return _LIFECYCLE_REQUEST_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -513,10 +451,7 @@ class PackageLifecycleIngressRequestV2(PackageLifecycleIngressRequestV1):
         if not isinstance(ingress, PackageLifecycleIngressRequestV1):
             raise TypeError("Package lifecycle ingress request is required")
         if isinstance(ingress, PackageLifecycleIngressRequestV2):
-            if (
-                ingress.runtime_admission_request_id
-                != runtime_admission_request_id
-            ):
+            if ingress.runtime_admission_request_id != runtime_admission_request_id:
                 raise ValueError("Package runtime admission identity changed")
             return ingress
         return cls(
@@ -548,9 +483,7 @@ class PackageLifecycleIngressRequestV2(PackageLifecycleIngressRequestV1):
             scope_id=self.scope_id,
             requested_package=self.requested_package,
             requested_plugin_id=self.requested_plugin_id,
-            canonical_source_identity=canonicalize_source_identity(
-                self.source_locator
-            ),
+            canonical_source_identity=canonicalize_source_identity(self.source_locator),
             policy_revision=self.policy_revision,
             quota_profile_revision=self.quota_profile_revision,
             resolution_environment_fingerprint=(
@@ -600,62 +533,10 @@ class PackageLifecycleRequestV2(PackageLifecycleRequestV1):
     def from_dict(cls, value: object) -> PackageLifecycleRequestV2:
         document = _exact_dict(
             value,
-            fields={
-                "action",
-                "canonicalSourceIdentity",
-                "classificationFacts",
-                "operationId",
-                "policyRevision",
-                "productId",
-                "quotaProfileRevision",
-                "requestVersion",
-                "requestedPackage",
-                "requestedPluginId",
-                "resolutionEnvironmentFingerprint",
-                "runtimeAdmissionRequestId",
-                "scopeId",
-            },
+            fields=_LIFECYCLE_REQUEST_V2_SCHEMA.keys,
             name="Package lifecycle request v2",
         )
-        return cls(
-            operation_id=_wire_string(document["operationId"], name="operation id"),
-            action=cast(
-                PackageLifecycleAction,
-                _wire_string(document["action"], name="Package action"),
-            ),
-            product_id=_wire_string(document["productId"], name="Product id"),
-            scope_id=_wire_string(document["scopeId"], name="scope id"),
-            requested_package=_wire_string(
-                document["requestedPackage"], name="requested Package"
-            ),
-            requested_plugin_id=_wire_optional_string(
-                document["requestedPluginId"], name="requested Plugin id"
-            ),
-            canonical_source_identity=_wire_string(
-                document["canonicalSourceIdentity"],
-                name="canonical Source identity",
-            ),
-            policy_revision=_wire_string(
-                document["policyRevision"], name="Package policy revision"
-            ),
-            quota_profile_revision=_wire_string(
-                document["quotaProfileRevision"], name="quota profile revision"
-            ),
-            resolution_environment_fingerprint=_wire_string(
-                document["resolutionEnvironmentFingerprint"],
-                name="resolution environment fingerprint",
-            ),
-            classification_facts=PackageClassificationFactsV1.from_dict(
-                document["classificationFacts"]
-            ),
-            runtime_admission_request_id=_wire_string(
-                document["runtimeAdmissionRequestId"],
-                name="runtime admission request id",
-            ),
-            request_version=_wire_int(
-                document["requestVersion"], name="request version"
-            ),
-        )
+        return _LIFECYCLE_REQUEST_V2_SCHEMA.decode(cls, document)
 
 
 def decode_package_lifecycle_request(value: object) -> PackageLifecycleRequestV1:
@@ -720,47 +601,10 @@ class PluginBoundPackageClassificationV1:
     def from_dict(cls, value: object) -> PluginBoundPackageClassificationV1:
         document = _exact_dict(
             value,
-            fields={
-                "basisFacts",
-                "canonicalSourceIdentity",
-                "classificationVersion",
-                "classifierEpoch",
-                "decision",
-                "policyRevision",
-                "recheckRule",
-                "requestFingerprint",
-            },
+            fields=_PLUGIN_BOUND_PACKAGE_CLASSIFICATION_V1_SCHEMA.keys,
             name="Package classification evidence",
         )
-        return cls(
-            decision=cast(
-                PackageClassificationDecision,
-                _wire_string(document["decision"], name="classification decision"),
-            ),
-            request_fingerprint=_wire_string(
-                document["requestFingerprint"], name="request fingerprint"
-            ),
-            basis_facts=PackageClassificationFactsV1.from_dict(
-                document["basisFacts"]
-            ),
-            policy_revision=_wire_string(
-                document["policyRevision"], name="classification policy revision"
-            ),
-            classifier_epoch=_wire_positive(
-                document["classifierEpoch"], name="classifier epoch"
-            ),
-            canonical_source_identity=_wire_string(
-                document["canonicalSourceIdentity"],
-                name="canonical Source identity",
-            ),
-            recheck_rule=_wire_string(
-                document["recheckRule"], name="classification recheck rule"
-            ),
-            classification_version=_wire_int(
-                document["classificationVersion"],
-                name="classification version",
-            ),
-        )
+        return _PLUGIN_BOUND_PACKAGE_CLASSIFICATION_V1_SCHEMA.decode(cls, document)
 
 
 def classify_package_request(
@@ -768,9 +612,7 @@ def classify_package_request(
 ) -> PluginBoundPackageClassificationV1:
     if not isinstance(request, PackageLifecycleRequestV1):
         raise TypeError("Package lifecycle request is required")
-    present = {
-        fact.kind for fact in request.classification_facts.facts if fact.present
-    }
+    present = {fact.kind for fact in request.classification_facts.facts if fact.present}
     if present & _PLUGIN_FACTS:
         decision: PackageClassificationDecision = "plugin_bound"
     elif "independent_non_plugin_authority" in present:
@@ -843,59 +685,10 @@ class PackageLifecycleFailureV1:
     def from_dict(cls, value: object) -> PackageLifecycleFailureV1:
         document = _exact_dict(
             value,
-            fields={
-                "code",
-                "details",
-                "evidenceRef",
-                "failureVersion",
-                "operationId",
-                "operatorAction",
-                "retryDomain",
-                "retryable",
-                "stage",
-                "subjectId",
-                "subjectKind",
-            },
+            fields=_LIFECYCLE_FAILURE_V1_SCHEMA.keys,
             name="Package lifecycle failure",
         )
-        return cls(
-            code=_wire_string(document["code"], name="failure code"),
-            stage=cast(
-                PackageLifecyclePhase,
-                _wire_string(document["stage"], name="failure stage"),
-            ),
-            retryable=_wire_bool(document["retryable"], name="failure retryable"),
-            retry_domain=cast(
-                PackageLifecycleRetryDomain,
-                _wire_string(document["retryDomain"], name="failure retry domain"),
-            ),
-            operator_action=cast(
-                PackageLifecycleOperatorAction,
-                _wire_string(
-                    document["operatorAction"], name="failure operator action"
-                ),
-            ),
-            subject_kind=cast(
-                PackageLifecycleSubjectKind,
-                _wire_string(document["subjectKind"], name="failure subject kind"),
-            ),
-            subject_id=_wire_string(
-                document["subjectId"], name="failure subject id"
-            ),
-            operation_id=_wire_string(
-                document["operationId"], name="failure operation id"
-            ),
-            evidence_ref=_wire_string(
-                document["evidenceRef"], name="failure evidence ref"
-            ),
-            details=tuple(
-                _wire_string(item, name="failure detail")
-                for item in _wire_list(document["details"], name="failure details")
-            ),
-            failure_version=_wire_int(
-                document["failureVersion"], name="failure version"
-            ),
-        )
+        return _LIFECYCLE_FAILURE_V1_SCHEMA.decode(cls, document)
 
     @classmethod
     def for_operation(
@@ -1011,60 +804,10 @@ class PackageLifecycleStatusV1:
     def from_dict(cls, value: object) -> PackageLifecycleStatusV1:
         document = _exact_dict(
             value,
-            fields={
-                "attemptEpoch",
-                "attemptRevision",
-                "classification",
-                "disposition",
-                "failure",
-                "journalRevision",
-                "operationId",
-                "phase",
-                "requestFingerprint",
-                "statusVersion",
-            },
+            fields=_LIFECYCLE_STATUS_V1_SCHEMA.keys,
             name="Package lifecycle status",
         )
-        return cls(
-            operation_id=_wire_string(document["operationId"], name="operation id"),
-            request_fingerprint=_wire_string(
-                document["requestFingerprint"], name="request fingerprint"
-            ),
-            phase=cast(
-                PackageLifecyclePhase,
-                _wire_string(document["phase"], name="Package lifecycle phase"),
-            ),
-            disposition=cast(
-                PackageLifecycleDisposition,
-                _wire_string(
-                    document["disposition"], name="Package lifecycle disposition"
-                ),
-            ),
-            attempt_epoch=_wire_positive(
-                document["attemptEpoch"], name="attempt epoch"
-            ),
-            journal_revision=_wire_nonnegative(
-                document["journalRevision"], name="journal revision"
-            ),
-            attempt_revision=_wire_nonnegative(
-                document["attemptRevision"], name="attempt revision"
-            ),
-            classification=(
-                None
-                if document["classification"] is None
-                else PluginBoundPackageClassificationV1.from_dict(
-                    document["classification"]
-                )
-            ),
-            failure=(
-                None
-                if document["failure"] is None
-                else PackageLifecycleFailureV1.from_dict(document["failure"])
-            ),
-            status_version=_wire_int(
-                document["statusVersion"], name="status version"
-            ),
-        )
+        return _LIFECYCLE_STATUS_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1164,10 +907,17 @@ class PackageLifecycleRestartRequestV1:
         document = _exact_dict(
             value,
             fields={
-                "restartId", "operationId", "requestFingerprint", "expectedPhase",
-                "expectedJournalRevision", "expectedAttemptEpoch",
-                "expectedAttemptRevision", "sourceProofRef", "cleanupEvidenceRef",
-                "leaseSnapshotId", "requestVersion",
+                "restartId",
+                "operationId",
+                "requestFingerprint",
+                "expectedPhase",
+                "expectedJournalRevision",
+                "expectedAttemptEpoch",
+                "expectedAttemptRevision",
+                "sourceProofRef",
+                "cleanupEvidenceRef",
+                "leaseSnapshotId",
+                "requestVersion",
             },
             name="Package restart request",
         )
@@ -1258,8 +1008,14 @@ class PackageLifecycleRestartRecordV1:
         document = _exact_dict(
             value,
             fields={
-                "priorAttemptRevision", "priorOperationRevision", "recordKind",
-                "recordRevision", "recordVersion", "request", "status", "restart",
+                "priorAttemptRevision",
+                "priorOperationRevision",
+                "recordKind",
+                "recordRevision",
+                "recordVersion",
+                "request",
+                "status",
+                "restart",
             },
             name="Package restart record",
         )
@@ -1341,10 +1097,16 @@ class PackageLifecycleRebindRequestV1:
         document = _exact_dict(
             value,
             fields={
-                "decisionId", "operationId", "requestFingerprint",
-                "expectedAttemptEpoch", "expectedAttemptRevision",
-                "newRuntimeAdmissionRequestId", "sourceProofRef",
-                "cleanupEvidenceRef", "leaseSnapshotId", "requestVersion",
+                "decisionId",
+                "operationId",
+                "requestFingerprint",
+                "expectedAttemptEpoch",
+                "expectedAttemptRevision",
+                "newRuntimeAdmissionRequestId",
+                "sourceProofRef",
+                "cleanupEvidenceRef",
+                "leaseSnapshotId",
+                "requestVersion",
             },
             name="Package rebind request",
         )
@@ -1436,11 +1198,18 @@ class PackageLifecyclePinnedAdoptionRequestV1:
         document = _exact_dict(
             value,
             fields={
-                "decisionId", "operationId", "requestFingerprint",
-                "expectedJournalRevision", "expectedAttemptEpoch",
-                "expectedAttemptRevision", "newRuntimeAdmissionRequestId",
-                "sourceProofRef", "closurePlanFingerprint", "pinReceiptId",
-                "leaseSnapshotId", "requestVersion",
+                "decisionId",
+                "operationId",
+                "requestFingerprint",
+                "expectedJournalRevision",
+                "expectedAttemptEpoch",
+                "expectedAttemptRevision",
+                "newRuntimeAdmissionRequestId",
+                "sourceProofRef",
+                "closurePlanFingerprint",
+                "pinReceiptId",
+                "leaseSnapshotId",
+                "requestVersion",
             },
             name="Package pinned adoption request",
         )
@@ -1488,9 +1257,9 @@ class PackageLifecyclePinnedAdoptionRecordV1:
     request: PackageLifecycleRequestV2
     status: PackageLifecycleStatusV1
     decision: PackageLifecyclePinnedAdoptionRequestV1
-    record_kind: Literal[
-        "pinned_adoption", "pinned_adoption_supersession"
-    ] = "pinned_adoption"
+    record_kind: Literal["pinned_adoption", "pinned_adoption_supersession"] = (
+        "pinned_adoption"
+    )
     supersedes_decision_id: str | None = None
     record_version: int = PACKAGE_LIFECYCLE_PINNED_ADOPTION_RECORD_VERSION
 
@@ -1504,19 +1273,16 @@ class PackageLifecyclePinnedAdoptionRecordV1:
             not isinstance(self.request, PackageLifecycleRequestV2)
             or not isinstance(self.status, PackageLifecycleStatusV1)
             or not isinstance(self.decision, PackageLifecyclePinnedAdoptionRequestV1)
-            or self.record_kind not in {
-                "pinned_adoption", "pinned_adoption_supersession"
-            }
+            or self.record_kind
+            not in {"pinned_adoption", "pinned_adoption_supersession"}
             or self.record_version != PACKAGE_LIFECYCLE_PINNED_ADOPTION_RECORD_VERSION
             or self.request.operation_id != self.status.operation_id
             or self.request.request_fingerprint != self.status.request_fingerprint
             or self.decision.operation_id != self.status.operation_id
             or self.decision.request_fingerprint != self.status.request_fingerprint
-            or self.decision.expected_journal_revision
-            != self.prior_operation_revision
+            or self.decision.expected_journal_revision != self.prior_operation_revision
             or self.decision.expected_attempt_epoch != self.status.attempt_epoch
-            or self.decision.expected_attempt_revision
-            != self.prior_attempt_revision
+            or self.decision.expected_attempt_revision != self.prior_attempt_revision
             or self.request.runtime_admission_request_id
             == self.decision.new_runtime_admission_request_id
             or self.status.attempt_revision != self.record_revision
@@ -1555,9 +1321,16 @@ class PackageLifecyclePinnedAdoptionRecordV1:
         document = _exact_dict(
             value,
             fields={
-                "priorAttemptRevision", "priorOperationRevision", "recordKind",
-                "recordRevision", "recordVersion", "request", "status", "decision",
-            } | ({"supersedesDecisionId"} if supersession else set()),
+                "priorAttemptRevision",
+                "priorOperationRevision",
+                "recordKind",
+                "recordRevision",
+                "recordVersion",
+                "request",
+                "status",
+                "decision",
+            }
+            | ({"supersedesDecisionId"} if supersession else set()),
             name="Package pinned adoption record",
         )
         request = decode_package_lifecycle_request(document["request"])
@@ -1661,12 +1434,20 @@ class PackageLifecycleStagingAdoptionRequestV1:
         document = _exact_dict(
             value,
             fields={
-                "decisionId", "operationId", "requestFingerprint",
-                "expectedJournalRevision", "expectedAttemptEpoch",
-                "expectedAttemptRevision", "newRuntimeAdmissionRequestId",
-                "sourceProofRef", "closurePlanFingerprint", "pinReceiptId",
-                "stagingCheckpointId", "leaseSnapshotId",
-                "previousSelectedDecisionId", "requestVersion",
+                "decisionId",
+                "operationId",
+                "requestFingerprint",
+                "expectedJournalRevision",
+                "expectedAttemptEpoch",
+                "expectedAttemptRevision",
+                "newRuntimeAdmissionRequestId",
+                "sourceProofRef",
+                "closurePlanFingerprint",
+                "pinReceiptId",
+                "stagingCheckpointId",
+                "leaseSnapshotId",
+                "previousSelectedDecisionId",
+                "requestVersion",
             },
             name="Package staging adoption request",
         )
@@ -1739,11 +1520,9 @@ class PackageLifecycleStagingAdoptionRecordV1:
             or self.request.request_fingerprint != self.status.request_fingerprint
             or self.decision.operation_id != self.status.operation_id
             or self.decision.request_fingerprint != self.status.request_fingerprint
-            or self.decision.expected_journal_revision
-            != self.prior_operation_revision
+            or self.decision.expected_journal_revision != self.prior_operation_revision
             or self.decision.expected_attempt_epoch != self.status.attempt_epoch
-            or self.decision.expected_attempt_revision
-            != self.prior_attempt_revision
+            or self.decision.expected_attempt_revision != self.prior_attempt_revision
             or self.request.runtime_admission_request_id
             == self.decision.new_runtime_admission_request_id
             or self.status.phase not in {"transaction_pinned", "set_published"}
@@ -1769,8 +1548,14 @@ class PackageLifecycleStagingAdoptionRecordV1:
         document = _exact_dict(
             value,
             fields={
-                "priorAttemptRevision", "priorOperationRevision", "recordKind",
-                "recordRevision", "recordVersion", "request", "status", "decision",
+                "priorAttemptRevision",
+                "priorOperationRevision",
+                "recordKind",
+                "recordRevision",
+                "recordVersion",
+                "request",
+                "status",
+                "decision",
             },
             name="Package staging adoption record",
         )
@@ -1831,8 +1616,7 @@ class PackageLifecycleRebindRecordV1:
             or self.decision.operation_id != self.status.operation_id
             or self.decision.request_fingerprint != self.status.request_fingerprint
             or self.decision.expected_attempt_epoch != self.status.attempt_epoch
-            or self.decision.expected_attempt_revision
-            != self.prior_attempt_revision
+            or self.decision.expected_attempt_revision != self.prior_attempt_revision
             or self.request.runtime_admission_request_id
             == self.decision.new_runtime_admission_request_id
             or self.status.attempt_revision != self.record_revision
@@ -1871,9 +1655,16 @@ class PackageLifecycleRebindRecordV1:
         document = _exact_dict(
             value,
             fields={
-                "priorAttemptRevision", "priorOperationRevision", "recordKind",
-                "recordRevision", "recordVersion", "request", "status", "decision",
-            } | ({"supersedesDecisionId"} if supersession else set()),
+                "priorAttemptRevision",
+                "priorOperationRevision",
+                "recordKind",
+                "recordRevision",
+                "recordVersion",
+                "request",
+                "status",
+                "decision",
+            }
+            | ({"supersedesDecisionId"} if supersession else set()),
             name="Package rebind record",
         )
         request = decode_package_lifecycle_request(document["request"])
@@ -1922,9 +1713,7 @@ class PackageLifecycleJournalRecordV1:
         _require_nonnegative(
             self.prior_operation_revision, name="prior operation revision"
         )
-        _require_nonnegative(
-            self.prior_attempt_revision, name="prior attempt revision"
-        )
+        _require_nonnegative(self.prior_attempt_revision, name="prior attempt revision")
         if self.request.operation_id != self.status.operation_id:
             raise ValueError("Journal request and status operation ids differ")
         if self.request.request_fingerprint != self.status.request_fingerprint:
@@ -1952,38 +1741,10 @@ class PackageLifecycleJournalRecordV1:
     def from_dict(cls, value: object) -> PackageLifecycleJournalRecordV1:
         document = _exact_dict(
             value,
-            fields={
-                "priorAttemptRevision",
-                "priorOperationRevision",
-                "recordKind",
-                "recordRevision",
-                "recordVersion",
-                "request",
-                "status",
-            },
+            fields=_LIFECYCLE_JOURNAL_RECORD_V1_SCHEMA.keys,
             name="Package lifecycle journal record",
         )
-        return cls(
-            record_kind=cast(
-                PackageLifecycleJournalRecordKind,
-                _wire_string(document["recordKind"], name="record kind"),
-            ),
-            record_revision=_wire_positive(
-                document["recordRevision"], name="record revision"
-            ),
-            prior_operation_revision=_wire_nonnegative(
-                document["priorOperationRevision"],
-                name="prior operation revision",
-            ),
-            prior_attempt_revision=_wire_nonnegative(
-                document["priorAttemptRevision"], name="prior attempt revision"
-            ),
-            request=decode_package_lifecycle_request(document["request"]),
-            status=PackageLifecycleStatusV1.from_dict(document["status"]),
-            record_version=_wire_int(
-                document["recordVersion"], name="record version"
-            ),
-        )
+        return _LIFECYCLE_JOURNAL_RECORD_V1_SCHEMA.decode(cls, document)
 
 
 def canonicalize_source_identity(source_locator: str) -> str:
@@ -2176,3 +1937,153 @@ __all__ = [
     "classify_package_request",
     "decode_package_lifecycle_request",
 ]
+
+
+_CLASSIFICATION_BASIS_FACT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("kind", "classification fact kind"),
+        RecordField("present", "classification fact presence", _wire_bool),
+        RecordField("authority_id", "classification authority id"),
+        RecordField("owner_revision", "classification owner revision"),
+        RecordField("fact_version", "classification fact version", _wire_int),
+    ),
+)
+
+
+_LIFECYCLE_REQUEST_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("operation_id", "operation id"),
+        RecordField("action", "Package action"),
+        RecordField("product_id", "Product id"),
+        RecordField("scope_id", "scope id"),
+        RecordField("requested_package", "requested Package"),
+        RecordField(
+            "requested_plugin_id", "requested Plugin id", _wire_optional_string
+        ),
+        RecordField("canonical_source_identity", "canonical Source identity"),
+        RecordField("policy_revision", "Package policy revision"),
+        RecordField("quota_profile_revision", "quota profile revision"),
+        RecordField(
+            "resolution_environment_fingerprint", "resolution environment fingerprint"
+        ),
+        RecordField(
+            "classification_facts", decoder=PackageClassificationFactsV1.from_dict
+        ),
+        RecordField("request_version", "request version", _wire_int),
+    ),
+)
+
+
+_LIFECYCLE_REQUEST_V2_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("operation_id", "operation id"),
+        RecordField("action", "Package action"),
+        RecordField("product_id", "Product id"),
+        RecordField("scope_id", "scope id"),
+        RecordField("requested_package", "requested Package"),
+        RecordField(
+            "requested_plugin_id", "requested Plugin id", _wire_optional_string
+        ),
+        RecordField("canonical_source_identity", "canonical Source identity"),
+        RecordField("policy_revision", "Package policy revision"),
+        RecordField("quota_profile_revision", "quota profile revision"),
+        RecordField(
+            "resolution_environment_fingerprint", "resolution environment fingerprint"
+        ),
+        RecordField(
+            "classification_facts", decoder=PackageClassificationFactsV1.from_dict
+        ),
+        RecordField("runtime_admission_request_id", "runtime admission request id"),
+        RecordField("request_version", "request version", _wire_int),
+    ),
+)
+
+
+_PLUGIN_BOUND_PACKAGE_CLASSIFICATION_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("decision", "classification decision"),
+        RecordField("request_fingerprint", "request fingerprint"),
+        RecordField("basis_facts", decoder=PackageClassificationFactsV1.from_dict),
+        RecordField("policy_revision", "classification policy revision"),
+        RecordField("classifier_epoch", "classifier epoch", _wire_positive),
+        RecordField("canonical_source_identity", "canonical Source identity"),
+        RecordField("recheck_rule", "classification recheck rule"),
+        RecordField("classification_version", "classification version", _wire_int),
+    ),
+)
+
+
+_LIFECYCLE_STATUS_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("operation_id", "operation id"),
+        RecordField("request_fingerprint", "request fingerprint"),
+        RecordField("phase", "Package lifecycle phase"),
+        RecordField("disposition", "Package lifecycle disposition"),
+        RecordField("attempt_epoch", "attempt epoch", _wire_positive),
+        RecordField("journal_revision", "journal revision", _wire_nonnegative),
+        RecordField("attempt_revision", "attempt revision", _wire_nonnegative),
+        RecordField(
+            "classification",
+            decoder=partial(
+                decode_nullable, decoder=PluginBoundPackageClassificationV1.from_dict
+            ),
+        ),
+        RecordField(
+            "failure",
+            decoder=partial(
+                decode_nullable, decoder=PackageLifecycleFailureV1.from_dict
+            ),
+        ),
+        RecordField("status_version", "status version", _wire_int),
+    ),
+)
+
+
+_LIFECYCLE_JOURNAL_RECORD_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("record_kind", "record kind"),
+        RecordField("record_revision", "record revision", _wire_positive),
+        RecordField(
+            "prior_operation_revision", "prior operation revision", _wire_nonnegative
+        ),
+        RecordField(
+            "prior_attempt_revision", "prior attempt revision", _wire_nonnegative
+        ),
+        RecordField("request", decoder=decode_package_lifecycle_request),
+        RecordField("status", decoder=PackageLifecycleStatusV1.from_dict),
+        RecordField("record_version", "record version", _wire_int),
+    ),
+)
+
+
+_LIFECYCLE_FAILURE_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("code", "failure code"),
+        RecordField("stage", "failure stage"),
+        RecordField("retryable", "failure retryable", _wire_bool),
+        RecordField("retry_domain", "failure retry domain"),
+        RecordField("operator_action", "failure operator action"),
+        RecordField("subject_kind", "failure subject kind"),
+        RecordField("subject_id", "failure subject id"),
+        RecordField("operation_id", "failure operation id"),
+        RecordField("evidence_ref", "failure evidence ref"),
+        RecordField(
+            "details",
+            decoder=partial(
+                decode_tuple,
+                list_decoder=_wire_list,
+                list_label="failure details",
+                item_decoder=_wire_string,
+                item_label="failure detail",
+            ),
+        ),
+        RecordField("failure_version", "failure version", _wire_int),
+    ),
+)

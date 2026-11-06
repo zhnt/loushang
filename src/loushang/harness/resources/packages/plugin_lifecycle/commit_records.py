@@ -5,9 +5,15 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import partial
 from hashlib import sha256
 from typing import Literal, cast
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+    decode_tuple,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     VerifiedClosurePlanNodeV2,
     VerifiedClosurePlanV2,
@@ -102,36 +108,10 @@ class VerifiedArtifactRefV1:
     def from_dict(cls, value: object) -> VerifiedArtifactRefV1:
         document = _exact_dict(
             value,
-            fields={
-                "artifactDigest",
-                "distribution",
-                "extractionTreeDigest",
-                "refId",
-                "refVersion",
-                "storeIdentity",
-                "storeRevision",
-                "version",
-            },
+            fields=_VERIFIED_ARTIFACT_REF_V1_SCHEMA.keys,
             name="verified artifact ref",
         )
-        return cls(
-            ref_id=_wire_string(document["refId"], name="ref id"),
-            store_identity=_wire_string(
-                document["storeIdentity"], name="store identity"
-            ),
-            store_revision=_wire_string(
-                document["storeRevision"], name="store revision"
-            ),
-            distribution=_wire_string(document["distribution"], name="distribution"),
-            version=_wire_string(document["version"], name="version"),
-            artifact_digest=_wire_string(
-                document["artifactDigest"], name="artifact digest"
-            ),
-            extraction_tree_digest=_wire_string(
-                document["extractionTreeDigest"], name="extraction tree digest"
-            ),
-            ref_version=_wire_int(document["refVersion"], name="ref version"),
-        )
+        return _VERIFIED_ARTIFACT_REF_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,42 +206,10 @@ class PluginRevisionRefV1:
     def from_dict(cls, value: object) -> PluginRevisionRefV1:
         document = _exact_dict(
             value,
-            fields={
-                "artifactDigest",
-                "distribution",
-                "extractionTreeDigest",
-                "installationId",
-                "pluginId",
-                "refId",
-                "refVersion",
-                "storeIdentity",
-                "storeRevision",
-                "version",
-            },
+            fields=_PLUGIN_REVISION_REF_V1_SCHEMA.keys,
             name="Plugin revision ref",
         )
-        return cls(
-            ref_id=_wire_string(document["refId"], name="ref id"),
-            store_identity=_wire_string(
-                document["storeIdentity"], name="store identity"
-            ),
-            store_revision=_wire_string(
-                document["storeRevision"], name="store revision"
-            ),
-            installation_id=_wire_string(
-                document["installationId"], name="Installation identity"
-            ),
-            plugin_id=_wire_string(document["pluginId"], name="Plugin identity"),
-            distribution=_wire_string(document["distribution"], name="distribution"),
-            version=_wire_string(document["version"], name="version"),
-            artifact_digest=_wire_string(
-                document["artifactDigest"], name="artifact digest"
-            ),
-            extraction_tree_digest=_wire_string(
-                document["extractionTreeDigest"], name="extraction tree digest"
-            ),
-            ref_version=_wire_int(document["refVersion"], name="ref version"),
-        )
+        return _PLUGIN_REVISION_REF_V1_SCHEMA.decode(cls, document)
 
 
 PackageStableRefV1 = VerifiedArtifactRefV1 | PluginRevisionRefV1
@@ -481,56 +429,10 @@ class DependencyClosureLockV2:
     def from_dict(cls, value: object) -> DependencyClosureLockV2:
         document = _exact_dict(
             value,
-            fields={
-                "attemptEpoch",
-                "edgeCount",
-                "lockDigest",
-                "lockVersion",
-                "maxDepth",
-                "nodeCount",
-                "nodes",
-                "operationId",
-                "prepublicationGraphDigest",
-                "resolutionEnvironmentFingerprint",
-                "rootNodeId",
-                "verifiedPlanFingerprint",
-            },
+            fields=_DEPENDENCY_CLOSURE_LOCK_V2_SCHEMA.keys,
             name="dependency closure lock",
         )
-        return cls(
-            operation_id=_wire_string(
-                document["operationId"], name="operation identity"
-            ),
-            attempt_epoch=_wire_int(document["attemptEpoch"], name="attempt epoch"),
-            root_node_id=_wire_string(
-                document["rootNodeId"], name="root node identity"
-            ),
-            resolution_environment_fingerprint=_wire_string(
-                document["resolutionEnvironmentFingerprint"],
-                name="resolution environment fingerprint",
-            ),
-            verified_plan_fingerprint=_wire_string(
-                document["verifiedPlanFingerprint"],
-                name="verified plan fingerprint",
-            ),
-            prepublication_graph_digest=_wire_string(
-                document["prepublicationGraphDigest"],
-                name="prepublication graph digest",
-            ),
-            nodes=tuple(
-                DependencyClosureNodeV2.from_dict(item)
-                for item in _wire_list(document["nodes"], name="closure nodes")
-            ),
-            node_count=_wire_int(document["nodeCount"], name="node count"),
-            edge_count=_wire_int(document["edgeCount"], name="edge count"),
-            max_depth=_wire_int(document["maxDepth"], name="maximum depth"),
-            lock_digest=_wire_string(
-                document["lockDigest"], name="closure lock digest"
-            ),
-            lock_version=_wire_int(
-                document["lockVersion"], name="closure lock version"
-            ),
-        )
+        return _DEPENDENCY_CLOSURE_LOCK_V2_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -677,63 +579,10 @@ class CommittedPackageSetRefV1:
     def from_dict(cls, value: object) -> CommittedPackageSetRefV1:
         document = _exact_dict(
             value,
-            fields={
-                "attemptEpoch",
-                "classificationFingerprint",
-                "closureLockDigest",
-                "commitRevision",
-                "dependencyRefs",
-                "installationId",
-                "operationId",
-                "pluginId",
-                "prepublicationGraphDigest",
-                "productId",
-                "requestFingerprint",
-                "rootRef",
-                "scopeId",
-                "setId",
-                "setVersion",
-            },
+            fields=_COMMITTED_PACKAGE_SET_REF_V1_SCHEMA.keys,
             name="committed Package set ref",
         )
-        return cls(
-            set_id=_wire_string(document["setId"], name="set id"),
-            operation_id=_wire_string(
-                document["operationId"], name="operation identity"
-            ),
-            attempt_epoch=_wire_int(document["attemptEpoch"], name="attempt epoch"),
-            request_fingerprint=_wire_string(
-                document["requestFingerprint"], name="request fingerprint"
-            ),
-            product_id=_wire_string(document["productId"], name="Product identity"),
-            scope_id=_wire_string(document["scopeId"], name="scope identity"),
-            installation_id=_wire_string(
-                document["installationId"], name="Installation identity"
-            ),
-            plugin_id=_wire_string(document["pluginId"], name="Plugin identity"),
-            classification_fingerprint=_wire_string(
-                document["classificationFingerprint"],
-                name="classification fingerprint",
-            ),
-            closure_lock_digest=_wire_string(
-                document["closureLockDigest"], name="closure lock digest"
-            ),
-            prepublication_graph_digest=_wire_string(
-                document["prepublicationGraphDigest"],
-                name="prepublication graph digest",
-            ),
-            root_ref=PluginRevisionRefV1.from_dict(document["rootRef"]),
-            dependency_refs=tuple(
-                VerifiedArtifactRefV1.from_dict(item)
-                for item in _wire_list(
-                    document["dependencyRefs"], name="dependency refs"
-                )
-            ),
-            commit_revision=_wire_int(
-                document["commitRevision"], name="commit revision"
-            ),
-            set_version=_wire_int(document["setVersion"], name="set version"),
-        )
+        return _COMMITTED_PACKAGE_SET_REF_V1_SCHEMA.decode(cls, document)
 
 
 def _fingerprint(value: object) -> str:
@@ -811,3 +660,96 @@ __all__ = [
     "PluginRevisionRefV1",
     "VerifiedArtifactRefV1",
 ]
+
+
+_VERIFIED_ARTIFACT_REF_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("ref_id", "ref id"),
+        RecordField("store_identity", "store identity"),
+        RecordField("store_revision", "store revision"),
+        RecordField("distribution", "distribution"),
+        RecordField("version", "version"),
+        RecordField("artifact_digest", "artifact digest"),
+        RecordField("extraction_tree_digest", "extraction tree digest"),
+        RecordField("ref_version", "ref version", _wire_int),
+    ),
+)
+
+
+_PLUGIN_REVISION_REF_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("ref_id", "ref id"),
+        RecordField("store_identity", "store identity"),
+        RecordField("store_revision", "store revision"),
+        RecordField("installation_id", "Installation identity"),
+        RecordField("plugin_id", "Plugin identity"),
+        RecordField("distribution", "distribution"),
+        RecordField("version", "version"),
+        RecordField("artifact_digest", "artifact digest"),
+        RecordField("extraction_tree_digest", "extraction tree digest"),
+        RecordField("ref_version", "ref version", _wire_int),
+    ),
+)
+
+
+_DEPENDENCY_CLOSURE_LOCK_V2_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("operation_id", "operation identity"),
+        RecordField("attempt_epoch", "attempt epoch", _wire_int),
+        RecordField("root_node_id", "root node identity"),
+        RecordField(
+            "resolution_environment_fingerprint", "resolution environment fingerprint"
+        ),
+        RecordField("verified_plan_fingerprint", "verified plan fingerprint"),
+        RecordField("prepublication_graph_digest", "prepublication graph digest"),
+        RecordField(
+            "nodes",
+            decoder=partial(
+                decode_tuple,
+                list_decoder=_wire_list,
+                list_label="closure nodes",
+                item_decoder=DependencyClosureNodeV2.from_dict,
+                item_label=None,
+            ),
+        ),
+        RecordField("node_count", "node count", _wire_int),
+        RecordField("edge_count", "edge count", _wire_int),
+        RecordField("max_depth", "maximum depth", _wire_int),
+        RecordField("lock_digest", "closure lock digest"),
+        RecordField("lock_version", "closure lock version", _wire_int),
+    ),
+)
+
+
+_COMMITTED_PACKAGE_SET_REF_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("set_id", "set id"),
+        RecordField("operation_id", "operation identity"),
+        RecordField("attempt_epoch", "attempt epoch", _wire_int),
+        RecordField("request_fingerprint", "request fingerprint"),
+        RecordField("product_id", "Product identity"),
+        RecordField("scope_id", "scope identity"),
+        RecordField("installation_id", "Installation identity"),
+        RecordField("plugin_id", "Plugin identity"),
+        RecordField("classification_fingerprint", "classification fingerprint"),
+        RecordField("closure_lock_digest", "closure lock digest"),
+        RecordField("prepublication_graph_digest", "prepublication graph digest"),
+        RecordField("root_ref", decoder=PluginRevisionRefV1.from_dict),
+        RecordField(
+            "dependency_refs",
+            decoder=partial(
+                decode_tuple,
+                list_decoder=_wire_list,
+                list_label="dependency refs",
+                item_decoder=VerifiedArtifactRefV1.from_dict,
+                item_label=None,
+            ),
+        ),
+        RecordField("commit_revision", "commit revision", _wire_int),
+        RecordField("set_version", "set version", _wire_int),
+    ),
+)

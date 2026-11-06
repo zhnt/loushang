@@ -23,6 +23,10 @@ from loushang.harness.journal import (
     journal_file_read_lock,
     load_jsonl,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     PackageClosureArtifactRole,
     VerifiedClosurePlanNodeV2,
@@ -126,40 +130,10 @@ class PackageTransactionPinTargetV1:
     def from_dict(cls, value: object) -> PackageTransactionPinTargetV1:
         document = _exact_dict(
             value,
-            fields={
-                "artifactDigest",
-                "distribution",
-                "extractionTreeDigest",
-                "nodeId",
-                "role",
-                "targetId",
-                "targetVersion",
-                "version",
-                "wheelEvidenceFingerprint",
-            },
+            fields=_TRANSACTION_PIN_TARGET_V1_SCHEMA.keys,
             name="Package transaction pin target",
         )
-        return cls(
-            target_id=_wire_string(document["targetId"], name="target id"),
-            node_id=_wire_string(document["nodeId"], name="node id"),
-            role=cast(
-                PackageClosureArtifactRole,
-                _wire_string(document["role"], name="target role"),
-            ),
-            distribution=_wire_string(document["distribution"], name="distribution"),
-            version=_wire_string(document["version"], name="version"),
-            artifact_digest=_wire_string(
-                document["artifactDigest"], name="artifact digest"
-            ),
-            extraction_tree_digest=_wire_string(
-                document["extractionTreeDigest"], name="tree digest"
-            ),
-            wheel_evidence_fingerprint=_wire_string(
-                document["wheelEvidenceFingerprint"],
-                name="wheel evidence fingerprint",
-            ),
-            target_version=_wire_int(document["targetVersion"], name="target version"),
-        )
+        return _TRANSACTION_PIN_TARGET_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -494,48 +468,10 @@ class PackageTransactionPinReceiptV1:
     def from_dict(cls, value: object) -> PackageTransactionPinReceiptV1:
         document = _exact_dict(
             value,
-            fields={
-                "leaseId",
-                "leaseRevision",
-                "ownerIdentity",
-                "ownerRevision",
-                "pinId",
-                "pinRequest",
-                "priorReceiptId",
-                "receiptId",
-                "receiptVersion",
-                "state",
-                "transitionEvidenceRef",
-            },
+            fields=_TRANSACTION_PIN_RECEIPT_V1_SCHEMA.keys,
             name="Package transaction pin receipt",
         )
-        return cls(
-            receipt_id=_wire_string(document["receiptId"], name="receipt id"),
-            pin_request=PackageTransactionPinRequestV1.from_dict(
-                document["pinRequest"]
-            ),
-            pin_id=_wire_string(document["pinId"], name="pin id"),
-            owner_identity=_wire_string(
-                document["ownerIdentity"], name="owner identity"
-            ),
-            owner_revision=_wire_int(document["ownerRevision"], name="owner revision"),
-            lease_id=_wire_string(document["leaseId"], name="lease id"),
-            lease_revision=_wire_int(document["leaseRevision"], name="lease revision"),
-            state=cast(
-                PackageTransactionPinState,
-                _wire_string(document["state"], name="pin state"),
-            ),
-            prior_receipt_id=_wire_optional_string(
-                document["priorReceiptId"], name="prior receipt id"
-            ),
-            transition_evidence_ref=_wire_optional_string(
-                document["transitionEvidenceRef"],
-                name="transition evidence ref",
-            ),
-            receipt_version=_wire_int(
-                document["receiptVersion"], name="receipt version"
-            ),
-        )
+        return _TRANSACTION_PIN_RECEIPT_V1_SCHEMA.decode(cls, document)
 
 
 class PackageTransactionPinPort(Protocol):
@@ -988,3 +924,39 @@ __all__ = [
     "PackageTransactionPinRequestV1",
     "PackageTransactionPinTargetV1",
 ]
+
+
+_TRANSACTION_PIN_TARGET_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("target_id", "target id"),
+        RecordField("node_id", "node id"),
+        RecordField("role", "target role"),
+        RecordField("distribution", "distribution"),
+        RecordField("version", "version"),
+        RecordField("artifact_digest", "artifact digest"),
+        RecordField("extraction_tree_digest", "tree digest"),
+        RecordField("wheel_evidence_fingerprint", "wheel evidence fingerprint"),
+        RecordField("target_version", "target version", _wire_int),
+    ),
+)
+
+
+_TRANSACTION_PIN_RECEIPT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("receipt_id", "receipt id"),
+        RecordField("pin_request", decoder=PackageTransactionPinRequestV1.from_dict),
+        RecordField("pin_id", "pin id"),
+        RecordField("owner_identity", "owner identity"),
+        RecordField("owner_revision", "owner revision", _wire_int),
+        RecordField("lease_id", "lease id"),
+        RecordField("lease_revision", "lease revision", _wire_int),
+        RecordField("state", "pin state"),
+        RecordField("prior_receipt_id", "prior receipt id", _wire_optional_string),
+        RecordField(
+            "transition_evidence_ref", "transition evidence ref", _wire_optional_string
+        ),
+        RecordField("receipt_version", "receipt version", _wire_int),
+    ),
+)

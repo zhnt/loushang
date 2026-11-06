@@ -34,6 +34,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.journal import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.owner import (
     PackageLifecycleOwner,
+    _local_refusal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
     PackageArtifactEvidenceJournalError,
@@ -593,41 +594,6 @@ def _failure_code(error: Exception) -> str:
     }:
         return "package_resource_limit_exceeded"
     return "package_closure_artifact_invalid"
-
-
-def _local_refusal(
-    status: PackageLifecycleStatusV1,
-    *,
-    code: str,
-) -> PackageLifecycleStatusV1:
-    evidence_ref = sha256(
-        canonical_json_bytes(
-            {
-                "attemptEpoch": status.attempt_epoch,
-                "code": code,
-                "operationId": status.operation_id,
-                "requestFingerprint": status.request_fingerprint,
-                "stage": status.phase,
-            }
-        )
-    ).hexdigest()
-    failure = PackageLifecycleFailureV1.for_operation(
-        code,
-        stage=cast(PackageLifecyclePhase, status.phase),
-        operation_id=status.operation_id,
-        evidence_ref=evidence_ref,
-    )
-    return PackageLifecycleStatusV1(
-        operation_id=status.operation_id,
-        request_fingerprint=status.request_fingerprint,
-        phase=status.phase,
-        disposition="rejected",
-        attempt_epoch=status.attempt_epoch,
-        journal_revision=status.journal_revision,
-        attempt_revision=status.attempt_revision,
-        classification=status.classification,
-        failure=failure,
-    )
 
 
 __all__ = [

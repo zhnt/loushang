@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import cast
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
 )
@@ -116,34 +120,10 @@ class PackageOfflineRestoreSnapshotEvidenceV1:
     def from_dict(cls, value: object) -> PackageOfflineRestoreSnapshotEvidenceV1:
         document = _wire_object(
             value,
-            expected={
-                "evidenceId",
-                "snapshot",
-                "snapshotTreeDigest",
-                "stateManifestDigest",
-                "coveredDomains",
-                "evidenceVersion",
-            },
+            expected=_OFFLINE_RESTORE_SNAPSHOT_EVIDENCE_V1_SCHEMA.keys,
             name="Package offline snapshot evidence",
         )
-        return cls(
-            evidence_id=_wire_string(document["evidenceId"], name="evidence id"),
-            snapshot=PackageEpochCutoverSnapshotReceiptV1.from_dict(
-                document["snapshot"]
-            ),
-            snapshot_tree_digest=_wire_string(
-                document["snapshotTreeDigest"], name="snapshot tree digest"
-            ),
-            state_manifest_digest=_wire_string(
-                document["stateManifestDigest"], name="state manifest digest"
-            ),
-            covered_domains=_wire_string_tuple(
-                document["coveredDomains"], name="covered domains"
-            ),
-            evidence_version=_wire_int(
-                document["evidenceVersion"], name="evidence version"
-            ),
-        )
+        return _OFFLINE_RESTORE_SNAPSHOT_EVIDENCE_V1_SCHEMA.decode(cls, document)
 
 
 def _snapshot_evidence_identity(
@@ -204,3 +184,16 @@ def _require_sha256(value: str, *, name: str) -> None:
 
 
 __all__: tuple[str, ...] = ()
+
+
+_OFFLINE_RESTORE_SNAPSHOT_EVIDENCE_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("evidence_id", "evidence id"),
+        RecordField("snapshot", decoder=PackageEpochCutoverSnapshotReceiptV1.from_dict),
+        RecordField("snapshot_tree_digest", "snapshot tree digest"),
+        RecordField("state_manifest_digest", "state manifest digest"),
+        RecordField("covered_domains", "covered domains", _wire_string_tuple),
+        RecordField("evidence_version", "evidence version", _wire_int),
+    ),
+)

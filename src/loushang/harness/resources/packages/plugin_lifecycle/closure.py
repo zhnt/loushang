@@ -13,6 +13,10 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     AuthenticatedSourceEnvelopeV1,
     BoundedAcquisitionReceiptV1,
@@ -90,9 +94,7 @@ class PackageResolutionEnvironmentV1:
             self.marker_environment
         ):
             raise ValueError("Resolution marker environment fields must be unique")
-        empty_keys = tuple(
-            key for key, value in self.marker_environment if not value
-        )
+        empty_keys = tuple(key for key, value in self.marker_environment if not value)
         if empty_keys:
             raise ValueError(
                 "Resolution marker environment values cannot be empty: "
@@ -382,38 +384,10 @@ class ResolvedPackageRequirementV1:
     def from_dict(cls, value: object) -> ResolvedPackageRequirementV1:
         document = _exact_dict(
             value,
-            fields={
-                "expectedArtifactDigest",
-                "expectedSourceIdentity",
-                "markerApplies",
-                "requirement",
-                "resolutionVersion",
-                "selectedNodeId",
-            },
+            fields=_RESOLVED_PACKAGE_REQUIREMENT_V1_SCHEMA.keys,
             name="resolved Package requirement",
         )
-        return cls(
-            requirement=NormalizedPackageRequirementV1.from_dict(
-                document["requirement"]
-            ),
-            marker_applies=_wire_bool(
-                document["markerApplies"], name="requirement marker result"
-            ),
-            selected_node_id=_wire_optional_string(
-                document["selectedNodeId"], name="selected node id"
-            ),
-            expected_source_identity=_wire_optional_string(
-                document["expectedSourceIdentity"],
-                name="expected Source identity",
-            ),
-            expected_artifact_digest=_wire_optional_string(
-                document["expectedArtifactDigest"],
-                name="expected artifact digest",
-            ),
-            resolution_version=_wire_int(
-                document["resolutionVersion"], name="resolution version"
-            ),
-        )
+        return _RESOLVED_PACKAGE_REQUIREMENT_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -508,40 +482,10 @@ class PackageClosureBudgetV1:
     def from_dict(cls, value: object) -> PackageClosureBudgetV1:
         document = _exact_dict(
             value,
-            fields={
-                "budgetVersion",
-                "maxArtifacts",
-                "maxDepth",
-                "maxEdges",
-                "maxMarkerSteps",
-                "maxNodes",
-                "maxSolverSteps",
-                "maxTotalRedirects",
-                "maxTotalRequests",
-            },
+            fields=_CLOSURE_BUDGET_V1_SCHEMA.keys,
             name="Package closure budget",
         )
-        return cls(
-            max_nodes=_wire_int(document["maxNodes"], name="node budget"),
-            max_edges=_wire_int(document["maxEdges"], name="edge budget"),
-            max_depth=_wire_int(document["maxDepth"], name="depth budget"),
-            max_solver_steps=_wire_int(
-                document["maxSolverSteps"], name="solver-step budget"
-            ),
-            max_marker_steps=_wire_int(
-                document["maxMarkerSteps"], name="marker-step budget"
-            ),
-            max_artifacts=_wire_int(document["maxArtifacts"], name="artifact budget"),
-            max_total_requests=_wire_int(
-                document["maxTotalRequests"], name="request budget"
-            ),
-            max_total_redirects=_wire_int(
-                document["maxTotalRedirects"], name="redirect budget"
-            ),
-            budget_version=_wire_int(
-                document["budgetVersion"], name="closure budget version"
-            ),
-        )
+        return _CLOSURE_BUDGET_V1_SCHEMA.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1334,3 +1278,40 @@ __all__ = [
     "VerifiedClosurePlanNodeV2",
     "VerifiedClosurePlanV2",
 ]
+
+
+_RESOLVED_PACKAGE_REQUIREMENT_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("requirement", decoder=NormalizedPackageRequirementV1.from_dict),
+        RecordField("marker_applies", "requirement marker result", _wire_bool),
+        RecordField("selected_node_id", "selected node id", _wire_optional_string),
+        RecordField(
+            "expected_source_identity",
+            "expected Source identity",
+            _wire_optional_string,
+        ),
+        RecordField(
+            "expected_artifact_digest",
+            "expected artifact digest",
+            _wire_optional_string,
+        ),
+        RecordField("resolution_version", "resolution version", _wire_int),
+    ),
+)
+
+
+_CLOSURE_BUDGET_V1_SCHEMA = RecordSchema(
+    text_decoder=_wire_string,
+    fields=(
+        RecordField("max_nodes", "node budget", _wire_int),
+        RecordField("max_edges", "edge budget", _wire_int),
+        RecordField("max_depth", "depth budget", _wire_int),
+        RecordField("max_solver_steps", "solver-step budget", _wire_int),
+        RecordField("max_marker_steps", "marker-step budget", _wire_int),
+        RecordField("max_artifacts", "artifact budget", _wire_int),
+        RecordField("max_total_requests", "request budget", _wire_int),
+        RecordField("max_total_redirects", "redirect budget", _wire_int),
+        RecordField("budget_version", "closure budget version", _wire_int),
+    ),
+)
