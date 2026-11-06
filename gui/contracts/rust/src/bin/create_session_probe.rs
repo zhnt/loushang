@@ -30,6 +30,7 @@ fn main() {
         let submitted = Cell::new(false);
         let first = app_client::AppClient::default().run_stream(
             app_client::ConnectionOptions {
+                prepare_default_session: false,
                 root: &root,
                 timeout: std::time::Duration::from_millis(timeout),
                 cancel: None,
@@ -48,7 +49,7 @@ fn main() {
                 let (reply, receive) = std::sync::mpsc::sync_channel(1);
                 commands
                     .send(app_client::ControlCommand::CreateSession {
-                        source_session_id: source_session_id.clone(),
+                        source_session_id: Some(source_session_id.clone()),
                         continuity_id: continuity_id.clone(),
                         title: title.clone(),
                         reply,
@@ -75,6 +76,7 @@ fn main() {
         let mut observed = false;
         app_client::AppClient::default().run(
             app_client::ConnectionOptions {
+                prepare_default_session: false,
                 root: &root,
                 timeout: std::time::Duration::from_millis(timeout),
                 cancel: None,

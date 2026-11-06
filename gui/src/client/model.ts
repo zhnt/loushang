@@ -261,7 +261,7 @@ export interface SessionModels {
 }
 
 export interface CreateSessionInput {
-  readonly sourceSessionId: string;
+  readonly sourceSessionId?: string;
   readonly title: string;
 }
 

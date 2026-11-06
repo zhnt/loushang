@@ -253,7 +253,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(within(context).getByText(/workspace capability.*unavailable/)).toBeVisible();
   });
 
-  it("creates a live Session and selects it after the replacement snapshot", async () => {
+  it.each([false, true])("creates a live Session and selects it after the replacement snapshot (empty=%s)", async (empty) => {
     const user = userEvent.setup();
     const fixture = createMockAppClient();
     const fixtureSnapshot = await fixture.snapshot();
@@ -274,8 +274,9 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     };
     let publishSnapshot: ((value: ClientSnapshot) => void) | undefined;
     const createSession = vi.fn(async () => ({ sessionId: "session-new" }));
+    if (empty) createSession.mockRejectedValueOnce(new Error("creation unavailable"));
     render(<HarnessGui client={{
-      snapshot: async () => snapshot,
+      snapshot: async () => empty ? { ...snapshot, sessions: [], selectedSessionId: "", recentSessionIds: [] } : snapshot,
       subscribe: () => () => undefined,
       subscribeSnapshots: (listener) => {
         publishSnapshot = listener;
@@ -286,10 +287,15 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       createSession,
     }} />);
 
-    await screen.findByRole("heading", { name: "GUI development" });
+    if (empty) await screen.findByText("No Session is available.");
+    else await screen.findByRole("heading", { name: "GUI development" });
     await user.click(screen.getByRole("button", { name: "New Session" }));
+    if (empty) {
+      expect(await screen.findByText("New Session could not be created.")).toBeVisible();
+      await user.click(screen.getByRole("button", { name: "New Session" }));
+    }
     expect(createSession).toHaveBeenCalledWith({
-      sourceSessionId: "session-gui",
+      sourceSessionId: empty ? undefined : "session-gui",
       title: "New Session",
     });
     expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();

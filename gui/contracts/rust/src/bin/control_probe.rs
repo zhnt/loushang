@@ -38,6 +38,7 @@ fn main() {
                 app_client::AppClient::default()
                     .run_stream(
                         app_client::ConnectionOptions {
+                        prepare_default_session: false,
                             root: &root,
                             timeout: std::time::Duration::from_millis(timeout),
                             cancel: None,

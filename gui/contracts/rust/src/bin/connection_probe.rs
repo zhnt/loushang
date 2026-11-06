@@ -29,6 +29,7 @@ fn main() {
         read_worker::ReadWorker::spawn(move |stop| {
             app_client::AppClient::default().run(
                 app_client::ConnectionOptions {
+                    prepare_default_session: false,
                     root: &root,
                     timeout: std::time::Duration::from_millis(timeout),
                     cancel: (cancel >= 0).then(|| std::time::Duration::from_millis(cancel as u64)),

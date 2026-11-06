@@ -367,12 +367,12 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   }
 
   async function createSession(): Promise<void> {
-    if (!selected || !client.createSession || createPending
+    if (!client.createSession || createPending
       || state.remote.connection !== "connected") return;
     setCreatePending(true);
     try {
       const receipt = await client.createSession({
-        sourceSessionId: selected.id,
+        sourceSessionId: selected?.id,
         title: i18n.t("workspace:sidebar.newSession"),
       });
       createdSessionRef.current = receipt.sessionId;
@@ -582,7 +582,10 @@ export function HarnessGui({ client }: HarnessGuiProps) {
               </div>
             </>
           ) : (
-            <div className="empty-state">{t("session:emptySession")}</div>
+            <div className="empty-state">
+              <p>{t("session:emptySession")}</p>
+              <p role="status"><NoticeText notice={notice} /></p>
+            </div>
           )}
         </section>
 

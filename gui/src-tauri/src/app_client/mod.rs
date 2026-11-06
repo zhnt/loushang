@@ -39,7 +39,7 @@ pub(crate) struct LiveEventRound {
 
 pub(crate) enum ControlCommand {
     CreateSession {
-        source_session_id: String,
+        source_session_id: Option<String>,
         continuity_id: String,
         title: String,
         reply: SyncSender<Result<CreateSessionResult, ()>>,
@@ -126,6 +126,7 @@ pub(crate) struct ConnectionOptions<'a> {
     pub(crate) timeout: Duration,
     pub(crate) cancel: Option<Duration>,
     pub(crate) attach: bool,
+    pub(crate) prepare_default_session: bool,
     pub(crate) mux_name: &'a str,
     pub(crate) stop: Option<super::read_stop::ReadStop>,
     pub(crate) control_commands: Option<&'a Receiver<ControlCommand>>,
@@ -145,6 +146,7 @@ fn run_attempt(
         timeout,
         cancel,
         attach,
+        prepare_default_session,
         mux_name,
         stop,
         control_commands,
@@ -223,8 +225,11 @@ fn run_attempt(
     channel.send(&bytes)?;
     if attach {
         let mut session =
-            attachment::ReadSession::attach(&mut channel, instance, mux_name, &attempt)?;
+            attachment::ReadSession::attach(&mut channel, instance, mux_name, &attempt, &record)?;
         let outcome = (|| {
+            if prepare_default_session {
+                session.ensure_default(&mut channel, &attempt)?;
+            }
             let initial = session.initialize(&mut channel, &attempt)?;
             let authority = session.control_authority()?;
             let control_authority = authority.clone();
@@ -357,7 +362,7 @@ fn process_controls<R: Read, W: Write>(
             } => {
                 let result = authority.create_session(
                     channel,
-                    &source_session_id,
+                    source_session_id.as_deref(),
                     &continuity_id,
                     &title,
                     &request_id,

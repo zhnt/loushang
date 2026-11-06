@@ -11,9 +11,10 @@ mod read_worker;
 fn main() {
     let args: Vec<_> = std::env::args_os().collect();
     let outcome = (|| {
-        if args.len() != 4 {
+        if args.len() != 4 && !(args.len() == 5 && args[4] == "--prepare-default") {
             return Err(());
         }
+        let prepare_default_session = args.len() == 5;
         let timeout: u64 = args[2].to_str().ok_or(())?.parse().map_err(|_| ())?;
         if !(1..=5000).contains(&timeout) {
             return Err(());
@@ -24,6 +25,7 @@ fn main() {
         read_worker::ReadWorker::spawn(move |_| {
             app_client::AppClient::default().run(
                 app_client::ConnectionOptions {
+                    prepare_default_session,
                     root: &root,
                     timeout: std::time::Duration::from_millis(timeout),
                     cancel: None,

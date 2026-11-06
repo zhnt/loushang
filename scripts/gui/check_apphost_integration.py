@@ -146,12 +146,13 @@ async def probe(root, *, succeeds, watch=False):
         assert stderr == b"connection probe failed\n"
 
 
-async def initial_snapshot(root):
+async def initial_snapshot(root, *, prepare_default=False):
     process = await asyncio.create_subprocess_exec(
         str(SNAPSHOT_EXE),
         str(root),
         "5000",
         "gui-fixture",
+        *(["--prepare-default"] if prepare_default else []),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -383,6 +384,30 @@ async def run(root):
         scope = launch.scopes[0]
         for name in ("gui-fixture", "mux-peer"):
             await owner.client.create_mux(MuxCreateV1(name))
+            if name == "gui-fixture":
+                empty = await initial_snapshot(root / "connection")
+                assert not empty["sessions"]
+                prepared = await initial_snapshot(
+                    root / "connection", prepare_default=True
+                )
+                repeated = await initial_snapshot(
+                    root / "connection", prepare_default=True
+                )
+                assert len(prepared["sessions"]) == len(repeated["sessions"]) == 1
+                identity = prepared["sessions"][0]["source"]["source"]["identity"]
+                assert identity["scope"] == scope.scope
+                assert identity["scopeFingerprint"] == scope.fingerprint
+                assert (
+                    repeated["sessions"][0]["source"]["source"]["identity"] == identity
+                )
+                assert (
+                    repeated["muxSpace"]["revision"] == prepared["muxSpace"]["revision"]
+                )
+                print(
+                    "Real AppHost: empty mux prepared once; reconnect retained the same Session",
+                    flush=True,
+                )
+                continue
             initial = await owner.client.attach_mux(
                 MuxAttachV1(MuxSelectorV1(name=name))
             )

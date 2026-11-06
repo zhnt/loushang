@@ -89,6 +89,15 @@ The record root and Mux selection are parsed and retained by Rust; the WebView
 cannot provide or read them. Native admission still validates the private record
 directory and file before authentication. The published payload contains no
 attachment ID, controller generation or authentication key. Live snapshots are
+prepared with a default Session when the selected Mux is empty. The native
+adapter uses the authenticated record's admitted `cwd` scope (or its home scope
+when no workspace scope is published), asks AppHost to open a stable per-Mux
+continuity identity, and reattaches before publishing the snapshot. Existing
+members are retained; reconnecting does not append another default Session.
+New Session can also use this admitted context without an existing selection.
+See [default Session acceptance](tests/playback/default-session-acceptance.md).
+
+Live snapshots are
 visibly labelled as AppHost-controlled. Send and Interrupt use controller facts
 kept only in Rust; fixture playback, Workspace, ChangeSet, Tasks and Subagents
 remain unavailable until their own accepted live contracts are implemented. Closing the window cooperatively detaches and joins
