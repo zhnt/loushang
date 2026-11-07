@@ -189,6 +189,7 @@ export function FrameMenu(actions: FrameActions) {
       {help === "about" ? <><p>{t("aboutDescription")}</p><p>{t("aboutRuntime")}</p></> : <dl>
         <dt>{t("sidebarShortcut")}</dt><dd>{t("toggleSidebar")}</dd>
         <dt>{t("sendShortcut")}</dt><dd>{t("sendMessage")}</dd>
+        <dt>{t("newlineShortcut")}</dt><dd>{t("insertNewline")}</dd>
         <dt>{t("arrowsShortcut")}</dt><dd>{t("menuNavigation")}</dd>
         <dt>{t("escapeShortcut")}</dt><dd>{t("dismissMenu")}</dd>
       </dl>}

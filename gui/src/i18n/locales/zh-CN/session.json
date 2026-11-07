@@ -6,7 +6,7 @@
     "created": "已创建并连接新会话。",
     "liveUpdated": "AppHost 事件已更新。",
     "modelsUnavailable": "无法获取 AppHost 模型列表。",
-    "emptyPrompt": "发送前请输入提示词。",
+    "emptyPrompt": "发送前请输入消息。",
     "unknownSubmission": "无法确认提交结果，草稿已保留；请重新同步后重试。",
     "fixtureAccepted": "测试提示词已接收，可逐步推进回放。",
     "liveAccepted": "AppHost 已接收提示词。",
@@ -34,7 +34,8 @@
     "interrupt": "中断",
     "send": "发送",
     "stopHint": "停止执行",
-    "sendHint": "发送 (Ctrl+Enter)",
+    "sendHint": "发送（Enter）",
+    "keyboardHint": "回车发送，Ctrl+回车换行。",
     "messageFor": "发送给 {{title}} 的消息"
   },
   "models": {

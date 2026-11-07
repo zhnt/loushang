@@ -94,6 +94,9 @@ it("localizes live UI and rejected submissions while retaining raw content and t
   expect(screen.getByText("在线 AppHost · 受控")).toBeVisible();
   expect(screen.getByText("已确认的 AppHost 身份")).toBeVisible();
   expect(screen.getByText("执行已成功")).toBeVisible();
+  expect(screen.getByText("执行状态版本")).not.toBeVisible();
+  await user.click(screen.getByText("执行已成功"));
+  expect(screen.getByText("执行状态版本")).toBeVisible();
   expect(screen.getByText(rawMessage)).toBeVisible();
   await user.click(screen.getByRole("button", { name: "发送" }));
   expect(await screen.findByText("提交被拒绝。")).toBeInTheDocument();

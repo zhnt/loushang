@@ -4,6 +4,7 @@ import { AccountMenu } from "./AccountMenu";
 import { SettingsDialog } from "./SettingsDialog";
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import "./App.css";
+import { ModelPicker } from "./ModelPicker";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { isTauri } from "@tauri-apps/api/core";
@@ -561,6 +562,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                   <label className="visually-hidden" htmlFor="message-input">{t("session:composer.messageFor", { title: selected.title })}</label>
                   <textarea
                     id="message-input"
+                    aria-describedby="message-keyboard-hint"
                     rows={2}
                     value={state.local.drafts[selected.id] ?? ""}
                     placeholder={state.remote.source.kind === "fixture" ? t("session:composer.fixturePlaceholder") : t("session:composer.livePlaceholder")}
@@ -568,35 +570,31 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                       dispatch({ type: "draft.changed", sessionId: selected.id, value: event.currentTarget.value })
                     }
                     onKeyDown={(event) => {
-                      if (!event.nativeEvent.isComposing && event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                      if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
+                      if (event.ctrlKey && !event.altKey && !event.metaKey) {
                         event.preventDefault();
-                        void submit();
+                        const input = event.currentTarget;
+                        input.setRangeText("\n", input.selectionStart, input.selectionEnd, "end");
+                        dispatch({ type: "draft.changed", sessionId: selected.id, value: input.value });
+                      } else if (!event.shiftKey && !event.altKey && !event.metaKey) {
+                        event.preventDefault();
+                        if (!event.repeat) void submit();
                       }
                     }}
                   />
+                  <span id="message-keyboard-hint" className="visually-hidden">{t("session:composer.keyboardHint")}</span>
                   <div className="composer-actions">
-                    <button type="button" className="icon-button" aria-label={t("session:composer.attachUnavailable")} title={t("session:composer.attachHint")} disabled>＋</button>
-                    <span className="permission-label">◉ {state.remote.source.kind === "fixture" ? t("session:composer.fixtureAccess") : t("session:composer.liveControl")}</span>
-                    <p className="visually-hidden" role="status"><NoticeText notice={notice} /></p>
-                    <div className="model-controls">
-                    <select
-                      className="effort-selector"
-                      aria-label={t("session:models.label")}
-                      aria-describedby="model-effort-status"
-                      title={canChangeModel ? t("session:models.changeHint") : undefined}
-                      value={sessionModels?.currentId ?? ""}
-                      disabled={!canChangeModel || modelPending || modelRunning}
-                      onChange={(event) => void selectModel(event.currentTarget.value)}
-                    >
-                      {!sessionModels?.currentId ? <option value="" disabled>{t("session:models.none")}</option> : null}
-                      {sessionModels?.models.map((model) => (
-                        <option key={model.id} value={model.id} title={t("session:models.endpoint", { endpoint: model.endpointId })}>
-                          {t(model.supportsThinking ? "session:models.reasoningOption" : "session:models.option", { provider: model.provider, model: model.modelId })}
-                        </option>
-                      ))}
-                    </select>
-                    <small id="model-effort-status">{t("session:models.effortUnavailable")}</small>
+                    <div className="composer-permissions">
+                      <button type="button" className="icon-button" aria-label={t("session:composer.attachUnavailable")} title={t("session:composer.attachHint")} disabled>＋</button>
+                      <span className="permission-label">◉ {state.remote.source.kind === "fixture" ? t("session:composer.fixtureAccess") : t("session:composer.liveControl")}</span>
                     </div>
+                    <p className="visually-hidden" role="status"><NoticeText notice={notice} /></p>
+                    <ModelPicker
+                      key={modelScope ?? selected.id}
+                      models={sessionModels}
+                      disabled={!canChangeModel || modelPending || modelRunning}
+                      onSelect={(modelId) => void selectModel(modelId)}
+                    />
                     <button
                       className="composer-submit"
                       type={selected.status === "running" ? "button" : "submit"}
@@ -608,6 +606,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                       {selected.status === "running" ? <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" /></svg>
                         : <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 18V6m-5 5 5-5 5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                     </button>
+                    <small className="model-effort-status" id="model-effort-status">{t("session:models.effortUnavailable")}</small>
                   </div>
                 </form>
               </div>
@@ -815,10 +814,11 @@ function ExecutionDetail({ execution }: {
       <summary>
         <span className={`run-indicator ${execution.status}`} aria-hidden="true">◌</span>
         <strong>{t("panels:execution.status", { status: valueLabel(execution.status) })}</strong>
-        <span>{t("panels:execution.revision", { revision: execution.revision })}</span>
+        <span className="execution-disclosure" aria-hidden="true">⌄</span>
       </summary>
       <dl>
         <dt>{t("panels:execution.title")}</dt><dd><code>{execution.id}</code></dd>
+        <dt>{t("panels:execution.revision")}</dt><dd>{execution.revision}</dd>
         <dt>{t("panels:execution.source")}</dt><dd>{(execution.sourceStatus ? valueLabel(execution.sourceStatus) : null) ?? t("panels:execution.notObserved")}</dd>
         <dt>{t("panels:execution.finalCursor")}</dt><dd>{execution.finalCursor ?? t("panels:execution.notTerminal")}</dd>
         <dt>{t("session:composer.interrupt")}</dt><dd>{execution.interruptRequested ? t("panels:execution.requested") : t("panels:execution.notRequested")}</dd>

@@ -6,7 +6,7 @@
     "created": "New Session created and attached.",
     "liveUpdated": "Live AppHost event round installed.",
     "modelsUnavailable": "The AppHost model catalog is unavailable.",
-    "emptyPrompt": "Enter a fixture prompt before sending.",
+    "emptyPrompt": "Enter a message before sending.",
     "unknownSubmission": "Submission outcome is unknown. The draft was preserved; resynchronize before retrying.",
     "fixtureAccepted": "Fixture accepted the prompt. Advance it step by step.",
     "liveAccepted": "AppHost accepted the prompt.",
@@ -34,7 +34,8 @@
     "interrupt": "Interrupt",
     "send": "Send",
     "stopHint": "Stop execution",
-    "sendHint": "Send (Ctrl+Enter)",
+    "sendHint": "Send (Enter)",
+    "keyboardHint": "Enter to send. Ctrl+Enter for a new line.",
     "messageFor": "Message for {{title}}"
   },
   "models": {

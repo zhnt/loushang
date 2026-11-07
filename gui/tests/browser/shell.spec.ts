@@ -101,3 +101,30 @@ test("desktop shell renders menus and Session history with a simulated native br
   }
   expect(errors).toEqual([]);
 });
+
+test("composer keeps controls aligned and uses Enter to send at a narrow width", async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 900 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Operational ontology · Idle" }).click();
+  const input = page.getByRole("textbox", { name: "Message for Operational ontology" });
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  const controls = [
+    page.getByRole("button", { name: "Attach file unavailable" }),
+    page.getByRole("button", { name: "Session model" }),
+    send,
+  ];
+  const centers = await Promise.all(controls.map(async (control) => {
+    const box = (await control.boundingBox())!;
+    return box.y + box.height / 2;
+  }));
+  expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(1);
+
+  await input.fill("First line");
+  await input.press("Control+Enter");
+  await input.pressSequentially("Second line");
+  await expect(input).toHaveValue("First line\nSecond line");
+  await expect(send).toBeEnabled();
+  await input.press("Enter");
+  await expect(input).toHaveValue("");
+  await expect(page.getByRole("article", { name: "user message" }).filter({ hasText: "First line Second line" })).toBeVisible();
+});

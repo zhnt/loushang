@@ -69,7 +69,7 @@ export default interface Resources {
       "notRequested": "not requested",
       "notTerminal": "not terminal",
       "requested": "requested",
-      "revision": "revision {{revision}}",
+      "revision": "Execution state version",
       "source": "Source",
       "status": "Execution {{status}}",
       "title": "Execution",
@@ -126,11 +126,12 @@ export default interface Resources {
       "fixtureAccess": "Fixture access",
       "fixturePlaceholder": "Type a fixture prompt…",
       "interrupt": "Interrupt",
+      "keyboardHint": "Enter to send. Ctrl+Enter for a new line.",
       "liveControl": "AppHost control",
       "livePlaceholder": "Message the live Agent…",
       "messageFor": "Message for {{title}}",
       "send": "Send",
-      "sendHint": "Send (Ctrl+Enter)",
+      "sendHint": "Send (Enter)",
       "stopHint": "Stop execution"
     },
     "diagnostic": {
@@ -161,7 +162,7 @@ export default interface Resources {
       "createFailed": "New Session could not be created.",
       "created": "New Session created and attached.",
       "creating": "New Session created. Reattaching to the updated workspace…",
-      "emptyPrompt": "Enter a fixture prompt before sending.",
+      "emptyPrompt": "Enter a message before sending.",
       "fixtureAccepted": "Fixture accepted the prompt. Advance it step by step.",
       "fixtureInterrupted": "Fixture execution interrupted.",
       "fixtureReady": "Fixture snapshot installed. No backend is running.",
@@ -230,6 +231,7 @@ export default interface Resources {
     "fullscreen": "Toggle full screen",
     "generalSettings": "General",
     "help": "Help",
+    "insertNewline": "Insert a new line",
     "language": "Interface language",
     "languageDescription": "Choose the language used in loushang.",
     "mainMenu": "Main menu",
@@ -239,6 +241,7 @@ export default interface Resources {
     "newProject": "New project…",
     "newSession": "New session",
     "newWindow": "New window",
+    "newlineShortcut": "Ctrl + Enter",
     "nextSidebarItem": "Next sidebar item",
     "nextTab": "Next tab",
     "openFolder": "Open folder",
@@ -255,7 +258,7 @@ export default interface Resources {
     "saveFailed": "Language changed for this window, but the preference could not be saved.",
     "selectAll": "Select all",
     "sendMessage": "Send message",
-    "sendShortcut": "Ctrl / ⌘ + Enter",
+    "sendShortcut": "Enter",
     "settings": "Settings",
     "shortcuts": "Keyboard shortcuts",
     "sidebarShortcut": "Ctrl+B",
@@ -281,8 +284,8 @@ export default interface Resources {
   },
   "workspace": {
     "capability": {
-      "missing": "{{capability}} capability (missing, unavailable or incompatible)",
-      "workspace": "workspace capability (missing, unavailable or incompatible)"
+      "missing": "{{capability}} capability",
+      "workspace": "Workspace details"
     },
     "environment": {
       "agentsLink": "Subagents →",

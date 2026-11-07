@@ -51,7 +51,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
         version: mode === "incompatible" ? "fixture/v999" : capability.version,
       })),
     })} />);
-    await screen.findAllByText(/workspace capability/);
+    await screen.findAllByText("Workspace details unavailable");
     expect(screen.queryByLabelText("Fixture changes")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Quick look gui-interface-specification.md")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Step 1 / 4" })).not.toBeInTheDocument();
@@ -116,7 +116,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     await user.click(screen.getByRole("button", { name: "Operational ontology · Stale · was Idle" }));
     const input = screen.getByRole("textbox", { name: "Message for Operational ontology" });
     await user.type(input, "Keep this draft");
-    await user.keyboard("{Control>}{Enter}{/Control}");
+    await user.keyboard("{Enter}");
     expect(input).toHaveValue("Keep this draft");
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
     expect(screen.queryByText("Keep this draft", { selector: "article p" })).not.toBeInTheDocument();
@@ -162,10 +162,16 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(input).toBeEnabled();
     expect(screen.getByText("Live · AppHost")).toBeVisible();
     await user.type(input, "Talk to the real Agent");
-    await user.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(submitText).not.toHaveBeenCalled();
+    (input as HTMLTextAreaElement).setSelectionRange(8, 17);
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(input).toHaveValue("Talk to \nAgent");
+    expect(submitText).not.toHaveBeenCalled();
+    await user.keyboard("{Enter}");
     expect(submitText).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: "session-gui",
-      text: "Talk to the real Agent",
+      text: "Talk to \nAgent",
     }));
     expect(input).toHaveValue("");
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
@@ -201,14 +207,25 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       selectModel,
     }} />);
 
-    const selector = await screen.findByRole("combobox", { name: "Session model" });
-    await screen.findByRole("option", { name: "provider-a · shared-model · Reasoning" });
-    expect(selector).toHaveValue("provider-a:endpoint-a:shared-model");
-    expect(screen.getByRole("option", { name: "provider-a · shared-model · Reasoning" })).toBeVisible();
-    expect(screen.getByRole("option", { name: "provider-b · shared-model" })).toBeVisible();
-    await user.selectOptions(selector, "provider-b:endpoint-b:shared-model");
+    const selector = await screen.findByRole("button", { name: "Session model" });
+    await waitFor(() => expect(selector).toBeEnabled());
+    expect(selector).toHaveTextContent("provider-a · shared-model · Reasoning");
+    selector.focus();
+    await user.keyboard("{ArrowDown}");
+    const first = screen.getByRole("menuitemradio", { name: /provider-a · shared-model · Reasoning/ });
+    const second = screen.getByRole("menuitemradio", { name: /provider-b · shared-model/ });
+    expect(first).toHaveFocus();
+    expect(first).toBeChecked();
+    await user.keyboard("{ArrowDown}");
+    expect(second).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(selector).toHaveFocus();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    await user.click(selector);
+    await user.click(screen.getByRole("menuitemradio", { name: /provider-b · shared-model/ }));
     expect(selectModel).toHaveBeenCalledWith("session-gui", "provider-b:endpoint-b:shared-model");
-    expect(selector).toHaveValue("provider-b:endpoint-b:shared-model");
+    expect(selector).toHaveTextContent("provider-b · shared-model");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("refreshes the confirmed model after a restored session executes", async () => {
@@ -230,7 +247,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       interrupt: async () => ({ accepted: false }),
       sessionModels,
     }} />);
-    expect(await screen.findByRole("option", { name: "Model information unavailable" })).toBeInTheDocument();
+    expect(await screen.findByText("Model information unavailable")).toBeInTheDocument();
     await waitFor(() => expect(sessionModels).toHaveBeenCalledOnce());
     sessionModels.mockResolvedValue({ currentId: choice.id, models: [choice] });
     act(() => publish({
@@ -241,8 +258,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
         execution: { id: "restored-turn", status: "succeeded", revision: 1, interruptRequested: false, sourceStatus: "succeeded", finalCursor: 10, truncated: false },
       } : session),
     }));
-    expect(await screen.findByRole("option", { name: "test · confirmed-model" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Session model" })).toHaveValue(choice.id);
+    expect(await screen.findByText("test · confirmed-model")).toBeInTheDocument();
     expect(screen.getByText("Effort unavailable")).toBeVisible();
   });
 
@@ -285,7 +301,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     const context = within(screen.getByLabelText("Environment summary")).getByLabelText("AppHost session context");
     expect(within(context).getByText("cwd")).toBeVisible();
     expect(within(context).getByText("a".repeat(64))).toBeVisible();
-    expect(within(context).getByText(/workspace capability.*unavailable/)).toBeVisible();
+    expect(within(context).getByText("Workspace details unavailable")).toBeVisible();
   });
 
   it.each([false, true])("creates a live Session and selects it after the replacement snapshot (empty=%s)", async (empty) => {

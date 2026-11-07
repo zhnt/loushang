@@ -48,8 +48,8 @@
     "artifacts": "产物"
   },
   "capability": {
-    "workspace": "工作区能力（缺失、不可用或不兼容）",
-    "missing": "{{capability}}能力（缺失、不可用或不兼容）"
+    "workspace": "工作区详情",
+    "missing": "{{capability}}能力"
   },
   "live": {
     "context": "AppHost 会话上下文",
