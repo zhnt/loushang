@@ -61,6 +61,12 @@ function nativeSnapshot(): any {
 }
 
 describe("native live initial snapshot", () => {
+  it("keeps runtime notices distinct from assistant messages", () => {
+    const snapshot = nativeSnapshot();
+    snapshot.sessions[0].source.source.records.push({ kind: "status", text: "Sending a message resumes the session runtime." });
+    expect(projectNativeInitialSnapshot(snapshot).sessions[0].messages.map(({ role }) => role))
+      .toEqual(["user", "assistant", "status"]);
+  });
   it("accepts restored execution submission mode and rejects noncanonical values", () => {
     const snapshot = nativeSnapshot();
     expect(() => projectNativeInitialSnapshot(snapshot)).not.toThrow();

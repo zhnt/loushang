@@ -41,7 +41,8 @@
     "label": "Session model",
     "changeHint": "Change the model for this Session",
     "unavailable": "Model catalog unavailable",
-    "none": "No model · Effort unavailable",
+    "none": "Model information unavailable",
+    "effortUnavailable": "Effort unavailable",
     "endpoint": "Endpoint: {{endpoint}}",
     "option": "{{provider}} · {{model}}",
     "reasoningOption": "{{provider}} · {{model}} · Reasoning"

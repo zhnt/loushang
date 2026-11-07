@@ -6,6 +6,7 @@ import type {
   SessionSnapshot,
   WorkspaceSummary,
 } from "./model";
+import { liveSelectionKey } from "./sessionSelection";
 
 export type DockTab = "environment" | "tasks" | "agents" | "review";
 
@@ -297,10 +298,11 @@ function installSnapshot(state: GuiState, snapshot: ClientSnapshot): GuiState {
     }),
   );
   const priorSelection = state.local.selectedSessionId;
+  const sameSelectionScope = liveSelectionKey(state.remote.source) === liveSelectionKey(snapshot.source);
   const selectedSessionId =
-    priorSelection && sessions[priorSelection]
+    sameSelectionScope && priorSelection && sessionIds.includes(priorSelection)
       ? priorSelection
-      : sessions[snapshot.selectedSessionId]
+      : sessionIds.includes(snapshot.selectedSessionId)
         ? snapshot.selectedSessionId
         : (sessionIds[0] ?? null);
   const selectedSession = selectedSessionId ? sessions[selectedSessionId] : undefined;

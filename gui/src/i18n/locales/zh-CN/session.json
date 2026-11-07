@@ -41,7 +41,8 @@
     "label": "会话模型",
     "changeHint": "切换当前会话的模型",
     "unavailable": "模型列表不可用",
-    "none": "未选择模型 · 暂不支持推理强度",
+    "none": "模型信息不可用",
+    "effortUnavailable": "推理强度不可用",
     "endpoint": "端点：{{endpoint}}",
     "option": "{{provider}} · {{model}}",
     "reasoningOption": "{{provider}} · {{model}} · 推理"

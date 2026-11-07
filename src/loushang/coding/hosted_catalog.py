@@ -230,7 +230,7 @@ class CodingHostedResumeSourceV1:
     """Transferred read view plus the original catalog's Resume Writer owner."""
 
     record: _Record
-    history_binding: CodingHostedSessionBindingV1
+    history_binding: CodingHostedHistoryBindingV1
     manager_type: type[SessionManager]
     writer_factory: AgentTranscriptSessionFactory[
         ResolvedRuntimeProfile,
@@ -293,14 +293,9 @@ class CodingHostedHistoryCandidateBindingV1:
         return binding
 
     def take_resume_source(self) -> CodingHostedResumeSourceV1:
-        self.require_current_source()
-        binding = self._binding
-        if binding is None:
-            raise CodingHostedCatalogError()
-        self._binding = None
         return CodingHostedResumeSourceV1(
             record=self.record,
-            history_binding=binding,
+            history_binding=self.take_binding(),
             manager_type=self._manager_type,
             writer_factory=self._writer_factory,
             _require_current=self.require_current_source,

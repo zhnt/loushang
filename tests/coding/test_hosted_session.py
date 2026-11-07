@@ -243,6 +243,7 @@ def test_hosted_history_candidate_transfers_through_original_factory_without_run
                 hosted = CodingHostedSessionV1(binding)
                 snapshot = await hosted.snapshot()
                 assert snapshot.identity.session_id == key.session_id
+                assert snapshot.records[-1].text == "Historical session is read-only."
                 await opened.close()
                 await claimed.close()
                 await candidate.close()
@@ -440,6 +441,9 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
                 SessionEventKindV1.TURN_COMPLETED,
             } <= kinds
             assert not snapshot.running
+            models = await hosted.list_models()
+            assert models.current_id == "faux:anthropic-messages:faux-model"
+            assert any(choice.id == models.current_id for choice in models.models)
         finally:
             started = time.perf_counter()
             cpu_started = time.process_time()

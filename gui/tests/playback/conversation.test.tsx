@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { HarnessGui } from "../../src/App";
@@ -209,6 +209,41 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     await user.selectOptions(selector, "provider-b:endpoint-b:shared-model");
     expect(selectModel).toHaveBeenCalledWith("session-gui", "provider-b:endpoint-b:shared-model");
     expect(selector).toHaveValue("provider-b:endpoint-b:shared-model");
+  });
+
+  it("refreshes the confirmed model after a restored session executes", async () => {
+    const snapshot = await createMockAppClient().snapshot();
+    const restored: ClientSnapshot = {
+      ...snapshot,
+      connection: "connected",
+      source: { kind: "live", serviceInstanceId: "service-restored", muxSpaceId: "mux-restored", connectionEpoch: "1" },
+      sessions: snapshot.sessions.map((session) => ({ ...session, status: "idle", execution: null })),
+    };
+    let publish: (snapshot: ClientSnapshot) => void = () => {};
+    const choice = { id: "test:primary:confirmed-model", provider: "test", endpointId: "primary", modelId: "confirmed-model", label: "Confirmed model", supportsThinking: false };
+    const sessionModels = vi.fn(async () => ({ currentId: null as string | null, models: [] as typeof choice[] }));
+    render(<HarnessGui client={{
+      snapshot: async () => restored,
+      subscribe: () => () => undefined,
+      subscribeSnapshots: (listener) => { publish = listener; return () => undefined; },
+      submitText: async (input) => ({ submissionId: input.submissionId, accepted: true }),
+      interrupt: async () => ({ accepted: false }),
+      sessionModels,
+    }} />);
+    expect(await screen.findByRole("option", { name: "Model information unavailable" })).toBeInTheDocument();
+    await waitFor(() => expect(sessionModels).toHaveBeenCalledOnce());
+    sessionModels.mockResolvedValue({ currentId: choice.id, models: [choice] });
+    act(() => publish({
+      ...restored,
+      sessions: restored.sessions.map((session) => session.id === restored.selectedSessionId ? {
+        ...session,
+        cursor: "10",
+        execution: { id: "restored-turn", status: "succeeded", revision: 1, interruptRequested: false, sourceStatus: "succeeded", finalCursor: 10, truncated: false },
+      } : session),
+    }));
+    expect(await screen.findByRole("option", { name: "test · confirmed-model" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Session model" })).toHaveValue(choice.id);
+    expect(screen.getByText("Effort unavailable")).toBeVisible();
   });
 
   it("shows accepted AppHost context without inventing a workspace or repository", async () => {

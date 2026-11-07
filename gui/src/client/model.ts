@@ -50,7 +50,7 @@ export interface ContextIdentity {
 
 export interface ConversationMessage {
   readonly id: string;
-  readonly role: "user" | "assistant";
+  readonly role: "user" | "assistant" | "status";
   readonly content: string;
   readonly phase: MessagePhase;
 }

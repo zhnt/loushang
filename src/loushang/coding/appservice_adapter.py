@@ -9,6 +9,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Protocol
 
+from loushang.ai.model import model_selection_ref, normalize_model_selection
 from loushang.apphost import SessionDiscoveryScope, SessionIdentityEnvelopeV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -37,7 +38,7 @@ from loushang.harness.session import (
 )
 from loushang.harness.session.model_selection import (
     apply_session_model_selection,
-    get_session_model_identity,
+    get_session_model_selection,
     iter_available_model_details,
     model_choice_data_from_details,
 )
@@ -261,28 +262,36 @@ class CodingHostedSessionV1:
     async def list_models(self) -> SessionModelsV1:
         self._require_open()
         control = self._binding.control
-        identity = await get_session_model_identity(control)
-        choices = model_choice_data_from_details(
-            await iter_available_model_details(control)
-        )
-        models = tuple(
-            SessionModelChoiceV1(
+        active_model = getattr(getattr(control, "agent", None), "model", None)
+        selection = normalize_model_selection(active_model)
+        if selection is None:
+            selection = await get_session_model_selection(control)
+            active_model = selection
+        current = model_selection_ref(selection) if selection is not None else None
+        details = await iter_available_model_details(control)
+        if active_model is not None:
+            details.append(active_model)
+        models: list[SessionModelChoiceV1] = []
+        for choice in model_choice_data_from_details(details):
+            reference = normalize_model_selection(choice.selection)
+            if reference is None:
+                continue
+            models.append(SessionModelChoiceV1(
                 id=choice.value,
-                provider=choice.value.split(":", 1)[0],
-                endpoint_id=choice.endpoint_id,
-                model_id=choice.value.rsplit(":", 1)[-1],
+                provider=reference.provider,
+                endpoint_id=reference.endpoint_id,
+                model_id=reference.model_id,
                 label=choice.label,
                 supports_thinking=bool(
                     getattr(choice.selection, "supports_thinking", False)
                     or getattr(choice.selection, "reasoning", False)
                 ),
-            )
-            for choice in choices
-        )
-        current = identity.value
-        if current is not None and current not in {model.id for model in models}:
-            current = None
-        return SessionModelsV1(current, models)
+            ))
+        visible = models[:256]
+        active_choice = next((model for model in models[256:] if model.id == current), None)
+        if active_choice is not None:
+            visible[-1] = active_choice
+        return SessionModelsV1(current, tuple(visible))
 
     async def select_model(self, model_id: str) -> SessionModelsV1:
         self._require_open()

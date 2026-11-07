@@ -8,6 +8,7 @@ import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { isTauri } from "@tauri-apps/api/core";
 import { useSessionHistory } from "./useSessionHistory";
+import { liveSelectionKey, rememberSessionSelection, restoreSessionSelection } from "./client/sessionSelection";
 import { createMockAppClient } from "./client/mockAppClient";
 import { createNativeLiveClient, nativeLiveAvailable } from "./client/nativeLiveClient";
 import { probeFixtureBridge, type BridgeProbe } from "./client/nativeFixtureBridge";
@@ -106,7 +107,8 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const syncPendingRef = useRef(true);
   const [remainingSteps, setRemainingSteps] = useState(fixture?.remainingFixtureSteps() ?? 0);
   const [controlPending, setControlPending] = useState<"submit" | "interrupt" | null>(null);
-  const [sessionModels, setSessionModels] = useState<SessionModels | null>(null);
+  const [modelResult, setModelResult] = useState<{ scope: string; models: SessionModels } | null>(null);
+  const modelRequest = useRef(0);
   const [modelPending, setModelPending] = useState(false);
   const [createPending, setCreatePending] = useState(false);
   const createdSessionRef = useRef<string | null>(null);
@@ -140,7 +142,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
         const snapshot = await client.snapshot();
         if (!active) return;
         if (overflow) throw new Error("Snapshot event buffer exceeded its limit.");
-        dispatch({ type: "snapshot.installed", snapshot });
+        dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(snapshot) });
         // The reducer ignores cursors already covered by the snapshot and freezes
         // on any remaining gap. Never infer continuity from arrival timing.
         for (const event of buffered) dispatch({ type: "event.received", event });
@@ -175,7 +177,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     });
     const unsubscribeSnapshots = client.subscribeSnapshots?.((snapshot) => {
       if (!active) return;
-      dispatch({ type: "snapshot.installed", snapshot });
+      dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(snapshot) });
       const createdSessionId = createdSessionRef.current;
       if (createdSessionId && snapshot.sessions.some((session) => session.id === createdSessionId)) {
         createdSessionRef.current = null;
@@ -236,8 +238,12 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   }, [state.local.quickLookDocumentId]);
 
   const selectedId = state.local.selectedSessionId;
-  const historyOwner = state.remote.source.kind === "live" ? JSON.stringify([state.remote.source.serviceInstanceId, state.remote.source.muxSpaceId]) : client;
-  const history = useSessionHistory(historyOwner, selectedId, state.remote.sessions, (sessionId) => dispatch({ type: "session.selected", sessionId }));
+  const selectionKey = liveSelectionKey(state.remote.source);
+  const connected = state.remote.connection === "connected";
+  useEffect(() => {
+    if (connected && selectionKey && selectedId) rememberSessionSelection(selectionKey, selectedId);
+  }, [connected, selectionKey, selectedId]);
+  const history = useSessionHistory(selectionKey ?? client, selectedId, state.remote.sessions, (sessionId) => dispatch({ type: "session.selected", sessionId }));
   const panelOpen = state.local.dockOpen && state.local.dockTab !== "environment";
   useEffect(() => { if (panelOpen) setEnvironmentOpen(false); }, [panelOpen]);
   const rightVisible = environmentOpen || panelOpen;
@@ -247,17 +253,27 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const tasksAvailable = hasCapability(state, "tasks");
   const changesAvailable = hasCapability(state, "changes");
   const selected = selectedId ? state.remote.sessions[selectedId] : undefined;
+  const modelScope = connected && selectedId && state.remote.source.kind === "live"
+    ? JSON.stringify([selectionKey, state.remote.source.serviceInstanceId, state.remote.source.connectionEpoch, selectedId])
+    : null;
+  const sessionModels = modelScope !== null && modelResult?.scope === modelScope ? modelResult.models : null;
+  const modelRunning = selected?.status === "running";
+  const canChangeModel = Boolean(client.selectModel && sessionModels?.models.some((model) => model.id !== sessionModels.currentId));
   useEffect(() => {
+    if (!modelScope || !selectedId || modelRunning || !client.sessionModels) return;
     let active = true;
-    setSessionModels(null);
-    if (!selectedId || state.remote.connection !== "connected" || !client.sessionModels) return () => { active = false; };
+    const request = ++modelRequest.current;
     void client.sessionModels(selectedId).then((models) => {
-      if (active) setSessionModels(models);
+      if (active && request === modelRequest.current) setModelResult({ scope: modelScope, models });
     }).catch(() => {
-      if (active) setNotice({ key: "notice.modelsUnavailable" });
+      if (active && request === modelRequest.current) {
+        setModelResult(null);
+        setNotice({ key: "notice.modelsUnavailable" });
+      }
     });
     return () => { active = false; };
-  }, [client, selectedId, state.remote.connection]);
+    // A restored runtime publishes its confirmed model only after activation.
+  }, [client, selectedId, modelScope, modelRunning, selected?.execution?.id, selected?.execution?.status]);
   useEffect(() => {
     if (!awaitingPublication) return;
     const session = state.remote.sessions[awaitingPublication.sessionId];
@@ -358,11 +374,13 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   }
 
   async function selectModel(modelId: string): Promise<void> {
-    if (!selected || !client.selectModel || selected.status === "running" || modelPending) return;
+    if (!selected || !modelScope || !client.selectModel || modelRunning || modelPending || !modelId) return;
+    const request = ++modelRequest.current;
     setModelPending(true);
     try {
       const models = await client.selectModel(selected.id, modelId);
-      setSessionModels(models);
+      if (request !== modelRequest.current) return;
+      setModelResult({ scope: modelScope, models });
       const choice = models.models.find((model) => model.id === models.currentId);
       setNotice({ key: "notice.modelChanged", params: { model: choice?.label ?? modelId } });
     } catch {
@@ -469,7 +487,9 @@ export function HarnessGui({ client }: HarnessGuiProps) {
 
               <div className="transcript" aria-label={t("session:transcript.label")} aria-live="polite" ref={transcriptRef}
                 onScroll={(event) => dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: event.currentTarget.scrollTop })}>
-                {selected.messages.map((message) => (
+                {selected.messages.map((message) => message.role === "status" ? (
+                  <p className="message transcript-status" role="status" key={message.id}>{message.content}</p>
+                ) : (
                   <article className={`message ${message.role}`} key={message.id} aria-label={t("session:transcript.message", { role: valueLabel(message.role) })}>
                     <div className="message-meta">
                       <strong>{message.role === "user" ? t("session:transcript.you") : t("session:transcript.harness")}</strong>
@@ -558,21 +578,25 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                     <button type="button" className="icon-button" aria-label={t("session:composer.attachUnavailable")} title={t("session:composer.attachHint")} disabled>＋</button>
                     <span className="permission-label">◉ {state.remote.source.kind === "fixture" ? t("session:composer.fixtureAccess") : t("session:composer.liveControl")}</span>
                     <p className="visually-hidden" role="status"><NoticeText notice={notice} /></p>
+                    <div className="model-controls">
                     <select
                       className="effort-selector"
                       aria-label={t("session:models.label")}
-                      title={sessionModels ? t("session:models.changeHint") : t("session:models.unavailable")}
+                      aria-describedby="model-effort-status"
+                      title={canChangeModel ? t("session:models.changeHint") : undefined}
                       value={sessionModels?.currentId ?? ""}
-                      disabled={!sessionModels?.models.length || modelPending || selected.status === "running"}
+                      disabled={!canChangeModel || modelPending || modelRunning}
                       onChange={(event) => void selectModel(event.currentTarget.value)}
                     >
-                      {!sessionModels?.currentId ? <option value="">{t("session:models.none")}</option> : null}
+                      {!sessionModels?.currentId ? <option value="" disabled>{t("session:models.none")}</option> : null}
                       {sessionModels?.models.map((model) => (
                         <option key={model.id} value={model.id} title={t("session:models.endpoint", { endpoint: model.endpointId })}>
                           {t(model.supportsThinking ? "session:models.reasoningOption" : "session:models.option", { provider: model.provider, model: model.modelId })}
                         </option>
                       ))}
                     </select>
+                    <small id="model-effort-status">{t("session:models.effortUnavailable")}</small>
+                    </div>
                     <button
                       className="composer-submit"
                       type={selected.status === "running" ? "button" : "submit"}

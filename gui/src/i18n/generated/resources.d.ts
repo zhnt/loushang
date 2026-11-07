@@ -149,9 +149,10 @@ export default interface Resources {
     },
     "models": {
       "changeHint": "Change the model for this Session",
+      "effortUnavailable": "Effort unavailable",
       "endpoint": "Endpoint: {{endpoint}}",
       "label": "Session model",
-      "none": "No model · Effort unavailable",
+      "none": "Model information unavailable",
       "option": "{{provider}} · {{model}}",
       "reasoningOption": "{{provider}} · {{model}} · Reasoning",
       "unavailable": "Model catalog unavailable"

@@ -451,7 +451,7 @@ function projectSession(
   const source = snapshot.source.source;
   const messages: ConversationMessage[] = source.records.map((record, index) => ({
     id: `live-${source.identity.sessionId}-${index}`,
-    role: record.kind === "user" ? "user" as const : "assistant" as const,
+    role: record.kind === "user" || record.kind === "status" ? record.kind : "assistant",
     content: record.text,
     phase: record.kind === "error" ? "failed" as const : "complete" as const,
   }));

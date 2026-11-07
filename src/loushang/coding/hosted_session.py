@@ -7,6 +7,7 @@ import inspect
 import json
 import sys
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 from secrets import token_hex
 from typing import TYPE_CHECKING, cast
@@ -115,10 +116,6 @@ class CodingHostedHistoryBindingV1:
                 TranscriptRecordKindV1.STATUS,
                 "Earlier messages omitted from this bounded snapshot; the canonical transcript is unchanged.",
             ))
-        records.append(TranscriptRecordV1(
-            TranscriptRecordKindV1.STATUS,
-            "Historical session is read-only; continuing requires current runtime activation.",
-        ))
         self._projection = CodingHostedSnapshotProjectionV1(
             title="Coding", revision=0, running=False, records=tuple(records),
             truncated=omitted,
@@ -134,10 +131,17 @@ class CodingHostedHistoryBindingV1:
             raise RuntimeError("coding_hosted_session_closed")
         return self._history
 
-    def project_snapshot(self) -> CodingHostedSnapshotProjectionV1:
+    def project_snapshot(self, *, resume_on_submit: bool = False) -> CodingHostedSnapshotProjectionV1:
         if self._closed:
             raise RuntimeError("coding_hosted_session_closed")
-        return self._projection
+        notice = (
+            "Sending a message resumes the session runtime."
+            if resume_on_submit else "Historical session is read-only."
+        )
+        return replace(
+            self._projection,
+            records=(*self._projection.records, TranscriptRecordV1(TranscriptRecordKindV1.STATUS, notice)),
+        )
 
     def project_event(
         self, event: RuntimeEvent[object],
