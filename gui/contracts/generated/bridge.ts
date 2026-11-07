@@ -134,6 +134,7 @@ export interface SessionSnapshotV1 {
   readonly revision: DecimalCounter;
   readonly running: boolean;
   readonly records: ReadonlyArray<TranscriptRecordV1>;
+  readonly submissionMode?: "execution";
 }
 export interface TranscriptRecordV1 {
   readonly kind: TranscriptRecordKindV1;

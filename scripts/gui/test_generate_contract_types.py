@@ -30,6 +30,15 @@ class ContractGenerationTests(unittest.TestCase):
         self.assertEqual("candidate", manifest["status"])
         self.assertEqual(set(generator.SOURCES), set(manifest["sources"]))
 
+    def test_optional_submission_mode_matches_codec_extension(self) -> None:
+        artifacts = generator.generate()
+        self.assertIn('readonly submissionMode?: "execution";', artifacts["bridge.ts"])
+        self.assertIn(
+            "pub submission_mode: Option<Sessionsnapshotv1SubmissionMode>",
+            artifacts["bridge.rs"],
+        )
+        self.assertIn('skip_serializing_if = "Option::is_none"', artifacts["bridge.rs"])
+
     def test_missing_integer_policy_fails_closed(self) -> None:
         with patch.object(
             generator, "DECIMAL", generator.DECIMAL - {"SessionSnapshotV1.cursor"}

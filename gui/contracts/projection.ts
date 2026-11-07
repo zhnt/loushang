@@ -61,7 +61,9 @@ export function validateProjection(kind: string, value: unknown) {
     const result = object(root.result, ["serviceInstanceId", "source", "executions"]);
     id(result.serviceInstanceId, 128);
     const source = object(result.source, ["source", "observation", "draft", "truncated"]);
-    const s = object(source.source, ["identity", "title", "cursor", "revision", "running", "records"]);
+    const hasMode = source.source !== null && typeof source.source === "object" && "submissionMode" in source.source;
+    const s = object(source.source, ["identity", "title", "cursor", "revision", "running", "records", ...(hasMode ? ["submissionMode"] : [])]);
+    if (hasMode) assert.equal(s.submissionMode, "execution");
     identity(s.identity); counter(s.cursor); counter(s.revision);
     assert(typeof s.title === "string" && s.title.trim() && [...s.title].length <= 256);
     assert(typeof s.running === "boolean" && typeof source.truncated === "boolean");

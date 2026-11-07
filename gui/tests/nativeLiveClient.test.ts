@@ -61,6 +61,16 @@ function nativeSnapshot(): any {
 }
 
 describe("native live initial snapshot", () => {
+  it("accepts restored execution submission mode and rejects noncanonical values", () => {
+    const snapshot = nativeSnapshot();
+    expect(() => projectNativeInitialSnapshot(snapshot)).not.toThrow();
+    snapshot.sessions[0].source.source.submissionMode = "execution";
+    expect(() => projectNativeInitialSnapshot(snapshot)).not.toThrow();
+    for (const invalid of [null, "legacy", "unknown", 1, {}]) {
+      snapshot.sessions[0].source.source.submissionMode = invalid;
+      expect(() => projectNativeInitialSnapshot(snapshot)).toThrow("submission mode");
+    }
+  });
   it("uses an accepted snapshot watermark for the next event round", async () => {
     nativeEvents.clear();
     const client = createNativeLiveClient();

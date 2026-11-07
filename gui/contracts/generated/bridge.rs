@@ -241,6 +241,8 @@ pub struct SessionSnapshotV1 {
     pub running: bool,
     #[serde(rename = "records")]
     pub records: Vec<TranscriptRecordV1>,
+    #[serde(rename = "submissionMode", skip_serializing_if = "Option::is_none")]
+    pub submission_mode: Option<Sessionsnapshotv1SubmissionMode>,
 }
 #[derive(Debug, serde::Serialize)]
 pub struct TranscriptRecordV1 {
@@ -376,4 +378,9 @@ pub enum Resumeinputlookupresultv1Status {
     Variant2,
     #[serde(rename = "conflict")]
     Variant3,
+}
+#[derive(Debug, serde::Serialize)]
+pub enum Sessionsnapshotv1SubmissionMode {
+    #[serde(rename = "execution")]
+    Variant0,
 }
