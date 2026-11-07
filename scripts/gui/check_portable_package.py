@@ -17,6 +17,10 @@ def main() -> None:
     parser.add_argument("package", type=Path)
     args = parser.parse_args()
     package = args.package.resolve(strict=True)
+    entry = (package / "loushang").read_bytes()
+    assert entry[:4] == b"\x7fELF", "file-manager entry must be a native executable"
+    assert int.from_bytes(entry[16:18], "little") == 2, "entry must be ELF ET_EXEC"
+    assert os.access(package / "loushang", os.X_OK)
     env = {**os.environ, "PATH": "/usr/bin:/bin", "PYTHONPATH": "/nonexistent"}
     with tempfile.TemporaryDirectory(prefix="loushang-package-check-") as temp:
         root = Path(temp)

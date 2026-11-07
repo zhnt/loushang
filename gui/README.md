@@ -173,7 +173,8 @@ npm --prefix gui run build
 uv run python scripts/gui/build_linux_portable.py
 ```
 
-Extract `dist/desktop/loushang-linux-x86_64.tar.gz` outside the checkout and run
+Extract `dist/desktop/loushang-linux-x86_64.tar.gz` outside the checkout and
+double-click the native `loushang` executable. To choose a workspace explicitly, run
 `./loushang --workspace /path/to/workspace` inside the extracted directory.
 No Python/uv/Node/Rust installation is needed at runtime. Compatible Linux
 GTK/WebKit system libraries are still required. See the included `README.txt`

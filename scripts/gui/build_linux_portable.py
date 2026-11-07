@@ -77,8 +77,20 @@ def main() -> None:
         ROOT / "scripts/gui/desktop_launcher.py", package / "desktop_launcher.py"
     )
     launcher = package / "loushang"
-    launcher.write_text(
-        '#!/bin/sh\nset -eu\nROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$ROOT/runtime/bin/python3" -I "$ROOT/desktop_launcher.py" "$@"\n'
+    rustc = shutil.which("rustc") or str(Path.home() / ".cargo/bin/rustc")
+    run(
+        rustc,
+        "+1.98.1",
+        "--edition=2021",
+        "-Dwarnings",
+        "-O",
+        "-C",
+        "relocation-model=static",
+        "-C",
+        "link-arg=-no-pie",
+        str(ROOT / "scripts/gui/portable_entry.rs"),
+        "-o",
+        str(launcher),
     )
     launcher.chmod(0o755)
     for name in ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]:
@@ -90,6 +102,7 @@ def main() -> None:
         "python": run(str(bundled_python), "--version"),
         "buildSystem": platform.platform(),
         "guiSha256": hashlib.sha256(native.read_bytes()).hexdigest(),
+        "entrySha256": hashlib.sha256(launcher.read_bytes()).hexdigest(),
         "launcherSha256": hashlib.sha256(
             (package / "desktop_launcher.py").read_bytes()
         ).hexdigest(),
