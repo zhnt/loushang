@@ -162,6 +162,30 @@ from the repository root. Do not substitute a plain `cargo build`: that bypasses
 the Tauri frontend build and production protocol configuration and can produce a
 window that expects a running localhost development server.
 
+## Linux portable package candidate
+
+To bundle the real GUI with its own CPython, AppHost and locked Python runtime
+dependencies (Linux x86_64 build host):
+
+```text
+npm --prefix gui ci
+npm --prefix gui run build
+uv run python scripts/gui/build_linux_portable.py
+```
+
+Extract `dist/desktop/loushang-linux-x86_64.tar.gz` outside the checkout and run
+`./loushang --workspace /path/to/workspace` inside the extracted directory.
+No Python/uv/Node/Rust installation is needed at runtime. Compatible Linux
+GTK/WebKit system libraries are still required. See the included `README.txt`
+for the tested distribution, state locations and explicit `--stop` command.
+Closing a GUI window detaches it and leaves its shared AppHost running.
+Credentials and optional external worker/tool runtimes are not bundled.
+
+For opt-in real packaged lifecycle checks, run
+`uv run python scripts/gui/check_portable_package.py /path/to/extracted/package`.
+This does not call a model or add a CI gate. Native UI/provider acceptance must
+also be performed against the extracted package; a source-tree run is insufficient.
+
 ## Browser layout playback
 
 For the optional Python → Rust → TypeScript C1 execution contract slices,
