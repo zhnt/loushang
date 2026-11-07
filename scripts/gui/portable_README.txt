@@ -1,6 +1,11 @@
 Loushang Linux x86_64 portable candidate
 
-Extract the whole archive, then run:
+Extract the whole archive, then double-click the native executable named
+"loushang" (not the archive or desktop_launcher.py). Keep the other extracted
+files beside it. This entry is an ELF program, not a shell script; executable
+permissions are included in the tar archive.
+
+To choose a specific workspace from a terminal, run:
   ./loushang --workspace /absolute/path/to/your/workspace
 
 Includes the native GUI, CPython 3.11, Loushang/AppHost and locked Python runtime
