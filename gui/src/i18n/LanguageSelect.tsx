@@ -23,8 +23,11 @@ export function LanguageSelect() {
     } finally { setPending(false); }
   }
   return <div className="language-setting">
-    <label htmlFor="interface-language">{t("language")}</label>
-    <select id="interface-language" value={preference} disabled={pending} onChange={(event) => { void change(event.currentTarget.value); }}>
+    <div>
+      <label htmlFor="interface-language">{t("language")}</label>
+      <p id="interface-language-description">{t("languageDescription")}</p>
+    </div>
+    <select id="interface-language" aria-describedby="interface-language-description" value={preference} disabled={pending} onChange={(event) => { void change(event.currentTarget.value); }}>
       <option value="system">{t("system")}</option>
       {/* i18next-instrument-ignore-next-line: language autonym */}
       <option value="zh-CN" lang="zh-CN">简体中文</option>

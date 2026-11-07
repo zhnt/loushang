@@ -303,8 +303,10 @@ real-service validation.
 
 ## Interface languages
 
-The GUI ships `en-US` and `zh-CN` resources locally. The sidebar language selector
-supports Follow system, 简体中文 and English. `loushang.gui.language` stores only
+The GUI ships `en-US` and `zh-CN` resources locally. Open the account menu at the
+bottom of the sidebar and choose **Settings → General → Interface language**.
+The desktop File menu and Ctrl+, also open Settings. The selector supports
+Follow system, 简体中文 and English. `loushang.gui.language` stores only
 that device-local preference; existing workspaces, session content and settings
 are not migrated. Native startup reads the OS locale through the official Tauri
 OS plugin with only `os:allow-locale`; web preview uses `navigator.languages`.

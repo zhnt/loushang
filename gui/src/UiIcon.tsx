@@ -1,4 +1,4 @@
-export type UiIconName = "close" | "chevron-down" | "chevron-up" | "search" | "back" | "forward" | "folder" | "new-session" | "pull-request" | "scheduled" | "plugins";
+export type UiIconName = "close" | "chevron-down" | "chevron-up" | "search" | "back" | "forward" | "folder" | "new-session" | "pull-request" | "scheduled" | "plugins" | "settings";
 
 // Shared presentation icons: fixed boxes avoid font-dependent glyph baselines.
 export function UiIcon({ name }: { name: UiIconName }) {
@@ -14,5 +14,6 @@ export function UiIcon({ name }: { name: UiIconName }) {
     {name === "pull-request" && <><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="19" r="2" /><path d="M6 7v10m8-13-3 3 3 3m-3-3h4a3 3 0 0 1 3 3v7" /></>}
     {name === "scheduled" && <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l-3 3" /></>}
     {name === "plugins" && <><path d="M9 3v4m6-4v4M7 7h10v5a5 5 0 0 1-10 0zm5 10v4" /></>}
+    {name === "settings" && <><path d="M9 3h6l.6 3 2 .9 2.8-.9 2 3.4-2.2 2v2.2l2.2 2-2 3.4-2.8-.9-2 .9-.6 3H9l-.6-3-2-.9-2.8.9-2-3.4 2.2-2v-2.2l-2.2-2 2-3.4 2.8.9 2-.9z" /><circle cx="12" cy="12" r="3" /></>}
   </svg>;
 }

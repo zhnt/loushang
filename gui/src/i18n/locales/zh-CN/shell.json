@@ -1,5 +1,9 @@
 {
   "language": "界面语言",
+  "languageDescription": "选择 loushang 使用的界面语言。",
+  "accountMenu": "用户菜单",
+  "generalSettings": "常规",
+  "closeSettings": "关闭设置",
   "system": "跟随系统",
   "saveFailed": "当前窗口已切换语言，但未能保存语言偏好。",
   "applicationMenu": "应用菜单",

@@ -1,6 +1,7 @@
 import { i18n } from "./i18n";
 import { useTranslation } from "react-i18next";
-import { LanguageSelect } from "./i18n/LanguageSelect";
+import { AccountMenu } from "./AccountMenu";
+import { SettingsDialog } from "./SettingsDialog";
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import "./App.css";
 import { UiIcon } from "./UiIcon";
@@ -65,6 +66,11 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const fixture = fixturePlayback(client);
   const native = isTauri();
   const { t: shellText } = useTranslation("shell");
+  const settingsDialog = useRef<HTMLDialogElement>(null);
+  function openSettings() {
+    const dialog = settingsDialog.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const previousSidebarOpen = useRef(true);
   useEffect(() => {
@@ -405,6 +411,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     <div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}>
       <DesktopFrame sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((open) => !open)}
         {...history}
+        onSettings={openSettings}
         onNewSession={client.createSession && state.remote.connection === "connected" && !createPending ? () => { void createSession(); } : undefined}
         onFocusComposer={selected ? () => document.getElementById("message-input")?.focus() : undefined}
         environmentOpen={environmentOpen}
@@ -414,12 +421,12 @@ export function HarnessGui({ client }: HarnessGuiProps) {
       <main style={{ "--rail-width": `${sidebarOpen ? sidebarWidth : 48}px`, "--right-width": `${rightWidth}px` } as React.CSSProperties} className={`app-shell desktop-layout${sidebarOpen ? "" : " sidebar-closed"}${rightVisible ? " right-visible" : " dock-closed"}${stackedRight ? " right-stacked" : ""}`}>
         {!sidebarOpen ? <aside className="collapsed-rail" aria-label={shellText("collapsedSidebar")}>
           <button className="frame-icon" aria-label={shellText("toggleSidebar")} title={shellText("toggleSidebarHint")} aria-expanded="false" onClick={() => setSidebarOpen(true)}><PanelIcon side="left" /></button>
-          {/* i18next-instrument-ignore-next-line: fixture avatar initial */}
-          <div className="user-avatar" role="img" aria-label={shellText("userAvatar")}>Z</div>
+          <AccountMenu compact status={state.remote.source.kind === "fixture" ? t("workspace:sidebar.offline") : t("workspace:sidebar.live")} onSettings={openSettings} />
         </aside> : null}
         <div className="sidebar-container" hidden={!sidebarOpen}>
         <Sidebar
           onToggleSidebar={() => setSidebarOpen(false)}
+          onSettings={openSettings}
           state={state}
           bridgeProbe={bridgeProbe}
           onSelect={(sessionId) => dispatch({ type: "session.selected", sessionId })}
@@ -612,12 +619,14 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           />
         ) : null}
       </main>
+      <SettingsDialog dialogRef={settingsDialog} />
     </div>
   );
 }
 
 interface SidebarProps {
   readonly onToggleSidebar: () => void;
+  readonly onSettings: () => void;
   readonly state: GuiState;
   readonly bridgeProbe: BridgeProbe;
   readonly onSelect: (sessionId: string) => void;
@@ -627,7 +636,7 @@ interface SidebarProps {
   readonly newSessionPending: boolean;
 }
 
-function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar }: SidebarProps) {
+function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar, onSettings }: SidebarProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const { t: shellText } = useTranslation("shell");
   return (
@@ -718,13 +727,9 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession
         </section>
       </nav>
 
-      <LanguageSelect />
-      <div className="rail-footer">
-        <div className="user-avatar" aria-hidden="true">Z</div>
-        {/* i18next-instrument-ignore-next-line: fixture account name */}
-        <div><strong>zhnt</strong><span title={state.remote.source.kind === "fixture" ? t(bridgeLabels[bridgeProbe.status]) : state.remote.source.serviceInstanceId}>{state.remote.source.kind === "fixture" ? t("workspace:sidebar.offline") : t("workspace:sidebar.live")}</span></div>
-        <span aria-hidden="true">⋯</span>
-      </div>
+      <AccountMenu status={state.remote.source.kind === "fixture" ? t("workspace:sidebar.offline") : t("workspace:sidebar.live")}
+        detail={state.remote.source.kind === "fixture" ? t(bridgeLabels[bridgeProbe.status]) : state.remote.source.serviceInstanceId}
+        onSettings={onSettings} />
     </aside>
   );
 }

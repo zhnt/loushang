@@ -16,9 +16,15 @@ for (const width of [700, 1440]) {
     const rail = page.getByLabel("Collapsed sidebar", { exact: true });
     await expect(rail).toBeVisible();
     expect((await rail.boundingBox())!.width).toBe(48);
-    const avatar = rail.getByRole("img", { name: "User avatar" });
+    const avatar = rail.getByRole("button", { name: "Account menu" });
     await expect(avatar).toBeVisible();
     expect((await avatar.boundingBox())!.y).toBeGreaterThan(800);
+    await avatar.click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    await expect(settings.getByRole("combobox", { name: "Interface language" })).toHaveValue("system");
+    await settings.getByRole("button", { name: "Close settings" }).click();
+    await expect(avatar).toBeFocused();
     await page.screenshot({ path: info.outputPath("collapsed-rail.png"), fullPage: true });
     await reopen.click();
     await expect(page.getByLabel("Workspace and Session navigation", { exact: true })).toBeVisible();
@@ -75,7 +81,15 @@ test("desktop shell renders menus and Session history with a simulated native br
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.locator("#interface-language").selectOption("zh-CN");
+  await page.getByRole("button", { name: "File", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
+  await page.getByRole("dialog", { name: "Settings" }).getByRole("combobox").selectOption("zh-CN");
+  await expect(page.getByRole("dialog", { name: "设置" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.keyboard.press("Control+,");
+  await expect(page.getByRole("dialog", { name: "设置" })).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "切换侧边栏" }).click();
   await page.setViewportSize({ width: 1440, height: 720 });
   for (const [label, filename] of [["文件", "file"], ["编辑", "edit"], ["视图", "view"], ["帮助", "help"]]) {
