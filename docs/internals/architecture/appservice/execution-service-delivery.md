@@ -281,3 +281,80 @@ sequential run was superseded by the existing PR-fast plan and its sharded
 module runner; it is not recorded as a completed passing legacy gate. The
 ignored `.artifacts/stage1a/` directory retains the final logs and JUnit reports.
 
+## Managed independent-process validation — stage 1B
+
+`tests/coding/test_managed_execution_process.py` exercises the production
+`coding_managed_process_request` / `loushang.coding.managed_process` launch and
+managed stop on Linux. Its child wrapper injects a synthetic model through the
+existing command constructor and observes the real registry's submit return.
+It does not replace bootstrap, AppHost, AppService, Registry, AgentSession,
+managed Mux admission, TCP authentication or Execution hello.
+
+Each case starts a Host and then closes the launch coordinator's handles.
+A second coordinator must reuse the same native instance without spawning.
+Client A and client B are separate Python processes, also distinct from the
+Host and pytest. A creates the Mux through `ManagedMuxCreateOperationV1`, opens
+one Session, persists the submission intent before sending, and exits while
+the model is gated. Cases cover ordinary connection cleanup, `os._exit(17)`
+without cleanup, and lost acceptance response (pause A's socket reading before
+submit, observe actual Host execution entry, assert A's response future remains
+pending, then exit without receiving the receipt).
+
+Only after A is reaped does the test release the first provider gate. The
+original Host must record model progress after A's exit. B lists and attaches
+the original Mux with a fresh attachment/controller generation; its recovery
+path never opens a Session or submits work. It finds the original submission,
+observes the same serviceInstanceId/executionId/Session in `running`, and checks
+that an absent submission returns unknown (`None`) without replay. Only then
+is the final provider gate released. B reads `succeeded`, the expected assistant
+answer, and the same retained terminal submission record. Exactly one registry
+submit receipt, one model invocation and one Session transcript are required.
+
+Stop runs after execution completion using `ManagedServiceStopOperationV1`.
+Success requires exit code zero plus all three durable evidence fields:
+application cleanup, process exit and process-scope settlement. Failure teardown
+retains/reopens the original native identity and signals only that test-owned
+pidfd. A/B are reaped in all paths. This does not validate stopping an active
+Execution or failure-settlement guarantees reserved for stage 1C.
+
+Reproduce from the task worktree's private environment, outside the restricted
+sandbox (the test uses only a synthetic provider and local connections):
+
+```sh
+mkdir -p .artifacts/stage1b
+LOUSHANG_STAGE1B_EVIDENCE_DIR=.artifacts/stage1b \
+  uv run --no-sync --offline python -m pytest \
+  tests/coding/test_managed_execution_process.py -m 'not live' -q
+```
+
+The test itself starts/stops the Host and both clients; no manually running
+service is needed. Optional evidence JSON files contain native PID/start-time/
+boot identity, A/B PIDs and exit codes, managed instance, all business IDs,
+provider progress timestamps, final answer and stop evidence. They contain no
+connection tokens. `requires_host_runtime` preserves the existing restricted
+runtime selector; no CI gate or platform matrix is added.
+
+The first test attempt failed because its manually created Session directory
+had an unsafe parent permission. The final test lets the existing production
+store-admission path initialize storage. No stage 1B production source fix or
+storage-rule change was needed. This validates same-live-Host recovery only;
+it does not establish durable submission recovery across Host restart. Pending
+approval denial on client disconnect remains unchanged and out of scope.
+
+Stage 1B validation on Linux (2026-11-08): all 172 cases passed in 91.62s
+across the new process test, hosted execution, managed application/local,
+managed process entry/detached, AppService execution registry/service and
+AppHost local/runtime/managed-stopper tests. The three process cases also
+passed alone (14.13s). Changed-test Ruff, `git diff --check` and all nine
+lightweight documentation invariants passed. The ignored
+`.artifacts/stage1b/regression.xml` and `regression.log` retain the final run;
+`normal.json`, `abrupt.json`, and `lost.json` retain matching process evidence.
+These groups overlap and are not additive unique coverage. The stage 1A
+module-wide gate results above were not rerun for these test-only additions.
+
+Internal verification acceptance: Codex implementation agent, responsible for
+the authorized stage 1B Linux process verification, reviewed the real-process
+assertions, lost-response injection and exact-owner cleanup against the stage
+1A working tree. All nine stage 1B criteria have local evidence; this is not
+user acceptance or an extension of the validated platform/scope.
+
