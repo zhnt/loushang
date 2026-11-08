@@ -1,12 +1,15 @@
 import { i18n } from "./i18n";
 import { useTranslation } from "react-i18next";
-import { LanguageSelect } from "./i18n/LanguageSelect";
+import { AccountMenu } from "./AccountMenu";
+import { SettingsDialog } from "./SettingsDialog";
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import "./App.css";
+import { ModelPicker } from "./ModelPicker";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { isTauri } from "@tauri-apps/api/core";
 import { useSessionHistory } from "./useSessionHistory";
+import { liveSelectionKey, rememberSessionSelection, restoreSessionSelection } from "./client/sessionSelection";
 import { createMockAppClient } from "./client/mockAppClient";
 import { createNativeLiveClient, nativeLiveAvailable } from "./client/nativeLiveClient";
 import { probeFixtureBridge, type BridgeProbe } from "./client/nativeFixtureBridge";
@@ -65,6 +68,11 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const fixture = fixturePlayback(client);
   const native = isTauri();
   const { t: shellText } = useTranslation("shell");
+  const settingsDialog = useRef<HTMLDialogElement>(null);
+  function openSettings() {
+    const dialog = settingsDialog.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const previousSidebarOpen = useRef(true);
   useEffect(() => {
@@ -100,7 +108,8 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const syncPendingRef = useRef(true);
   const [remainingSteps, setRemainingSteps] = useState(fixture?.remainingFixtureSteps() ?? 0);
   const [controlPending, setControlPending] = useState<"submit" | "interrupt" | null>(null);
-  const [sessionModels, setSessionModels] = useState<SessionModels | null>(null);
+  const [modelResult, setModelResult] = useState<{ scope: string; models: SessionModels } | null>(null);
+  const modelRequest = useRef(0);
   const [modelPending, setModelPending] = useState(false);
   const [createPending, setCreatePending] = useState(false);
   const createdSessionRef = useRef<string | null>(null);
@@ -134,7 +143,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
         const snapshot = await client.snapshot();
         if (!active) return;
         if (overflow) throw new Error("Snapshot event buffer exceeded its limit.");
-        dispatch({ type: "snapshot.installed", snapshot });
+        dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(snapshot) });
         // The reducer ignores cursors already covered by the snapshot and freezes
         // on any remaining gap. Never infer continuity from arrival timing.
         for (const event of buffered) dispatch({ type: "event.received", event });
@@ -169,7 +178,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     });
     const unsubscribeSnapshots = client.subscribeSnapshots?.((snapshot) => {
       if (!active) return;
-      dispatch({ type: "snapshot.installed", snapshot });
+      dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(snapshot) });
       const createdSessionId = createdSessionRef.current;
       if (createdSessionId && snapshot.sessions.some((session) => session.id === createdSessionId)) {
         createdSessionRef.current = null;
@@ -230,8 +239,12 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   }, [state.local.quickLookDocumentId]);
 
   const selectedId = state.local.selectedSessionId;
-  const historyOwner = state.remote.source.kind === "live" ? JSON.stringify([state.remote.source.serviceInstanceId, state.remote.source.muxSpaceId]) : client;
-  const history = useSessionHistory(historyOwner, selectedId, state.remote.sessions, (sessionId) => dispatch({ type: "session.selected", sessionId }));
+  const selectionKey = liveSelectionKey(state.remote.source);
+  const connected = state.remote.connection === "connected";
+  useEffect(() => {
+    if (connected && selectionKey && selectedId) rememberSessionSelection(selectionKey, selectedId);
+  }, [connected, selectionKey, selectedId]);
+  const history = useSessionHistory(selectionKey ?? client, selectedId, state.remote.sessions, (sessionId) => dispatch({ type: "session.selected", sessionId }));
   const panelOpen = state.local.dockOpen && state.local.dockTab !== "environment";
   useEffect(() => { if (panelOpen) setEnvironmentOpen(false); }, [panelOpen]);
   const rightVisible = environmentOpen || panelOpen;
@@ -241,17 +254,27 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const tasksAvailable = hasCapability(state, "tasks");
   const changesAvailable = hasCapability(state, "changes");
   const selected = selectedId ? state.remote.sessions[selectedId] : undefined;
+  const modelScope = connected && selectedId && state.remote.source.kind === "live"
+    ? JSON.stringify([selectionKey, state.remote.source.serviceInstanceId, state.remote.source.connectionEpoch, selectedId])
+    : null;
+  const sessionModels = modelScope !== null && modelResult?.scope === modelScope ? modelResult.models : null;
+  const modelRunning = selected?.status === "running";
+  const canChangeModel = Boolean(client.selectModel && sessionModels?.models.some((model) => model.id !== sessionModels.currentId));
   useEffect(() => {
+    if (!modelScope || !selectedId || modelRunning || !client.sessionModels) return;
     let active = true;
-    setSessionModels(null);
-    if (!selectedId || state.remote.connection !== "connected" || !client.sessionModels) return () => { active = false; };
+    const request = ++modelRequest.current;
     void client.sessionModels(selectedId).then((models) => {
-      if (active) setSessionModels(models);
+      if (active && request === modelRequest.current) setModelResult({ scope: modelScope, models });
     }).catch(() => {
-      if (active) setNotice({ key: "notice.modelsUnavailable" });
+      if (active && request === modelRequest.current) {
+        setModelResult(null);
+        setNotice({ key: "notice.modelsUnavailable" });
+      }
     });
     return () => { active = false; };
-  }, [client, selectedId, state.remote.connection]);
+    // A restored runtime publishes its confirmed model only after activation.
+  }, [client, selectedId, modelScope, modelRunning, selected?.execution?.id, selected?.execution?.status]);
   useEffect(() => {
     if (!awaitingPublication) return;
     const session = state.remote.sessions[awaitingPublication.sessionId];
@@ -352,11 +375,13 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   }
 
   async function selectModel(modelId: string): Promise<void> {
-    if (!selected || !client.selectModel || selected.status === "running" || modelPending) return;
+    if (!selected || !modelScope || !client.selectModel || modelRunning || modelPending || !modelId) return;
+    const request = ++modelRequest.current;
     setModelPending(true);
     try {
       const models = await client.selectModel(selected.id, modelId);
-      setSessionModels(models);
+      if (request !== modelRequest.current) return;
+      setModelResult({ scope: modelScope, models });
       const choice = models.models.find((model) => model.id === models.currentId);
       setNotice({ key: "notice.modelChanged", params: { model: choice?.label ?? modelId } });
     } catch {
@@ -367,12 +392,12 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   }
 
   async function createSession(): Promise<void> {
-    if (!selected || !client.createSession || createPending
+    if (!client.createSession || createPending
       || state.remote.connection !== "connected") return;
     setCreatePending(true);
     try {
       const receipt = await client.createSession({
-        sourceSessionId: selected.id,
+        sourceSessionId: selected?.id,
         title: i18n.t("workspace:sidebar.newSession"),
       });
       createdSessionRef.current = receipt.sessionId;
@@ -405,6 +430,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     <div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}>
       <DesktopFrame sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((open) => !open)}
         {...history}
+        onSettings={openSettings}
         onNewSession={client.createSession && state.remote.connection === "connected" && !createPending ? () => { void createSession(); } : undefined}
         onFocusComposer={selected ? () => document.getElementById("message-input")?.focus() : undefined}
         environmentOpen={environmentOpen}
@@ -414,12 +440,12 @@ export function HarnessGui({ client }: HarnessGuiProps) {
       <main style={{ "--rail-width": `${sidebarOpen ? sidebarWidth : 48}px`, "--right-width": `${rightWidth}px` } as React.CSSProperties} className={`app-shell desktop-layout${sidebarOpen ? "" : " sidebar-closed"}${rightVisible ? " right-visible" : " dock-closed"}${stackedRight ? " right-stacked" : ""}`}>
         {!sidebarOpen ? <aside className="collapsed-rail" aria-label={shellText("collapsedSidebar")}>
           <button className="frame-icon" aria-label={shellText("toggleSidebar")} title={shellText("toggleSidebarHint")} aria-expanded="false" onClick={() => setSidebarOpen(true)}><PanelIcon side="left" /></button>
-          {/* i18next-instrument-ignore-next-line: fixture avatar initial */}
-          <div className="user-avatar" role="img" aria-label={shellText("userAvatar")}>Z</div>
+          <AccountMenu compact status={state.remote.source.kind === "fixture" ? t("workspace:sidebar.offline") : t("workspace:sidebar.live")} onSettings={openSettings} />
         </aside> : null}
         <div className="sidebar-container" hidden={!sidebarOpen}>
         <Sidebar
           onToggleSidebar={() => setSidebarOpen(false)}
+          onSettings={openSettings}
           state={state}
           bridgeProbe={bridgeProbe}
           onSelect={(sessionId) => dispatch({ type: "session.selected", sessionId })}
@@ -462,7 +488,9 @@ export function HarnessGui({ client }: HarnessGuiProps) {
 
               <div className="transcript" aria-label={t("session:transcript.label")} aria-live="polite" ref={transcriptRef}
                 onScroll={(event) => dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: event.currentTarget.scrollTop })}>
-                {selected.messages.map((message) => (
+                {selected.messages.map((message) => message.role === "status" ? (
+                  <p className="message transcript-status" role="status" key={message.id}>{message.content}</p>
+                ) : (
                   <article className={`message ${message.role}`} key={message.id} aria-label={t("session:transcript.message", { role: valueLabel(message.role) })}>
                     <div className="message-meta">
                       <strong>{message.role === "user" ? t("session:transcript.you") : t("session:transcript.harness")}</strong>
@@ -534,6 +562,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                   <label className="visually-hidden" htmlFor="message-input">{t("session:composer.messageFor", { title: selected.title })}</label>
                   <textarea
                     id="message-input"
+                    aria-describedby="message-keyboard-hint"
                     rows={2}
                     value={state.local.drafts[selected.id] ?? ""}
                     placeholder={state.remote.source.kind === "fixture" ? t("session:composer.fixturePlaceholder") : t("session:composer.livePlaceholder")}
@@ -541,31 +570,31 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                       dispatch({ type: "draft.changed", sessionId: selected.id, value: event.currentTarget.value })
                     }
                     onKeyDown={(event) => {
-                      if (!event.nativeEvent.isComposing && event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                      if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
+                      if (event.ctrlKey && !event.altKey && !event.metaKey) {
                         event.preventDefault();
-                        void submit();
+                        const input = event.currentTarget;
+                        input.setRangeText("\n", input.selectionStart, input.selectionEnd, "end");
+                        dispatch({ type: "draft.changed", sessionId: selected.id, value: input.value });
+                      } else if (!event.shiftKey && !event.altKey && !event.metaKey) {
+                        event.preventDefault();
+                        if (!event.repeat) void submit();
                       }
                     }}
                   />
+                  <span id="message-keyboard-hint" className="visually-hidden">{t("session:composer.keyboardHint")}</span>
                   <div className="composer-actions">
-                    <button type="button" className="icon-button" aria-label={t("session:composer.attachUnavailable")} title={t("session:composer.attachHint")} disabled>＋</button>
-                    <span className="permission-label">◉ {state.remote.source.kind === "fixture" ? t("session:composer.fixtureAccess") : t("session:composer.liveControl")}</span>
+                    <div className="composer-permissions">
+                      <button type="button" className="icon-button" aria-label={t("session:composer.attachUnavailable")} title={t("session:composer.attachHint")} disabled>＋</button>
+                      <span className="permission-label">◉ {state.remote.source.kind === "fixture" ? t("session:composer.fixtureAccess") : t("session:composer.liveControl")}</span>
+                    </div>
                     <p className="visually-hidden" role="status"><NoticeText notice={notice} /></p>
-                    <select
-                      className="effort-selector"
-                      aria-label={t("session:models.label")}
-                      title={sessionModels ? t("session:models.changeHint") : t("session:models.unavailable")}
-                      value={sessionModels?.currentId ?? ""}
-                      disabled={!sessionModels?.models.length || modelPending || selected.status === "running"}
-                      onChange={(event) => void selectModel(event.currentTarget.value)}
-                    >
-                      {!sessionModels?.currentId ? <option value="">{t("session:models.none")}</option> : null}
-                      {sessionModels?.models.map((model) => (
-                        <option key={model.id} value={model.id} title={t("session:models.endpoint", { endpoint: model.endpointId })}>
-                          {t(model.supportsThinking ? "session:models.reasoningOption" : "session:models.option", { provider: model.provider, model: model.modelId })}
-                        </option>
-                      ))}
-                    </select>
+                    <ModelPicker
+                      key={modelScope ?? selected.id}
+                      models={sessionModels}
+                      disabled={!canChangeModel || modelPending || modelRunning}
+                      onSelect={(modelId) => void selectModel(modelId)}
+                    />
                     <button
                       className="composer-submit"
                       type={selected.status === "running" ? "button" : "submit"}
@@ -577,12 +606,16 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                       {selected.status === "running" ? <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" /></svg>
                         : <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 18V6m-5 5 5-5 5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                     </button>
+                    <small className="model-effort-status" id="model-effort-status">{t("session:models.effortUnavailable")}</small>
                   </div>
                 </form>
               </div>
             </>
           ) : (
-            <div className="empty-state">{t("session:emptySession")}</div>
+            <div className="empty-state">
+              <p>{t("session:emptySession")}</p>
+              <p role="status"><NoticeText notice={notice} /></p>
+            </div>
           )}
         </section>
 
@@ -609,12 +642,14 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           />
         ) : null}
       </main>
+      <SettingsDialog dialogRef={settingsDialog} />
     </div>
   );
 }
 
 interface SidebarProps {
   readonly onToggleSidebar: () => void;
+  readonly onSettings: () => void;
   readonly state: GuiState;
   readonly bridgeProbe: BridgeProbe;
   readonly onSelect: (sessionId: string) => void;
@@ -624,7 +659,7 @@ interface SidebarProps {
   readonly newSessionPending: boolean;
 }
 
-function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar }: SidebarProps) {
+function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar, onSettings }: SidebarProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const { t: shellText } = useTranslation("shell");
   return (
@@ -715,13 +750,9 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession
         </section>
       </nav>
 
-      <LanguageSelect />
-      <div className="rail-footer">
-        <div className="user-avatar" aria-hidden="true">Z</div>
-        {/* i18next-instrument-ignore-next-line: fixture account name */}
-        <div><strong>zhnt</strong><span title={state.remote.source.kind === "fixture" ? t(bridgeLabels[bridgeProbe.status]) : state.remote.source.serviceInstanceId}>{state.remote.source.kind === "fixture" ? t("workspace:sidebar.offline") : t("workspace:sidebar.live")}</span></div>
-        <span aria-hidden="true">⋯</span>
-      </div>
+      <AccountMenu status={state.remote.source.kind === "fixture" ? t("workspace:sidebar.offline") : t("workspace:sidebar.live")}
+        detail={state.remote.source.kind === "fixture" ? t(bridgeLabels[bridgeProbe.status]) : state.remote.source.serviceInstanceId}
+        onSettings={onSettings} />
     </aside>
   );
 }
@@ -783,10 +814,11 @@ function ExecutionDetail({ execution }: {
       <summary>
         <span className={`run-indicator ${execution.status}`} aria-hidden="true">◌</span>
         <strong>{t("panels:execution.status", { status: valueLabel(execution.status) })}</strong>
-        <span>{t("panels:execution.revision", { revision: execution.revision })}</span>
+        <span className="execution-disclosure" aria-hidden="true">⌄</span>
       </summary>
       <dl>
         <dt>{t("panels:execution.title")}</dt><dd><code>{execution.id}</code></dd>
+        <dt>{t("panels:execution.revision")}</dt><dd>{execution.revision}</dd>
         <dt>{t("panels:execution.source")}</dt><dd>{(execution.sourceStatus ? valueLabel(execution.sourceStatus) : null) ?? t("panels:execution.notObserved")}</dd>
         <dt>{t("panels:execution.finalCursor")}</dt><dd>{execution.finalCursor ?? t("panels:execution.notTerminal")}</dd>
         <dt>{t("session:composer.interrupt")}</dt><dd>{execution.interruptRequested ? t("panels:execution.requested") : t("panels:execution.notRequested")}</dd>

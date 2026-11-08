@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import subprocess
 import tempfile
 from pathlib import Path
+
+from native_tools import cargo_path, native_binary
 
 from loushang.appserver.execution import model as em
 from loushang.appserver.execution.codec import (
@@ -29,7 +30,7 @@ from loushang.appserver.protocol.errors import AppErrorCodeV1, AppFailureV1
 
 ROOT = Path(__file__).resolve().parents[2]
 CRATE = ROOT / "gui/contracts/rust"
-EXE = CRATE / "target/debug/connection_probe.exe"
+EXE = native_binary(CRATE / "target/debug", "connection_probe")
 GENERATION = 2**100 + 1
 
 
@@ -489,15 +490,13 @@ async def run(parent):
     for mode in modes:
         await scenario(parent / mode, mode)
         print(f"Attachment lifecycle: {mode} passed", flush=True)
-    print(f"Windows attachment lifecycle: {len(modes)} scenarios passed")
+    print(f"Native attachment lifecycle: {len(modes)} scenarios passed")
 
 
 if __name__ == "__main__":
-    if os.name != "nt":
-        raise SystemExit("Attachment lifecycle fixture requires Windows")
     subprocess.run(
         [
-            str(Path.home() / ".cargo/bin/cargo.exe"),
+            str(cargo_path()),
             "+1.98.1",
             "build",
             "--locked",

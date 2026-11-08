@@ -14,6 +14,7 @@ export interface FrameActions {
   sidebarOpen: boolean;
   environmentOpen?: boolean;
   onClose?: () => void;
+  onSettings?: () => void;
 }
 
 type MenuName = "file" | "edit" | "view" | "help";
@@ -36,6 +37,12 @@ export function FrameMenu(actions: FrameActions) {
     const shortcut = (event: KeyboardEvent) => {
       if (event.isComposing || event.repeat || event.altKey || !(event.ctrlKey || event.metaKey) || event.shiftKey) return;
       const key = event.key.toLowerCase();
+      if (key === "," && actions.onSettings) {
+        event.preventDefault();
+        setOpen(null);
+        actions.onSettings();
+        return;
+      }
       const action = key === "n" ? actions.onNewSession
         : key === "w" || key === "q" ? actions.onClose
           : key === "j" ? actions.onToggleDock
@@ -45,7 +52,7 @@ export function FrameMenu(actions: FrameActions) {
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
-  }, [actions.onNewSession, actions.onClose, actions.onToggleDock, actions.onBack, actions.onForward]);
+  }, [actions.onNewSession, actions.onClose, actions.onToggleDock, actions.onBack, actions.onForward, actions.onSettings]);
 
   useEffect(() => {
     const capture = (event: FocusEvent) => {
@@ -111,7 +118,7 @@ export function FrameMenu(actions: FrameActions) {
     file: [
       [entry("newWindow"), entry("newSession", actions.onNewSession, "Ctrl+N"), entry("temporarySession", undefined, "Ctrl+Shift+N"), entry("newProject")],
       [entry("openFolder", undefined, "Ctrl+O"), entry("focusComposer", actions.onFocusComposer), entry("close", actions.onClose, "Ctrl+W")],
-      [entry("settings", undefined, "Ctrl+,")],
+      [entry("settings", actions.onSettings, "Ctrl+,")],
       [entry("signOut"), entry("quitApp", actions.onClose, "Ctrl+Q")],
     ],
     edit: [
@@ -182,6 +189,7 @@ export function FrameMenu(actions: FrameActions) {
       {help === "about" ? <><p>{t("aboutDescription")}</p><p>{t("aboutRuntime")}</p></> : <dl>
         <dt>{t("sidebarShortcut")}</dt><dd>{t("toggleSidebar")}</dd>
         <dt>{t("sendShortcut")}</dt><dd>{t("sendMessage")}</dd>
+        <dt>{t("newlineShortcut")}</dt><dd>{t("insertNewline")}</dd>
         <dt>{t("arrowsShortcut")}</dt><dd>{t("menuNavigation")}</dd>
         <dt>{t("escapeShortcut")}</dt><dd>{t("dismissMenu")}</dd>
       </dl>}

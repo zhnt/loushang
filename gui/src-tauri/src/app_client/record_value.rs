@@ -18,6 +18,34 @@ pub struct Record {
     capabilities: Vec<String>,
     key: String,
 }
+
+#[cfg(test)]
+mod creation_tests {
+    use super::*;
+
+    #[test]
+    fn creation_uses_admitted_workspace_even_when_home_is_first() {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../../contracts/fixtures/local-record.json"
+        ))
+        .unwrap();
+        value["scopes"] = json!([
+            {"scope":"user_home","fingerprint":"c".repeat(64)},
+            {"scope":"cwd","fingerprint":"b".repeat(64)}
+        ]);
+        let record = Record::decode(&serde_json::to_vec(&value).unwrap()).unwrap();
+        assert_eq!(
+            record.creation_context(),
+            ("coding", "cwd", "b".repeat(64).as_str())
+        );
+        value["scopes"].as_array_mut().unwrap().pop();
+        let record = Record::decode(&serde_json::to_vec(&value).unwrap()).unwrap();
+        assert_eq!(
+            record.creation_context(),
+            ("coding", "user_home", "c".repeat(64).as_str())
+        );
+    }
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Scope {
@@ -41,6 +69,16 @@ fn hex(value: &str, size: usize) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 impl Record {
+    /// Default creation uses the admitted workspace, falling back to the sole
+    /// home scope when no workspace scope was published. No path is inferred.
+    pub(crate) fn creation_context(&self) -> (&str, &str, &str) {
+        let scope = self
+            .scopes
+            .iter()
+            .find(|scope| scope.scope == "cwd")
+            .unwrap_or(&self.scopes[0]);
+        (&self.product_id, &scope.scope, &scope.fingerprint)
+    }
     pub fn port(&self) -> u16 {
         self.port
     }

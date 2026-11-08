@@ -324,6 +324,39 @@ def test_G11_PRODUCT_ADAPTER_runs_through_appservice_without_product_imports() -
     _run(scenario())
 
 
+def test_event_projection_failures_are_redacted_and_ignored_events_keep_cursor(
+    monkeypatch,
+) -> None:
+    async def scenario() -> None:
+        factory = _Factory()
+        resolver = CodingHostedSessionResolverV1(
+            create=factory.create, resume=factory.resume,
+        )
+        session = await resolver.open_session(_spec())
+        binding = factory.bindings[0]
+        events = []
+        session.subscribe(events.append)
+        try:
+            await binding.control.emit("ignored")
+            assert events == []
+
+            def failed_projection(event):
+                raise RuntimeError("private projection detail")
+
+            monkeypatch.setattr(binding, "project_event", failed_projection)
+            await binding.control.emit()
+            monkeypatch.setattr(binding, "project_event", lambda event: object())
+            await binding.control.emit()
+            assert [(event.cursor, event.kind, event.text) for event in events] == [
+                (1, SessionEventKindV1.ERROR, "event_projection_unavailable"),
+                (2, SessionEventKindV1.ERROR, "event_projection_unavailable"),
+            ]
+        finally:
+            await session.close()
+
+    _run(scenario())
+
+
 def test_interaction_outcomes_map_to_existing_harness_approval_vocabulary() -> None:
     async def scenario() -> None:
         factory = _Factory()

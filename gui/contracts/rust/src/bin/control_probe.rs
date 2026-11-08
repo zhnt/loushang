@@ -1,17 +1,15 @@
 //! Submit one deterministic turn through the production desktop control path.
-#[cfg(any(windows, target_os = "linux"))]
 #[allow(dead_code, unused_imports)]
 #[path = "../../../../src-tauri/src/app_client/mod.rs"]
 mod app_client;
-#[cfg(any(windows, target_os = "linux"))]
+#[path = "../probe_completion.rs"]
+mod probe_completion;
 #[path = "../../../../src-tauri/src/read_stop.rs"]
 mod read_stop;
-#[cfg(any(windows, target_os = "linux"))]
 #[allow(dead_code)]
 #[path = "../../../../src-tauri/src/read_worker.rs"]
 mod read_worker;
 
-#[cfg(any(windows, target_os = "linux"))]
 fn main() {
     use std::io::Write;
 
@@ -37,6 +35,7 @@ fn main() {
         if !["submit", "submit-detach", "find", "interrupt"].contains(&action.as_str()) {
             return Err(());
         }
+        let completion_text = text.clone();
         read_worker::ReadWorker::spawn(move |stop| {
                 let finish = stop.clone();
                 let (commands, command_receiver) = std::sync::mpsc::channel();
@@ -47,6 +46,7 @@ fn main() {
                 app_client::AppClient::default()
                     .run_stream(
                         app_client::ConnectionOptions {
+                        prepare_default_session: false,
                             root: &root,
                             timeout: std::time::Duration::from_millis(timeout),
                             cancel: None,
@@ -80,11 +80,11 @@ fn main() {
                             if accepted { Ok(()) } else { Err(()) }
                         },
                         &mut |round| {
-                            let terminal = round.sessions.iter().any(|value| {
+                            let terminal = (action != "submit" && round.sessions.iter().any(|value| {
                                 value["executions"]["active"].is_null()
                                     && matches!(value["executions"]["latestTerminal"]["status"].as_str(),
                                         Some("succeeded" | "interrupted" | "failed"))
-                            });
+                            })) || (action == "submit" && probe_completion::completed(&round.sessions, &completion_text));
                             println!("{}", serde_json::json!({"type":"round","payload":round}));
                             std::io::stdout().flush().map_err(|_| ())?;
                             if terminal || (action == "submit-detach" && round.sessions.iter().any(|value| value["executions"]["active"]["status"] == "running")) {
@@ -125,9 +125,4 @@ fn main() {
         eprintln!("control probe failed");
         std::process::exit(1);
     }
-}
-
-#[cfg(not(any(windows, target_os = "linux")))]
-fn main() {
-    std::process::exit(2);
 }

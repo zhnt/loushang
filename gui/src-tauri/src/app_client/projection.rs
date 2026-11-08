@@ -62,12 +62,30 @@ struct Record {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Source {
+    #[serde(
+        default,
+        rename = "submissionMode",
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "submission_mode"
+    )]
+    submission_mode: Option<SubmissionMode>,
     identity: Identity,
     title: String,
     cursor: Counter,
     revision: Counter,
     running: bool,
     records: Vec<Record>,
+}
+// The reference codec permits omission or exactly "execution", never null/legacy.
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum SubmissionMode {
+    Execution,
+}
+fn submission_mode<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<SubmissionMode>, D::Error> {
+    SubmissionMode::deserialize(deserializer).map(Some)
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -457,4 +475,38 @@ pub fn identity_value(wire: &str) -> Result<Value, ()> {
         return Err(());
     }
     serde_json::to_value(identity).map_err(|_| ())
+}
+
+#[cfg(test)]
+mod submission_mode_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn attachment_snapshot_accepts_only_canonical_optional_mode() {
+        let mut source = json!({
+            "identity": {"productId":"coding", "continuityId":"continuity", "sessionId":"session", "scope":"cwd", "scopeFingerprint":"a".repeat(64)},
+            "title":"Recovered", "cursor":2, "revision":1, "running":false,
+            "records":[{"kind":"user", "text":"preserved history"}]
+        });
+        let legacy = source_value(&source.to_string()).unwrap();
+        assert!(legacy.get("submissionMode").is_none());
+        source["submissionMode"] = json!("execution");
+        let restored = source_value(&source.to_string()).unwrap();
+        assert_eq!(restored["submissionMode"], "execution");
+        assert_eq!(restored["records"], source["records"]);
+        for invalid in [
+            json!(null),
+            json!("legacy"),
+            json!("unknown"),
+            json!(1),
+            json!({}),
+        ] {
+            source["submissionMode"] = invalid;
+            assert!(source_value(&source.to_string()).is_err());
+        }
+        source["submissionMode"] = json!("execution");
+        source["unexpected"] = json!(true);
+        assert!(source_value(&source.to_string()).is_err());
+    }
 }

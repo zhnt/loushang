@@ -12,7 +12,7 @@
     "truncated": "已截断",
     "completeSnapshot": "完整快照",
     "status": "执行{{status}}",
-    "revision": "修订 {{revision}}"
+    "revision": "执行状态版本"
   },
   "header": {
     "actions": "会话操作",

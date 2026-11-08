@@ -36,6 +36,11 @@ from loushang.harness.approval import (
 )
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.session import SessionControlPort
+from loushang.harness.session.model_selection import (
+    apply_session_model_selection,
+    get_session_model_selection,
+    iter_available_model_details,
+)
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import workspace_tool_runtime_settings
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
@@ -130,6 +135,19 @@ class _DeferredHostedControlV1:
 
     def abort(self) -> bool:
         return False if self._delegate is None else self._delegate.abort()
+
+    @property
+    def is_streaming(self) -> bool:
+        return bool(getattr(self._delegate, "is_streaming", False))
+
+    async def get_model_selection(self) -> ModelSelection | None:
+        return await get_session_model_selection(self._delegate)
+
+    async def get_available_model_details(self) -> list[object]:
+        return await iter_available_model_details(self._delegate)
+
+    async def set_model(self, selection: ModelSelection) -> None:
+        await apply_session_model_selection(self._require_active(), selection)
 
     def close(self) -> None:
         self._closed = True
@@ -249,7 +267,7 @@ class CodingDeferredHostedSessionV1:
         return (
             active.project_snapshot()
             if active is not None
-            else self._source.history_binding.project_snapshot()
+            else self._source.history_binding.project_snapshot(resume_on_submit=True)
         )
 
     def project_event(

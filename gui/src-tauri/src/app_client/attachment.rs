@@ -2,6 +2,7 @@
 use super::transport_auth::Channel;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::RawValue, Value};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
 #[path = "projection.rs"]
@@ -219,6 +220,7 @@ pub(crate) struct ReadSession {
     next_id: u64,
     readers: Option<Vec<EventReader>>,
     closed: bool,
+    default_template: SessionTemplate,
 }
 
 #[derive(Clone)]
@@ -229,6 +231,7 @@ pub(crate) struct ControlAuthority {
     mux_name: String,
     members: BTreeMap<String, String>,
     session_templates: BTreeMap<String, SessionTemplate>,
+    default_template: SessionTemplate,
 }
 
 #[derive(Clone)]
@@ -282,6 +285,7 @@ impl ReadSession {
         instance: &str,
         mux_name: &str,
         attempt: &super::connection_epoch::Attempt,
+        record: &super::transport_auth::record_value::Record,
     ) -> Result<Self, ()> {
         let response = request(
             channel,
@@ -294,13 +298,58 @@ impl ReadSession {
         }
         let attachment: Attachment = serde_json::from_str(response.result.get()).map_err(|_| ())?;
         attempt.apply(|| attachment.validate(mux_name))?;
+        let (product, scope, fingerprint) = record.creation_context();
         Ok(Self {
             attachment,
             instance: instance.to_owned(),
             next_id: 2,
             readers: None,
             closed: false,
+            default_template: SessionTemplate {
+                product_id: product.to_owned(),
+                scope: scope.to_owned(),
+                scope_fingerprint: fingerprint.to_owned(),
+            },
         })
+    }
+
+    /// Prepare an empty controlled mux before publishing its first snapshot.
+    /// A stable continuity identity lets AppHost recover the same Session after
+    /// a lost reply/restart; existing members always win over default creation.
+    pub(crate) fn ensure_default<R: Read, W: Write>(
+        &mut self,
+        channel: &mut Channel<R, W>,
+        attempt: &super::connection_epoch::Attempt,
+    ) -> Result<(), ()> {
+        if !self.attachment.sessions.is_empty() {
+            return Ok(());
+        }
+        let continuity_id = format!(
+            "gui-default-{:x}",
+            Sha256::digest(self.attachment.mux_space.mux_space_id.as_bytes())
+        );
+        let authority = self.control_authority()?;
+        let request_id = self.next_control_request_id()?;
+        match authority.create_session(channel, None, &continuity_id, "New Session", &request_id)? {
+            CreateSessionResult::Accepted(_) => (),
+            CreateSessionResult::Rejected(_) => return Err(()),
+        }
+        // Member publication invalidates the old controller. Acquire its new
+        // authoritative attachment before exposing any Session to the WebView.
+        let request_id = self.next_control_request_id()?;
+        let response = request(
+            channel,
+            "mux/attach",
+            &request_id,
+            json!({"selector":{"muxSpaceId":null,"name":self.attachment.mux_space.name},"mailboxCapacity":256}),
+        )?;
+        if response.result_type != "attachment" {
+            return Err(());
+        }
+        let attachment: Attachment = serde_json::from_str(response.result.get()).map_err(|_| ())?;
+        attempt.apply(|| attachment.validate(&self.attachment.mux_space.name))?;
+        self.attachment = attachment;
+        Ok(())
     }
 
     pub(crate) fn initialize<R: Read, W: Write>(
@@ -381,6 +430,7 @@ impl ReadSession {
             mux_name: self.attachment.mux_space.name.clone(),
             members,
             session_templates,
+            default_template: self.default_template.clone(),
         })
     }
 
@@ -568,7 +618,7 @@ impl ControlAuthority {
     pub(crate) fn create_session<R: Read, W: Write>(
         &self,
         channel: &mut Channel<R, W>,
-        source_session_id: &str,
+        source_session_id: Option<&str>,
         continuity_id: &str,
         title: &str,
         request_id: &str,
@@ -577,7 +627,10 @@ impl ControlAuthority {
         {
             return Err(());
         }
-        let template = self.session_templates.get(source_session_id).ok_or(())?;
+        let template = match source_session_id {
+            Some(id) => self.session_templates.get(id).ok_or(())?,
+            None => &self.default_template,
+        };
         let response = request(
             channel,
             "mux/member/open",

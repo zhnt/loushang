@@ -84,7 +84,7 @@ pub(crate) struct LiveSelectModelInput {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct LiveCreateSessionInput {
-    source_session_id: String,
+    source_session_id: Option<String>,
     title: String,
 }
 
@@ -174,6 +174,7 @@ pub(crate) fn start_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
                 let mut installed = false;
                 let outcome = client.run_stream(
                     ConnectionOptions {
+                        prepare_default_session: true,
                         root: &launch.record_root,
                         timeout: Duration::from_secs(5),
                         cancel: None,
