@@ -1,17 +1,13 @@
-//! Windows lifecycle evidence consuming the same native adapter as Tauri.
-#[cfg(windows)]
+//! Native lifecycle evidence consuming the same native adapter as Tauri.
 #[allow(dead_code, unused_imports)]
 #[path = "../../../../src-tauri/src/app_client/mod.rs"]
 mod app_client;
-#[cfg(windows)]
 #[path = "../../../../src-tauri/src/read_stop.rs"]
 mod read_stop;
-#[cfg(windows)]
 #[allow(dead_code)]
 #[path = "../../../../src-tauri/src/read_worker.rs"]
 mod read_worker;
 
-#[cfg(windows)]
 fn main() {
     let args: Vec<_> = std::env::args_os().collect();
     let outcome = (|| {
@@ -33,6 +29,7 @@ fn main() {
         read_worker::ReadWorker::spawn(move |stop| {
             app_client::AppClient::default().run(
                 app_client::ConnectionOptions {
+                    prepare_default_session: false,
                     root: &root,
                     timeout: std::time::Duration::from_millis(timeout),
                     cancel: (cancel >= 0).then(|| std::time::Duration::from_millis(cancel as u64)),
@@ -63,10 +60,4 @@ fn main() {
             std::process::exit(1);
         }
     }
-}
-
-#[cfg(not(windows))]
-fn main() {
-    eprintln!("Windows connection probe unavailable");
-    std::process::exit(1);
 }

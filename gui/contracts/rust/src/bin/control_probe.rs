@@ -1,17 +1,15 @@
 //! Submit one deterministic turn through the production desktop control path.
-#[cfg(windows)]
 #[allow(dead_code, unused_imports)]
 #[path = "../../../../src-tauri/src/app_client/mod.rs"]
 mod app_client;
-#[cfg(windows)]
+#[path = "../probe_completion.rs"]
+mod probe_completion;
 #[path = "../../../../src-tauri/src/read_stop.rs"]
 mod read_stop;
-#[cfg(windows)]
 #[allow(dead_code)]
 #[path = "../../../../src-tauri/src/read_worker.rs"]
 mod read_worker;
 
-#[cfg(windows)]
 fn main() {
     use std::io::Write;
 
@@ -29,6 +27,7 @@ fn main() {
         let session_id = args[4].to_str().ok_or(())?.to_owned();
         let submission_id = args[5].to_str().ok_or(())?.to_owned();
         let text = args[6].to_str().ok_or(())?.to_owned();
+        let completion_text = text.clone();
         read_worker::ReadWorker::spawn(move |stop| {
                 let finish = stop.clone();
                 let (commands, command_receiver) = std::sync::mpsc::channel();
@@ -39,6 +38,7 @@ fn main() {
                 app_client::AppClient::default()
                     .run_stream(
                         app_client::ConnectionOptions {
+                        prepare_default_session: false,
                             root: &root,
                             timeout: std::time::Duration::from_millis(timeout),
                             cancel: None,
@@ -70,15 +70,7 @@ fn main() {
                             if accepted { Ok(()) } else { Err(()) }
                         },
                         &mut |round| {
-                            let terminal =
-                                round.members.iter().flat_map(|member| &member.events).any(
-                                    |event| {
-                                        matches!(
-                                            event["source"]["kind"].as_str(),
-                                            Some("turn_completed") | Some("turn_interrupted")
-                                        )
-                                    },
-                                );
+                            let terminal = probe_completion::completed(&round.sessions, &completion_text);
                             println!("{}", serde_json::json!({"type":"round","payload":round}));
                             std::io::stdout().flush().map_err(|_| ())?;
                             if terminal {
@@ -118,9 +110,4 @@ fn main() {
         eprintln!("control probe failed");
         std::process::exit(1);
     }
-}
-
-#[cfg(not(windows))]
-fn main() {
-    std::process::exit(2);
 }

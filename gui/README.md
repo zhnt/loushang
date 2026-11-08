@@ -12,7 +12,7 @@ Sessions, isolated per-Session drafts, active Run and Task progress, expandable
 Activity details, distinct root/subagent AgentRuns, and read-only ChangeSet
 review through a central Quick Look and the Work Dock. Every sample value is
 labelled as fixture data. It does not read a repository, start a Python backend,
-or request a model. An opt-in B2 Windows launch can attach to an
+or request a model. An opt-in B2 native launch can attach to an
 existing AppHost, install one barriered initial Session snapshot, publish
 validated ongoing event rounds with authoritative replacement snapshots, and
 reconnect through a fresh snapshot after transport loss or an event gap. It can
@@ -89,6 +89,15 @@ The record root and Mux selection are parsed and retained by Rust; the WebView
 cannot provide or read them. Native admission still validates the private record
 directory and file before authentication. The published payload contains no
 attachment ID, controller generation or authentication key. Live snapshots are
+prepared with a default Session when the selected Mux is empty. The native
+adapter uses the authenticated record's admitted `cwd` scope (or its home scope
+when no workspace scope is published), asks AppHost to open a stable per-Mux
+continuity identity, and reattaches before publishing the snapshot. Existing
+members are retained; reconnecting does not append another default Session.
+New Session can also use this admitted context without an existing selection.
+See [default Session acceptance](tests/playback/default-session-acceptance.md).
+
+Live snapshots are
 visibly labelled as AppHost-controlled. Send and Interrupt use controller facts
 kept only in Rust; fixture playback, Workspace, ChangeSet, Tasks and Subagents
 remain unavailable until their own accepted live contracts are implemented. Closing the window cooperatively detaches and joins
@@ -100,6 +109,13 @@ fresh snapshot and membership barrier. A submit with an uncertain response is
 looked up by its stable submission ID after reconnect and is never replayed
 automatically. The draft is cleared only after acceptance is known; commands are
 blocked until the resulting authoritative event or snapshot advances the Session.
+
+Windows and POSIX desktops share the native connection, authentication, Session
+and reconnect implementation. Only private-file admission is platform-specific,
+behind one native record port; POSIX uses rustix and the existing AppServer
+owner-only/no-follow rules. Linux has local integration evidence; macOS and
+Windows still require native verification of this revision. See
+[cross-platform bridge evidence](tests/playback/cross-platform-bridge.md).
 
 For an opt-in desktop acceptance run, first build the release executable and
 then launch an isolated real AppHost plus two real mux/session projections:
@@ -145,6 +161,31 @@ For a standalone offline executable, use `npm --prefix gui run build:fixture-nat
 from the repository root. Do not substitute a plain `cargo build`: that bypasses
 the Tauri frontend build and production protocol configuration and can produce a
 window that expects a running localhost development server.
+
+## Linux portable package candidate
+
+To bundle the real GUI with its own CPython, AppHost and locked Python runtime
+dependencies (Linux x86_64 build host):
+
+```text
+npm --prefix gui ci
+npm --prefix gui run build
+uv run python scripts/gui/build_linux_portable.py
+```
+
+Extract `dist/desktop/loushang-linux-x86_64.tar.gz` outside the checkout and
+double-click the native `loushang` executable. To choose a workspace explicitly, run
+`./loushang --workspace /path/to/workspace` inside the extracted directory.
+No Python/uv/Node/Rust installation is needed at runtime. Compatible Linux
+GTK/WebKit system libraries are still required. See the included `README.txt`
+for the tested distribution, state locations and explicit `--stop` command.
+Closing a GUI window detaches it and leaves its shared AppHost running.
+Credentials and optional external worker/tool runtimes are not bundled.
+
+For opt-in real packaged lifecycle checks, run
+`uv run python scripts/gui/check_portable_package.py /path/to/extracted/package`.
+This does not call a model or add a CI gate. Native UI/provider acceptance must
+also be performed against the extracted package; a source-tree run is insufficient.
 
 ## Browser layout playback
 
@@ -287,8 +328,10 @@ real-service validation.
 
 ## Interface languages
 
-The GUI ships `en-US` and `zh-CN` resources locally. The sidebar language selector
-supports Follow system, 简体中文 and English. `loushang.gui.language` stores only
+The GUI ships `en-US` and `zh-CN` resources locally. Open the account menu at the
+bottom of the sidebar and choose **Settings → General → Interface language**.
+The desktop File menu and Ctrl+, also open Settings. The selector supports
+Follow system, 简体中文 and English. `loushang.gui.language` stores only
 that device-local preference; existing workspaces, session content and settings
 are not migrated. Native startup reads the OS locale through the official Tauri
 OS plugin with only `os:allow-locale`; web preview uses `navigator.languages`.

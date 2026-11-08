@@ -12,7 +12,7 @@
     "truncated": "truncated",
     "completeSnapshot": "complete snapshot",
     "status": "Execution {{status}}",
-    "revision": "revision {{revision}}"
+    "revision": "Execution state version"
   },
   "header": {
     "actions": "Session actions",

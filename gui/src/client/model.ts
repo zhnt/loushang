@@ -50,7 +50,7 @@ export interface ContextIdentity {
 
 export interface ConversationMessage {
   readonly id: string;
-  readonly role: "user" | "assistant";
+  readonly role: "user" | "assistant" | "status";
   readonly content: string;
   readonly phase: MessagePhase;
 }
@@ -261,7 +261,7 @@ export interface SessionModels {
 }
 
 export interface CreateSessionInput {
-  readonly sourceSessionId: string;
+  readonly sourceSessionId?: string;
   readonly title: string;
 }
 

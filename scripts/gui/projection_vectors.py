@@ -41,6 +41,10 @@ def emit_projection_vectors() -> None:
         cases.append((name, kind, json.dumps(value, ensure_ascii=False), valid))
 
     add("idle", "snapshot", base)
+    for mode in ["execution", "legacy", None, "unknown", 1, {}]:
+        value = copy.deepcopy(base)
+        value["result"]["source"]["source"]["submissionMode"] = mode
+        add(f"submission-mode-{mode}", "snapshot", value, mode == "execution")
     for count in [2**53 + 1, 2**100 + 1]:
         value = copy.deepcopy(base)
         value["result"]["source"]["source"].update(cursor=count, revision=count)

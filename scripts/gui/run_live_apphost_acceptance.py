@@ -1,6 +1,6 @@
 """Launch HarnessGUI against an isolated real AppHost for desktop acceptance.
 
-This is an opt-in, visible Windows acceptance helper. Its default mode uses a
+This is an opt-in, visible desktop acceptance helper. Its default mode uses a
 deterministic local model. ``--live-provider`` instead resolves the saved Coding
 default through the normal AI catalog and may incur provider usage. Neither mode
 installs a gate or reuses a developer's existing AppHost records.
@@ -11,11 +11,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from secrets import token_hex
+
+from native_tools import native_binary
 
 from loushang.agent import synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
@@ -71,7 +72,7 @@ from loushang.coding.hosted_session import CodingRealHostedSessionFactoryV1
 from loushang.harness.config.agent import SettingsManager
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_GUI_EXE = ROOT / "gui/src-tauri/target/release/harness-gui.exe"
+DEFAULT_GUI_EXE = native_binary(ROOT / "gui/src-tauri/target/release", "harness-gui")
 GUI_MUX = "gui-desktop-acceptance"
 PEER_MUX = "desktop-acceptance-peer"
 
@@ -416,6 +417,11 @@ async def trigger_live_projection(runtime: AcceptanceRuntime) -> None:
         for value in service._sessions.values()
         if value.identity.session_id == runtime.gui_session_id
     )
+    # Attachment admission precedes the GUI's first execution snapshot. Wait for
+    # that request to bind execution before injecting the synthetic turn.
+    async with asyncio.timeout(12):
+        while service._execution_registry is None or session._execution is None:
+            await asyncio.sleep(0.05)
     registry = service._execution_registry
     assert registry is not None and session._execution is not None
     record = registry.submit(
@@ -590,8 +596,6 @@ def parse_args() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
-    if os.name != "nt":
-        raise SystemExit("This desktop acceptance launcher requires Windows")
     parsed = parse_args()
     if not parsed.gui_exe.is_file():
         raise SystemExit(

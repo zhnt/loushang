@@ -48,8 +48,8 @@
     "artifacts": "Artifacts"
   },
   "capability": {
-    "workspace": "workspace capability (missing, unavailable or incompatible)",
-    "missing": "{{capability}} capability (missing, unavailable or incompatible)"
+    "workspace": "Workspace details",
+    "missing": "{{capability}} capability"
   },
   "live": {
     "context": "AppHost session context",

@@ -277,6 +277,9 @@ function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {
     if (identifier(session.serviceInstanceId) !== serviceInstanceId) throw new Error("instance");
     const source = object(session.source);
     const sourceSnapshot = object(source.source);
+    if ("submissionMode" in sourceSnapshot && sourceSnapshot.submissionMode !== "execution") {
+      throw new Error("submission mode");
+    }
     const sourceIdentity = identity(sourceSnapshot.identity);
     if (sourceIdentity.sessionId !== members[index].session.sessionId) throw new Error("identity");
     const cursor = decimal(sourceSnapshot.cursor);
@@ -448,7 +451,7 @@ function projectSession(
   const source = snapshot.source.source;
   const messages: ConversationMessage[] = source.records.map((record, index) => ({
     id: `live-${source.identity.sessionId}-${index}`,
-    role: record.kind === "user" ? "user" as const : "assistant" as const,
+    role: record.kind === "user" || record.kind === "status" ? record.kind : "assistant",
     content: record.text,
     phase: record.kind === "error" ? "failed" as const : "complete" as const,
   }));
