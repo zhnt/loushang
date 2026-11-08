@@ -1,17 +1,17 @@
 //! Redacted initial-snapshot evidence consuming the desktop AppClient adapter.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 #[allow(dead_code, unused_imports)]
 #[path = "../../../../src-tauri/src/app_client/mod.rs"]
 mod app_client;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 #[path = "../../../../src-tauri/src/read_stop.rs"]
 mod read_stop;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 #[allow(dead_code)]
 #[path = "../../../../src-tauri/src/read_worker.rs"]
 mod read_worker;
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 fn main() {
     let args: Vec<_> = std::env::args_os().collect();
     let outcome = (|| {
@@ -54,7 +54,7 @@ fn main() {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 fn main() {
     eprintln!("Windows snapshot probe unavailable");
     std::process::exit(1);

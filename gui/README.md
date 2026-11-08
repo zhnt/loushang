@@ -85,6 +85,34 @@ ambiguous authority.
 gui/src-tauri/target/release/harness-gui.exe --loushang-app-record-root C:\path\to\admitted\connection --loushang-mux-name GUI-work
 ```
 
+Linux also supports the same explicit connection arguments:
+
+```sh
+gui/src-tauri/target/debug/harness-gui \
+  --loushang-app-record-root /absolute/path/to/admitted/connection \
+  --loushang-mux-name main
+```
+
+For a debug build, start `npm run dev:web` in `gui/` first; its configured
+WebView URL is `http://localhost:1420`. A standalone packaged build uses the
+embedded frontend. The Host and Mux must already exist through the managed
+management entry; GUI launch does not start/stop a Host or create a Mux. Prepare
+at least one Session for the existing GUI's source-Session-based New Session
+operation. Reconnect attaches the original Mux and reads its existing members.
+
+Linux record admission uses no-follow directory/file descriptors, current-user
+ownership, private 0700/0600 modes, single-link regular files, bounded reads and
+identity/version revalidation. Windows retains its existing handle/DACL checks.
+The connection selects the validated record's semantic Execution profile,
+including `local-detachable-discovery-execution-managed/v2`; capability order,
+managed closure prerequisites, authentication digest and exact hello are checked.
+Legacy valid record decoding remains available, but a live GUI requires Execution.
+Unknown submit receipts are queried without replay only on the same service
+instance; a replacement Host is reported as an unknown outcome.
+
+Linux evidence and the remaining graphical acceptance limits are recorded in
+[stage 1D delivery](../docs/internals/architecture/appservice/execution-service-delivery.md#managed-gui-adaptation--stage-1d).
+
 The record root and Mux selection are parsed and retained by Rust; the WebView
 cannot provide or read them. Native admission still validates the private record
 directory and file before authentication. The published payload contains no

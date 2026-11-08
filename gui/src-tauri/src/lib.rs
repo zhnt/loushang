@@ -1,8 +1,8 @@
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 #[allow(dead_code)]
 mod app_client;
 mod connection_lifecycle;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 mod live_bridge;
 // Exit joins run on the blocking pool.
 #[allow(dead_code)]
@@ -46,9 +46,9 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
         .manage(Arc::new(ConnectionLifecycle::default()));
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     let builder = builder.manage(live_bridge::LiveLaunchState::from_process());
-    #[cfg(all(windows, feature = "fixture-bridge"))]
+    #[cfg(all(any(windows, target_os = "linux"), feature = "fixture-bridge"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         fixture_bridge_handshake,
         live_bridge::live_readonly_available,
@@ -61,7 +61,7 @@ pub fn run() {
         live_bridge::start_live_readonly,
         live_bridge::stop_live_readonly
     ]);
-    #[cfg(all(windows, not(feature = "fixture-bridge")))]
+    #[cfg(all(any(windows, target_os = "linux"), not(feature = "fixture-bridge")))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         live_bridge::live_readonly_available,
         live_bridge::live_submit_text,
@@ -73,7 +73,7 @@ pub fn run() {
         live_bridge::start_live_readonly,
         live_bridge::stop_live_readonly
     ]);
-    #[cfg(all(not(windows), feature = "fixture-bridge"))]
+    #[cfg(all(not(any(windows, target_os = "linux")), feature = "fixture-bridge"))]
     let builder = builder.invoke_handler(tauri::generate_handler![fixture_bridge_handshake]);
     builder
         .build(tauri::generate_context!())

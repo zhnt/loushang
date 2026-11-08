@@ -476,3 +476,203 @@ all four acceptance scenarios. No production defect requiring a fix was found.
 This records delegated implementation verification, not user acceptance or
 cross-platform/provider certification. Stage 1C does not authorize proceeding
 to GUI or TUI integration.
+
+## Managed GUI adaptation — stage 1D
+
+The explicit user-requested task worktree remains
+`feature/managed-execution-1a`; neither main nor the shared GUI lane is edited.
+Reviewed stage checkpoints are `5aecc42d5` (1A composition), `a112fc5b9` (1B
+process continuity) and `c9ceb4613` (1C shutdown). They contain the actual source
+changes, not just documentation or test summaries.
+
+### Execution entry review
+
+With the Execution capability installed, AppService's legacy `start_turn`
+resolves the same binding and calls `ExecutionRegistryV1.start_legacy`, which
+submits without a client submission ID and waits for the result. The explicit
+Execution API returns an acceptance record immediately, retains the invocation
+independently of the connection, and supports same-instance submission lookup.
+Both use the same `CodingHostedExecutionSessionV1` and original AgentSession,
+with the same per-Session active slot and Product execution path. Direct legacy
+adapter calls also use its execution guard; no second Agent loop is introduced.
+Legacy calls have no caller-retained deduplication key and only bounded legacy
+record retention. Explicit submissions retain their ledger for the live service
+instance; this is not Host crash recovery. Whole-Execution interrupt and legacy
+turn-only interruption remain distinct, including command execution semantics.
+Both entry points retain existing interaction/approval authority: disconnect
+can deny a pending approval, which remains outside this stage's changes.
+
+The GUI already uses `execution/submit`, `execution/find_submission`,
+`execution/snapshot`, event/content polling and `execution/interrupt` through
+Rust `ControlAuthority`. It does not submit tasks with `start_turn`. No semantic
+conflict requires Agent Loop, model, tool or Runtime restructuring. Original
+legacy APIs and default TUI behavior are preserved.
+
+### Client and platform changes
+
+`app_client/record_value.rs` now implements the Python closed capability algebra:
+canonical base capability order followed by discovery, execution, managed Mux,
+closure and optional resume-input lookup. Closure requires managed Mux; resume
+lookup requires Execution. Duplicate, unknown, unordered and invalid combinations
+fail. The transport record profile remains `local-detachable/v1`; its semantic
+profile is derived from its capabilities, not fabricated or weakened. Existing
+valid profiles remain decodable. GUI requires Execution and validates the exact
+semantic profile in the canonical hello, protocol/execution versions, service
+identity and service-instance-lifetime retention. Authentication still covers
+the unchanged full public record, including all capabilities.
+
+On Linux, `record_linux.rs` opens each directory component without following
+symlinks, retains the admitted directory and opens the file relative to it.
+Current-user ownership, exact private directory/file modes, regular-file type,
+single link, size bound, inode identity and read-version checks precede/guard
+secret consumption. Windows native DACL/handle admission is unchanged. `libc`
+is made a direct Linux-only dependency for openat/geteuid; it was already locked
+transitively, and no package version is changed. macOS live bridging is not
+newly enabled. Conditional compilation includes Linux only where the new native
+reader and platform-neutral transport/worker code support it.
+
+The connection path is explicit launch arguments -> native record admission ->
+record capability/profile selection -> loopback HMAC authentication -> exact
+Execution hello -> attach named existing Mux -> fresh attachment/control and
+composite snapshots -> existing React live projection. The Mux name is selected
+by the native launcher; this stage adds no Host chooser/manager. Managed Mux
+creation remains in `ManagedMuxCreateOperationV1`; GUI never uses a legacy create
+operation to bypass it. New Session uses the existing source Session template;
+prepare a Mux with at least one Session for this GUI entry. Reconnect attaches
+existing members, without reopening their active Product bindings.
+
+`live_bridge.rs` routes a receipt timeout into the existing unknown-submission
+recovery path as well as transport failure. Recovery now carries the original
+serviceInstanceId and refuses a different Host before lookup. It queries the
+original Session/submission ID and never resubmits. A lookup miss is unknown.
+GUI restart reconstructs current Session/Execution state from the Host snapshot;
+it does not introduce a persistent client ledger. No keys or attachment/control
+authority are published to the WebView.
+
+### Evidence and remaining graphical acceptance
+
+`test_managed_gui_client.py` uses the production managed entry and existing
+synthetic provider, a managed-admitted Mux, one real Session, and distinct Rust
+client processes compiled from the exact Tauri AppClient/worker sources.
+Normal detach and abnormal client termination happen while the Execution is
+running. A new Rust process finds the original submission and snapshots the
+same service/Session/execution identity. It reads the expected assistant result
+or requests an interrupt and waits for `interrupted`. Host survival, one submit,
+one model entry, graceful stop and process-group settlement are asserted.
+The probe's end condition now follows Execution terminal state, not legacy turn
+events. The initial interrupted-execution test exposed that probe-only issue;
+no server or Agent behavior was changed to satisfy it.
+
+The actual Tauri Linux window was launched against an independent managed Host
+and visually inspected with a window-specific X11 screenshot. It displayed
+connected status and the original Mux, Session and service identity. Evidence:
+`.artifacts/stage1d/desktop-a.png` and `desktop-connection.json` (Host PID 237084,
+GUI PID 237106). Initial attempts without the debug Vite server displayed a
+connection-refused page; those are not acceptance successes. The native input
+automation in this Wayland/Xwayland session did not deliver text to the WebView.
+The desktop harness therefore did **not** complete the GUI submit/close/reopen/
+result-display workflow and was torn down after its bounded wait. Its failure
+log is retained. This is a graphical acceptance limitation, not permission to
+claim Rust probe evidence as end-to-end GUI acceptance. The stage is not fully
+accepted until that operator-visible workflow is completed.
+
+`_managed_gui_desktop.py` is an opt-in bounded manual acceptance helper, not a CI
+gate or alternate service manager. Start the debug Vite frontend first, build
+the native binary, then use it to submit in GUI A, close A while running,
+inspect GUI B, release `workspace/finish-after-b`, inspect the answer, and close
+B. The helper checks same-Host execution continuity and then uses managed stop.
+Its test-only provider/watchdog budget is extended only when the explicit
+`desktop-acceptance` marker exists; default 1B/1C budgets are unchanged.
+
+Reproduction from the task worktree:
+
+```sh
+cargo +1.98.1 build --locked --offline --manifest-path gui/contracts/rust/Cargo.toml --bins
+uv run --no-sync --offline python -m pytest tests/coding/test_managed_gui_client.py -m 'not live' -q
+uv run --no-sync --offline python scripts/gui/check_record_values.py
+uv run --no-sync --offline python scripts/gui/check_auth_interop.py
+cargo +1.98.1 test --locked --offline --manifest-path gui/src-tauri/Cargo.toml --lib
+npm --prefix gui run check:full
+# Manual native acceptance, after npm --prefix gui run dev:web in another terminal:
+cargo +1.98.1 build --locked --offline --manifest-path gui/src-tauri/Cargo.toml
+GDK_BACKEND=x11 PYTHONPATH=.:src uv run --no-sync --offline python tests/coding/_managed_gui_desktop.py
+```
+
+Native socket/process tests must run outside the restricted sandbox. Existing
+Node dependencies were installed from the offline cache into this worktree;
+no shared node_modules or package-lock was changed. The private Python editable
+installation points to this task worktree. No live provider, user workspace,
+Session history, GUI lane worktree, protocol schema, Host lifecycle, TUI,
+tray, SSH or new control-sharing policy is changed.
+
+Validation recorded on 2026-11-08:
+
+- The 13-file critical 1A–1D regression group passed **179 tests in 122.27s**;
+  `.artifacts/stage1d/regression-final.xml` records the exact test identities.
+- The new Rust process tests passed all three scenarios. Their JSON evidence
+  records process identities, service/Session/submission/execution IDs, observed
+  snapshots, one acceptance/model entry, and clean managed-stop evidence.
+- `npm --prefix gui run check:full` passed: 87 React tests in 14 files,
+  TypeScript, frontend build, Rust formatting, Clippy and both native feature
+  configurations. Native library tests passed 27 cases. The contract crate
+  tests also passed (shared AppClient tests are repeated across probe binaries).
+- Record-value cross-language checks passed 85 cases; authentication interop
+  passed 11 cases. Changed Python files passed Ruff; documentation and diff
+  whitespace checks passed.
+- An earlier combined run had two failures: the probe waited for a legacy turn
+  event after an interrupt, and an existing detached test reported Session
+  unavailable during open. The former was fixed in the probe's terminal-state
+  detection. The latter was not reproduced by its unchanged nine-test file
+  (9 passed, 31.72s) or the final 179-test run; its initial failure log is kept,
+  and its cause remains undetermined rather than claimed fixed.
+
+Review responsibility: the implementing agent reviewed the Stage 1D client
+protocol, native record admission, ownership and test scope under this task's
+existing authorization. This is acceptance of the bounded implementation and
+recorded automated evidence, not user acceptance or complete graphical/platform
+acceptance. No server protocol, Runtime ownership or persisted Session format
+was revised. Full native GUI submit/exit/reopen/result acceptance remains open.
+
+Critical regression command (run from the task worktree):
+
+```sh
+uv run --no-sync --offline python -m pytest \
+  tests/coding/test_managed_gui_client.py \
+  tests/coding/test_managed_stop_execution.py \
+  tests/coding/test_managed_execution_process.py \
+  tests/coding/test_hosted_execution.py \
+  tests/coding/test_managed_application.py \
+  tests/coding/test_managed_local.py \
+  tests/coding/test_managed_process_entry.py \
+  tests/coding/test_managed_detached.py \
+  tests/appservice/test_execution_registry.py \
+  tests/appservice/test_execution_service.py \
+  tests/apphost/test_local.py tests/apphost/test_runtime.py \
+  tests/apphost/test_managed_stopper.py -m 'not live' -q \
+  --junitxml=.artifacts/stage1d/regression-final.xml
+```
+
+Repository-wide change-selected checks:
+
+- `make plan-checks` selected GUI, docs, architecture, Coding and AppHost based
+  on the cumulative branch delta. `make check-changed` passed the GUI/docs/
+  dependency checks and Coding (4197 passed, 22 skipped, 72 deselected, 737.08s).
+- Its AppHost lint and mypy checks passed (143 source files). AppHost pytest
+  reported 3110 passed, 13 skipped and four architecture-test failures (330.07s).
+  These identified stale Stage 1A architecture inventories: three omitted
+  `hosted_execution.py`'s `SessionBindingKeyV1` dependency, and G11 still required
+  managed bootstrap to exclude Execution and only one guarded adapter import.
+- The four architecture files now record that exact dependency and enforce one
+  Binding factory call passed to the original request, only the binding-key
+  AppHost import, and the exact two imports under explicit Execution guards.
+  The runtime identity/ownership tests are unchanged. These are a bounded 1A
+  architecture-test synchronization, not new protocol/runtime behavior or a
+  broader CI route. All four files passed on focused rerun: **37 passed, 5.26s**.
+  The full `make check-changed` command was not repeated after this test-only
+  correction; its initial nonzero result remains in the retained log.
+
+The four synchronized files are `tests/architecture/test_apphost_a0_contract.py`,
+`test_apphost_a02_architecture.py`, `test_hosted_product_runtime_v1_baseline.py`
+and `test_hosted_application_g11.py` in the same directory. Review acceptance
+covers the exact Stage 1A dependency and bootstrap selection described above,
+without weakening the default Product boundary or permitting a second Runtime.

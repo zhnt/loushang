@@ -1,17 +1,17 @@
 //! Create one Session through the production desktop control path, then reattach.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 #[allow(dead_code, unused_imports)]
 #[path = "../../../../src-tauri/src/app_client/mod.rs"]
 mod app_client;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 #[path = "../../../../src-tauri/src/read_stop.rs"]
 mod read_stop;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 #[allow(dead_code)]
 #[path = "../../../../src-tauri/src/read_worker.rs"]
 mod read_worker;
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 fn main() {
     use std::cell::{Cell, RefCell};
 
@@ -110,7 +110,7 @@ fn main() {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 fn main() {
     std::process::exit(2);
 }

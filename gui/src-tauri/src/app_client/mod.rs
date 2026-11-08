@@ -1,6 +1,10 @@
 //! Blocking, read-only AppHost adapter. The desktop owns its worker and stop.
 mod attachment;
 mod connection_epoch;
+#[cfg(windows)]
+mod record_native;
+#[cfg(target_os = "linux")]
+#[path = "record_linux.rs"]
 mod record_native;
 mod request_deadline;
 mod transport_auth;
@@ -93,6 +97,31 @@ impl Write for DeadlineStream {
     }
 }
 
+fn validate_hello(bytes: &[u8], profile: &str) -> Result<Hello, ()> {
+    let hello: Hello = serde_json::from_slice(bytes).map_err(|_| ())?;
+    let instance = &hello.service_instance_id;
+    if hello.profile != profile
+        || hello.protocol_version != "loushang.app/v1"
+        || hello.execution_version != "loushang.execution/v1"
+        || hello.restart_recovery
+        || hello.submission_retention != "service_instance_lifetime"
+        || instance.is_empty()
+        || instance.len() > 128
+        || !instance.as_bytes()[0].is_ascii_alphanumeric()
+        || !instance
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._~-".contains(&byte))
+    {
+        return Err(());
+    }
+    let canonical =
+        serde_json::to_vec(&serde_json::to_value(&hello).map_err(|_| ())?).map_err(|_| ())?;
+    if bytes != canonical {
+        return Err(());
+    }
+    Ok(hello)
+}
+
 struct CancelOwner {
     finish: Option<Sender<()>>,
     worker: Option<JoinHandle<()>>,
@@ -153,8 +182,11 @@ fn run_attempt(
     let attempt = owner.begin()?;
     let name = transport_auth::record_value::Record::filename("workspace")?;
     let record = transport_auth::record_value::Record::decode(&record_native::read(root, &name)?)?;
-    let profile = "local-detachable-execution/v1";
-    record.selected("workspace", profile)?;
+    let profile = record.semantic_profile()?;
+    record.selected("workspace", &profile)?;
+    if !record.supports_execution() {
+        return Err(());
+    }
     if cancel == Some(Duration::ZERO) {
         return Err(());
     }
@@ -199,27 +231,8 @@ fn run_attempt(
     channel.before_send(move || send_deadline.before_send());
     channel.send(b"app")?;
     let bytes = channel.receive()?;
-    let hello: Hello = serde_json::from_slice(&bytes).map_err(|_| ())?;
+    let hello = validate_hello(&bytes, &profile)?;
     let instance = &hello.service_instance_id;
-    if hello.profile != profile
-        || hello.protocol_version != "loushang.app/v1"
-        || hello.execution_version != "loushang.execution/v1"
-        || hello.restart_recovery
-        || hello.submission_retention != "service_instance_lifetime"
-        || instance.is_empty()
-        || instance.len() > 128
-        || !instance.as_bytes()[0].is_ascii_alphanumeric()
-        || !instance
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"._~-".contains(&byte))
-    {
-        return Err(());
-    }
-    let canonical =
-        serde_json::to_vec(&serde_json::to_value(&hello).map_err(|_| ())?).map_err(|_| ())?;
-    if bytes != canonical {
-        return Err(());
-    }
     channel.send(&bytes)?;
     if attach {
         let mut session =
@@ -425,6 +438,36 @@ fn process_controls<R: Read, W: Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn execution_hello_requires_exact_profile_version_and_lifetime() {
+        let profile = "local-detachable-discovery-execution-managed/v2";
+        let value = serde_json::json!({"profile":profile,"protocolVersion":"loushang.app/v1",
+            "executionVersion":"loushang.execution/v1","serviceInstanceId":"host-1",
+            "restartRecovery":false,"submissionRetention":"service_instance_lifetime"});
+        assert!(validate_hello(&serde_json::to_vec(&value).unwrap(), profile).is_ok());
+        for (field, bad) in [
+            (
+                "profile",
+                serde_json::json!("local-detachable-execution/v1"),
+            ),
+            ("protocolVersion", serde_json::json!("loushang.app/v2")),
+            (
+                "executionVersion",
+                serde_json::json!("loushang.execution/v2"),
+            ),
+            ("restartRecovery", serde_json::json!(true)),
+            ("serviceInstanceId", serde_json::json!("")),
+            ("submissionRetention", serde_json::json!("persistent")),
+        ] {
+            let mut changed = value.clone();
+            changed[field] = bad;
+            assert!(validate_hello(&serde_json::to_vec(&changed).unwrap(), profile).is_err());
+        }
+        let mut bytes = serde_json::to_vec(&value).unwrap();
+        bytes.push(b' ');
+        assert!(validate_hello(&bytes, profile).is_err());
+    }
 
     #[test]
     fn initial_snapshot_never_serializes_attachment_authority() {

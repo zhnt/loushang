@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import subprocess
+from itertools import product
 from pathlib import Path
 
 from loushang.appserver.local_record import (
@@ -43,6 +44,16 @@ def vectors():
             True,
             expected_profile=f"local-detachable{suffix}/v1",
         )
+    for discovery, execution, managed, closure, resume in product((False, True), repeat=5):
+        value = copy.deepcopy(base)
+        flags = (discovery, execution, managed, closure, resume)
+        names = ("session_discovery", "session_execution", "mux_management", "mux_closure", "resume_input_lookup")
+        value["capabilities"] = caps + [name for name, enabled in zip(names, flags, strict=True) if enabled]
+        valid = (not closure or managed) and (not resume or execution)
+        semantic = ("local-detachable" + ("-discovery" if discovery else "")
+                    + ("-resume" if resume else "") + ("-execution" if execution else "")
+                    + ("-managed" if managed else "") + ("/v2" if closure else "/v1"))
+        add(f"capability-algebra-{flags}", value, valid, expected_profile=semantic)
     mutations = [
         ("unknown", "extra", "x", False),
         ("schema", "schemaVersion", "other", False),

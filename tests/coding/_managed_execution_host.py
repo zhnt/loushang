@@ -27,7 +27,7 @@ def audit(kind, **fields):
 
 
 async def gate(name):
-    deadline = monotonic() + 75
+    deadline = monotonic() + (600 if (root / "desktop-acceptance").exists() else 75)
     while not (root / name).exists():
         assert monotonic() < deadline, f"provider gate expired: {name}"
         await asyncio.sleep(0.01)
@@ -72,7 +72,8 @@ if (root / "stop-scenario.json").exists():
 CodingManagedLocalCommandV1.__init__ = with_provider
 ExecutionRegistryV1.submit = observed_submit
 with (root / "host-diagnostic.log").open("w") as diagnostic:
-    faulthandler.dump_traceback_later(100, exit=True, file=diagnostic)
+    faulthandler.dump_traceback_later(600 if (root / "desktop-acceptance").exists() else 100,
+                                     exit=True, file=diagnostic)
     try:
         # All invocation admission, managed Mux, lifecycle, listeners and shutdown
         # run through the production module. No replacement bootstrap/runtime.
