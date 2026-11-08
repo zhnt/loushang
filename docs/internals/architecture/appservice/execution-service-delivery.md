@@ -676,3 +676,126 @@ The four synchronized files are `tests/architecture/test_apphost_a0_contract.py`
 and `test_hosted_application_g11.py` in the same directory. Review acceptance
 covers the exact Stage 1A dependency and bootstrap selection described above,
 without weakening the default Product boundary or permitting a second Runtime.
+
+## Stage 1D native graphical acceptance follow-up — 2026-11-08
+
+This follow-up uses the unchanged production implementation at `e8f058f50`
+on `feature/managed-execution-1a`. The prior section's incomplete graphical
+acceptance is retained as historical evidence; the new run supplies actual
+human-operated Tauri GUI evidence rather than substituting Rust probes.
+
+The available computer-use inventory exposed browser tabs but no native Tauri
+window control. The user therefore operated the real Linux GUI: entering each
+request, clicking stop, and closing GUI A. The coordinator only prepared the
+managed-admitted Mux and original Session, launched native GUI processes,
+released synthetic model gates, observed production calls and checked identity.
+It never submitted or interrupted an execution for the GUI. No new automation
+framework or production-code change was needed.
+
+The existing `_managed_gui_desktop.py` now coordinates four bounded manual
+steps. `_managed_gui_probe.py` records original AgentSession construction,
+original Registry interrupt/terminal calls and actual snapshots read by the
+GUI. Its deterministic model streams a visible running message and waits on a
+file gate. The third producer is cancelled only by the GUI's actual interrupt.
+`_managed_execution_host.py` selects this probe only with the explicit
+`desktop-scenario-v2` marker. Existing 1B/1C probe defaults remain unchanged.
+All listener, ownership, Registry, AgentSession and shutdown code is production.
+
+Run directory: `.artifacts/stage1d/manual-20261108-190914/`.
+Host PID: **265425**; GUI A: **265466**; GUI B: **268466**.
+Service instance: `22931fc56bde99988cc7b6c334d3bca7`.
+Session: `9d0e9ebc420b70160f1849983eddd1d34f5ced04307b1e23132cd4f2b19eb715`.
+All four executions use that same service and Session, and the one original
+AgentSession. Execution prefix below is `exec-90d93bdc555b38cc625a295c-`.
+
+| GUI request | submissionId | Execution suffix | Terminal outcome |
+| --- | --- | --- | --- |
+| `gui-final-1` | `gui-7830ca0d-3ebe-4bba-a416-671dc92a5a8a` | 1 | succeeded |
+| `gui-final-2` | `gui-ab8ca3bc-91f1-44da-8960-5e40ffd5e61e` | 2 | succeeded after GUI A exit |
+| `gui-final-3` | `gui-76e842dc-764a-402b-a1f8-7a0d892f4230` | 3 | interrupted by GUI stop |
+| `gui-final-4` | `gui-85d77cc3-9278-4be4-b817-2e5c0a78866e` | 4 | succeeded after interruption |
+
+The user confirmed first-result display, running-task window close, restored
+original conversations/results in GUI B, GUI stop's interrupted display, and
+fourth-result display. `operator.jsonl` records those exact confirmations;
+Host assertions do not substitute for the operator's visual observations.
+
+Critical monotonic timestamps in seconds:
+
+- Second execution running snapshot: 81451.754243.
+- GUI A observed exited normally: 81453.995390.
+- Same Host's second model progressed: 81454.024448; succeeded: 81454.031573.
+- GUI B launched: 81454.198207; original execution's succeeded snapshot read:
+  81455.159165. GUI B restored a completed execution, without a second submit.
+- Third execution interrupt request: 81597.378613; model cancellation:
+  81597.430665; interrupted settlement: 81597.442736.
+- Fourth execution succeeded: 81783.082317, and GUI read its final reply.
+
+The audit contains four distinct submissions, four distinct executions and
+exactly four model entries, with one Product AgentSession construction. No
+Session reopen, duplicate execution or new Host was used for recovery. Native
+GUI stdout/stderr are captured in `desktop.log` (this build normally emits no
+client text logs); `snapshot_read` entries are observations of actual AppClient
+requests at the Host, not an invented client log. `provenance.json` records the
+implementation commit, worktree and native binary/test-probe hashes.
+
+Regression commands and results:
+
+```sh
+make check-apphost
+uv run --no-sync --offline python -m pytest \
+  tests/coding/test_managed_execution_process.py \
+  tests/coding/test_managed_gui_client.py \
+  tests/coding/test_managed_detached.py -q \
+  --junitxml=.artifacts/stage1d/final-process-regression.xml
+```
+
+The complete AppHost target exited **0**: Ruff passed, mypy passed on 143 source
+files, primary pytest **3114 passed / 13 skipped in 332.58s**, G8 evidence
+19 passed, G9 evidence 16 passed, G10 evidence 15 passed / 12 deselected, manifest
+verification passed, and the installed POSIX process-group canary passed. Thus
+the four previously corrected architecture assertions passed in the full
+AppHost target, not just a focused rerun. Full log:
+`.artifacts/stage1d/apphost-final-acceptance.log`.
+
+The additional process regression passed **15 tests in 55.83s**. The historical
+intermittent detached Session-open failure did not recur; its cause remains
+undetermined and the earlier failure record is retained. This follow-up does
+not claim to have fixed it. No current test failed, and no assertions were
+relaxed to obtain these results.
+
+Reproduction: start `npm --prefix gui run dev:web`, then run
+`GDK_BACKEND=x11 PYTHONPATH=.:src uv run --no-sync --offline python tests/coding/_managed_gui_desktop.py`.
+Follow the published `desktop.json` step. The operator sends `gui-final-1`,
+confirms its displayed result; the coordinator creates `ack-first` in the
+published test workspace. The operator sends `gui-final-2` and closes GUI A
+while running. GUI B is automatically launched after observed A exit and task
+completion. The operator confirms recovered replies; the coordinator creates
+`ack-reconnect`. The operator sends `gui-final-3`, clicks stop, then sends
+`gui-final-4`. After visual confirmation the coordinator creates `ack-final`;
+the operator closes GUI B and the helper invokes managed stop. Preserve
+screenshots and the run directory. A timeout/failure is recorded and causes
+cleanup, never a successful acceptance result.
+
+Final cleanup succeeded in the manual run: GUI A and B both exited normally;
+the helper exited 0 and recorded `completed: true`. The managed stop evidence
+has `process_exited`, `application_cleanup_completed`, and
+`process_scope_settled` all true. The temporary test workspace was removed
+only after copying the execution audit and Host diagnostics to the run
+artifact directory. No actual Product change was needed to pass these cases.
+
+Acceptance boundary: all four functional graphical scenarios were performed
+by the user and confirmed in real time, with matching Host/process evidence.
+The implementing agent accepts this bounded Linux manual run and its automated
+assertions within the authorized task. The only retained screenshot is
+`01-first-result.png`, supplied by the user and inspected to match Session and
+service identity plus the successful first reply. The user reported forgetting
+the other screenshots. Recovery, interrupted display and fourth-result display
+therefore rely on the recorded human confirmations and Host snapshots, **not**
+claimed screenshot inspection. The screenshot archive is incomplete; no images
+were reconstructed or substituted. This does not assert Windows/macOS or
+packaged-release acceptance, or claim autonomous native UI automation.
+
+Final process inspection found Host 265425 and GUI processes 265466/268466
+absent. The task's Vite process was stopped separately. Other application
+instances and main/GUI integration worktrees were not modified.

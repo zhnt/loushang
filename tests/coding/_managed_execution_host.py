@@ -69,10 +69,16 @@ if (root / "stop-scenario.json").exists():
 
     held_stream = install(root, audit)
 
+if (root / "desktop-scenario-v2").exists():
+    from _managed_gui_probe import install as install_gui
+
+    held_stream = install_gui(root, audit)
+
 CodingManagedLocalCommandV1.__init__ = with_provider
 ExecutionRegistryV1.submit = observed_submit
 with (root / "host-diagnostic.log").open("w") as diagnostic:
-    faulthandler.dump_traceback_later(600 if (root / "desktop-acceptance").exists() else 100,
+    faulthandler.dump_traceback_later(1800 if (root / "desktop-scenario-v2").exists() else
+                                     600 if (root / "desktop-acceptance").exists() else 100,
                                      exit=True, file=diagnostic)
     try:
         # All invocation admission, managed Mux, lifecycle, listeners and shutdown
