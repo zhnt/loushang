@@ -117,9 +117,7 @@ class CodingHostedSessionBindingV1(Protocol):
     async def close(self) -> None: ...
 
 
-CodingHostedOpen = Callable[
-    [SessionOpenSpecV1], Awaitable[CodingHostedSessionBindingV1]
-]
+CodingHostedOpen = Callable[[SessionOpenSpecV1], Awaitable[CodingHostedSessionBindingV1]]
 
 
 class CodingHostedSessionV1:
@@ -179,9 +177,7 @@ class CodingHostedSessionV1:
             self._unsubscribe = lambda: None
             return
         try:
-            unsubscribe = control.subscribe_runtime_events(
-                self._on_runtime_event
-            )
+            unsubscribe = control.subscribe_runtime_events(self._on_runtime_event)
         except BaseException:
             raise TypeError("Coding hosted event subscription is unavailable") from None
         if not callable(unsubscribe):
@@ -222,9 +218,7 @@ class CodingHostedSessionV1:
 
     async def start_turn(self, text: str) -> None:
         self._require_open()
-        await self._require_operations().prompt(
-            request=self._prompt_request(text),
-        )
+        await self._require_operations().prompt(request=self._prompt_request(text))
 
     def steer_turn(self, text: str) -> None:
         self._require_open()
@@ -345,12 +339,10 @@ class CodingHostedSessionV1:
         try:
             projection = self._binding.project_event(event)
         except BaseException:
-            projection = CodingHostedEventProjectionV1(
-                SessionEventKindV1.ERROR,
-                "event_projection_unavailable",
-            )
-        if projection is None:
-            return
+            projection = None
+        else:
+            if projection is None:
+                return
         if type(projection) is not CodingHostedEventProjectionV1:
             projection = CodingHostedEventProjectionV1(
                 SessionEventKindV1.ERROR,
@@ -390,8 +382,6 @@ class CodingHostedSessionV1:
 
     def _require_operations(self) -> SessionOperationRuntime:
         if self._operations is None:
-            from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
-
             raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
         return self._operations
 
