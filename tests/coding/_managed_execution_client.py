@@ -64,6 +64,9 @@ async def client_a():
         connection = creation.connection
         client, execution = connection.client, connection.execution_client
         assert execution is not None
+        if mode.startswith("stop-"):
+            await client_stop(connection, mux)
+            return
         selector = MuxSelectorV1(mux_space_id=mux.mux_space_id)
         await client.attach_mux(MuxAttachV1(selector))
         scope = connection.scopes[0]
@@ -103,6 +106,42 @@ async def client_a():
         await creation.close()
         journal.close()
         registry.close()
+
+
+async def client_stop(connection, mux):
+    client, execution = connection.client, connection.execution_client
+    selector = MuxSelectorV1(mux_space_id=mux.mux_space_id)
+    scope = connection.scopes[0]
+    count = 1 if mode == "stop-single" else 3
+    for index in range(count):
+        await client.attach_mux(MuxAttachV1(selector))
+        space = await client.open_member(MuxMemberOpenV1(selector, SessionOpenSpecV1(
+            "coding", f"stop-{index}", scope.scope, scope.fingerprint, f"stop-{index}",
+        )))
+    attachment = await client.attach_mux(MuxAttachV1(selector))
+    control = SessionSnapshotRequestV1(attachment.attachment_id, attachment.controller_generation,
+                                      space.members[0].member_id)
+    submission = uuid4().hex
+    accepted = await execution.submit_execution(control, execution.service_instance_id, submission, "active stop")
+    await until(lambda: audit_contains("model_entered"))
+    running = await execution.get_execution(control, execution.service_instance_id, accepted.state.execution_id)
+    assert running.state.status.value == "running"
+    emit("stop_ready", service_instance_id=execution.service_instance_id, submission_id=submission,
+         execution_id=running.state.execution_id, session_id=running.identity.session_id,
+         sessions=[member.session.session_id for member in space.members], status="running")
+    await until(lambda: audit_contains("local_fenced"))
+    try:
+        await execution.submit_execution(control, execution.service_instance_id, uuid4().hex, "must not execute")
+    except Exception as error:
+        # Require a real protocol error; an arbitrary transport/test exception
+        # cannot satisfy the concurrent admission assertion.
+        assert isinstance(error, AppServiceError), repr(error)
+        assert error.code is AppErrorCodeV1.SERVICE_CLOSED
+        emit("stop_rejected", error=error.code.value)
+    else:
+        raise AssertionError("Host admitted execution after stop fence")
+    finally:
+        (root / "release-close").touch()
 
 
 async def client_b():

@@ -358,3 +358,121 @@ assertions, lost-response injection and exact-owner cleanup against the stage
 1A working tree. All nine stage 1B criteria have local evidence; this is not
 user acceptance or an extension of the validated platform/scope.
 
+## Managed active-execution shutdown — stage 1C
+
+Stage 1C adds Linux process verification without changing production shutdown
+code. `test_managed_stop_execution.py` reuses the stage 1B production entry and
+separate client, with `_managed_stop_probe.py` installed only by the test child.
+The probe calls original methods, records successful release receipts, and
+introduces explicit scheduling gates/faults; it does not substitute an
+AppService, Execution Registry, Session, native observer or process manager.
+
+The actual shutdown chain is:
+
+1. `ManagedServiceStopOperationV1._run_once` admits the recorded native identity
+   and process group, durably requests stop, then observes child cleanup and
+   native exit separately. Its deadline does not grant authority to kill.
+2. The managed child's adopted command fences `HostedLocalRuntimeV1`.
+   `HostedLocalRuntimeV1._fence` fences the server and client scopes before
+   asynchronous cleanup. `_close_once` finishes any stop reply, closes server
+   connections and the connection directory, then closes the application.
+3. `HostedApplicationContinuityRuntimeV1._settle_once` first shuts down the
+   hosted application. `HostedApplicationRuntimeV1._shutdown_once` runs service,
+   AppHost and Product cleanup in that dependency order, retaining a failed
+   phase rather than closing its dependencies prematurely.
+4. `AppServiceV1.close` fences the Execution Registry and discovery, closes
+   client scopes, moves Session owners into cleanup debt, and joins all Session
+   closes with `gather(return_exceptions=True)`. One Session failure does not
+   skip other Session cleanup; successful owners leave the debt set.
+5. `_SessionOwner._close_port` calls `ExecutionRegistryV1.close_binding` before
+   Adapter close. The registry marks the binding closing, requests whole-
+   execution interruption, joins/retries the original settlement, then removes
+   listeners. `CodingExecutionWorkV1` aborts real Agent operations on cancellation
+   and calls `AgentSession.settle_execution`; the registry publishes the
+   terminal result and releases the active slot only after Product settlement.
+6. `CodingHostedExecutionSessionV1._close_execution` retains its close task.
+   Its leased owner closes the AppHost lease before `AppHostRuntimeV1.close_session`.
+   `CodingRealHostedSessionV1._close_once` disposes the original AgentSession.
+   Successful close bodies run once; retrying a failed owner is allowed and
+   does not mean repeating a successful resource release.
+7. Once service cleanup succeeds, AppHost shutdown and the foreground Product
+   factory close complete, including Catalog cleanup. Only then does the
+   Continuity runtime release its store lease. Host stop retains the desired
+   continuity record; it is not Session-history deletion or application retire.
+8. `ManagedChildApplicationV1._close_once` records application cleanup only
+   after the adopted application reports no pending cleanup. The external stop
+   operation records native leader/group exit; `cleanly_stopped` requires all
+   three facts. `_ChildLifetime._drive` retains failed cleanup and retries with
+   the existing budget/backoff policy instead of pretending cleanup succeeded.
+
+Operation meanings remain separate: client detach releases connection and
+attachment authority (stage 1B proves work survives); Execution interrupt
+settles one execution; Session close settles its owned execution and releases
+that Session; Host stop fences the whole service and releases every Session
+and application owner. No operation was changed to implicitly replace another.
+
+Four real-process cases cover one active Session; three Sessions (one active,
+two idle); one Adapter cleanup failure; and a delayed cancellation settlement.
+The client submits through the Execution API and proves `running` before stop.
+After the real listener/scope fence, a test gate briefly retains the socket so
+an additional real submit receives `service_closed`, rather than merely EOF.
+The gate then releases normal cleanup. Exactly one accepted execution and one
+model entry are required; cancellation must reach the real synthetic transport,
+followed by `interrupted` and an empty active slot. Per-Session observations
+require one successful Owner/Adapter/Lease/Product/AgentSession release, and
+assert that lease release precedes Agent disposal. AppHost, Product factory,
+Catalog and Continuity lease completion are observed explicitly.
+
+The fault case rejects one Adapter's release before performing it. Two other
+Session owners must complete while the failed owner remains retained. The
+stop-waiter timeout must leave application-cleanup and native-exit evidence
+false, with the original Host still alive. After removing the injected fault,
+a new stop operation joins the same instance and cleanup succeeds. The Host
+returns **1**, as the existing lifetime policy preserves the prior application
+failure; final clean-stop evidence describes resource settlement, not an exit
+code of zero. Ordinary and delayed-settlement cases return **0**.
+
+The timeout case holds the transport's cancellation cleanup beyond the caller's
+three-second stop deadline. It asserts that no execution terminal record or
+child-cleanup success is published early. Releasing that exact cleanup permits
+the same execution to settle; it does not replay input or replace the Runtime.
+This exercises a caller stop timeout, not a new Host timeout/kill policy.
+Concurrent/repeated stop callers and a fresh stop after native exit must return
+consistent final evidence without additional successful release receipts.
+
+Run from the dedicated task worktree, outside the restricted sandbox:
+
+```sh
+mkdir -p .artifacts/stage1c
+LOUSHANG_STAGE1C_EVIDENCE_DIR=.artifacts/stage1c \
+  uv run --no-sync --offline python -m pytest \
+  tests/coding/test_managed_stop_execution.py -m 'not live' -q
+```
+
+The ignored evidence files retain original process identities, client receipt,
+execution/Session IDs, protocol rejection, cancellation/settlement/release
+ordering, evidence observed during failure, and final exit/cleanup facts. They
+are test observations of the live Registry, not a persistent Execution ledger.
+No GUI/TUI, approval, remote-access, restart-recovery or CI-gate changes are
+included. Permanent unrecoverable cleanup remains pending under the existing
+lifetime contract; these tests release their controlled failures to finish and
+reap every owned process rather than leaving an intentionally stuck Host.
+
+Stage 1C regression on Linux (2026-11-08): **268 passed in 122.84s**, including
+all stage 1A/1B focused tests from the prior 172-case group, the four new stop
+cases, and existing managed child/bootstrap/lifetime/process plus hosted
+application/continuity tests. The retained logs are
+`.artifacts/stage1c/regression.log` and `regression.xml`. Stage 1B reconnect
+identity evidence from this run is under `.artifacts/stage1c/reconnect/`.
+The focused stop group is rerun after adding the explicit assertion that a
+fresh connection lease to the already stopped instance returns `unavailable`;
+its final report is `focused.xml`. These overlapping runs are not additive
+unique coverage. Ruff and documentation invariants are checked separately.
+
+Internal verification acceptance: Codex implementation agent, responsible for
+the authorized stage 1C shutdown verification, reviewed production call order,
+retained cleanup debt, retry/exit-code semantics, exact-process teardown and
+all four acceptance scenarios. No production defect requiring a fix was found.
+This records delegated implementation verification, not user acceptance or
+cross-platform/provider certification. Stage 1C does not authorize proceeding
+to GUI or TUI integration.

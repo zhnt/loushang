@@ -64,6 +64,11 @@ def observed_submit(self, binding, text, submission_id):
     return record
 
 
+if (root / "stop-scenario.json").exists():
+    from _managed_stop_probe import install
+
+    held_stream = install(root, audit)
+
 CodingManagedLocalCommandV1.__init__ = with_provider
 ExecutionRegistryV1.submit = observed_submit
 with (root / "host-diagnostic.log").open("w") as diagnostic:
