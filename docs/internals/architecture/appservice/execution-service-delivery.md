@@ -222,3 +222,62 @@ Existing G11 core and Product budgets are retained. The notification owner is
 bounded to 60 lines, registry to 400, scoped execution client to 250; the separate
 transport package has a 1200-line total and 400-line per-module cap. Architecture
 tests register every module and enforce these budgets and dependency directions.
+
+## Managed Coding composition — stage 1A
+
+The stage 1A composition reuses the existing Coding execution adapter and the
+single `AppServiceV1` execution registry. Managed bootstrap creates one
+`HostedExecutionServiceBindingV1` per application attempt; client scopes borrow
+that registry and never construct another one. The local listener publishes
+Execution only after the application admits this capability. Managed Mux
+creation/closure admission is unchanged.
+
+The managed resolver retains the canonical Product identity and projects only
+the admitted selection scope/fingerprint. Before adapter construction it seals
+an internal proof of the exact leased owner, Product binding, AppHost runtime,
+lease, control, canonical identity and selection identity. The adapter accepts
+a differing identity only with that proof and the original control. A copied
+proof on another owner, a substituted lease/runtime/control or a changed view
+is rejected before acquiring the exclusive execution claim. This is an
+internal composition invariant, not a wire capability or protection against
+arbitrary Python code modifying private implementation state.
+
+Shutdown follows the existing chain: fence AppService admission, interrupt and
+settle the registry binding, close the adapter, detach the AppHost lease, close
+the runtime Session, then settle the remaining AppHost/Product/catalog owners.
+No AgentSession, execution driver, writer or transcript header is replaced to
+accommodate the projected identity. Failed adapter construction releases its
+claim and closes its own lease/runtime binding; duplicate-owner rejection
+only detaches the rejected lease and preserves the existing execution.
+
+Internal implementation acceptance: Codex implementation agent, responsible
+for the authorized stage 1A Coding/AppService composition and AppHost ownership
+boundary; reviewed against `main@c3d6f3f18` and the
+`feature/managed-execution-1a` working diff. The accepted boundary preserves
+AppService registry ownership, AppHost binding lifetime and canonical Session
+storage. Evidence is the extended managed application/local tests, existing
+non-managed execution tests and managed lifecycle regressions. This is agent
+acceptance within the delegated task, not a user acceptance statement.
+
+Follow-up outside stage 1A: client disconnect still revokes interaction
+authority and can deny a pending approval. GUI profile negotiation, default
+TUI migration, remote connections and restart recovery remain separate work.
+
+Stage 1A validation on Linux (2026-11-08): the focused execution/managed/local,
+AppService registry/service, AppHost lifecycle, detached process and production
+entry group passed 156 cases. The existing PR-fast Coding inventory passed
+4,195 cases with 22 existing platform skips across eight deterministic shards;
+`verify_module_report.py` validated each report and their duplicate-free union.
+Both selected E2E smoke cases passed. Changed-file Ruff, source dependency
+freshness and documentation invariants passed. Counts describe separate groups
+and must not be summed as unique coverage.
+
+The initial shared virtual environment's editable metadata selected the GUI
+worktree, causing host-distribution provenance failures also reproduced on
+main. Final module/E2E checks used a private copy of the existing environment
+with only this repository reinstalled offline as editable; no project dependency
+or shared environment was changed. The default legacy `make check-changed`
+sequential run was superseded by the existing PR-fast plan and its sharded
+module runner; it is not recorded as a completed passing legacy gate. The
+ignored `.artifacts/stage1a/` directory retains the final logs and JUnit reports.
+

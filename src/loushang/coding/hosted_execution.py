@@ -4,18 +4,22 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from dataclasses import replace
 from secrets import token_hex
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
+from loushang.apphost import SessionBindingKeyV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppFailureV1,
     AppServiceError,
     SessionEventKindV1,
     SessionEventV1,
+    SessionOpenSpecV1,
     SessionSnapshotV1,
 )
+from loushang.appservice.discovery_ports import HostedSessionDiscoveryScopeV1
 from loushang.appservice.execution_contract import (
     ExecutionContentEventV1,
     ExecutionObservationV1,
@@ -53,6 +57,65 @@ from .appservice_adapter import (
 from .hosted_resume import CodingDeferredHostedSessionV1
 from .hosted_session import CodingHostedHistoryBindingV1, CodingRealHostedSessionV1
 
+if TYPE_CHECKING:
+    from .hosted_application import (
+        CodingAppHostHostedSessionResolverV1,
+        _LeasedCodingHostedBinding,
+    )
+
+
+def _admit_execution_projection(
+    owner: _LeasedCodingHostedBinding, resolver: CodingAppHostHostedSessionResolverV1, request: SessionOpenSpecV1,
+) -> None:
+    """Seal only the managed resolver's admitted lease and selection view.
+
+    This is Product-internal authority, never a caller-supplied identity
+    override. Retain the original objects as well as their identity values
+    so adapter construction cannot substitute a same-ID owner or control.
+    """
+    from .hosted_application import (
+        CodingAppHostHostedSessionResolverV1,
+        _identity_matches_open,
+        _LeasedCodingHostedBinding,
+    )
+
+    if type(owner) is not _LeasedCodingHostedBinding:
+        raise ValueError("invalid managed execution owner")
+    original = owner._binding.identity
+    if (type(resolver) is not CodingAppHostHostedSessionResolverV1
+            or not resolver._managed_selection or not resolver._execution
+            or owner._runtime is not resolver._runtime
+            or owner._lease.profile_id != resolver._profile_id
+            or owner._lease.profile_binding is not owner._binding
+            or owner._lease.binding_key != SessionBindingKeyV1(
+                original.product_id, original.continuity_id, original.session_id)
+            or resolver._scopes is None or HostedSessionDiscoveryScopeV1(
+                request.product_id, request.scope, request.scope_fingerprint,
+            ) not in resolver._scopes
+            or owner.identity != replace(original, scope=request.scope,
+                                        scope_fingerprint=request.scope_fingerprint)
+            or not _identity_matches_open(request, owner.identity)
+            or owner._execution_projection is not None or owner._close_task is not None):
+        raise ValueError("invalid managed execution projection")
+    owner._execution_projection = (
+        owner._binding, owner._lease, owner._runtime, original, owner.identity, owner.control,
+        owner._lease.profile_id, owner,
+    )
+
+def _owns_execution_projection(owner: _LeasedCodingHostedBinding, binding: object) -> bool:
+    proof = owner._execution_projection
+    return bool(
+        proof is not None and proof[7] is owner and binding is owner._binding is proof[0]
+        and owner._lease is proof[1] and owner._runtime is proof[2]
+        and owner._binding.identity == proof[3] and owner.identity == proof[4]
+        and owner.control is proof[5]
+        and owner._lease.profile_binding is binding
+        and owner._lease.profile_id == proof[6]
+        and owner._lease.binding_key == SessionBindingKeyV1(
+            owner.identity.product_id, owner.identity.continuity_id, owner.identity.session_id)
+        and owner._close_task is None
+    )
+
 
 class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
     """Own the optional capability and the legacy surface on one real binding.
@@ -72,10 +135,16 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
             CodingDeferredHostedSessionV1,
         }:
             raise TypeError("execution requires a Coding Product binding")
-        if owner is not None and (
-            owner.identity != binding.identity or owner.control is not binding.control
-        ):
-            raise ValueError("execution close owner must own the exact Product binding")
+        if owner is not None:
+            from .hosted_application import _LeasedCodingHostedBinding
+
+            projected = (type(owner) is _LeasedCodingHostedBinding
+                         and _owns_execution_projection(owner, binding))
+            if (owner.control is not binding.control
+                    or (type(owner) is _LeasedCodingHostedBinding
+                        and owner._identity is not None and not projected)
+                    or owner.identity != binding.identity and not projected):
+                raise ValueError("execution close owner must own the exact Product binding")
         self._product_binding = binding
         self._content: set[Callable[[ExecutionContentEventV1], None]] = set()
         self._draft = ""
@@ -234,6 +303,10 @@ def _observe_close(task: asyncio.Task[None]) -> None:
         task.exception()
 
 
+def _select_coding_execution_port(port: object) -> CodingHostedExecutionSessionV1 | None:
+    return port if isinstance(port, CodingHostedExecutionSessionV1) else None
+
+
 def create_coding_execution_service_binding(
     application_id: str, *, service_instance_id: str | None = None,
     limits: ExecutionLimitsV1 = ExecutionLimitsV1(),
@@ -241,7 +314,7 @@ def create_coding_execution_service_binding(
     """Explicit composition selection; create a fresh value per application instance."""
     return HostedExecutionServiceBindingV1(
         application_id, service_instance_id or token_hex(16),
-        lambda port: port if isinstance(port, CodingHostedExecutionSessionV1) else None,
+        _select_coding_execution_port,
         limits,
     )
 
