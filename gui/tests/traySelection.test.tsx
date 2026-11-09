@@ -61,7 +61,8 @@ describe("tray selection integration", () => {
     render(<LocalHostGate />);
     await waitFor(() => expect(projection()?.hosts[1]?.enable).toBe(true));
     const draft = screen.getByLabelText("Draft");
-    fireEvent.change(draft, { target: { value: "Unsent work" } });
+    // Flush the queued tray projection before clicking its revisioned menu.
+    await act(async () => { fireEvent.change(draft, { target: { value: "Unsent work" } }); });
     click("office", "enable");
     await waitFor(() => expect(backend.create).toHaveBeenCalledWith("/office", "office"));
     await waitFor(() => expect(projection().currentLabel).toContain("🟢 Office"));

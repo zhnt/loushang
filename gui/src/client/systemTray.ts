@@ -35,9 +35,10 @@ export function trayProjection(model: TrayModel, revision: number) {
   const text = labels[model.language.startsWith("zh") ? "zh" : "en"];
   const separator = model.language.startsWith("zh") ? "：" : ": ";
   const current = model.hosts.find((host) => host.selected);
+  const status = current && current.connection !== "connected" ? ` · ${text[current.connection]}` : "";
   return {
     revision, userName: model.userName || text.user,
-    currentLabel: current ? `${text.current}${separator}${dots[current.connection]} ${current.name} · ${text[current.connection]}` : `⚪ ${text.none}`,
+    currentLabel: current ? `${text.current}${separator}${dots[current.connection]} ${current.name}${status}` : `⚪ ${text.none}`,
     showLabel: text.showLabel, webLabel: text.webLabel, manageLabel: text.manageLabel,
     quitLabel: text.quitLabel, enableLabel: text.enableLabel, infoLabel: text.infoLabel,
     reconnectLabel: text.reconnectLabel, startLabel: text.startLabel, stopLabel: text.stopLabel,

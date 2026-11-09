@@ -3,7 +3,7 @@ use crate::web_link::safe_web_url;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Mutex};
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
+    menu::{IsMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     App, AppHandle, Emitter, Manager,
 };
@@ -54,7 +54,7 @@ struct TrayState {
     show: MenuItem<tauri::Wry>,
     web: MenuItem<tauri::Wry>,
     quit: MenuItem<tauri::Wry>,
-    hosts: Mutex<Submenu<tauri::Wry>>,
+    host_section: Mutex<Vec<MenuItemKind<tauri::Wry>>>,
     actions: Mutex<HashMap<String, HostAction>>,
     web_url: Mutex<Option<String>>,
 }
@@ -109,9 +109,12 @@ fn apply(app: &AppHandle, projection: TrayProjection) -> tauri::Result<()> {
     let web_url = projection.web_url.filter(|value| safe_web_url(value));
     state.web.set_enabled(web_url.is_some())?;
     *state.web_url.lock().unwrap() = web_url;
-    // Keep the root attached on Linux. Replace the child submenu so its title
-    // is re-exported by AppIndicator when the interface language changes.
-    let hosts = Submenu::new(app, projection.manage_label, !projection.hosts.is_empty())?;
+    // AppIndicator hosts can render submenus as inline accordions. Keep just
+    // one expandable level: a section heading followed by individual Hosts.
+    // Retain the root menu, and rebuild the section together with its footer
+    // so Quit is always preceded by a separator, independent of Host count.
+    let mut section =
+        vec![MenuItem::new(app, projection.manage_label, false, None::<&str>)?.kind()];
     let mut actions = HashMap::new();
     for (index, host) in projection.hosts.iter().enumerate() {
         let submenu = Submenu::new(app, &host.label, true)?;
@@ -145,12 +148,18 @@ fn apply(app: &AppHandle, projection: TrayProjection) -> tauri::Result<()> {
                 );
             }
         }
-        hosts.append(&submenu)?;
+        section.push(submenu.kind());
     }
-    let mut previous = state.hosts.lock().unwrap();
-    state.root.remove(&*previous)?;
-    state.root.insert(&hosts, 6)?;
-    *previous = hosts;
+    section.push(PredefinedMenuItem::separator(app)?.kind());
+    section.push(state.quit.kind());
+    let mut previous = state.host_section.lock().unwrap();
+    for item in previous.iter() {
+        state.root.remove(item)?;
+    }
+    for item in &section {
+        state.root.append(item)?;
+    }
+    *previous = section;
     *state.actions.lock().unwrap() = actions;
     Ok(())
 }
@@ -192,7 +201,8 @@ pub fn setup(app: &App) -> tauri::Result<()> {
     )?;
     let web = MenuItem::with_id(app, "tray-web", "打开 Web / Open Web", false, None::<&str>)?;
     let quit = MenuItem::with_id(app, "tray-quit", "退出 / Quit", true, None::<&str>)?;
-    let hosts = Submenu::new(app, "管理 Host / Manage Hosts", false)?;
+    let hosts = MenuItem::new(app, "管理 Host / Manage Hosts", false, None::<&str>)?;
+    let quit_separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -203,7 +213,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &current,
             &hosts,
-            &PredefinedMenuItem::separator(app)?,
+            &quit_separator,
             &quit,
         ],
     )?;
@@ -251,8 +261,8 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         current,
         show,
         web,
-        quit,
-        hosts: Mutex::new(hosts),
+        quit: quit.clone(),
+        host_section: Mutex::new(vec![hosts.kind(), quit_separator.kind(), quit.kind()]),
         actions: Mutex::default(),
         web_url: Mutex::default(),
     });

@@ -15,6 +15,8 @@ describe("system tray projection", () => {
     expect(view.hosts[0].enable).toBe(false);
     expect(view.hosts[0].stop).toBe(true);
     expect(view.webUrl).toBe(local.webUrl);
+    const connected = trayProjection({ userName: "Chester", language: "zh-CN", hosts: [{ ...local, connection: "connected" }] }, 8);
+    expect(connected.currentLabel).toBe("当前 Host：🟢 Local");
   });
   it("shows connecting in yellow and never borrows another Host's web address", () => {
     const view = trayProjection({ userName: "", language: "zh-CN", hosts: [

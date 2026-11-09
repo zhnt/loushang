@@ -1,5 +1,20 @@
 # Native tray management acceptance
 
+## Layout follow-up (2026-11-09)
+
+Host menus now expand only one level under a section heading. Some AppIndicator
+hosts render nested submenus inline; removing the outer expandable menu avoids
+stacked submenu panels. The dynamic section includes the separator and Quit
+footer, appended in order rather than inserted at a fixed root index. Connected
+status text is omitted while transitional/error status text remains visible.
+
+A rebuilt Linux application passed D-Bus menu inspection before and after a
+saved Host switch: the heading has no submenu, Host actions have no nested
+children, and the last two root items are a separator and Quit. Minimize,
+close-to-tray, restore, Open Web, and Quit passed in the same isolated run.
+This verifies the native menu structure; desktop-shell pixel layout was not
+captured in this follow-up.
+
 Scope: native menu presentation, window lifecycle, and delegation to existing
 Host management. No runtime lifecycle or credential owner is moved into Rust.
 
