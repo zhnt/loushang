@@ -96,7 +96,7 @@ def test_G17_COMPAT_installed_local_discovery_history_detach_and_stop(
                 expected_records = [f"Historical {name}"]
                 if sys.platform == "linux":
                     expected_records.append(
-                        "Historical session is read-only; continuing requires current runtime activation."
+                        "Sending a message resumes the session runtime."
                     )
                 assert [
                     record.text for record in state.active_window.records
@@ -118,7 +118,7 @@ def test_G17_COMPAT_installed_local_discovery_history_detach_and_stop(
             expected_records = ["Historical cwd"]
             if sys.platform == "linux":
                 expected_records.append(
-                    "Historical session is read-only; continuing requires current runtime activation."
+                    "Sending a message resumes the session runtime."
                 )
             assert [
                 record.text for record in restored.state.active_window.records

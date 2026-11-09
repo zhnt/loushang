@@ -799,3 +799,26 @@ packaged-release acceptance, or claim autonomous native UI automation.
 Final process inspection found Host 265425 and GUI processes 265466/268466
 absent. The task's Vite process was stopped separately. Other application
 instances and main/GUI integration worktrees were not modified.
+
+
+## Post-merge Coding execution budget review — 2026-11-09
+
+The implementation agent reviewed the authorized Stage 1A composition at
+`a8f3856a5` against merged main `1665cff34`. The existing Execution Product
+slice contains the same two files. `hosted_execution.py` has 338 lines versus
+265 on main: a net 73 lines for resolver-sealed identity projection, exact
+binding/lease/runtime/control checks, and named adapter-port selection.
+`_hosted_execution_work.py` remains 133 lines. This implementation-agent
+acceptance covers that bounded Product composition only: add 73 to the existing
+400-line combined and 265-line per-file allowances, retaining their existing
+headroom. No file is excluded, no core allowance changes, and no execution
+ownership or authentication assertion is removed. Splitting security checks
+into a new module solely to satisfy the old count would obscure their ownership.
+
+The review checks `_admit_execution_projection`, `_owns_execution_projection`
+and `CodingHostedExecutionSessionV1.__init__`: admission retains the original
+Product binding, lease, Runtime and control; adapter construction verifies the
+sealed objects and preserves exclusive execution claims. Existing managed
+identity rejection and execution settlement tests remain the behavioral
+acceptance criteria. This bookkeeping correction does not assert that tests
+have passed; their actual results are recorded separately.

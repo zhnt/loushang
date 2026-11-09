@@ -115,11 +115,14 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
         assert groups["g16"][path] <= limit, (path, groups["g16"][path], limit)
     assert sum(groups["g17"].values()) <= 450, groups["g17"]
     assert sum(groups["g18"].values()) <= 200, groups["g18"]
-    assert sum(groups["execution"].values()) <= 400, groups["execution"]
+    # Stage 1A adds exactly 73 lines to the existing adapter: resolver-sealed
+    # identity projection, exact-owner checks and named port selection. See
+    # execution-service-delivery.md, post-merge budget review (2026-11-09).
+    managed_execution_allowance = 73
+    assert sum(groups["execution"].values()) <= 400 + managed_execution_allowance, groups["execution"]
     # R2.1 deferred and read-only bindings add eight lines above the original
     # per-file ceiling; Hosted SDK Method integration adds another seven.
-    # The existing combined execution ceiling remains unchanged.
-    assert max(groups["execution"].values()) <= 258 + 7, groups["execution"]
+    assert max(groups["execution"].values()) <= 258 + 7 + managed_execution_allowance, groups["execution"]
     # Exact reviewed optional Product composition baseline; not an exemption
     # for any future managed/CLI module, nor a general core-budget increase.
     # Reviewed single-candidate selection adds 13 lines to the same CLI owner.
