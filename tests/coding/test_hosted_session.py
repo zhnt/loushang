@@ -183,13 +183,19 @@ def test_gui_title_runs_in_background_and_retries_from_original_prompt(tmp_path,
         binding = await _binding(tmp_path, continuity_id="gui-new-title-test", stream_fn=stream)
         hosted = CodingHostedExecutionSessionV1(binding)
         try:
+            assert (await hosted.snapshot_execution()).source.title == "New Session"
             hosted.start_execution(ExecutionRequestV1("first", question))
             await asyncio.wait_for(title_started.wait(), timeout=5)
             outcome = await asyncio.wait_for(hosted.wait_execution("first"), timeout=5)
             assert outcome.status is ExecutionStatusV1.SUCCEEDED
             snapshot = (await hosted.snapshot_execution()).source
-            assert snapshot.title == "New Session"
+            assert snapshot.title == question
             assert [row.text for row in snapshot.records] == [question, "real Coding response"]
+            path = binding.control.session_manager.session_file
+            assert path is not None
+            history = read_coding_resume_snapshot(path, max_bytes=1024 * 1024)
+            restored = CodingHostedHistoryBindingV1(binding.identity, history)
+            assert restored.project_snapshot().title == question
 
             hosted.start_execution(ExecutionRequestV1("second", "还有其他原因吗？"))
             finish_title.set()
@@ -203,8 +209,6 @@ def test_gui_title_runs_in_background_and_retries_from_original_prompt(tmp_path,
                 content = context.messages[0].content
                 assert isinstance(content, list) and len(content) == 1
                 assert isinstance(content[0], TextPart) and content[0].text == question
-            path = binding.control.session_manager.session_file
-            assert path is not None
         finally:
             finish_title.set()
             await hosted.close()
@@ -220,6 +224,8 @@ def test_gui_title_and_primary_reply_keep_independent_durable_outcomes(tmp_path:
     from .test_agent_session_model_input import _CodingPreparedAdapter
     from .test_agent_session_model_input import _model as prepared_model
 
+    question = "介绍北京天气\n" + "气候" * 30
+    preview = "介绍北京天气 " + "气候" * 20 + "…"
     primary_started = asyncio.Event()
     finish_primary = asyncio.Event()
     title_published = asyncio.Event()
@@ -250,8 +256,9 @@ def test_gui_title_and_primary_reply_keep_independent_durable_outcomes(tmp_path:
             hosted = CodingHostedExecutionSessionV1(binding)
             hosted.subscribe(lambda event: title_published.set() if event.kind is SessionEventKindV1.STATUS else None)
             try:
-                hosted.start_execution(ExecutionRequestV1("first", "介绍北京天气"))
+                hosted.start_execution(ExecutionRequestV1("first", question))
                 await asyncio.wait_for(primary_started.wait(), timeout=5)
+                assert (await hosted.snapshot_execution()).source.title == preview
                 assert binding._title_task is None
                 assert transport_order == ["main"]
                 finish_primary.set()
@@ -260,7 +267,7 @@ def test_gui_title_and_primary_reply_keep_independent_durable_outcomes(tmp_path:
                 await asyncio.wait_for(title_published.wait(), timeout=5)
                 snapshot = (await hosted.snapshot_execution()).source
                 assert snapshot.title == "北京四季气候"
-                assert [row.text for row in snapshot.records] == ["介绍北京天气", "Beijing has four seasons."]
+                assert [row.text for row in snapshot.records] == [question, "Beijing has four seasons."]
                 entries = binding.control.session_manager.get_entries()
                 assert [row.payload.purpose for row in entries if row.kind == "model.input.prepared"] == [
                     "main", "session_title",

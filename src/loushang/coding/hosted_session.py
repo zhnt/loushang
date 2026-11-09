@@ -123,10 +123,7 @@ class CodingHostedHistoryBindingV1:
             history.header_preview.header, history.records
         ).name
         self._projection = CodingHostedSnapshotProjectionV1(
-            title=_session_title(
-                title, (entry.payload for entry in history.records),
-                automatic=_uses_automatic_title(identity),
-            ),
+            title=_session_title(title, (entry.payload for entry in history.records)),
             revision=0, running=False, records=tuple(records),
             truncated=omitted,
         )
@@ -242,11 +239,7 @@ class CodingRealHostedSessionV1:
                 ),
             )
         return CodingHostedSnapshotProjectionV1(
-            title=_session_title(
-                self._session.session_name,
-                _title_messages(self._session),
-                automatic=_uses_automatic_title(self.identity),
-            ),
+            title=_session_title(self._session.session_name, _title_messages(self._session)),
             revision=self._revision,
             running=self._session.is_streaming,
             records=tuple(records),
@@ -582,13 +575,9 @@ def _title_messages(session: AgentSession) -> Iterable[object]:
     return session.messages
 
 
-def _session_title(
-    name: str | None, messages: Iterable[object], *, automatic: bool,
-) -> str:
+def _session_title(name: str | None, messages: Iterable[object]) -> str:
     if name and name.strip():
         return _bounded(name.strip(), limit=256)
-    if automatic:
-        return "New Session"
     # Read the first prompt from the full transcript, including turns omitted
     # by the display window or by context compaction.
     for message in messages:

@@ -110,9 +110,12 @@ transcript writes remain ordered. The Hosted Session cancels and joins the
 title task on close. The existing metadata writer persists the title and
 signals snapshot readers through a status event without adding a transcript row.
 
-Until a title is stored, snapshots display `New Session`. After a failed
-title attempt, the next successful execution can try again with the original
-first message. The [hosted-session regression](../../../../tests/coding/test_hosted_session.py)
+An empty session displays `New Session`. Once the first user message is
+recorded, live and restored snapshots display a single-line preview of up to
+48 characters until the generated title is stored. If title generation fails,
+the preview remains visible and the next successful execution can try again
+with the original first message. The
+[hosted-session regression](../../../../tests/coding/test_hosted_session.py)
 exercises the prepared-request barrier with a deterministic transport and
 covers the primary outcome, background title publication and history restoration.
 
