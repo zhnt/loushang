@@ -199,7 +199,14 @@ Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
 selector; their original append/byte/lock/custody rules remain separate. Coding
 keeps public dataclass identities/signatures, Product admission and the original
 GC/binding/currentness order. [Bounded native approval evidence](key-designs/native-approval-journal-convergence.md)
-does not grant native use or complete native installation/repair.
+does not grant native use. The subsequent complete Linux H6 Product native release
+custody now belongs to the existing Package Product component: review, install,
+repair, source/receipt verification and current launch material. It directly reuses
+the existing Posix Product owner, Worker verifier and approval owner.current;
+Coding retains actual public DTO/Reader identities and pure profile/type/version
+bindings. Install temporary cleanup and repair debt preservation remain separate.
+[Bounded custody evidence](key-designs/linux-product-native-release-custody-convergence.md)
+records real inert ZIP/FD observations; this grants no execution or replacement policy.
 
 The bounded [Product composition input preparation](plugin/composition-route-inputs.md)
 keeps owner grouping, structural supplied-binding checks, ordering and selection

@@ -1,46 +1,34 @@
-"""Read a private, offline-installed Linux H6 native Wheel for Product facts.
-
-The Product composition must own the installation root and share its GC gate.
-This reader supplies closure facts only; it cannot launch a Worker.
-"""
+"""Public Coding values and readers for an installed inert Linux H6 release."""
 
 from __future__ import annotations
 
-import csv
-import json
-import os
-import re
-from dataclasses import dataclass, replace
-from hashlib import sha256
-from importlib.metadata import PackageNotFoundError, version
+from collections.abc import Callable
+from dataclasses import dataclass
+from importlib.metadata import version
 from pathlib import Path
 
+from loushang.harness.package_product._linux_worker_native_release import (
+    _PRODUCT_NATIVE_RELEASE_ROOT,
+    _LinuxWorkerNativeReleaseCustody,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
-from loushang.harness.worker._linux_native_release import _PACKAGE
-from loushang.harness.worker.native_executable_format import (
-    WorkerNativeExecutableFormatError,
-)
 
-from .package_product_worker_native_approval import CodingWorkerNativeApprovalJournal
+from .package_product_worker_native_approval import (
+    CodingWorkerNativeApprovalError,
+    CodingWorkerNativeApprovalJournal,
+    CodingWorkerNativeReleaseApprovalV1,
+    CodingWorkerNativeReleaseReviewV1,
+)
 from .package_product_worker_native_release import (
     CodingWorkerNativeReleaseError,
-    _read_member,
     _release_verifier,
 )
 from .package_product_worker_policy import CodingWorkerNativeClosureV1
-
-_PRODUCT_NATIVE_RELEASE_ROOT = "worker-native-release-v1"
-_SOURCE_WHEEL_NAME = "source.whl"
-_RECEIPT_NAME = "product-native-release.json"
-_MAX_SOURCE_WHEEL_BYTES = 4 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,21 +47,7 @@ def open_coding_product_installed_worker_release_reader(
     product_owner: PosixLocalWheelProductSessionOwner,
 ) -> CodingProductInstalledWorkerReleaseReader:
     """Bind the installed native catalog to one explicit Coding Product owner."""
-
-    if (
-        not isinstance(product_owner, PosixLocalWheelProductSessionOwner)
-        or product_owner.policy.product_id != "coding"
-        or not any(
-            binding.source_trust_class == "local-worker-candidate"
-            for binding in product_owner.policy.bindings
-        )
-    ):
-        raise ValueError("Coding Product Worker candidate owner is required")
-    with product_owner.gc_gate.guard():
-        product_owner.assert_root_gc_authority_current()
-        reader = CodingProductInstalledWorkerReleaseReader(product_owner=product_owner)
-        reader.current_closure()
-        return reader
+    return _product_native_release_custody().open_reader(product_owner)
 
 
 class CodingProductInstalledWorkerReleaseReader:
@@ -96,178 +70,37 @@ class CodingProductInstalledWorkerReleaseReader:
 
     def current_launch_material(self) -> CodingWorkerNativeLaunchMaterialV1:
         """Reopen the Product release before giving Hosting its native locator."""
-
-        with self._product_owner.gc_gate.guard():
-            closure, receipt = verify_coding_product_native_release_root(
-                self._root, self._product_owner
-            )
-            decision = CodingWorkerNativeApprovalJournal(self._product_owner).current()
-            if (
-                decision is None
-                or decision.action != "approve"
-                or decision.approval is None
-                or decision.approval.to_dict()
-                != {
-                    key: receipt[key]
-                    for key in (
-                        "catalogSha256",
-                        "launcherSha256",
-                        "profileSha256",
-                        "wheelSha256",
-                    )
-                }
-            ):
-                raise CodingWorkerNativeReleaseError(
-                    "Worker native Product approval is not current"
-                )
-            return CodingWorkerNativeLaunchMaterialV1(
-                launcher_path=(
-                    self._root / _PACKAGE / "release" / "containment-launcher"
-                ),
-                closure=replace(
-                    closure,
-                    native_profile_catalog_revision=(
-                        f"{closure.native_profile_catalog_revision}:g{decision.generation}"
-                    ),
-                ),
-            )
+        return _product_native_release_custody().current_launch_material(
+            self._root, self._product_owner
+        )
 
 
 def verify_coding_product_native_release_root(
     root_path: Path, product_owner: PosixLocalWheelProductSessionOwner
 ) -> tuple[CodingWorkerNativeClosureV1, dict[str, object]]:
     """Verify one complete Product-staged or published native installation."""
-
-    if not isinstance(root_path, Path) or not root_path.is_absolute():
-        raise ValueError("Worker native Product root is invalid")
-    try:
-        with product_owner.gc_gate.guard():
-            product_owner.assert_root_gc_authority_current()
-            root = os.open(
-                root_path,
-                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-            )
-            try:
-                return verify_coding_product_native_release_descriptor(
-                    root, product_owner
-                )
-            finally:
-                os.close(root)
-    except (
-        OSError,
-        UnicodeError,
-        ValueError,
-        TypeError,
-        csv.Error,
-        PackageNotFoundError,
-        WorkerNativeExecutableFormatError,
-    ) as exc:
-        raise CodingWorkerNativeReleaseError(
-            "Worker native Product source cannot be verified"
-        ) from exc
+    return _product_native_release_custody().verify_root(root_path, product_owner)
 
 
 def verify_coding_product_native_release_descriptor(
     root: int, product_owner: PosixLocalWheelProductSessionOwner
 ) -> tuple[CodingWorkerNativeClosureV1, dict[str, object]]:
     """Verify all Product facts from the same opened installation directory."""
-
-    try:
-        with product_owner.gc_gate.guard():
-            product_owner.assert_root_gc_authority_current()
-            closure = _verify_installed_root_descriptor(root)
-            receipt = _read_product_native_release_receipt(root, product_owner)
-            source = _read_member(root, _SOURCE_WHEEL_NAME, _MAX_SOURCE_WHEEL_BYTES)
-            if (
-                sha256(source).hexdigest() != receipt["wheelSha256"]
-                or closure.native_profile_catalog_revision
-                != "h6-linux:" + str(receipt["catalogSha256"])
-                or closure.containment_launcher_digest != receipt["launcherSha256"]
-                or closure.containment_profile_digest != receipt["profileSha256"]
-            ):
-                raise CodingWorkerNativeReleaseError(
-                    "Worker native Product source changed"
-                )
-            return closure, receipt
-    except (
-        OSError,
-        UnicodeError,
-        ValueError,
-        TypeError,
-        csv.Error,
-        PackageNotFoundError,
-        WorkerNativeExecutableFormatError,
-    ) as exc:
-        raise CodingWorkerNativeReleaseError(
-            "Worker native Product source cannot be verified"
-        ) from exc
+    return _product_native_release_custody().verify_descriptor(root, product_owner)
 
 
 def read_coding_product_native_release_receipt(
     target: Path, product_owner: PosixLocalWheelProductSessionOwner
 ) -> dict[str, object]:
     """Read one exact Product source receipt without following a replaced name."""
-
-    root = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    try:
-        return _read_product_native_release_receipt(root, product_owner)
-    finally:
-        os.close(root)
-
-
-def _read_product_native_release_receipt(
-    root: int, product_owner: PosixLocalWheelProductSessionOwner
-) -> dict[str, object]:
-    body = _read_member(root, _RECEIPT_NAME, 4096)
-    try:
-        receipt = json.loads(body)
-    except (UnicodeError, ValueError) as exc:
-        raise CodingWorkerNativeReleaseError(
-            "Worker native Product receipt is invalid"
-        ) from exc
-    if (
-        type(receipt) is not dict
-        or set(receipt)
-        != {
-            "catalogSha256",
-            "launcherSha256",
-            "profileSha256",
-            "scopeId",
-            "version",
-            "wheelSha256",
-            "recordDigest",
-        }
-        or receipt["scopeId"] != product_owner.policy.project_scope_id
-        or type(receipt["version"]) is not int
-        or receipt["version"] != 1
-        or body != canonical_json_bytes(receipt) + b"\n"
-    ):
-        raise CodingWorkerNativeReleaseError("Worker native Product receipt changed")
-    record_digest = receipt.pop("recordDigest")
-    if record_digest != sha256(canonical_json_bytes(receipt)).hexdigest():
-        raise CodingWorkerNativeReleaseError("Worker native Product receipt changed")
-    for field in (
-        "catalogSha256",
-        "launcherSha256",
-        "profileSha256",
-        "wheelSha256",
-    ):
-        value = receipt[field]
-        if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
-            raise CodingWorkerNativeReleaseError(
-                "Worker native Product receipt digest is invalid"
-            )
-    return receipt
+    return _product_native_release_custody().read_receipt(target, product_owner)
 
 
 class CodingLinuxInstalledWorkerReleaseReader:
     """Reopen exact Wheel RECORD and native bytes under a private Product root."""
 
     def __init__(
-        self,
-        *,
-        installation_root: Path,
-        gc_gate: PluginPackageGcReservationJournal,
+        self, *, installation_root: Path, gc_gate: PluginPackageGcReservationJournal
     ) -> None:
         if (
             not isinstance(installation_root, Path)
@@ -289,7 +122,30 @@ class CodingLinuxInstalledWorkerReleaseReader:
         )
 
 
-def _verify_installed_root_descriptor(root: int) -> CodingWorkerNativeClosureV1:
-    return _release_verifier().verify_installed_root_descriptor(
-        root, version_provider=lambda: version("loushang")
+def _product_native_release_custody(
+    *,
+    wheel_version: Callable[[], str] | None = None,
+) -> _LinuxWorkerNativeReleaseCustody[
+    CodingWorkerNativeReleaseApprovalV1,
+    CodingWorkerNativeReleaseReviewV1,
+    CodingWorkerNativeClosureV1,
+    CodingWorkerNativeLaunchMaterialV1,
+    CodingProductInstalledWorkerReleaseReader,
+]:
+    return _LinuxWorkerNativeReleaseCustody(
+        product_id="coding",
+        product_label="Coding",
+        trust_class="local-worker-candidate",
+        approval_type=lambda: CodingWorkerNativeReleaseApprovalV1,
+        approval_owner_type=lambda: CodingWorkerNativeApprovalJournal,
+        review_factory=lambda: CodingWorkerNativeReleaseReviewV1.create,
+        reader_factory=lambda: CodingProductInstalledWorkerReleaseReader,
+        material_factory=lambda: CodingWorkerNativeLaunchMaterialV1,
+        verifier=_release_verifier,
+        error_type=lambda: CodingWorkerNativeReleaseError,
+        approval_error_type=lambda: CodingWorkerNativeApprovalError,
+        wheel_version=wheel_version
+        if wheel_version is not None
+        else lambda: version("loushang"),
+        installed_version=lambda: version("loushang"),
     )

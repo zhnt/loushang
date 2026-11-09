@@ -127,3 +127,17 @@ the actual journal classes and supplies the migrated instance v2 port. Original
 fixture bytes, cases and assertions remain. Three older fake-owner mismatches
 were reproduced at89992a383 before this fixture maintenance; no Product fix or
 default gate coverage is claimed for that repair.
+
+
+The Linux Product native release custody probe compares123 immutable original
+observations over real inert Wheels, installed RECORD/source/receipt bytes and
+file descriptors. Product fencing and ApprovalJournal.current are controlled;
+the A67 verifier, actual public DTOs, staging, noreplace and filesystem IO are real.
+It covers review/install differences, short/failed/cancelled writes, fsync/close,
+stage/root replacement, approval changes, repair debt and six same-disk retries.
+Initial random relative stage-name traces remain in external evidence; stable
+expectations were recaptured under unchanged original-source guards before any
+production replacement. There is no capture path in the durable probe, no ELF
+execution and no expansion of default discovery or PR gates.
+
+Explicit local path: [probe_linux_product_native_release_compatibility.py](../../../tests/coding/probe_linux_product_native_release_compatibility.py).

@@ -6,7 +6,7 @@
 
 - Authority: accepted execution goal；用户2026-11-07将本描述设为active Goal。本文件不替代各组件的已接受架构合同。
 - Design status: accepted goal scope；各波次专项架构仍须设计、评审及按原约定由用户审阅重要工作件。
-- 当前实施摘要：最新A69接通完整native approval值/历史/Rooted程序及两平台同一决策选择；A68及此前成果已提交。当前计量及欠账见下文“当前状态”。KD011/A33待用户工作件保持，KD003 bytes-import仍未实施；以下逐项保留各历史接受范围。
+- 当前实施摘要：最新A70接通完整Linux Product native release custody；A69及此前成果已提交。当前计量及欠账见下文“当前状态”。KD011/A33待用户工作件保持，KD003 bytes-import仍未实施；以下逐项保留各历史接受范围。
 - Implementation status: partial（P1/P2/P3/P4）；指定五流/Rooted命令、payload、checkpoint/快照及A13–A15 Windows指定路径已获有界技术接受；A17图关系归原Session，A19本地启动阶段复用、A20托管Session桥接、A21 foreground Product所有权接缝、A22受控Wheel Source目录共享程序及A23依赖来源完整操作复用也已获有界接受。P2 R2.1职责方向已于2026-11-08获用户接受，D3完整兼容捕获路径获有界技术接受（181实际通过/5原skip），D1/D2的owner租约/证据账本与startup、D4完整成员/退役/关闭协同均已接入并获有界接受，P2启动装配首批owner publication亦已接通并获有界代码接受（75项实际回归及21组冻结观察对照），三种构造/发布前后清理路径也已复用Session共同程序并完成有界评审，原Loader回执至Catalog source specs完整交接也已接入（原47节点通过/失败集合不变，16固定观察通过，保留10项迁前失败），其余bootstrap/共同输入与刷新装配仍待收敛；KD010六Windows基线/join已整体接入Worker.history并取得实际有限验证，P4的F06 Goal记录后端亦已本地接通（14原节点及7固定IO观察通过，2项Session准入失败用旧后端复现），A24十三个Payload入口已复用原Storage根借用、删除重复根IO骨架（Code−71/系统净−48，实际48项通过及代码三视角有界接受），A25内置Source四个物理程序也已接入原Resources（Code−216/系统+4，65过/1原native skip，代码三视角有界接受）；A26 Windows Worker Source完整目录协调已归原Package Product（Code−204/系统+78，117过/1原native skip，代码三视角有界接受）；A27两平台候选事实联接及四条安装/更新共同程序已归原Package Product（Code−313/系统净−123，103过/2原skip，代码三视角有界接受）；其余Worker、其它托管/Continuity与P4剩余入口仍未完成，Coding≤15K及现行职责/复用/成本准则保持，实际测试与全成本见[执行记录](coding-responsibility-convergence-progress.md)。
 - Owner: Coding与各接收组件原owner；跨组件决定由共同上级架构owner综合接受。
 - 依据：[全量重构方案](coding-reconstruction-proposal.md)、[逐文件职责清单](coding-responsibility-inventory.md)、[Current Owner Map](current-owner-map.md)。方案与清单中的旧行数不是本轮当前事实。
@@ -27,7 +27,36 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-09，A69）
+## 当前状态（2026-11-09，A70）
+
+A70 从`12f67b71a`继续完整 P1–P4。Linux H6 Product native release 的完整
+review/install/repair、receipt/source 校验及当前 launch material 读取归原
+Harness Package Product，复用既有 Posix Product owner、A67 verifier、A69
+approval owner.current、Wheel inspector、noreplace 和 write_all。Coding 保留
+公开 DTO/Reader 身份、精确签名和纯 Product profile/类型/版本绑定，无 Code
+厚 IO 回调。原临时安装清理、repair 保留 debt、双审批/身份校验及不同 readback
+次序保持；原 receipt/RECORD/source 数据无需迁移。
+
+Code 两源735→225（−510）、新 Core688、系统+178；当前 Coding430文件117461行，
+系统1957源644927行，其余1954旧源SHA不变，距15K仍102461，完整 Goal 未完成。
+全部类型、profile、薄适配及格式均计账，不把职责迁移称作系统净精简。
+
+123 固定旧观察在原源码下全部通过；迁后同123加原A67 reader112合计235过
+（5.31s）。真实 inert ZIP/文件/FD、短写/零进展、取消/中断、fsync/close、
+审批变化、stage/root 替换、rename 冲突、receipt/source 和六条同盘重试均有
+原观察；原随机 stage 名归一漏项导致的100过/17 trace失败记录保留，只修
+探针后在原source guard下另捕稳定观察，未用替代实现生成 expected。
+
+原candidate-wheel/native CLI/C54与A69审批消费者148过、16原live/host节点
+排除（297.21s）。三个独立设计及实际代码视角无本片阻断；3源mypy、Ruff及
+格式通过。多stage快照归一的盲点用真实目录名断言补齐，同一节点在原12f干净
+验证worktree和迁后各1过；fixture不变、不作为额外场景累加。验证worktree确认
+干净且分支已被任务HEAD包含后安全删除。原消费者仅14行hook改动，1171原
+assert/raises与选择器保持；C54只去过期import事实，49assert/全部test函数AST同。
+文档/依赖/plan实绩及来源见[本片设计与交付](key-designs/linux-product-native-release-custody-convergence.md)。
+KD003 bytes-import、KD011/A33 原待确认事项及其余 P1–P4 保持剩余，未自动采用。
+
+## A69 历史状态（2026-11-09）
 
 完整 P1–P4、Coding ≤15K、Harness 复用及兼容恢复目标保持。A69 将 native
 approval 三值机制、完整history decoder和Rooted读写归原Worker.history，并让

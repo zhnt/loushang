@@ -36,7 +36,6 @@ import loushang.coding.package_product_worker_crash_c5_settlement as crash_c5_mo
 import loushang.coding.package_product_worker_history_checkpoint as checkpoint_module
 import loushang.coding.package_product_worker_history_preflight_v2 as history_preflight_v2_module
 import loushang.coding.package_product_worker_history_retention as history_retention_module
-import loushang.coding.package_product_worker_native_install as native_install_module
 import loushang.coding.package_product_worker_opt_in as opt_in_journal_module
 import loushang.coding.package_product_worker_payload as worker_payload_module
 import loushang.coding.package_product_worker_receipt as receipt_journal_module
@@ -44,6 +43,7 @@ import loushang.coding.package_product_worker_registered_payload_repair as regis
 import loushang.coding.package_product_worker_start_gate_journal as gate_journal_module
 import loushang.coding.package_product_worker_start_gate_recovery as gated_recovery_module
 import loushang.coding.session.agent_session as coding_agent_session_module
+import loushang.harness.package_product._linux_worker_native_release as native_release_custody_module
 import loushang.harness.package_product.product_local_wheel_runtime as local_wheel_runtime_module
 import loushang.harness.package_product.product_root_gc_runtime as root_gc_module
 import loushang.hosting.service_group as service_group_module
@@ -1557,20 +1557,22 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         product,
                     )
                     moved_stage = product.state_root / "held-stage"
-                    original_verify = native_install_module.verify_coding_product_native_release_descriptor
+                    original_verify = native_release_custody_module._LinuxWorkerNativeReleaseCustody.verify_descriptor
 
                     def replace_stage_after_verify(
-                        root: int, owner: PosixLocalWheelProductSessionOwner
+                        custody: native_release_custody_module._LinuxWorkerNativeReleaseCustody,
+                        root: int,
+                        owner: PosixLocalWheelProductSessionOwner,
                     ) -> tuple[CodingWorkerNativeClosureV1, dict[str, object]]:
-                        result = original_verify(root, owner)
+                        result = original_verify(custody, root, owner)
                         complete_stage.rename(moved_stage)
                         complete_stage.symlink_to(moved_stage, target_is_directory=True)
                         return result
 
                     with monkeypatch.context() as patch:
                         patch.setattr(
-                            native_install_module,
-                            "verify_coding_product_native_release_descriptor",
+                            native_release_custody_module._LinuxWorkerNativeReleaseCustody,
+                            "verify_descriptor",
                             replace_stage_after_verify,
                         )
                         with pytest.raises(

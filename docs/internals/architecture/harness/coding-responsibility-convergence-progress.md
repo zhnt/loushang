@@ -2,11 +2,40 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P1/A1–A67及A69 native approval指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P1/A1–A70指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A69）
+## 当前状态（2026-11-09，A70）
+
+A70 从`12f67b71a`继续完整 P1–P4。Linux H6 Product native release 的完整
+review/install/repair、receipt/source 校验及当前 launch material 读取归原
+Harness Package Product，复用既有 Posix Product owner、A67 verifier、A69
+approval owner.current、Wheel inspector、noreplace 和 write_all。Coding 保留
+公开 DTO/Reader 身份、精确签名和纯 Product profile/类型/版本绑定，无 Code
+厚 IO 回调。原临时安装清理、repair 保留 debt、双审批/身份校验及不同 readback
+次序保持；原 receipt/RECORD/source 数据无需迁移。
+
+Code 两源735→225（−510）、新 Core688、系统+178；当前 Coding430文件117461行，
+系统1957源644927行，其余1954旧源SHA不变，距15K仍102461，完整 Goal 未完成。
+全部类型、profile、薄适配及格式均计账，不把职责迁移称作系统净精简。
+
+123 固定旧观察在原源码下全部通过；迁后同123加原A67 reader112合计235过
+（5.31s）。真实 inert ZIP/文件/FD、短写/零进展、取消/中断、fsync/close、
+审批变化、stage/root 替换、rename 冲突、receipt/source 和六条同盘重试均有
+原观察；原随机 stage 名归一漏项导致的100过/17 trace失败记录保留，只修
+探针后在原source guard下另捕稳定观察，未用替代实现生成 expected。
+
+原candidate-wheel/native CLI/C54与A69审批消费者148过、16原live/host节点
+排除（297.21s）。三个独立设计及实际代码视角无本片阻断；3源mypy、Ruff及
+格式通过。多stage快照归一的盲点用真实目录名断言补齐，同一节点在原12f干净
+验证worktree和迁后各1过；fixture不变、不作为额外场景累加。验证worktree确认
+干净且分支已被任务HEAD包含后安全删除。原消费者仅14行hook改动，1171原
+assert/raises与选择器保持；C54只去过期import事实，49assert/全部test函数AST同。
+文档/依赖/plan实绩及来源见[本片设计与交付](key-designs/linux-product-native-release-custody-convergence.md)。
+KD003 bytes-import、KD011/A33 原待确认事项及其余 P1–P4 保持剩余，未自动采用。
+
+## A69 历史状态（2026-11-09）
 
 A69 从`89992a383`继续完整Goal，原1955生产源及两完整原模块已保存树外。
 三native approval值机制/完整decoder/Rooted binding-load-change已归Worker.history；

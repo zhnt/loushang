@@ -124,7 +124,7 @@
 | [compaction/profiles.py](../../../../src/loushang/coding/compaction/profiles.py) | C19 | 266 | K | C19 压缩 profile/适配 | 5325b9284b25 | 266 | 5325b9284b25 |
 | [composition_provenance.py](../../../../src/loushang/coding/composition_provenance.py) | C01 | 214 | M | C01 启动、Plugin 与资源装配 | 30a8b59d8d49 | 214 | 30a8b59d8d49 |
 | [composition_sets.py](../../../../src/loushang/coding/composition_sets.py) | C01 | 236 | M | C01 启动、Plugin 与资源装配 | e77cb0ebf1e1 | 236 | e77cb0ebf1e1 |
-| [continuity.py](../../../../src/loushang/coding/continuity.py) | C04 | 1,555 | M | C04 Continuity | cb0943f7d549 | 1359 | 0119e90b2357 |
+| [continuity.py](../../../../src/loushang/coding/continuity.py) | C04 | 1,555 | M | C04 Continuity | cb0943f7d549 | 1,359 | 0119e90b2357 |
 | [continuity_bootstrap.py](../../../../src/loushang/coding/continuity_bootstrap.py) | C04 | 1,622 | M | C04 Continuity | acbe4067566c | 1,609 | 76e2fc91bd73 |
 | [control/__init__.py](../../../../src/loushang/coding/control/__init__.py) | C26 | 39 | R/K | C26 配置兼容导出与路径 | 6bbbc65acf54 | 39 | 6bbbc65acf54 |
 | [control/settings_store.py](../../../../src/loushang/coding/control/settings_store.py) | C26 | 13 | K | C26 配置兼容导出与路径 | ff84662c1150 | 13 | ff84662c1150 |
@@ -284,9 +284,9 @@
 | [package_product_worker_history_stage_v2.py](../../../../src/loushang/coding/package_product_worker_history_stage_v2.py) | C07 | 489 | M | C07 插件 Worker 执行/持久化/恢复 | 8740267838bb | 178 | 3d0291b173f5 |
 | [package_product_worker_history_stream_snapshot.py](../../../../src/loushang/coding/package_product_worker_history_stream_snapshot.py) | C07 | 434 | M | C07 插件 Worker 执行/持久化/恢复 | 669d2f96ca85 | 120 | b48985a3c72f |
 | [package_product_worker_history_v2_names.py](../../../../src/loushang/coding/package_product_worker_history_v2_names.py) | C07 | 49 | M | C07 插件 Worker 执行/持久化/恢复 | 5d504179e35a | 4 | 07827bde40ad |
-| [package_product_worker_installed_native.py](../../../../src/loushang/coding/package_product_worker_installed_native.py) | C07 | 472 | M | C07 插件 Worker 执行/持久化/恢复 | aff4fbe827bd | 295 | 37a6d190243e |
+| [package_product_worker_installed_native.py](../../../../src/loushang/coding/package_product_worker_installed_native.py) | C07 | 472 | M | C07 插件 Worker 执行/持久化/恢复 | aff4fbe827bd | 151 | 35c65f17e487 |
 | [package_product_worker_native_approval.py](../../../../src/loushang/coding/package_product_worker_native_approval.py) | C07 | 473 | M | C07 插件 Worker 执行/持久化/恢复 | 1236a4a09d28 | 242 | 55b39813c744 |
-| [package_product_worker_native_install.py](../../../../src/loushang/coding/package_product_worker_native_install.py) | C07 | 440 | M | C07 插件 Worker 执行/持久化/恢复 | f8df22d51d92 | 440 | f8df22d51d92 |
+| [package_product_worker_native_install.py](../../../../src/loushang/coding/package_product_worker_native_install.py) | C07 | 440 | M | C07 插件 Worker 执行/持久化/恢复 | f8df22d51d92 | 74 | 6c1d9e1548fc |
 | [package_product_worker_native_release.py](../../../../src/loushang/coding/package_product_worker_native_release.py) | C07 | 201 | M | C07 插件 Worker 执行/持久化/恢复 | 6de1cf22207c | 83 | e35589d29221 |
 | [package_product_worker_no_effect_archive_v2.py](../../../../src/loushang/coding/package_product_worker_no_effect_archive_v2.py) | C07 | 262 | M | C07 插件 Worker 执行/持久化/恢复 | b3710a5bd2ef | 74 | c8b82cab8cd8 |
 | [package_product_worker_no_effect_closure.py](../../../../src/loushang/coding/package_product_worker_no_effect_closure.py) | C07 | 49 | M | C07 插件 Worker 执行/持久化/恢复 | b7b1f104aa6c | 31 | bd9fbeede423 |
@@ -459,7 +459,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C04 | 2 | 2,968 |
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
-| C07 | 112 | 24,964 |
+| C07 | 112 | 24,454 |
 | C08 | 31 | 7,139 |
 | C09 | 34 | 9,711 |
 | C10 | 12 | 5,834 |
@@ -481,4 +481,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 117,971 |
+| 合计 | 430 | 117,461 |
