@@ -71,6 +71,7 @@
     "verified": "Rust invoke + event verified"
   },
   "sync": {
+    "offlineHost": "No AppHost is connected. Manage the local AppHost in Settings.",
     "fixture": "Synchronizing fixture…",
     "live": "Connecting to AppHost…",
     "disconnected": "Disconnected.",

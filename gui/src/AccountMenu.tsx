@@ -1,11 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UiIcon } from "./UiIcon";
+import type { OfflineAccount } from "./client/offlineAccount";
 
-export function AccountMenu({ compact = false, status, detail, onSettings }: {
+export function AccountMenu({ compact = false, account, onSettings }: {
   compact?: boolean;
-  status: string;
-  detail?: string;
+  account?: OfflineAccount | null;
   onSettings: () => void;
 }) {
   const { t } = useTranslation("shell");
@@ -17,7 +17,7 @@ export function AccountMenu({ compact = false, status, detail, onSettings }: {
 
   useEffect(() => {
     if (!open) return;
-    settings.current?.focus();
+    settings.current?.focus({ preventScroll: true });
     function dismissOutside(event: PointerEvent) {
       if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false);
     }
@@ -32,7 +32,7 @@ export function AccountMenu({ compact = false, status, detail, onSettings }: {
 
   function dismiss() {
     setOpen(false);
-    trigger.current?.focus();
+    trigger.current?.focus({ preventScroll: true });
   }
 
   return <div ref={root} className={compact ? "account-menu account-menu-compact" : "account-menu"}
@@ -48,17 +48,15 @@ export function AccountMenu({ compact = false, status, detail, onSettings }: {
     }}>
     <button ref={trigger} type="button" className={compact ? "account-avatar-button" : "rail-footer"}
       aria-label={t("accountMenu")} aria-expanded={open} aria-controls={open ? id : undefined}
-      title={compact ? t("accountMenu") : detail} onClick={() => setOpen(!open)}>
-      {/* i18next-instrument-ignore-next-line: fixture avatar initial */}
-      <span className="user-avatar" aria-hidden="true">Z</span>
+      title={account?.name ?? t("accountMenu")} onClick={() => setOpen(!open)}>
+      <span className="user-avatar" aria-hidden="true">{account ? Array.from(account.name.trim())[0].toLocaleUpperCase() : <UiIcon name="account" />}</span>
       {compact ? null : <>
-        {/* i18next-instrument-ignore-next-line: existing account label */}
-        <span className="account-label"><strong>zhnt</strong><small>{status}</small></span>
+        <span className="account-label"><strong>{account?.name ?? t("accountMenu")}</strong>{account ? <small>{t("offlineAccount")}</small> : null}</span>
         <span aria-hidden="true">⋯</span>
       </>}
     </button>
     {open ? <div id={id} className="account-popover">
-      <div className="account-popover-status">{status}</div>
+      {account ? <div className="account-popover-status">{account.name}</div> : null}
       <button ref={settings} type="button" onClick={() => { dismiss(); onSettings(); }}>
         <UiIcon name="settings" />
         {t("settings")}

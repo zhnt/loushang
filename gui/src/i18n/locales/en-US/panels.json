@@ -1,5 +1,6 @@
 {
   "execution": {
+    "failureCode": "Failure code",
     "details": "Live execution details",
     "title": "Execution",
     "source": "Source",

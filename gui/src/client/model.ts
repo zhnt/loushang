@@ -57,6 +57,7 @@ export interface ConversationMessage {
 
 export interface ExecutionProjection {
   readonly id: string;
+  readonly errorCode?: string;
   readonly status: "accepted" | "running" | "succeeded" | "failed" | "interrupted";
   readonly revision: number;
   readonly interruptRequested: boolean;
@@ -238,6 +239,7 @@ export interface SubmitTextInput {
 export interface SubmitReceipt {
   readonly submissionId: string;
   readonly accepted: boolean;
+  readonly executionId?: string;
   readonly reason?: string;
 }
 

@@ -100,6 +100,7 @@ pub(crate) struct LiveCreateSessionReceipt {
 pub(crate) struct LiveControlReceipt {
     accepted: bool,
     reason: Option<String>,
+    execution_id: Option<String>,
 }
 
 enum Publication {
@@ -494,14 +495,22 @@ fn control_receipt(
         Ok(ControlResult::Accepted) => Ok(LiveControlReceipt {
             accepted: true,
             reason: None,
+            execution_id: None,
+        }),
+        Ok(ControlResult::Submitted(execution_id)) => Ok(LiveControlReceipt {
+            accepted: true,
+            reason: None,
+            execution_id: Some(execution_id),
         }),
         Ok(ControlResult::Rejected(reason)) => Ok(LiveControlReceipt {
             accepted: false,
             reason: Some(reason),
+            execution_id: None,
         }),
         Ok(ControlResult::Missing) if submit => Ok(LiveControlReceipt {
             accepted: false,
             reason: Some("submission_outcome_unknown".to_owned()),
+            execution_id: None,
         }),
         Ok(ControlResult::Missing) => Err("interrupt result is missing".to_owned()),
         Err(()) => Err("live control request failed".to_owned()),

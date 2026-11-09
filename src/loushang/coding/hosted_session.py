@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import json
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from secrets import token_hex
@@ -43,6 +43,9 @@ from loushang.harness.policy import PolicyEvaluator, PolicyEvaluatorChain
 from loushang.harness.session import SessionControlPort
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import workspace_tool_runtime_settings
+from loushang.harness.transcript.session_catalog import (
+    load_agent_transcript_session_metadata,
+)
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 from .appservice_adapter import (
@@ -116,8 +119,12 @@ class CodingHostedHistoryBindingV1:
                 TranscriptRecordKindV1.STATUS,
                 "Earlier messages omitted from this bounded snapshot; the canonical transcript is unchanged.",
             ))
+        title = load_agent_transcript_session_metadata(
+            history.header_preview.header, history.records
+        ).name
         self._projection = CodingHostedSnapshotProjectionV1(
-            title="Coding", revision=0, running=False, records=tuple(records),
+            title=_session_title(title, (entry.payload for entry in history.records)),
+            revision=0, running=False, records=tuple(records),
             truncated=omitted,
         )
 
@@ -230,9 +237,16 @@ class CodingRealHostedSessionV1:
                     "Earlier messages omitted from this bounded snapshot; the canonical transcript is unchanged.",
                 ),
             )
+        manager = self._session.session_manager
+        title_messages = (
+            (entry.payload for entry in manager.entries)
+            if isinstance(manager, SessionManager)
+            else self._session.messages
+        )
         return CodingHostedSnapshotProjectionV1(
-            title=_bounded(
-                (self._session.session_name or "").strip() or "Coding", limit=256
+            title=_session_title(
+                self._session.session_name,
+                title_messages,
             ),
             revision=self._revision,
             running=self._session.is_streaming,
@@ -523,6 +537,23 @@ class CodingRealHostedSessionFactoryV1:
 def _bounded(text: str, *, limit: int = _TEXT_LIMIT) -> str:
     marker = " … [truncated]"
     return text if len(text) <= limit else text[: limit - len(marker)] + marker
+
+
+def _session_title(name: str | None, messages: Iterable[object]) -> str:
+    if name and name.strip():
+        return _bounded(name.strip(), limit=256)
+    # Read the first prompt from the full transcript, including turns omitted
+    # by the display window or by context compaction.
+    for message in messages:
+        if isinstance(message, UserMessage) and (title := " ".join(_message_text(message).split())):
+            if len(title) <= 48:
+                return title
+            prefix = title[:47].rstrip()
+            word_boundary = prefix.rfind(" ")
+            if word_boundary >= 30:
+                prefix = prefix[:word_boundary]
+            return f"{prefix}…"
+    return "New Session"
 
 
 def _message_record(message: object) -> TranscriptRecordV1 | None:

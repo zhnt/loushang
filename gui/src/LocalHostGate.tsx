@@ -3,7 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import App, { HarnessGui } from "./App";
-import { DesktopFrame } from "./DesktopFrame";
+import { useOfflineAccount } from "./client/offlineAccount";
 import { createNativeLiveClient, nativeLiveAvailable } from "./client/nativeLiveClient";
 import type { HarnessClientUiPort } from "./client/model";
 import "./LocalHostGate.css";
@@ -39,6 +39,7 @@ const errors = {
 /** Management remains native. The conversation stays mounted during reconnect. */
 export default function LocalHostGate() {
   const { t } = useTranslation("workspace");
+  const account = useOfflineAccount();
   const [legacy, setLegacy] = useState(!isTauri());
   const [supported, setSupported] = useState<boolean | null>(null);
   const [workspace, setWorkspace] = useState("");
@@ -92,7 +93,7 @@ export default function LocalHostGate() {
       let selected = environment.workspace;
       try { selected = localStorage.getItem(WORKSPACE_KEY) ?? selected; } catch { /* Optional preference. */ }
       setWorkspace(selected);
-      if (environment.supported) await perform("status", selected, undefined);
+      if (environment.supported) await perform("connect", selected, undefined);
     })().catch(() => { if (active) setHost({ state: "unknown", errorCode: "management_unavailable" }); });
     return () => { active = false; };
     // Native setup is process-local; workspace edits are explicit selection.
@@ -115,7 +116,7 @@ export default function LocalHostGate() {
     return () => window.clearInterval(timer);
   });
 
-  if (legacy) return <App />;
+  if (legacy) return <App account={account} />;
   const reason = host.errorCode ?? (host.state === "running" ? connectionError : null);
   const errorLabel = reason && reason in errors ? t(errors[reason as keyof typeof errors])
     : reason?.startsWith("start_") || reason === "spawn_failed" ? t("localHost.errors.start")
@@ -124,10 +125,9 @@ export default function LocalHostGate() {
   const stop = (action: "stop" | "restart") => {
     setConfirmation({ action, workspace, instanceId: host.instanceId });
   };
-  return <div className={`local-host-shell ${client ? "has-conversation" : ""}`}>
-    {!client ? <DesktopFrame sidebarOpen={false} onToggleSidebar={() => undefined} /> : null}
-    <section className="local-host-panel" aria-label={t("localHost.title")}>
-      <strong>{t("localHost.title")}</strong>
+  const hostSettings = <>
+    <section className="local-host-panel" aria-labelledby="settings-local-host">
+      <h3 id="settings-local-host">{t("localHost.title")}</h3>
       <label>{t("localHost.workspace")}
         <input value={workspace} disabled={!!client || busy} onChange={(event) => setWorkspace(event.target.value)} placeholder={t("localHost.pathHint")} />
       </label>
@@ -144,13 +144,13 @@ export default function LocalHostGate() {
       {reason ? <p role="alert">{errorLabel} <code>{reason}</code></p> : null}
       {host.instanceId ? <details><summary>{t("localHost.identity")}</summary><p>{t("localHost.pid")}: {host.pid ?? "—"}</p><code>{host.instanceId}</code><br /><code>{host.serviceInstanceId}</code></details> : null}
     </section>
-    {confirmation ? <div className="local-host-confirm" role="alertdialog" aria-modal="true" aria-label={t("localHost.confirmTitle")} onKeyDown={(event) => { if (event.key === "Escape") setConfirmation(null); }}>
+    {confirmation ? <div className="local-host-confirm" role="alertdialog" aria-modal="true" aria-label={t("localHost.confirmTitle")} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setConfirmation(null); } }}>
       <div><strong>{t("localHost.confirmTitle")}</strong><p>{t("localHost.confirmStop")}</p>
         <p>{confirmation.workspace}</p>
         <button autoFocus onClick={() => setConfirmation(null)}>{t("localHost.cancel")}</button>
         <button onClick={() => { const selected = confirmation; setConfirmation(null); void perform(selected.action, selected.workspace, selected.instanceId); }}>{t("localHost.confirm")}</button>
       </div>
     </div> : null}
-    {client ? <div className="local-host-conversation"><HarnessGui client={client} /></div> : <p className="local-host-intro">{t("localHost.intro")}</p>}
-  </div>;
+  </>;
+  return <HarnessGui client={client} account={account} hostSettings={hostSettings} />;
 }

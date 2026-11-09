@@ -17,22 +17,100 @@ function withSnapshot(client: FixturePlaybackPort, snapshot: ClientSnapshot): Fi
 }
 
 describe("GUI-B1 Workspace / Task / Review fixture", () => {
+  it("lets the user retry a failed execution that published no transcript records", async () => {
+    const seed = await createMockAppClient().snapshot();
+    const initial: ClientSnapshot = {
+      ...seed,
+      source: { kind: "live", muxSpaceId: "retry-mux", serviceInstanceId: "retry-host", connectionEpoch: "1" },
+      connection: "connected",
+      sessions: seed.sessions.map((session) => ({ ...session, status: "idle", execution: null })),
+    };
+    let publish: (snapshot: ClientSnapshot) => void = () => {};
+    const submit = vi.fn(async ({ submissionId }: { submissionId: string }) => ({
+      submissionId, accepted: true, executionId: "execution-retry",
+    }));
+    const user = userEvent.setup();
+    render(<HarnessGui client={{
+      snapshot: async () => initial,
+      subscribe: () => () => undefined,
+      subscribeSnapshots: (listener) => { publish = listener; return () => undefined; },
+      submitText: submit,
+      interrupt: async () => ({ accepted: false }),
+    }} />);
+    const input = await screen.findByRole("textbox", { name: "Message for GUI development" });
+    await user.type(input, "Keep this message");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(input).toHaveValue("Keep this message");
+    act(() => publish({
+      ...initial,
+      sessions: initial.sessions.map((session) => session.id === initial.selectedSessionId ? {
+        ...session,
+        status: "failed",
+        execution: {
+          id: "execution-retry", status: "failed", revision: 2, errorCode: "execution_start_failed",
+          sourceStatus: null, finalCursor: null, interruptRequested: false, truncated: false,
+        },
+      } : session),
+    }));
+    expect(await screen.findByText(/^Execution failed$/i)).toBeVisible();
+    expect(input).toHaveValue("Keep this message");
+    await user.click(screen.getByText(/^Execution failed$/i));
+    expect(screen.getByText("execution_start_failed")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(submit).toHaveBeenCalledTimes(2);
+  });
+
+  it("follows the live transcript until the reader scrolls back", async () => {
+    const fixture = await createMockAppClient().snapshot();
+    const initial: ClientSnapshot = {
+      ...fixture,
+      connection: "connected",
+      source: { kind: "live", muxSpaceId: "scroll-mux", serviceInstanceId: "scroll-host", connectionEpoch: "1" },
+      sessions: fixture.sessions.map((session) => ({
+        ...session,
+        context: { ...session.context, source: "live" },
+      })),
+    };
+    let publish: (snapshot: ClientSnapshot) => void = () => {};
+    render(<HarnessGui client={{
+      snapshot: async () => initial,
+      subscribe: () => () => undefined,
+      subscribeSnapshots: (listener) => { publish = listener; return () => undefined; },
+      submitText: async ({ submissionId }) => ({ submissionId, accepted: false }),
+      interrupt: async () => ({ accepted: false }),
+    }} />);
+    const transcript = await screen.findByLabelText("Session transcript");
+    let height = 900;
+    Object.defineProperties(transcript, { scrollHeight: { get: () => height }, clientHeight: { value: 400 } });
+    act(() => publish({ ...initial, sessions: initial.sessions.map((session) => ({ ...session })) }));
+    expect(transcript.scrollTop).toBe(900);
+    fireEvent.scroll(transcript, { target: { scrollTop: 120 } });
+    height = 1100;
+    act(() => publish({ ...initial, sessions: initial.sessions.map((session) => ({ ...session })) }));
+    expect(transcript.scrollTop).toBe(120);
+    fireEvent.scroll(transcript, { target: { scrollTop: 700 } });
+    height = 1300;
+    act(() => publish({ ...initial, sessions: initial.sessions.map((session) => ({ ...session })) }));
+    expect(transcript.scrollTop).toBe(1300);
+  });
+
   it("restores independent transcript positions when switching Sessions", async () => {
     const user = userEvent.setup();
     const client = createMockAppClient();
     render(<HarnessGui client={client} />);
     await screen.findByRole("heading", { name: "GUI development" });
-    const transcript = screen.getByLabelText("Session transcript");
-    fireEvent.scroll(transcript, { target: { scrollTop: 180 } });
+    const transcript = () => screen.getByLabelText("Session transcript");
+    fireEvent.scroll(transcript(), { target: { scrollTop: 180 } });
     await user.click(screen.getByRole("button", { name: "Operational ontology · Idle" }));
-    expect(transcript.scrollTop).toBe(0);
-    fireEvent.scroll(transcript, { target: { scrollTop: 45 } });
+    expect(transcript().scrollTop).toBe(0);
+    fireEvent.scroll(transcript(), { target: { scrollTop: 45 } });
     await user.click(screen.getByRole("button", { name: "GUI development · Running" }));
-    expect(transcript.scrollTop).toBe(180);
+    expect(transcript().scrollTop).toBe(180);
     await act(async () => { await client.advanceFixture(); });
-    expect(transcript.scrollTop).toBe(180);
+    expect(transcript().scrollTop).toBe(180);
     await user.click(screen.getByRole("button", { name: "Operational ontology · Idle" }));
-    expect(transcript.scrollTop).toBe(45);
+    expect(transcript().scrollTop).toBe(45);
   });
 
   it.each(["missing", "unavailable", "incompatible"])("downgrades %s capabilities and removes previously visible projections", async (mode) => {
@@ -160,7 +238,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.queryByLabelText("Fixture playback controls")).not.toBeInTheDocument();
     const input = screen.getByRole("textbox", { name: "Message for GUI development" });
     expect(input).toBeEnabled();
-    expect(screen.getByText("Live · AppHost")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Account menu" })).toBeVisible();
     await user.type(input, "Talk to the real Agent");
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
     expect(submitText).not.toHaveBeenCalled();

@@ -2,8 +2,9 @@ import { i18n } from "./i18n";
 import { useTranslation } from "react-i18next";
 import { AccountMenu } from "./AccountMenu";
 import { SettingsDialog } from "./SettingsDialog";
-import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import "./App.css";
+import type { OfflineAccount } from "./client/offlineAccount";
 import { ModelPicker } from "./ModelPicker";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
@@ -47,8 +48,26 @@ function NoticeText({ notice }: { notice: Notice }) {
 }
 
 interface HarnessGuiProps {
-  readonly client: HarnessClientUiPort | FixturePlaybackPort;
+  readonly client: HarnessClientUiPort | FixturePlaybackPort | null;
+  readonly account?: OfflineAccount | null;
+  readonly hostSettings?: ReactNode;
 }
+
+const offlineClient: HarnessClientUiPort = {
+  snapshot: async () => ({
+    generation: "",
+    connection: "disconnected",
+    source: emptyGuiState().remote.source,
+    capabilities: [],
+    workspaces: [],
+    sessions: [],
+    recentSessionIds: [],
+    selectedSessionId: "",
+  }),
+  subscribe: () => () => {},
+  submitText: async ({ submissionId }) => ({ submissionId, accepted: false }),
+  interrupt: async () => ({ accepted: false }),
+};
 
 function fixturePlayback(client: HarnessClientUiPort): FixturePlaybackPort | null {
   return "advanceFixture" in client && "remainingFixtureSteps" in client
@@ -63,7 +82,8 @@ const dockTabs = [
   { id: "review", label: "panels:changes.review", glyph: "▣" },
 ] as const;
 
-export function HarnessGui({ client }: HarnessGuiProps) {
+export function HarnessGui({ client: attachedClient, account, hostSettings }: HarnessGuiProps) {
+  const client = attachedClient ?? offlineClient;
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const fixture = fixturePlayback(client);
   const native = isTauri();
@@ -77,15 +97,16 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const previousSidebarOpen = useRef(true);
   useEffect(() => {
     if (previousSidebarOpen.current !== sidebarOpen) {
-      document.querySelector<HTMLButtonElement>(sidebarOpen ? ".brand-actions .frame-icon" : ".collapsed-rail .frame-icon")?.focus();
+      document.querySelector<HTMLButtonElement>(sidebarOpen ? ".brand-actions .frame-icon" : ".collapsed-rail .frame-icon")?.focus({ preventScroll: true });
       previousSidebarOpen.current = sidebarOpen;
     }
   }, [sidebarOpen]);
   const [sidebarWidth, setSidebarWidth] = useState(280);
-  const [environmentOpen, setEnvironmentOpen] = useState(true);
+  const [environmentOpen, setEnvironmentOpen] = useState(!hostSettings);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
   const [contentMetrics, setContentMetrics] = useState({ gutter: 24, scrollbar: 0 });
   const conversationRef = useRef<HTMLElement | null>(null);
+  const transcriptPosition = useRef<number | null>(null);
   useEffect(() => {
     const resize = () => setViewportWidth(window.innerWidth);
     window.addEventListener("resize", resize);
@@ -117,6 +138,8 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const [awaitingPublication, setAwaitingPublication] = useState<{
     readonly sessionId: string;
     readonly cursor: string;
+    readonly executionId?: string;
+    readonly text: string;
   } | null>(null);
   const [bridgeProbe, setBridgeProbe] = useState<BridgeProbe>({
     status: "web-mock",
@@ -278,14 +301,27 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   useEffect(() => {
     if (!awaitingPublication) return;
     const session = state.remote.sessions[awaitingPublication.sessionId];
-    if (state.remote.connection !== "connected" || !session || session.cursor !== awaitingPublication.cursor) {
+    if (state.remote.connection !== "connected" || !session) {
       setAwaitingPublication(null);
+      return;
     }
+    const execution = session.execution?.id === awaitingPublication.executionId ? session.execution : null;
+    const contentPublished = session.cursor !== awaitingPublication.cursor;
+    const terminal = execution?.status === "succeeded" || execution?.status === "failed" || execution?.status === "interrupted";
+    if (!contentPublished && !terminal) return;
+    if (awaitingPublication.executionId && (contentPublished || execution?.status === "succeeded")) {
+      dispatch({ type: "draft.submitted", sessionId: session.id, expected: awaitingPublication.text });
+    }
+    setAwaitingPublication(null);
   }, [awaitingPublication, state.remote.connection, state.remote.sessions]);
-  const mutationsAllowed = !syncing && !controlPending && !awaitingPublication && (
+  const controlsAllowed = !syncing && !controlPending && (
     (state.remote.source.kind === "fixture" && state.remote.connection === "fixture-offline")
     || (state.remote.source.kind === "live" && state.remote.connection === "connected")
   );
+  const mutationsAllowed = controlsAllowed && !awaitingPublication;
+  useLayoutEffect(() => {
+    transcriptPosition.current = state.local.transcriptScrollTop;
+  }, [state.local.transcriptScrollTop]);
   useLayoutEffect(() => {
     const pane = conversationRef.current;
     const transcript = transcriptRef.current;
@@ -294,6 +330,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
       const scrollbar = Math.max(0, transcript.offsetWidth - transcript.clientWidth);
       const gutter = Math.max(24, (pane.clientWidth - scrollbar - 760) / 2);
       setContentMetrics((old) => old.gutter === gutter && old.scrollbar === scrollbar ? old : { gutter, scrollbar });
+      if (transcriptPosition.current === null) transcript.scrollTop = transcript.scrollHeight;
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -302,8 +339,9 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     return () => observer.disconnect();
   }, [selected?.id]);
   useLayoutEffect(() => {
-    if (transcriptRef.current) transcriptRef.current.scrollTop = state.local.transcriptScrollTop;
-  }, [selected, state.local.transcriptScrollTop]);
+    const transcript = transcriptRef.current;
+    if (transcript) transcript.scrollTop = transcriptPosition.current ?? transcript.scrollHeight;
+  }, [selected]);
   const selectedDocument = selected
     ? findSelectedDocument(selected, state.local.selectedDocuments[selected.id] ?? null)
     : undefined;
@@ -331,8 +369,8 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           : { key: "notice.rejected", params: { reason: receipt.reason ?? "" } });
         return;
       }
-      dispatch({ type: "draft.submitted", sessionId: selected.id, expected: text });
-      if (!fixture) setAwaitingPublication({ sessionId: selected.id, cursor: selected.cursor });
+      if (!receipt.executionId) dispatch({ type: "draft.submitted", sessionId: selected.id, expected: text });
+      if (!fixture) setAwaitingPublication({ sessionId: selected.id, cursor: selected.cursor, executionId: receipt.executionId, text });
       setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
       setNotice(fixture
         ? { key: "notice.fixtureAccepted" }
@@ -357,7 +395,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   }
 
   async function interrupt(): Promise<void> {
-    if (!selected || syncPendingRef.current || controlPendingRef.current || !mutationsAllowed || selected.status !== "running") return;
+    if (!selected || syncPendingRef.current || controlPendingRef.current || !controlsAllowed || selected.status !== "running") return;
     controlPendingRef.current = true;
     setControlPending("interrupt");
     try {
@@ -440,14 +478,15 @@ export function HarnessGui({ client }: HarnessGuiProps) {
       <main style={{ "--rail-width": `${sidebarOpen ? sidebarWidth : 48}px`, "--right-width": `${rightWidth}px` } as React.CSSProperties} className={`app-shell desktop-layout${sidebarOpen ? "" : " sidebar-closed"}${rightVisible ? " right-visible" : " dock-closed"}${stackedRight ? " right-stacked" : ""}`}>
         {!sidebarOpen ? <aside className="collapsed-rail" aria-label={shellText("collapsedSidebar")}>
           <button className="frame-icon" aria-label={shellText("toggleSidebar")} title={shellText("toggleSidebarHint")} aria-expanded="false" onClick={() => setSidebarOpen(true)}><PanelIcon side="left" /></button>
-          <AccountMenu compact status={state.remote.source.kind === "fixture" ? t("workspace:sidebar.offline") : t("workspace:sidebar.live")} onSettings={openSettings} />
+          <AccountMenu compact account={account} onSettings={openSettings} />
         </aside> : null}
         <div className="sidebar-container" hidden={!sidebarOpen}>
         <Sidebar
           onToggleSidebar={() => setSidebarOpen(false)}
           onSettings={openSettings}
           state={state}
-          bridgeProbe={bridgeProbe}
+          account={account}
+          managedLocal={Boolean(hostSettings)}
           onSelect={(sessionId) => dispatch({ type: "session.selected", sessionId })}
           onToggleWorkspace={(workspaceId) => dispatch({ type: "workspace.toggled", workspaceId })}
           onNewSession={() => { void createSession(); }}
@@ -476,7 +515,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
         /> : null}
 
         <section ref={conversationRef} style={{ "--content-gutter": `${contentMetrics.gutter}px`, "--scrollbar-width": `${contentMetrics.scrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label={t("panels:layout.workspace")}>
-          {syncing || state.diagnostic || state.remote.connection === "disconnected" ? (
+          {attachedClient && (syncing || state.diagnostic || state.remote.connection === "disconnected") ? (
             <div className="diagnostic" role="status">
               <span>{syncing ? (fixture ? t("session:sync.fixture") : t("session:sync.live")) : t("session:diagnostic.title")}</span>
               {state.diagnostic ? <details><summary>{t("session:diagnostic.details")}</summary><pre>{state.diagnostic}</pre></details> : null}
@@ -486,8 +525,12 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           {selected ? (
             <>
 
-              <div className="transcript" aria-label={t("session:transcript.label")} aria-live="polite" ref={transcriptRef}
-                onScroll={(event) => dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: event.currentTarget.scrollTop })}>
+              <div key={selected.id} className="transcript" aria-label={t("session:transcript.label")} aria-live="polite" ref={transcriptRef}
+                onScroll={(event) => {
+                  const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+                  const following = !fixture && scrollHeight - clientHeight - scrollTop <= 32;
+                  dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: following ? null : scrollTop });
+                }}>
                 {selected.messages.map((message) => message.role === "status" ? (
                   <p className="message transcript-status" role="status" key={message.id}>{message.content}</p>
                 ) : (
@@ -600,7 +643,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                       type={selected.status === "running" ? "button" : "submit"}
                       aria-label={selected.status === "running" ? t("session:composer.interrupt") : t("session:composer.send")}
                       title={selected.status === "running" ? t("session:composer.stopHint") : t("session:composer.sendHint")}
-                      disabled={!mutationsAllowed || (selected.status !== "running" && !(state.local.drafts[selected.id] ?? "").trim())}
+                      disabled={selected.status === "running" ? !controlsAllowed : !mutationsAllowed || !(state.local.drafts[selected.id] ?? "").trim()}
                       onClick={selected.status === "running" ? () => void interrupt() : undefined}
                     >
                       {selected.status === "running" ? <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" /></svg>
@@ -613,8 +656,8 @@ export function HarnessGui({ client }: HarnessGuiProps) {
             </>
           ) : (
             <div className="empty-state">
-              <p>{t("session:emptySession")}</p>
-              <p role="status"><NoticeText notice={notice} /></p>
+              <p>{t(attachedClient ? "session:emptySession" : "session:sync.offlineHost")}</p>
+              {attachedClient ? <p role="status"><NoticeText notice={notice} /></p> : null}
             </div>
           )}
         </section>
@@ -642,7 +685,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           />
         ) : null}
       </main>
-      <SettingsDialog dialogRef={settingsDialog} />
+      <SettingsDialog dialogRef={settingsDialog} account={account} hostSettings={hostSettings} />
     </div>
   );
 }
@@ -651,7 +694,8 @@ interface SidebarProps {
   readonly onToggleSidebar: () => void;
   readonly onSettings: () => void;
   readonly state: GuiState;
-  readonly bridgeProbe: BridgeProbe;
+  readonly account?: OfflineAccount | null;
+  readonly managedLocal: boolean;
   readonly onSelect: (sessionId: string) => void;
   readonly onToggleWorkspace: (workspaceId: string) => void;
   readonly onNewSession: () => void;
@@ -659,7 +703,7 @@ interface SidebarProps {
   readonly newSessionPending: boolean;
 }
 
-function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar, onSettings }: SidebarProps) {
+function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar, onSettings }: SidebarProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const { t: shellText } = useTranslation("shell");
   return (
@@ -676,28 +720,29 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession
         disabled={!newSessionEnabled || newSessionPending}>
         <UiIcon name="new-session" /> {newSessionPending ? t("workspace:sidebar.creating") : t("workspace:sidebar.newSession")} <kbd aria-hidden="true">+</kbd>
       </button>
+      <div className="workspace-scroll">
       <nav className="sidebar-shortcuts" aria-label={t("workspace:sidebar.shortcuts")}>
         <button type="button" disabled title={t("workspace:sidebar.prHint")}><UiIcon name="pull-request" /><span>{t("workspace:sidebar.pullRequests")}</span></button>
         <button type="button" disabled title={t("workspace:sidebar.scheduleHint")}><UiIcon name="scheduled" /><span>{t("workspace:sidebar.scheduled")}</span></button>
         <button type="button" disabled title={t("workspace:sidebar.pluginsHint")}><UiIcon name="plugins" /><span>{t("workspace:sidebar.plugins")}</span></button>
       </nav>
-      <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? t("workspace:sidebar.fixtureBanner") : t("workspace:sidebar.liveBanner")}</div>
+      {!managedLocal ? <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? t("workspace:sidebar.fixtureBanner") : t("workspace:sidebar.liveBanner")}</div> : null}
 
-      <nav className="workspace-scroll" aria-label={t("workspace:sidebar.workspaces")}>
+      <nav aria-label={t("workspace:sidebar.workspaces")}>
         {!hasCapability(state, "workspace") ? state.remote.source.kind === "live" ? (
           <section className="workspace-group" aria-label={t("workspace:sidebar.attached")}>
-            <div className="workspace-heading static">
+            {!managedLocal ? <div className="workspace-heading static">
               <span className="folder-glyph"><UiIcon name="folder" /></span>
               <span>{state.remote.source.muxName ?? t("workspace:sidebar.mux")}</span>
-            </div>
+            </div> : null}
             <div className="session-list">
               {state.remote.sessionOrder.map((id) => <SessionButton key={id} session={state.remote.sessions[id]}
                 stale={isStale(state)} selected={id === state.local.selectedSessionId} unread={Boolean(state.local.unread[id])} onSelect={() => onSelect(id)} />)}
             </div>
-            <p className="section-label">{t("workspace:sidebar.workspaceUnavailable")}</p>
+            {!managedLocal ? <p className="section-label">{t("workspace:sidebar.workspaceUnavailable")}</p> : null}
           </section>
         ) : <>
-          <UnavailablePanel label={t("workspace:capability.workspace")} />
+          {!managedLocal ? <UnavailablePanel label={t("workspace:capability.workspace")} /> : null}
           {state.remote.sessionOrder.map((id) => <SessionButton key={id} session={state.remote.sessions[id]}
             stale={isStale(state)} selected={id === state.local.selectedSessionId} unread={Boolean(state.local.unread[id])} onSelect={() => onSelect(id)} />)}
         </> : state.remote.workspaceOrder.map((workspaceId) => {
@@ -750,9 +795,8 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession
         </section>
       </nav>
 
-      <AccountMenu status={state.remote.source.kind === "fixture" ? t("workspace:sidebar.offline") : t("workspace:sidebar.live")}
-        detail={state.remote.source.kind === "fixture" ? t(bridgeLabels[bridgeProbe.status]) : state.remote.source.serviceInstanceId}
-        onSettings={onSettings} />
+      </div>
+      <AccountMenu account={account} onSettings={onSettings} />
     </aside>
   );
 }
@@ -820,6 +864,7 @@ function ExecutionDetail({ execution, stale }: {
       <dl>
         <dt>{t("panels:execution.title")}</dt><dd><code>{execution.id}</code></dd>
         <dt>{t("panels:execution.revision")}</dt><dd>{execution.revision}</dd>
+        {execution.errorCode ? <><dt>{t("panels:execution.failureCode")}</dt><dd><code>{execution.errorCode}</code></dd></> : null}
         <dt>{t("panels:execution.source")}</dt><dd>{(execution.sourceStatus ? valueLabel(execution.sourceStatus) : null) ?? t("panels:execution.notObserved")}</dd>
         <dt>{t("panels:execution.finalCursor")}</dt><dd>{execution.finalCursor ?? t("panels:execution.notTerminal")}</dd>
         <dt>{t("session:composer.interrupt")}</dt><dd>{execution.interruptRequested ? t("panels:execution.requested") : t("panels:execution.notRequested")}</dd>
@@ -838,12 +883,11 @@ function SessionHeader({ session, connection, dockOpen, onOpenDock, environmentO
   readonly onOpenDock: () => void;
 }) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
-  const currentWorkspace = session.context.project;
   return (
     <header className="conversation-header">
       <div className="session-heading">
         <UiIcon name="folder" />
-        <div><h1>{session.title}</h1><p>{currentWorkspace} · {session.context.muxId}</p></div>
+        <div><h1>{session.title}</h1></div>
         <button type="button" aria-label={t("panels:header.actions")}><span aria-hidden="true">⋯</span></button>
       </div>
       <div className="header-actions">
@@ -1257,7 +1301,7 @@ function connectionLabel(connection: string): string {
   return { "fixture-offline": i18n.t("workspace:sidebar.offline"), connected: i18n.t("common:connection.connected"), disconnected: i18n.t("common:connection.disconnected"), "resync-required": i18n.t("common:connection.resync") }[connection] ?? connection;
 }
 
-function App() {
+function App({ account }: { account?: OfflineAccount | null }) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const fixture = useMemo(() => createMockAppClient(), []);
   const [client, setClient] = useState<HarnessClientUiPort | FixturePlaybackPort | null>(null);
@@ -1272,7 +1316,7 @@ function App() {
       });
     return () => { active = false; };
   }, [fixture]);
-  return client ? <HarnessGui client={client} /> : <div className="empty-state">{t("session:opening")}</div>;
+  return client ? <HarnessGui client={client} account={account} /> : <div className="empty-state">{t("session:opening")}</div>;
 }
 
 export default App;

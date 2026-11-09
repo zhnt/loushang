@@ -3,6 +3,7 @@ mod app_client;
 mod connection_lifecycle;
 mod live_bridge;
 mod local_host;
+mod offline_account;
 // Exit joins run on the blocking pool.
 #[allow(dead_code)]
 mod read_stop;
@@ -51,6 +52,7 @@ pub fn run() {
     let builder = builder.invoke_handler(tauri::generate_handler![
         fixture_bridge_handshake,
         local_host::local_host_environment,
+        offline_account::offline_account,
         local_host::local_host_action,
         live_bridge::live_readonly_available,
         live_bridge::live_submit_text,
@@ -65,6 +67,7 @@ pub fn run() {
     #[cfg(not(feature = "fixture-bridge"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         local_host::local_host_environment,
+        offline_account::offline_account,
         local_host::local_host_action,
         live_bridge::live_readonly_available,
         live_bridge::live_submit_text,

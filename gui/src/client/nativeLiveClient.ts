@@ -201,10 +201,11 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       await invoke("resync_live_readonly");
     },
     async submitText(input) {
-      const receipt = await invoke<{ accepted: boolean; reason?: string | null }>("live_submit_text", { input });
+      const receipt = await invoke<{ accepted: boolean; reason?: string | null; executionId?: string | null }>("live_submit_text", { input });
       return {
         submissionId: input.submissionId,
         accepted: receipt.accepted,
+        executionId: receipt.executionId ?? undefined,
         reason: receipt.reason ?? undefined,
       };
     },
@@ -506,6 +507,7 @@ function projectExecution(snapshot: ExecutionSessionSnapshotV1): ExecutionProjec
   if (!status) return null;
   return {
     id,
+    errorCode: state?.outcome?.errorCode ?? undefined,
     status,
     revision: state?.revision ?? 0,
     interruptRequested: state?.interruptRequested ?? false,

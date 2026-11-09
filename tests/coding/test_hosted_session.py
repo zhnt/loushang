@@ -243,6 +243,7 @@ def test_hosted_history_candidate_transfers_through_original_factory_without_run
                 hosted = CodingHostedSessionV1(binding)
                 snapshot = await hosted.snapshot()
                 assert snapshot.identity.session_id == key.session_id
+                assert snapshot.title == "New Session"
                 assert snapshot.records[-1].text == "Historical session is read-only."
                 await opened.close()
                 await claimed.close()
@@ -419,6 +420,7 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
         events = []
         hosted.subscribe(events.append)
         try:
+            assert (await hosted.snapshot()).title == "New Session"
             started = time.perf_counter()
             cpu_started = time.process_time()
             try:
@@ -429,6 +431,7 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
                     ("first-start-turn", round(time.process_time() - cpu_started, 3))
                 )
             snapshot = await hosted.snapshot()
+            assert snapshot.title == "hello actual Session"
             assert [record.text for record in snapshot.records] == [
                 "hello actual Session",
                 "real Coding response",

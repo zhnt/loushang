@@ -32,6 +32,16 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 
 .desktop-shell { --frame-height: 32px; font-size: 14px; min-height: 100vh; background: var(--paper); }
 .web-shell { --frame-height: 0px; }
+.window-resize-edge { position: fixed; z-index: 80; touch-action: none; }
+.window-resize-edge[data-edge="North"], .window-resize-edge[data-edge="South"] { left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.window-resize-edge[data-edge="West"], .window-resize-edge[data-edge="East"] { top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.window-resize-edge[data-edge="NorthWest"], .window-resize-edge[data-edge="NorthEast"], .window-resize-edge[data-edge="SouthWest"], .window-resize-edge[data-edge="SouthEast"] { width: 8px; height: 8px; }
+.window-resize-edge[data-edge^="North"] { top: 0; }
+.window-resize-edge[data-edge^="South"] { bottom: 0; }
+.window-resize-edge[data-edge$="West"] { left: 0; }
+.window-resize-edge[data-edge$="East"] { right: 0; }
+.window-resize-edge[data-edge="NorthWest"], .window-resize-edge[data-edge="SouthEast"] { cursor: nwse-resize; }
+.window-resize-edge[data-edge="NorthEast"], .window-resize-edge[data-edge="SouthWest"] { cursor: nesw-resize; }
 .native-frame { height: 32px; display: flex; align-items: center; gap: 15px; padding: 0 9px; border-bottom: 1px solid #ededeb; color: #777a7e; background: #fbfbfa; font-size: 13px; user-select: none; }
 .native-frame nav { display: flex; gap: 2px; }
 .window-controls { display: flex; align-self: stretch; margin-left: auto; }
@@ -98,7 +108,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .new-session kbd { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid #d8d8d5; border-radius: 50%; color: #6e7174; background: #fff; font-size: 12px; }
 .fixture-banner { display: flex; align-items: center; gap: 7px; margin: 0 12px 8px; padding: 6px 8px; border-radius: 6px; color: #8a6a30; background: #fff8e9; font-size: 12px; }
 .fixture-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: #e4a136; }
-.workspace-scroll { min-height: 0; overflow-y: auto; padding: 2px 7px 18px; }
+.workspace-scroll { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior-y: contain; padding: 2px 7px 18px; }
 .workspace-group { margin-bottom: 4px; }
 .workspace-heading { width: 100%; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 17px; align-items: center; gap: 4px; padding: 8px 6px; border: 0; border-radius: 7px; color: #56595c; background: transparent; text-align: left; font-size: 13px; font-weight: 500; }
 .workspace-heading:hover { background: #ececeb; }
@@ -138,7 +148,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .account-popover button { display: flex; align-items: center; gap: 9px; width: 100%; margin-top: 4px; padding: 7px 9px; color: var(--ink); background: transparent; border: 0; border-radius: 6px; text-align: left; }
 .account-popover button:hover, .account-popover button:focus-visible { background: var(--sidebar); }
 
-.conversation-pane { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(180px, 1fr) auto auto; background: #fff; }
+.conversation-pane { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; background: #fff; }
 .conversation-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--line); }
 .session-heading { min-width: 0; display: flex; align-items: center; gap: 9px; }
 .session-heading > div { min-width: 0; }
@@ -152,7 +162,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .connection-chip.connected { color: var(--green); background: var(--green-soft); }
 .connection-chip.resync-required { color: var(--red); background: var(--red-soft); }
 .diagnostic { position: absolute; z-index: 9; top: 10px; right: 24px; left: 24px; padding: 8px 10px; border: 1px solid #edb8b1; border-radius: 8px; color: #9d3b35; background: var(--red-soft); font-size: 13px; box-shadow: 0 8px 20px rgba(75, 30, 25, 0.08); }
-.transcript { min-height: 0; overflow-y: auto; padding: 28px max(28px, calc((100% - 760px) / 2)) 18px; scroll-behavior: smooth; }
+.transcript { min-height: 0; overflow-y: auto; padding: 28px max(28px, calc((100% - 760px) / 2)) 18px; overscroll-behavior-y: contain; }
 .message { max-width: 760px; margin: 0 auto 25px; }
 .message.user { width: min(74%, 590px); margin-right: 0; padding: 11px 14px; border-radius: 16px; color: #fff; background: #242426; }
 .message-meta { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px; color: #9a9b9d; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -160,7 +170,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .message-meta strong { color: #686b70; }
 .transcript-status { padding: 8px 12px; border-radius: 8px; background: #f5f5f5; color: #62666a; font-size: 13px; }
 .message.user .message-meta strong { color: #fff; }
-.message p { margin: 0; color: #333639; font-size: 14px; line-height: 23px; white-space: pre-wrap; }
+.message p { margin: 0; color: #333639; font-size: 14px; line-height: 23px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .message.user p { color: #fff; }
 
 .run-activity { max-width: 760px; margin: 0 auto 22px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
@@ -245,7 +255,8 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .dock-tabs button > span:first-child { font-size: 14px; }
 .dock-tabs button[aria-pressed="true"] { color: #383a3d; }
 .dock-tabs button[aria-pressed="true"]::after { position: absolute; right: 12px; bottom: -1px; left: 12px; height: 2px; content: ""; background: var(--accent); }
-.dock-content { min-height: 0; overflow-y: auto; }
+.dock-content { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+.dock-content .document-view pre { max-height: none; overflow: visible; }
 .panel-stack { padding: 14px; }
 .fixture-panel-label { margin: 0 0 13px; color: #a07a32; font-size: 12px; }
 .detail-list { display: grid; gap: 10px; margin: 0; }
@@ -351,7 +362,6 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 
 
 @media (max-width: 760px) {
-  body { overflow: auto; }
   .native-frame { position: sticky; top: 0; z-index: 30; }
   .native-frame nav { display: flex; }
   .window-controls { display: none; }
@@ -375,14 +385,16 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .desktop-layout > .work-dock { position: static; grid-column: 3; grid-row: 2; width: auto; min-height: 0; box-shadow: none; }
 .desktop-layout .transcript { padding-left: var(--content-gutter); padding-right: var(--content-gutter); }
 .desktop-layout .composer-stack, .desktop-layout .playback-strip { margin-left: var(--content-gutter); margin-right: calc(var(--content-gutter) + var(--scrollbar-width)); }
-.desktop-layout.right-stacked { grid-template-columns: var(--rail-width) minmax(0, 1fr); grid-template-rows: 49px minmax(391px, 1fr) minmax(180px, 35vh); overflow-y: auto; }
-.desktop-layout.right-stacked > .environment-popover, .desktop-layout.right-stacked > .work-dock { grid-column: 2; grid-row: 3; min-height: 0; max-height: 100%; align-self: stretch; margin: 8px 12px; overflow: auto; }
+.desktop-layout.right-stacked { grid-template-columns: var(--rail-width) minmax(0, 1fr); grid-template-rows: 49px calc(100% - 49px) max(180px, 35vh); overflow-y: auto; overflow-anchor: none; }
+.desktop-layout.right-stacked > .conversation-header { position: sticky; top: 0; z-index: 20; }
+.desktop-layout.right-stacked > .sidebar-container, .desktop-layout.right-stacked > .collapsed-rail { position: sticky; top: 0; z-index: 26; align-self: start; height: calc(100vh - var(--frame-height)); }
+.desktop-layout.right-stacked > .environment-popover, .desktop-layout.right-stacked > .work-dock { grid-column: 2; grid-row: 3; min-height: 0; max-height: 100%; align-self: stretch; margin: 8px 12px; }
 @media (max-width: 760px) {
   .native-frame .window-controls { display: flex; }
   .desktop-layout, .desktop-layout.dock-closed { height: calc(100vh - var(--frame-height)); min-height: 0; grid-template-columns: 48px minmax(0, 1fr); }
   .desktop-layout.right-visible { grid-template-columns: 48px minmax(0, 1fr) var(--right-width); }
   .desktop-layout.right-stacked { grid-template-columns: 48px minmax(0, 1fr); }
-  .desktop-layout > .sidebar-container:not([hidden]) { position: fixed; z-index: 26; top: var(--frame-height); bottom: 0; left: 0; width: min(var(--rail-width), 85vw); box-shadow: 6px 0 20px #0002; }
+  .desktop-layout > .sidebar-container:not([hidden]), .desktop-layout.right-stacked > .sidebar-container:not([hidden]) { position: fixed; z-index: 26; top: var(--frame-height); bottom: 0; left: 0; height: auto; width: min(var(--rail-width), 85vw); box-shadow: 6px 0 20px #0002; }
   .desktop-layout .session-rail { max-height: none; }
   .desktop-layout > .conversation-pane { min-height: 0; }
 }

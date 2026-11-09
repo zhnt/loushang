@@ -243,6 +243,7 @@ struct SessionTemplate {
 
 pub(crate) enum ControlResult {
     Accepted,
+    Submitted(String),
     Missing,
     Rejected(String),
 }
@@ -814,7 +815,8 @@ impl ControlAuthority {
         {
             return Err(());
         }
-        Ok(ControlResult::Accepted)
+        let execution_id = record["state"]["executionId"].as_str().ok_or(())?;
+        Ok(ControlResult::Submitted(execution_id.to_owned()))
     }
 }
 

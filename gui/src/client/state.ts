@@ -20,7 +20,7 @@ function viewKey(session: SessionSnapshot): string {
 
 function sessionView(session: SessionSnapshot, previous?: SessionView): SessionView {
   return {
-    transcriptScrollTop: previous?.transcriptScrollTop ?? 0,
+    transcriptScrollTop: previous ? previous.transcriptScrollTop : session.context.source === "live" ? null : 0,
     dockTab: previous?.dockTab ?? "environment",
     dockOpen: previous?.dockOpen ?? true,
     taskListOpen: previous?.taskListOpen ?? false,
@@ -59,7 +59,8 @@ export interface RemoteState {
 }
 
 export interface LocalState {
-  readonly transcriptScrollTop: number;
+  // null follows the newest output, while a number preserves a reading position.
+  readonly transcriptScrollTop: number | null;
   readonly sessionViews: Readonly<Record<string, SessionView>>;
   readonly selectedSessionId: string | null;
   readonly drafts: Readonly<Record<string, string>>;
@@ -84,7 +85,7 @@ export interface GuiState {
 export type GuiAction =
   | { readonly type: "sync.failed"; readonly message: string }
   | { readonly type: "connection.changed"; readonly connection: "disconnected" | "resync-required"; readonly message: string }
-  | { readonly type: "transcript.scrolled"; readonly sessionId: string; readonly scrollTop: number }
+  | { readonly type: "transcript.scrolled"; readonly sessionId: string; readonly scrollTop: number | null }
   | { readonly type: "snapshot.installed"; readonly snapshot: ClientSnapshot }
   | { readonly type: "session.selected"; readonly sessionId: string }
   | { readonly type: "workspace.toggled"; readonly workspaceId: string }
@@ -157,8 +158,10 @@ export function guiReducer(state: GuiState, action: GuiAction): GuiState {
         diagnostic: action.message,
       };
     case "transcript.scrolled":
-      if (action.sessionId !== state.local.selectedSessionId || !Number.isFinite(action.scrollTop)) return state;
-      return { ...state, local: { ...state.local, transcriptScrollTop: Math.max(0, action.scrollTop) } };
+      if (action.sessionId !== state.local.selectedSessionId) return state;
+      if (action.scrollTop !== null && !Number.isFinite(action.scrollTop)) return state;
+      if (action.scrollTop === state.local.transcriptScrollTop) return state;
+      return { ...state, local: { ...state.local, transcriptScrollTop: action.scrollTop === null ? null : Math.max(0, action.scrollTop) } };
     case "snapshot.installed":
       return installSnapshot(state, action.snapshot);
     case "session.selected": {

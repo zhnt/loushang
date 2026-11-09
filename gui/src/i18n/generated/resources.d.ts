@@ -64,6 +64,7 @@ export default interface Resources {
     "execution": {
       "completeSnapshot": "complete snapshot",
       "details": "Live execution details",
+      "failureCode": "Failure code",
       "finalCursor": "Final cursor",
       "lastKnownStatus": "Last known execution state: {{status}} (disconnected)",
       "notObserved": "not observed",
@@ -189,6 +190,7 @@ export default interface Resources {
       "disconnected": "Disconnected.",
       "fixture": "Synchronizing fixture…",
       "live": "Connecting to AppHost…",
+      "offlineHost": "No AppHost is connected. Manage the local AppHost in Settings.",
       "retry": "Resynchronize fixture"
     },
     "transcript": {
@@ -204,7 +206,9 @@ export default interface Resources {
     "about": "About loushang",
     "aboutDescription": "loushang — a workspace for conversations and work.",
     "aboutRuntime": "Available features depend on the connected service. Offline fixture data is labelled in the interface.",
+    "accountId": "Local account ID",
     "accountMenu": "Account menu",
+    "accountName": "System user",
     "actionFailed": "Window action failed. Please retry.",
     "actionUnavailable": "Currently unavailable",
     "actualSize": "Actual size",
@@ -246,6 +250,7 @@ export default interface Resources {
     "newlineShortcut": "Ctrl + Enter",
     "nextSidebarItem": "Next sidebar item",
     "nextTab": "Next tab",
+    "offlineAccount": "Offline account",
     "openFolder": "Open folder",
     "openTerminal": "Open terminal",
     "paste": "Paste",

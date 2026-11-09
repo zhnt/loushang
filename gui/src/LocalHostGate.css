@@ -1,19 +1,12 @@
-.local-host-shell { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-.local-host-panel { padding: 12px 20px; border-bottom: 1px solid #d8d8d8; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--surface, #fff); color: var(--text, #242424); }
-.local-host-panel label { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 280px; }
-.local-host-panel input { flex: 1; min-width: 120px; padding: 7px; border: 1px solid #bbb; border-radius: 6px; }
-.local-host-actions { display: flex; gap: 8px; }
-.local-host-actions button { padding: 7px 10px; border: 1px solid #bbb; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
-.local-host-actions button:disabled { opacity: .5; cursor: default; }
+.local-host-panel { display: grid; gap: 12px; }
+.local-host-panel label { display: grid; gap: 6px; }
+.local-host-panel input { min-width: 0; width: 100%; padding: 7px; border: 1px solid var(--line-strong); border-radius: 6px; }
+.local-host-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.local-host-actions button, .local-host-confirm button { padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: transparent; color: inherit; }
 .local-host-panel p { margin: 4px 0; }
-.local-host-panel [role="alert"] { width: 100%; color: #a13d12; }
+.local-host-panel [role="alert"] { color: #a13d12; }
 .local-host-panel code { overflow-wrap: anywhere; font-size: 12px; }
-.local-host-intro { margin: 32px; }
-.local-host-conversation { flex: 1; min-height: 0; overflow: auto; }
-.local-host-conversation .desktop-shell { height: 100%; min-height: 0; display: flex; flex-direction: column; }
-.local-host-conversation .native-frame { flex-shrink: 0; }
-.local-host-conversation .app-shell { flex: 1; height: auto; min-height: 0; }
 
-.local-host-confirm { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: #0005; }
-.local-host-confirm > div { max-width: 480px; margin: 24px; padding: 24px; border-radius: 12px; background: var(--paper, white); overflow-wrap: anywhere; }
-.local-host-confirm button { margin-right: 12px; padding: 8px 16px; }
+.local-host-confirm { position: fixed; inset: 0; z-index: 1; display: grid; place-items: center; background: #0005; }
+.local-host-confirm > div { max-width: 480px; margin: 24px; padding: 24px; border-radius: 12px; background: var(--paper); overflow-wrap: anywhere; }
+.local-host-confirm button { margin-right: 12px; }

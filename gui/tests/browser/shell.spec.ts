@@ -38,16 +38,25 @@ for (const width of [700, 1440]) {
 test("desktop shell renders menus and Session history with a simulated native bridge", async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  // Exercise the desktop fixture shell independently of managed Host startup.
+  await page.route(/LocalHostGate\.tsx(?:[?]|$)/, (route) => route.fulfill({
+    contentType: "application/javascript",
+    body: 'export { default } from "/src/App.tsx";',
+  }));
   // DOM acceptance only: these stubs do not establish actual OS window behavior.
   await page.addInitScript(() => {
     Object.assign(window, {
       isTauri: true,
+      resizeRequests: [] as unknown[],
       __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
       __TAURI_INTERNALS__: {
         metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
         transformCallback: () => 1,
         unregisterCallback: () => {},
-        invoke: async (command: string) => {
+        invoke: async (command: string, args: unknown) => {
+          if (command === "plugin:window|start_resize_dragging") {
+            (window as unknown as { resizeRequests: unknown[] }).resizeRequests.push(args);
+          }
           if (command === "plugin:os|locale") return "en-US";
           if (command === "plugin:event|listen") return 1;
           if (command === "fixture_bridge_handshake") throw new Error("Fixture bridge disabled");
@@ -60,6 +69,8 @@ test("desktop shell renders menus and Session history with a simulated native br
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "GUI development" })).toBeVisible();
   await expect(page.locator(".native-frame")).toBeVisible();
+  await page.locator('.window-resize-edge[data-edge="SouthEast"]').click();
+  expect(await page.evaluate(() => (window as unknown as { resizeRequests: unknown[] }).resizeRequests)).toEqual([expect.objectContaining({ value: "SouthEast" })]);
   await expect(page.locator(".native-frame").getByRole("button", { name: "Toggle sidebar" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Back", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Operational ontology · Idle" }).click();

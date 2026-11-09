@@ -69,6 +69,7 @@
     "verified": "Rust 调用与事件已验证"
   },
   "sync": {
+    "offlineHost": "尚未连接 AppHost，可在设置中管理本地 AppHost。",
     "fixture": "正在同步测试数据…",
     "live": "正在连接 AppHost…",
     "disconnected": "连接已断开。",
