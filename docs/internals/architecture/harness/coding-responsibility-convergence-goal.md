@@ -6,7 +6,7 @@
 
 - Authority: accepted execution goal；用户2026-11-07将本描述设为active Goal。本文件不替代各组件的已接受架构合同。
 - Design status: accepted goal scope；各波次专项架构仍须设计、评审及按原约定由用户审阅重要工作件。
-- 当前实施摘要：最新A71接通Windows Installation root lineage；A70及此前成果已提交。当前计量及欠账见下文“当前状态”。KD011/A33待用户工作件保持，KD003 bytes-import仍未实施；以下逐项保留各历史接受范围。
+- 当前实施摘要：A73接通完整审批协调；A71及此前成果已提交。当前计量及欠账见下文“当前状态”。KD011/A33待用户工作件保持，KD003 bytes-import仍未实施；以下逐项保留各历史接受范围。
 - Implementation status: partial（P1/P2/P3/P4）；指定五流/Rooted命令、payload、checkpoint/快照及A13–A15 Windows指定路径已获有界技术接受；A17图关系归原Session，A19本地启动阶段复用、A20托管Session桥接、A21 foreground Product所有权接缝、A22受控Wheel Source目录共享程序及A23依赖来源完整操作复用也已获有界接受。P2 R2.1职责方向已于2026-11-08获用户接受，D3完整兼容捕获路径获有界技术接受（181实际通过/5原skip），D1/D2的owner租约/证据账本与startup、D4完整成员/退役/关闭协同均已接入并获有界接受，P2启动装配首批owner publication亦已接通并获有界代码接受（75项实际回归及21组冻结观察对照），三种构造/发布前后清理路径也已复用Session共同程序并完成有界评审，原Loader回执至Catalog source specs完整交接也已接入（原47节点通过/失败集合不变，16固定观察通过，保留10项迁前失败），其余bootstrap/共同输入与刷新装配仍待收敛；KD010六Windows基线/join已整体接入Worker.history并取得实际有限验证，P4的F06 Goal记录后端亦已本地接通（14原节点及7固定IO观察通过，2项Session准入失败用旧后端复现），A24十三个Payload入口已复用原Storage根借用、删除重复根IO骨架（Code−71/系统净−48，实际48项通过及代码三视角有界接受），A25内置Source四个物理程序也已接入原Resources（Code−216/系统+4，65过/1原native skip，代码三视角有界接受）；A26 Windows Worker Source完整目录协调已归原Package Product（Code−204/系统+78，117过/1原native skip，代码三视角有界接受）；A27两平台候选事实联接及四条安装/更新共同程序已归原Package Product（Code−313/系统净−123，103过/2原skip，代码三视角有界接受）；其余Worker、其它托管/Continuity与P4剩余入口仍未完成，Coding≤15K及现行职责/复用/成本准则保持，实际测试与全成本见[执行记录](coding-responsibility-convergence-progress.md)。
 - Owner: Coding与各接收组件原owner；跨组件决定由共同上级架构owner综合接受。
 - 依据：[全量重构方案](coding-reconstruction-proposal.md)、[逐文件职责清单](coding-responsibility-inventory.md)、[Current Owner Map](current-owner-map.md)。方案与清单中的旧行数不是本轮当前事实。
@@ -27,7 +27,28 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-09，A72全量复核）
+## 当前状态（2026-11-09，A73审批协调）
+
+从A72 `2dfe75fee`接续；Definition approved-resolve和Activation到Session inputs
+的完整协调已归原DeclarationHost、ComponentHost及CompositionAssembly。Code保产品
+Profile/路径/错误类型/原issuer与Resume准入，两薄入口均接实际消费者。既有Base、
+Product及legacy Capability原已共用此程序，不重复计去重收益；Continuity不同合同未合并。
+
+Coding430文件117008行，系统1958源645338行：Code−107，接收原三组件+272，系统
+净+165，其余1954源SHA同。全部类型/适配/文档字符串/格式计入；这是职责迁移。
+距15K仍102008；P1–P4及整个Goal仍partial/active，必要领域保留成本继续核实。
+[本片设计、固定来源与验证限制](key-designs/product-approval-closure-convergence.md)。
+固定56先在旧生产通过；迁后同56加原消费者138过（129.84s），原Resume/Session graph
+及唯一入口断言31过（13.84s，1原warning）。三实际视角有界接受；原全SDK smoke
+在迁前因祖先权限unsafe失败保留，不称全绿；四中断探针是KeyboardInterrupt，
+不外推Task.cancel/真实Resume enrollment。
+
+A72全量剩余账保留历史起点，本片只关闭其中审批协调程序；Worker payload recovery、
+prepared-task寿命以及P2其他混合职责仍待完整场景处置。后续按复用/依赖/完整路径收益
+选择，不把10文件窗口或当前声明语法行当可删预算/必要下界。KD003未实施，
+KD011/A33原待用户确认边界保持，不自动采用。
+
+## A72历史复核（2026-11-09）
 
 生产停在已接受A71 `2c322a821`：Coding430文件117115行，系统1958源645173行，
 本次新增生产精简0。430源码SHA/行/定义/import与28组处置已重核；领域语义、

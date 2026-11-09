@@ -58,7 +58,6 @@ from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderAdmissionRecord,
     CapabilityProviderOwnerAuthority,
     CapabilityProviderOwnerPolicy,
-    CapabilityProviderOwnerSnapshot,
 )
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
@@ -67,7 +66,6 @@ from loushang.harness.capabilities.provider_selection import (
     ProductCapabilityProviderChoice,
 )
 from loushang.harness.config.agent import CapabilityMountMode
-from loushang.harness.plugin_authoring.evaluator import PluginDefinitionEvaluator
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.plugin_management import (
     plugin_enablement_legacy_input_fingerprint,
@@ -76,7 +74,6 @@ from loushang.harness.resources.plugins.authority import (
     PluginResolutionAuthority,
     PluginRuntimeResolution,
 )
-from loushang.harness.resources.plugins.import_realm import PluginImportRealm
 from loushang.harness.resources.plugins.manifest import PluginManifestError
 from loushang.harness.resources.plugins.revisions import PluginRevisionError
 from loushang.harness.resources.plugins.selection import (
@@ -86,8 +83,6 @@ from loushang.harness.resources.plugins.selection import (
     PluginExecutionApprovalSubject,
     PluginInstanceRevisionRef,
     PluginPreflightContextV1,
-    PluginPreflightDeniedOutcome,
-    PluginPreflightPendingApprovalOutcome,
     PluginSelection,
     PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
@@ -1275,98 +1270,38 @@ def _approve_activation_and_bind_inputs(
     clock: Callable[[], int],
     resume_parents: CodingResumePluginParents | None = None,
 ) -> tuple[CapabilityComponentHost, SessionCapabilityCompositionInputs]:
-    journal = PluginActivationDecisionJournal(
-        state_root / "activation-decisions.jsonl",
+    component_host = CapabilityComponentHost.from_product_selection(
+        selection,
+        provider_authorities=provider_authorities,
+        journal_path=state_root / "activation-decisions.jsonl",
         scope_id=scope_id,
-        clock=clock,
-        required_writer_capabilities=(
-            frozenset({"harness.plugin-activation.resume-context/v1"})
-            if resume_parents is not None
-            else frozenset()
-        ),
-    )
-    trust_snapshots = selection.plan.source_trust_snapshots
-
-    def read_owner(capability_id: str) -> CapabilityProviderOwnerSnapshot:
-        try:
-            return provider_authorities[capability_id].snapshot()
-        except KeyError as exc:
-            raise ValueError("Coding owner reader received another Capability") from exc
-
-    def read_trust(
-        plugin_id: str,
-        source_identity: str,
-    ) -> PluginSourceTrustSnapshotV1:
-        matches = tuple(
-            item
-            for item in trust_snapshots
-            if item.plugin_id == plugin_id
-            and item.package_source_identity == source_identity
-        )
-        if len(matches) != 1:
-            raise ValueError("Coding trust reader requires one exact snapshot")
-        return matches[0]
-
-    def read_product_policy(product_id: str, requested_scope_id: str) -> str:
-        if product_id != CODING_PRODUCT_ID or requested_scope_id != scope_id:
-            raise ValueError("Coding policy reader received another Product scope")
-        return selection.plan.context.policy_revision
-
-    component_host = CapabilityComponentHost(
-        decision_journal=journal,
-        import_realm=PluginImportRealm(),
         host_boot_id=host_boot_id,
         clock=clock,
-        owner_snapshot_reader=read_owner,
-        trust_snapshot_reader=read_trust,
-        product_policy_revision_reader=read_product_policy,
-        distribution_evidence_resolver=(coding_plugin_distribution_evidence_resolver()),
-        resume_parent_context=resume_parents.activation
+        expected_product_id=CODING_PRODUCT_ID,
+        product_label="Coding",
+        required_writer_capabilities=frozenset(
+            {"harness.plugin-activation.resume-context/v1"}
+        )
         if resume_parents is not None
-        else None,
+        else frozenset(),
+        distribution_evidence_resolver=lambda: (
+            coding_plugin_distribution_evidence_resolver()
+        ),
+        resume_parent_context=lambda: (
+            resume_parents.activation if resume_parents is not None else None
+        ),
     )
-    decision_ids: dict[str, str] = {}
-    for candidate in plugin_assembly.component_candidates:
-        subject = component_host.activation_subject(
-            candidate.resolved,
-            owner_snapshot=candidate.owner_snapshot,
-            trust_snapshot=candidate.trust_snapshot,
-        )
-        decision = request.approval_owner.approve_activation(
-            journal=journal,
-            subject=subject,
-        )
-        if not isinstance(decision, PluginActivationDecisionRecordV1):
-            raise TypeError(
-                "Coding Capability Activation Approval owner returned invalid evidence"
-            )
-        recorded = next(
-            (
-                item
-                for item in journal.snapshot().decisions
-                if item.decision_id == decision.decision_id
-            ),
-            None,
-        )
-        if recorded != decision or decision.subject_digest != subject.digest:
-            raise CodingCapabilityPluginCompositionError(
-                "Coding Capability activation approval does not match its Subject.",
-                code="coding_capability_plugin_activation_approval_mismatch",
-            )
-        if decision.disposition != "approved":
-            raise CodingCapabilityPluginCompositionError(
-                "Coding Capability Plugin activation was not approved.",
-                code="coding_capability_plugin_activation_denied",
-            )
-        if decision.consumption_state != "AVAILABLE":
-            raise CodingCapabilityPluginCompositionError(
-                "Coding Capability Plugin activation decision is not available.",
-                code="coding_capability_plugin_activation_not_available",
-            )
-        decision_ids[candidate.capability_id] = decision.decision_id
     return (
         component_host,
-        plugin_assembly.bind_session_inputs(decision_ids),
+        plugin_assembly.approve_and_bind_session_inputs(
+            component_host=component_host,
+            approval_owner=lambda: request.approval_owner,
+            product_label="Coding",
+            error_code_prefix="coding_capability_plugin",
+            error_factory=lambda message, code: CodingCapabilityPluginCompositionError(
+                message, code=code
+            ),
+        ),
     )
 
 
@@ -1387,74 +1322,32 @@ def _finalize_selection(
             state_root=state_root,
             clock=clock,
         )
-    journal = PluginExecutionDecisionJournal(
-        state_root / "definition-decisions.jsonl",
-        scope_kind="workspace",
-        scope_id=scope_id,
-        clock=clock,
-        required_writer_capabilities=(
-            frozenset({"harness.plugin-execution.resume-context/v1"})
-            if resume_parents is not None
-            else frozenset()
-        ),
-    )
-    host = PluginDeclarationHost(
-        execution_evaluator=PluginDefinitionEvaluator(
-            decision_journal=journal,
-            import_realm=PluginImportRealm(),
-            clock=clock,
-            distribution_evidence_resolver=(
-                coding_plugin_distribution_evidence_resolver()
-            ),
-            resume_parent_context=resume_parents.definition
-            if resume_parents is not None
-            else None,
-        )
-    )
-    outcome = host.resolve(
+    return PluginDeclarationHost.resolve_for_product(
         seed.packages,
         bindings=seed.bindings,
         plan=seed.plan,
-        decision_lookup=journal,
+        journal_path=state_root / "definition-decisions.jsonl",
+        scope_kind="workspace",
+        scope_id=scope_id,
+        clock=clock,
+        required_writer_capabilities=frozenset(
+            {"harness.plugin-execution.resume-context/v1"}
+        )
+        if resume_parents is not None
+        else frozenset(),
+        approval_owner=lambda: request.approval_owner,
+        distribution_evidence_resolver=lambda: (
+            coding_plugin_distribution_evidence_resolver()
+        ),
+        resume_parent_context=lambda: (
+            resume_parents.definition if resume_parents is not None else None
+        ),
+        approval_label="Coding Capability",
+        error_code_prefix="coding_capability_plugin",
+        error_factory=lambda message, code: CodingCapabilityPluginCompositionError(
+            message, code=code
+        ),
     )
-    if isinstance(outcome, PluginPreflightPendingApprovalOutcome):
-        for subject in outcome.subjects:
-            decision = request.approval_owner.approve_definition(
-                journal=journal,
-                subject=subject,
-            )
-            if not isinstance(decision, PluginApprovalDecisionRecordV1):
-                raise TypeError(
-                    "Coding Capability Definition Approval owner returned invalid evidence"
-                )
-            if decision.subject_digest != subject.digest:
-                raise CodingCapabilityPluginCompositionError(
-                    "Coding Capability Definition approval does not match its Subject.",
-                    code="coding_capability_plugin_definition_approval_mismatch",
-                )
-        outcome = host.resolve(
-            seed.packages,
-            bindings=seed.bindings,
-            plan=seed.plan,
-            decision_lookup=journal,
-        )
-    if not isinstance(outcome, PluginSelection):
-        disposition = outcome.disposition
-        error = CodingCapabilityPluginCompositionError(
-            "Coding Capability Plugin Definition was not approved.",
-            code=(
-                "coding_capability_plugin_definition_denied"
-                if isinstance(outcome, PluginPreflightDeniedOutcome)
-                else f"coding_capability_plugin_definition_{disposition}"
-            ),
-        )
-        for diagnostic in outcome.diagnostics:
-            error.add_note(
-                f"Plugin preflight {diagnostic.plugin_id or '<plan>'}: "
-                f"{diagnostic.code}"
-            )
-        raise error
-    return outcome
 
 
 def _prepare_selection_plan_seed(

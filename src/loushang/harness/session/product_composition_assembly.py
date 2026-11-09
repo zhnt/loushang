@@ -10,6 +10,10 @@ from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
 )
+from loushang.harness.capabilities.component_host import (
+    CapabilityActivationApprovalIssuer,
+    CapabilityComponentHost,
+)
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCapabilityConsumerRequirementPreview,
     ProductCapabilityOptionalRequirementChoice,
@@ -918,6 +922,31 @@ class ProductPluginCompositionAssembly:
                 for item in self.component_candidates
             ),
         )
+
+    def approve_and_bind_session_inputs(
+        self,
+        *,
+        component_host: CapabilityComponentHost,
+        approval_owner: Callable[[], CapabilityActivationApprovalIssuer],
+        product_label: str,
+        error_code_prefix: str,
+        error_factory: Callable[[str, str], RuntimeError],
+    ) -> SessionCapabilityCompositionInputs:
+        """Ask the explicit issuer and bind only exact available recorded decisions."""
+        decision_ids: dict[str, str] = {}
+        for candidate in self.component_candidates:
+            decision_ids[candidate.capability_id] = (
+                component_host.approve_selected_activation(
+                    candidate.resolved,
+                    owner_snapshot=candidate.owner_snapshot,
+                    trust_snapshot=candidate.trust_snapshot,
+                    approval_owner=approval_owner,
+                    product_label=product_label,
+                    error_code_prefix=error_code_prefix,
+                    error_factory=error_factory,
+                )
+            )
+        return self.bind_session_inputs(decision_ids)
 
 
 @dataclass(frozen=True, slots=True)

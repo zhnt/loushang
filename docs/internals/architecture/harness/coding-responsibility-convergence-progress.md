@@ -2,11 +2,32 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P1/A1–A71指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P1/A1–A71指定路径、P2/A73审批协调、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A72全量复核）
+## 当前状态（2026-11-09，A73审批协调）
+
+从A72 `2dfe75fee`接续；Definition approved-resolve和Activation到Session inputs
+的完整协调已归原DeclarationHost、ComponentHost及CompositionAssembly。Code保产品
+Profile/路径/错误类型/原issuer与Resume准入，两薄入口均接实际消费者。既有Base、
+Product及legacy Capability原已共用此程序，不重复计去重收益；Continuity不同合同未合并。
+
+Coding430文件117008行，系统1958源645338行：Code−107，接收原三组件+272，系统
+净+165，其余1954源SHA同。全部类型/适配/文档字符串/格式计入；这是职责迁移。
+距15K仍102008；P1–P4及整个Goal仍partial/active，必要领域保留成本继续核实。
+[本片设计、固定来源与验证限制](key-designs/product-approval-closure-convergence.md)。
+固定56先在旧生产通过；迁后同56加原消费者138过（129.84s），原Resume/Session graph
+及唯一入口断言31过（13.84s，1原warning）。三实际视角有界接受；原全SDK smoke
+在迁前因祖先权限unsafe失败保留，不称全绿；四中断探针是KeyboardInterrupt，
+不外推Task.cancel/真实Resume enrollment。
+
+A72全量剩余账保留历史起点，本片只关闭其中审批协调程序；Worker payload recovery、
+prepared-task寿命以及P2其他混合职责仍待完整场景处置。后续按复用/依赖/完整路径收益
+选择，不把10文件窗口或当前声明语法行当可删预算/必要下界。KD003未实施，
+KD011/A33原待用户确认边界保持，不自动采用。
+
+## A72历史复核（2026-11-09）
 
 生产停在已接受A71 `2c322a821`：Coding430文件117115行，系统1958源645173行，
 本次新增生产精简0。430源码SHA/行/定义/import与28组处置已重核；领域语义、

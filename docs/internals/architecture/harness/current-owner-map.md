@@ -719,3 +719,16 @@ and native field projection while preserving their different native reads.
 The exact integration cost and bounded evidence are in
 [KD008 A63](key-designs/worker-product-runtime-convergence.md#26-a63完整单次查询接通原session);
 controlled ports do not establish real native settlement or whole-Goal completion.
+
+## Product Plugin approval coordination (A73)
+
+The existing PluginDeclarationHost coordinates the explicit Product issuer and its
+unchanged sole resolve/preflight/Coordinator path. The existing ComponentHost owns
+journal construction, current authority/trust/policy readers and exact recorded
+Activation evidence validation; the existing ProductPluginCompositionAssembly
+owns candidate-order approval and binding into Session inputs. Approval signing
+stays with the supplied Product issuer, persistence with the original Approval
+journals, and later admission/consumption/Provider/Graph mechanisms stay unchanged.
+Coding retains Product paths/Profile/error mapping/issuer and Resume admission.
+[Bounded coordination evidence](key-designs/product-approval-closure-convergence.md)
+records the fixed original observations, original consumers and execution limits.

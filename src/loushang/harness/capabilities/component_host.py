@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from threading import Lock
-from typing import Never, cast
+from typing import Never, Protocol, cast
 
 from loushang.harness.approval.plugin_activation import (
     ActivationUseReservationV1,
     ContributionActivationApprovalSubject,
     PluginActivationDecisionJournal,
+    PluginActivationDecisionRecordV1,
     PluginActivationUseState,
 )
 from loushang.harness.capabilities._activation_host_lifecycle import (
@@ -19,6 +21,7 @@ from loushang.harness.capabilities._activation_host_lifecycle import (
 )
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderBindingSpec,
+    CapabilityProviderOwnerAuthority,
     CapabilityProviderOwnerSnapshot,
     CapabilityProviderSymbolLocator,
 )
@@ -41,6 +44,7 @@ from loushang.harness.resources.plugins.python_symbols import (
     load_verified_plugin_python_module,
 )
 from loushang.harness.resources.plugins.selection import (
+    PluginSelection,
     PluginSourceTrustSnapshotV1,
 )
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
@@ -77,6 +81,17 @@ class CapabilityComponentAdmissionStart:
     decision_id: str
     started_at: int
     _token: object = field(repr=False, compare=False)
+
+
+class CapabilityActivationApprovalIssuer(Protocol):
+    """Existing Product-owned decision writer, supplied explicitly per operation."""
+
+    def approve_activation(
+        self,
+        *,
+        journal: PluginActivationDecisionJournal,
+        subject: ContributionActivationApprovalSubject,
+    ) -> PluginActivationDecisionRecordV1: ...
 
 
 class CapabilityComponentHost:
@@ -435,6 +450,129 @@ class CapabilityComponentHost:
                 "capability_provider_product_policy_stale",
                 "Current Product policy changed after resolution.",
             )
+
+    @classmethod
+    def from_product_selection(
+        cls,
+        selection: PluginSelection,
+        *,
+        provider_authorities: Mapping[str, CapabilityProviderOwnerAuthority],
+        journal_path: Path,
+        scope_id: str,
+        host_boot_id: str,
+        clock: Callable[[], int],
+        expected_product_id: str,
+        product_label: str,
+        required_writer_capabilities: frozenset[str],
+        distribution_evidence_resolver: Callable[
+            [], InstalledPythonDistributionEvidenceResolver
+        ],
+        resume_parent_context: Callable[[], ResumeEffectParentContextV1 | None],
+    ) -> CapabilityComponentHost:
+        """Construct the original host/readers; preserve constructor recovery.
+
+        No Provider admission, creation or Graph publication occurs here.
+        """
+        journal = PluginActivationDecisionJournal(
+            journal_path,
+            scope_id=scope_id,
+            clock=clock,
+            required_writer_capabilities=required_writer_capabilities,
+        )
+        trust_snapshots = selection.plan.source_trust_snapshots
+
+        def read_owner(capability_id: str) -> CapabilityProviderOwnerSnapshot:
+            try:
+                return provider_authorities[capability_id].snapshot()
+            except KeyError as exc:
+                raise ValueError(
+                    f"{product_label} owner reader received another Capability"
+                ) from exc
+
+        def read_trust(
+            plugin_id: str, source_identity: str
+        ) -> PluginSourceTrustSnapshotV1:
+            matches = tuple(
+                (
+                    item
+                    for item in trust_snapshots
+                    if item.plugin_id == plugin_id
+                    and item.package_source_identity == source_identity
+                )
+            )
+            if len(matches) != 1:
+                raise ValueError(
+                    f"{product_label} trust reader requires one exact snapshot"
+                )
+            return matches[0]
+
+        def read_product_policy(product_id: str, requested_scope_id: str) -> str:
+            if product_id != expected_product_id or requested_scope_id != scope_id:
+                raise ValueError(
+                    f"{product_label} policy reader received another Product scope"
+                )
+            return selection.plan.context.policy_revision
+
+        return cls(
+            decision_journal=journal,
+            import_realm=PluginImportRealm(),
+            host_boot_id=host_boot_id,
+            clock=clock,
+            owner_snapshot_reader=read_owner,
+            trust_snapshot_reader=read_trust,
+            product_policy_revision_reader=read_product_policy,
+            distribution_evidence_resolver=distribution_evidence_resolver(),
+            resume_parent_context=resume_parent_context(),
+        )
+
+    def approve_selected_activation(
+        self,
+        resolved: ResolvedCapabilityProvider,
+        *,
+        owner_snapshot: CapabilityProviderOwnerSnapshot,
+        trust_snapshot: PluginSourceTrustSnapshotV1,
+        approval_owner: Callable[[], CapabilityActivationApprovalIssuer],
+        product_label: str,
+        error_code_prefix: str,
+        error_factory: Callable[[str, str], RuntimeError],
+    ) -> str:
+        """Ask the explicit issuer, then check the original raw journal evidence.
+
+        This does not begin admission, consume approval or prepare a Provider.
+        """
+        journal = self._lifecycle.journal
+        subject = self.activation_subject(
+            resolved, owner_snapshot=owner_snapshot, trust_snapshot=trust_snapshot
+        )
+        decision = approval_owner().approve_activation(journal=journal, subject=subject)
+        if not isinstance(decision, PluginActivationDecisionRecordV1):
+            raise TypeError(
+                f"{product_label} Capability Activation Approval owner returned invalid evidence"
+            )
+        recorded = next(
+            (
+                item
+                for item in journal.snapshot().decisions
+                if item.decision_id == decision.decision_id
+            ),
+            None,
+        )
+        if recorded != decision or decision.subject_digest != subject.digest:
+            raise error_factory(
+                f"{product_label} Capability activation approval does not match its Subject.",
+                f"{error_code_prefix}_activation_approval_mismatch",
+            )
+        if decision.disposition != "approved":
+            raise error_factory(
+                f"{product_label} Capability Plugin activation was not approved.",
+                f"{error_code_prefix}_activation_denied",
+            )
+        if decision.consumption_state != "AVAILABLE":
+            raise error_factory(
+                f"{product_label} Capability Plugin activation decision is not available.",
+                f"{error_code_prefix}_activation_not_available",
+            )
+        return decision.decision_id
 
 
 @dataclass(slots=True)
