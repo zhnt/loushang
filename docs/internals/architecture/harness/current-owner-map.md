@@ -194,6 +194,13 @@ preserve the Code import entry, with definition/reflection metadata moved.
 The [bounded custody evidence](key-designs/continuity-payload-custody-convergence.md)
 does not complete KD003 bytes import or eliminate the compatibility Path.
 
+Worker history owns native-approval value/wire/history mechanics and the original
+Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
+selector; their original append/byte/lock/custody rules remain separate. Coding
+keeps public dataclass identities/signatures, Product admission and the original
+GC/binding/currentness order. [Bounded native approval evidence](key-designs/native-approval-journal-convergence.md)
+does not grant native use or complete native installation/repair.
+
 The bounded [Product composition input preparation](plugin/composition-route-inputs.md)
 keeps owner grouping, structural supplied-binding checks, ordering and selection
 seed construction in the existing private Session assembly. Coding retains its

@@ -2,11 +2,47 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P1/A1–A67指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P1/A1–A67及A69 native approval指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A68）
+## 当前状态（2026-11-09，A69）
+
+A69 从`89992a383`继续完整Goal，原1955生产源及两完整原模块已保存树外。
+三native approval值机制/完整decoder/Rooted binding-load-change已归Worker.history；
+原两平台replay→CAS→absent→count-capacity→create共用一份纯程序。Code保公开
+DTO字段/FQN/slots/frozen/四classmethod签名、owner准入及原GC+bind/lock→current
+次序。Windows原严格canonical/字节容量/initialized/ACL/visible程序独立保留。
+Code448→242（−206）、WindowsCore392→344（−48）、新Core432、系统+178；
+当前Coding430文件117971行、系统1956源644749行，其余1953旧源SHA不变，距15K
+仍102971，未完成Goal。不把完整职责迁移和单一选择去重冒称系统净精简。
+
+原fixture种子文件因umask0002为0664，被原Rooted读拒绝；修正输入为0600，另存
+旧观察，保留52过/2失败与一次未加载项目conftest的无效launcher。新probe Duck
+repr随机地址又被独立复跑发现，仅该输入固定repr并在原source下单独捕获新例，
+旧expected未覆盖。最终101固定观察包括真实float canonical拒绝、bool版本、原
+pickle/签名、late codec/limit/error、满容量原对象replay、部分append及duck revoke
+持久后下一read失败。重放/字节/撤销旧不对称未借重构修补。
+
+迁后101观察+原native父目录节点102过；mypy两override错误由Generic绑定关闭，
+公开签名未改，typed DTO32及native scope33过。意外多选的3旧parent探针失败，
+在原899干净验证worktree同3复现；仅修模拟owner/实例v2端口后4节点（原256
+观察）过，原断言/fixture保持。验证worktree确认干净且分支被任务HEAD包含后
+安全移除，无force。原Windows IO/read scopes迁前256过（8.45s）。
+
+最终durable/原parent+Windows IO/引用checkpoint/release reader/边界首轮490过、
+2事实失败（32.94s）；C54只补当前nativeapproval consumer，C55原前三cleanup
+token跟随此前真实attempt-lifecycle owner，binder/activation/bridge/forbidden不变。
+原两失败节点2过（17.54s），原492节点均有最终通过证据，不称单次492全绿或
+重叠累加。无新增CI discovery/catalog/routes/workflows/platform/required gate。
+
+三个独立设计及实际代码视角无本片阻断，实施owner有界接受；3源mypy、Ruff/
+格式、文档、依赖freshness、plan及diff检查通过。Rooted物理IO真实，Product
+authority和Windows native ports受控；不外推原生Windows/完整授权/全部Goal。
+完整来源、SHA、成本、原失败与局限见[本片工作件](key-designs/native-approval-journal-convergence.md)。
+native install/repair及其余P1–P4保持剩余，KD003、KD011/A33未自动采用。
+
+## A68 历史状态（2026-11-09）
 
 A68 从`60944e6d4`继续完整Goal，保留专用任务worktree和各lane用户改动。
 完整Continuity临时载荷mkdir/路径准入/独占写入/双FD与inode固定/身份删除及

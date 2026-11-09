@@ -25,6 +25,7 @@ from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
 )
 
+from ._native_approval import _A, _N, _NativeFactory, _next_native_approval_decision
 from ._opt_in import _OPAQUE, _OptInDecisionMethods, _OptInValue
 from ._receipts import _ReceiptRecordMethods
 
@@ -127,39 +128,6 @@ class _WindowsRecords(Generic[_R]):
 _D = TypeVar("_D", bound=_OptInDecisionMethods)
 _P = TypeVar("_P", bound=_OptInValue)
 _T = TypeVar("_T", bound=_ReceiptRecordMethods)
-
-
-class _NativeDecision(_RecordValue, Protocol):
-    @property
-    def operation_id(self) -> str: ...
-
-    @property
-    def action(self) -> Literal["approve", "revoke"]: ...
-
-    @property
-    def approval(self) -> object: ...
-
-    @property
-    def generation(self) -> int: ...
-
-
-_N = TypeVar("_N", bound=_NativeDecision)
-_N_co = TypeVar("_N_co", bound=_NativeDecision, covariant=True)
-_A = TypeVar("_A")
-_A_contra = TypeVar("_A_contra", contravariant=True)
-
-
-class _NativeFactory(Protocol[_A_contra, _N_co]):
-    def __call__(
-        self,
-        *,
-        journal_revision: int,
-        scope_id: str,
-        operation_id: str,
-        generation: int,
-        action: Literal["approve", "revoke"],
-        approval: _A_contra | None,
-    ) -> _N_co: ...
 
 
 class WindowsOptInRecords(_WindowsRecords[_D], Generic[_D, _P]):
@@ -352,36 +320,20 @@ class WindowsNativeApprovalRecords(_WindowsRecords[_N], Generic[_A, _N]):
                 prepare_lock=lambda root, acl: self._prepare_lock(root, acl),
             )
             events = () if raw is None else self._decode(raw)
-            replay = next(
-                (item for item in events if item.operation_id == operation_id), None
-            )
-            if replay is not None:
-                if (
-                    replay.action != action
-                    or replay.approval != approval
-                    or replay.generation != expected_generation + 1
-                ):
-                    raise self._failure("operation_conflict")
-                self._assert_visible_root(directory_fd)
-                return replay
-            previous = events[-1] if events else None
-            generation = 0 if previous is None else previous.generation
-            if generation != expected_generation:
-                raise self._failure("stale")
-            if action == "revoke" and (
-                previous is None or previous.action != "approve"
-            ):
-                raise self._failure("absent")
-            if len(events) >= self._max_events():
-                raise self._failure("capacity")
-            decision = self._create_decision(
-                journal_revision=len(events) + 1,
-                scope_id=self._scope_id,
+            decision, replay = _next_native_approval_decision(
+                events,
                 operation_id=operation_id,
-                generation=generation + 1,
+                expected_generation=expected_generation,
                 action=action,
                 approval=approval,
+                scope_id=self._scope_id,
+                max_events=self._max_events,
+                create_decision=self._create_decision,
+                failure=self._failure,
             )
+            if replay:
+                self._assert_visible_root(directory_fd)
+                return decision
             line = canonical_json_bytes(decision.to_dict()) + b"\n"
             if len(raw or b"") + len(line) > self._max_bytes():
                 raise self._failure("capacity")

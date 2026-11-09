@@ -113,3 +113,17 @@ local input fixture to original Bridge consumers, explicitly add
 to its `src` PYTHONPATH. Keep the managed wrapper, mandated runtime environment
 and original non-live/host-runtime selectors. This plugin is local opt-in and
 does not alter default test discovery or Product path-admission rules.
+
+The native-approval probe compares101 immutable original observations: public
+dataclass fields/signatures/pickle and wire, history decoding, real Rooted IO,
+and both complete platform decision programs. Product authority and Windows
+native custody are controlled. It has no capture path; the original asymmetric
+version/revoke/byte/error contracts are explicit rather than strengthened.
+
+Explicit local path: [probe_native_approval_compatibility.py](../../../tests/coding/probe_native_approval_compatibility.py).
+
+The existing private-journal parent-scope probe now obtains pure bindings from
+the actual journal classes and supplies the migrated instance v2 port. Original
+fixture bytes, cases and assertions remain. Three older fake-owner mismatches
+were reproduced at89992a383 before this fixture maintenance; no Product fix or
+default gate coverage is claimed for that repair.

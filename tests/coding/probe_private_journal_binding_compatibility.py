@@ -145,11 +145,21 @@ def observe(stem, case, read_only, v2, monkeypatch):
         monkeypatch.setattr(module, "os", fake_os)
     if hasattr(module, "RootedFileIO"):
         monkeypatch.setattr(module, "RootedFileIO", IO)
-    if stem == "receipt":
-        monkeypatch.setattr(module, "_v2_owner_exists", lambda rooted: v2)
-    owner = SimpleNamespace(
-        _path=ProbePath("/state/history.jsonl"), _v2_owner_exists=lambda rooted: v2
-    )
+    # Inherit the real journal's pure bindings without invoking Product IO.
+    # Earlier extractions also moved the three other scopes to instance ports.
+    owner_type = getattr(module, OWNERS[stem])
+    owner = owner_type.__new__(owner_type)
+    owner._path = ProbePath("/state/history.jsonl")
+    if stem != "native_approval":
+        owner._v2_owner_exists = lambda rooted: v2
+        owner._error_type = getattr(
+            module,
+            {
+                "opt_in": "CodingWorkerOptInJournalError",
+                "receipt": "CodingWorkerReceiptError",
+                "start_gate_journal": "CodingWorkerStartGateJournalError",
+            }[stem],
+        )
     kwargs = (
         {}
         if stem == "receipt"

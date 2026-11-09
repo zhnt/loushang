@@ -248,6 +248,7 @@ def test_c55a_requires_in_child_native_authority_and_lifecycle_evidence() -> Non
 def test_c55c_versions_cleanup_and_closes_only_after_native_settlement() -> None:
     activation = _read(PRODUCT_ACTIVATION)
     canary = _read(CODING_CANARY)
+    attempt_lifecycle = _read(WORKER_ROOT / "_product_attempt_lifecycle.py")
     bridge = _read(BRIDGE)
     for token in (
         "class WorkerCleanupSettlementV2",
@@ -264,7 +265,11 @@ def test_c55c_versions_cleanup_and_closes_only_after_native_settlement() -> None
         "_native_cleanup_witness_arguments",
         "_bind_windows_lpac_contained_product_worker_profile",
     ):
-        assert token in canary
+        assert token in (
+            canary
+            if token == "_bind_windows_lpac_contained_product_worker_profile"
+            else attempt_lifecycle
+        )
     assert 'phase="settled"' in bridge
     assert "worker_native_containment_unsettled" in bridge
     assert "windows-restricted-direct-import-pe-v1" not in canary
