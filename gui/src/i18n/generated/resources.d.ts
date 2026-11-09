@@ -207,6 +207,7 @@ export default interface Resources {
       "label": "Session transcript",
       "message": "{{role}} message",
       "noText": "No text output was recorded.",
+      "plainTextCode": "Plain text",
       "waiting": "Waiting for output…",
       "you": "You"
     }
@@ -251,6 +252,12 @@ export default interface Resources {
     "language": "Interface language",
     "languageDescription": "Choose the language used in loushang.",
     "mainMenu": "Main menu",
+    "markdownAppearance": "Markdown appearance",
+    "markdownDark": "Dark",
+    "markdownLight": "Light",
+    "markdownSaveFailed": "The Markdown preference changed for this window but could not be saved.",
+    "markdownTheme": "Markdown theme",
+    "markdownThemeDescription": "Set the reading style for replies.",
     "maximize": "Maximize window",
     "menuNavigation": "Navigate menus",
     "minimize": "Minimize window",

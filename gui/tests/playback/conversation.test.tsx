@@ -37,6 +37,11 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       "code sample",
       "```",
       "",
+      "```python",
+      "def example():",
+      "    return '<script>inert</script>'",
+      "```",
+      "",
       "[Website](https://example.com/) [Script](javascript:alert(1))",
       "",
       "![image description](https://example.com/pixel.png)",
@@ -60,9 +65,12 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(within(reply).getByRole("listitem")).toHaveTextContent("first item");
     expect(within(reply).getByRole("table")).toBeVisible();
     expect(reply.querySelector("pre code")).toHaveTextContent("code sample");
+    expect(within(reply).getByText("python")).toBeVisible();
+    expect(reply.querySelector(".language-python .hljs-keyword")).toHaveTextContent("def");
+    expect(reply.querySelector(".language-python")?.textContent).toContain("\n    return '<script>inert</script>'");
     expect(within(reply).getByRole("link", { name: "Website" })).toHaveAttribute("href", "https://example.com/");
     expect(within(reply).queryByRole("link", { name: "Script" })).toBeNull();
-    expect(reply.querySelector("iframe, img")).toBeNull();
+    expect(reply.querySelector("iframe, img, script")).toBeNull();
     expect(within(screen.getByRole("article", { name: "user message" })).getByText(userText)).toBeVisible();
   });
 

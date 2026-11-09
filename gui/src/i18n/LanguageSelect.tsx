@@ -22,7 +22,7 @@ export function LanguageSelect() {
       } catch { setSaveFailed(true); }
     } finally { setPending(false); }
   }
-  return <div className="language-setting">
+  return <div className="settings-preference">
     <div>
       <label htmlFor="interface-language">{t("language")}</label>
       <p id="interface-language-description">{t("languageDescription")}</p>

@@ -1,0 +1,37 @@
+.markdown-reading[data-markdown-theme="loushang-minimal"] {
+  --md-canvas: light-dark(#fafaf9, #191918);
+  --md-bg: light-dark(#ffffff, #20201f);
+  --md-fg: light-dark(#242424, #ededeb);
+  --md-muted: light-dark(#737373, #aeaeaa);
+  --md-accent: light-dark(#0d8a70, #70d7b7);
+  --md-link: light-dark(#08735f, #70d7b7);
+  --md-border: light-dark(#e7e7e5, #3d3d3a);
+  --md-surface: light-dark(#f5f5f4, #282827);
+  --md-code-bg: light-dark(#f6f6f5, #232322);
+  --md-user-bg: light-dark(#eeeef1, #30302f);
+  --md-quote-border: light-dark(#cececa, #5c5c58);
+  --md-syntax-keyword: light-dark(#7941a2, #d7a7fb);
+  --md-syntax-string: light-dark(#216a4d, #a7d8ae);
+  --md-syntax-number: light-dark(#985328, #eab88c);
+  --md-syntax-symbol: light-dark(#275c91, #a4c8ed);
+
+  --md-font: Inter, "Noto Sans CJK SC", "Microsoft YaHei UI", system-ui, sans-serif;
+  --md-code-font: "JetBrains Mono", "Cascadia Code", "Noto Sans Mono", monospace;
+  --md-font-size: 15px;
+  --md-line-height: 1.75;
+  --md-paragraph-gap: 12px;
+  --md-list-gap: 6px;
+  --md-h1-size: 22px;
+  --md-h2-size: 19px;
+  --md-h3-size: 16px;
+  --md-h1-gap: 28px;
+  --md-h2-gap: 24px;
+  --md-h3-gap: 20px;
+  --md-h4-gap: 16px;
+  --md-table-size: 14px;
+  --md-table-line-height: 1.55;
+  --md-code-size: 13.5px;
+  --md-code-line-height: 1.6;
+  --md-caption-size: 12px;
+  --md-radius: 8px;
+}

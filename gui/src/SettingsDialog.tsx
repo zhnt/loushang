@@ -1,13 +1,17 @@
 import { useState, type ReactNode, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { LanguageSelect } from "./i18n/LanguageSelect";
+import { MarkdownThemeSettings } from "./markdown/MarkdownThemeSettings";
+import type { MarkdownPreferences } from "./markdown/preferences";
 import { UiIcon } from "./UiIcon";
 import type { OfflineAccount } from "./client/offlineAccount";
 
-export function SettingsDialog({ dialogRef, account, hostSettings }: {
+export function SettingsDialog({ dialogRef, account, hostSettings, markdown, onMarkdownChange }: {
   dialogRef: Ref<HTMLDialogElement>;
   account?: OfflineAccount | null;
   hostSettings?: ReactNode;
+  markdown: MarkdownPreferences;
+  onMarkdownChange: (next: MarkdownPreferences) => void;
 }) {
   const { t } = useTranslation("shell");
   const [page, setPage] = useState<"general" | "host">("general");
@@ -31,6 +35,7 @@ export function SettingsDialog({ dialogRef, account, hostSettings }: {
       <section className="settings-content" aria-labelledby="settings-general" hidden={hostPage}>
         <h3 id="settings-general">{t("generalSettings")}</h3>
         <LanguageSelect />
+        <MarkdownThemeSettings preferences={markdown} onChange={onMarkdownChange} />
         {account ? <section className="settings-card" aria-labelledby="settings-account">
           <h4 id="settings-account">{t("offlineAccount")}</h4>
           <dl className="detail-list">

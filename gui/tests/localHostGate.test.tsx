@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OfflineAccount } from "../src/client/offlineAccount";
 import { SettingsDialog } from "../src/SettingsDialog";
+import { readMarkdownPreferences } from "../src/markdown/preferences";
 import LocalHostGate from "../src/LocalHostGate";
 
 const native = vi.hoisted(() => ({
@@ -22,7 +23,8 @@ vi.mock("../src/App", () => ({
     return <>
       {client ? <textarea aria-label="Draft" /> : <p>Disconnected workspace</p>}
       <button onClick={() => dialog.current?.showModal()}>Settings</button>
-      <SettingsDialog dialogRef={dialog} hostSettings={hostSettings} account={account} />
+      <SettingsDialog dialogRef={dialog} hostSettings={hostSettings} account={account}
+        markdown={readMarkdownPreferences()} onMarkdownChange={() => {}} />
     </>;
   },
 }));

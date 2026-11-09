@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 async function openSettings(page: Page) {
   await page.getByRole("button", { name: /^(Account menu|用户菜单)$/ }).click();
   await page.getByRole("button", { name: /^(Settings|设置)$/ }).click();
-  return page.getByRole("dialog").getByRole("combobox");
+  return page.getByRole("dialog").getByRole("combobox", { name: /^(Interface language|界面语言)$/ });
 }
 
 async function changeLanguage(page: Page, language: string) {

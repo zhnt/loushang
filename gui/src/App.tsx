@@ -6,7 +6,8 @@ import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type
 import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { ModelPicker } from "./ModelPicker";
-import { MessageMarkdown } from "./MessageMarkdown";
+import { MessageMarkdown } from "./markdown/MessageMarkdown";
+import { readMarkdownPreferences } from "./markdown/preferences";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { isTauri } from "@tauri-apps/api/core";
@@ -92,6 +93,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
   const fixture = fixturePlayback(client);
   const native = isTauri();
   const { t: shellText } = useTranslation("shell");
+  const [markdown, setMarkdown] = useState(readMarkdownPreferences);
   const settingsDialog = useRef<HTMLDialogElement>(null);
   function openSettings() {
     const dialog = settingsDialog.current;
@@ -537,7 +539,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
           {selected ? (
             <>
 
-              <div key={selected.id} className="transcript" aria-label={t("session:transcript.label")} aria-live="polite" ref={transcriptRef}
+              <div key={selected.id} className="transcript markdown-reading"
+                data-markdown-theme={markdown.theme} data-markdown-scheme={markdown.scheme}
+                aria-label={t("session:transcript.label")} aria-live="polite" ref={transcriptRef}
                 onScroll={(event) => {
                   const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
                   const following = !fixture && scrollHeight - clientHeight - scrollTop <= 32;
@@ -693,7 +697,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
           />
         ) : null}
       </main>
-      <SettingsDialog dialogRef={settingsDialog} account={account} hostSettings={hostSettings} />
+      <SettingsDialog dialogRef={settingsDialog} account={account} hostSettings={hostSettings}
+        markdown={markdown} onMarkdownChange={setMarkdown} />
     </div>
   );
 }

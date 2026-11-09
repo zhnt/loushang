@@ -127,7 +127,7 @@ test("desktop shell renders menus and Session history with a simulated native br
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
-  await page.getByRole("dialog", { name: "Settings" }).getByRole("combobox").selectOption("zh-CN");
+  await page.getByRole("dialog", { name: "Settings" }).getByRole("combobox", { name: "Interface language" }).selectOption("zh-CN");
   await expect(page.getByRole("dialog", { name: "设置" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
