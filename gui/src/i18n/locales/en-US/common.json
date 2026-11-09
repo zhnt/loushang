@@ -22,6 +22,7 @@
     "accepted": "accepted"
   },
   "connection": {
+    "connecting": "Connecting",
     "connected": "Connected",
     "disconnected": "Disconnected",
     "resync": "Resync required"

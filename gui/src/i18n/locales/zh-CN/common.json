@@ -22,6 +22,7 @@
     "accepted": "已接受"
   },
   "connection": {
+    "connecting": "连接中",
     "connected": "已连接",
     "disconnected": "已断开",
     "resync": "需要重新同步"

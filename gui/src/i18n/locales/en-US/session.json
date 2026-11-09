@@ -22,7 +22,9 @@
     "rejected": "Submission rejected.",
     "playback": "Playback: {{label}}.",
     "modelChanged": "Session model changed to {{model}}.",
-    "interruptReason": "Interrupt was not accepted."
+    "interruptReason": "Interrupt was not accepted.",
+    "thinkingChanged": "Reasoning effort updated.",
+    "thinkingRejected": "Could not change reasoning effort."
   },
   "composer": {
     "fixturePlaceholder": "Type a fixture prompt…",
@@ -30,7 +32,6 @@
     "attachUnavailable": "Attach file unavailable",
     "attachHint": "Attachments are unavailable",
     "fixtureAccess": "Fixture access",
-    "liveControl": "AppHost control",
     "interrupt": "Interrupt",
     "send": "Send",
     "stopHint": "Stop execution",
@@ -40,13 +41,20 @@
   },
   "models": {
     "label": "Session model",
-    "changeHint": "Change the model for this Session",
     "unavailable": "Model catalog unavailable",
     "none": "Model information unavailable",
-    "effortUnavailable": "Effort unavailable",
     "endpoint": "Endpoint: {{endpoint}}",
     "option": "{{provider}} · {{model}}",
-    "reasoningOption": "{{provider}} · {{model}} · Reasoning"
+    "thinking": "Reasoning effort",
+    "back": "Models",
+    "levels": {
+      "off": "Default",
+      "minimal": "Minimal",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Extra high"
+    }
   },
   "transcript": {
     "label": "Session transcript",

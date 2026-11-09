@@ -123,7 +123,10 @@ class CodingHostedHistoryBindingV1:
             history.header_preview.header, history.records
         ).name
         self._projection = CodingHostedSnapshotProjectionV1(
-            title=_session_title(title, (entry.payload for entry in history.records)),
+            title=_session_title(
+                title, (entry.payload for entry in history.records),
+                automatic=_uses_automatic_title(identity),
+            ),
             revision=0, running=False, records=tuple(records),
             truncated=omitted,
         )
@@ -176,6 +179,7 @@ class CodingRealHostedSessionV1:
         self._interrupted = False
         self._revision = 0
         self._close_task: asyncio.Task[None] | None = None
+        self._title_task: asyncio.Task[None] | None = None
         self._execution_claimed = False
         session.set_approval_presenter(
             self._present_approval, dismisser=self._dismiss_approval
@@ -237,7 +241,7 @@ class CodingRealHostedSessionV1:
                     "Earlier messages omitted from this bounded snapshot; the canonical transcript is unchanged.",
                 ),
             )
-        manager = self._session.session_manager
+        manager = getattr(self._session, "session_manager", None)
         title_messages = (
             (entry.payload for entry in manager.entries)
             if isinstance(manager, SessionManager)
@@ -247,6 +251,7 @@ class CodingRealHostedSessionV1:
             title=_session_title(
                 self._session.session_name,
                 title_messages,
+                automatic=_uses_automatic_title(self.identity),
             ),
             revision=self._revision,
             running=self._session.is_streaming,
@@ -262,6 +267,9 @@ class CodingRealHostedSessionV1:
         if payload is None:
             return None
         kind = payload.get("type")
+        if kind == "session_info_changed":
+            # Notify snapshot readers without appending a transcript row.
+            return CodingHostedEventProjectionV1(SessionEventKindV1.STATUS)
         if kind == "agent_start":
             self._interrupted = False
             return CodingHostedEventProjectionV1(SessionEventKindV1.TURN_STARTED)
@@ -378,6 +386,9 @@ class CodingRealHostedSessionV1:
 
     async def _close_once(self) -> None:
         self._approval.end_session()
+        if self._title_task is not None:
+            self._title_task.cancel()
+            await asyncio.gather(self._title_task, return_exceptions=True)
         await self._session.dispose()
         self._interactions.clear()
 
@@ -390,7 +401,17 @@ class CodingRealHostedSessionV1:
     ) -> ExecutionWorkV1:
         from ._hosted_execution_work import CodingExecutionWorkV1
 
-        return CodingExecutionWorkV1(self._session, text, cancel_requested)
+        return CodingExecutionWorkV1(
+            self._session, text, cancel_requested,
+            start_title=self._start_title if _uses_automatic_title(self.identity) else None,
+        )
+
+    def _start_title(self, question: str) -> None:
+        if self._title_task is not None or self._close_task is not None or self._session.session_name:
+            return
+        from ._hosted_execution_work import set_first_turn_title
+
+        self._title_task = asyncio.create_task(set_first_turn_title(self._session, question))
 
 
 class CodingRealHostedSessionFactoryV1:
@@ -539,9 +560,17 @@ def _bounded(text: str, *, limit: int = _TEXT_LIMIT) -> str:
     return text if len(text) <= limit else text[: limit - len(marker)] + marker
 
 
-def _session_title(name: str | None, messages: Iterable[object]) -> str:
+def _uses_automatic_title(identity: SessionIdentityV1) -> bool:
+    return identity.continuity_id.startswith(("gui-new-", "gui-default-"))
+
+
+def _session_title(
+    name: str | None, messages: Iterable[object], *, automatic: bool,
+) -> str:
     if name and name.strip():
         return _bounded(name.strip(), limit=256)
+    if automatic:
+        return "New Session"
     # Read the first prompt from the full transcript, including turns omitted
     # by the display window or by context compaction.
     for message in messages:

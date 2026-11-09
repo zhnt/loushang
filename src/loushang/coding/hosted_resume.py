@@ -149,6 +149,20 @@ class _DeferredHostedControlV1:
     async def set_model(self, selection: ModelSelection) -> None:
         await apply_session_model_selection(self._require_active(), selection)
 
+    @property
+    def thinking_level(self) -> object:
+        return getattr(self._delegate, "thinking_level", None)
+
+    def get_available_thinking_levels(self) -> tuple[str, ...]:
+        getter = getattr(self._delegate, "get_available_thinking_levels", None)
+        return tuple(getter()) if callable(getter) else ()
+
+    async def set_thinking_level(self, level: str) -> None:
+        setter = getattr(self._require_active(), "set_thinking_level", None)
+        if not callable(setter):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        await setter(level)
+
     def close(self) -> None:
         self._closed = True
         if self._unsubscribe is not None:

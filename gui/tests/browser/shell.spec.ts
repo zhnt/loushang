@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
 
+const hoverGray = "rgb(236, 236, 235)";
+const focusGray = "rgb(104, 108, 114)";
+
 for (const width of [700, 1440]) {
   test(`web omits desktop chrome and can reopen the sidebar at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
@@ -19,16 +22,34 @@ for (const width of [700, 1440]) {
     const avatar = rail.getByRole("button", { name: "Account menu" });
     await expect(avatar).toBeVisible();
     expect((await avatar.boundingBox())!.y).toBeGreaterThan(800);
+    await avatar.hover();
+    await expect(avatar).toHaveCSS("background-color", hoverGray);
     await avatar.click();
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const openSettings = page.getByRole("button", { name: "Settings", exact: true });
+    await openSettings.hover();
+    await expect(openSettings).toHaveCSS("background-color", hoverGray);
+    await openSettings.click();
     const settings = page.getByRole("dialog", { name: "Settings" });
     await expect(settings.getByRole("combobox", { name: "Interface language" })).toHaveValue("system");
+    const general = settings.getByRole("button", { name: "General", exact: true });
+    await general.hover();
+    await expect(general).toHaveCSS("background-color", hoverGray);
     await settings.getByRole("button", { name: "Close settings" }).click();
     await expect(avatar).toBeFocused();
     await page.screenshot({ path: info.outputPath("collapsed-rail.png"), fullPage: true });
     await reopen.click();
     await expect(page.getByLabel("Workspace and Session navigation", { exact: true })).toBeVisible();
     await expect(page.locator(".brand-row").getByRole("button", { name: "Toggle sidebar" })).toBeFocused();
+    const accountFooter = page.locator(".rail-footer");
+    await accountFooter.hover();
+    await expect(accountFooter).toHaveCSS("background-color", hoverGray);
+    await accountFooter.press("Enter");
+    await expect(openSettings).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(accountFooter).toBeFocused();
+    await expect(accountFooter).toHaveCSS("outline-style", "solid");
+    await expect(accountFooter).toHaveCSS("outline-color", focusGray);
+    await expect(accountFooter).toHaveCSS("outline-offset", "-2px");
     if (width <= 760) await page.getByRole("button", { name: "Toggle sidebar" }).click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath("web-shell.png"), fullPage: true });
@@ -86,9 +107,21 @@ test("desktop shell renders menus and Session history with a simulated native br
   await expect(page.getByRole("menuitem", { name: "Toggle full screen" })).toBeDisabled();
   await page.screenshot({ path: info.outputPath("desktop-menu.png"), fullPage: true });
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Help", exact: true }).click();
+  const help = page.getByRole("button", { name: "Help", exact: true });
+  await help.hover();
+  await expect(help).toHaveCSS("background-color", hoverGray);
+  await help.press("ArrowDown");
   await expect(page.getByRole("menuitem", { name: "Documentation" })).toBeDisabled();
-  await page.getByRole("menuitem", { name: "About loushang" }).click();
+  const about = page.getByRole("menuitem", { name: "About loushang" });
+  await about.hover();
+  await expect(about).toHaveCSS("background-color", hoverGray);
+  await page.keyboard.press("Escape");
+  await expect(help).toBeFocused();
+  await expect(help).toHaveCSS("outline-color", focusGray);
+  await expect(help).toHaveCSS("outline-offset", "-2px");
+  await page.screenshot({ path: info.outputPath("help-keyboard-focus.png"), fullPage: true });
+  await help.click();
+  await about.click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);

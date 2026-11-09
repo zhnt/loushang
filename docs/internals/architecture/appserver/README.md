@@ -56,6 +56,54 @@ submission registration and cleanup; this transport still owns only request
 delivery and borrowed scoped capabilities. Existing v1 frames and default
 profiles are unchanged. Native GUI acceptance follows the documented handoff.
 
+## Optional Session Reasoning
+
+Internal acceptance by the implementation agent (Codex), 2026-11-09.
+Reviewed the `feature/gui-settings-reasoning` change based on `58a937909`
+across HarnessGUI, AppServer, AppService and Coding. Coding projects the
+current and available levels from its existing Session control. AppService
+retains the attached-member and current-model checks. The GUI requests one
+of the returned levels and displays the confirmed value.
+
+The execution hello remains byte-compatible by default. An authenticated
+execution client can echo the canonical hello with `sessionThinking: true`
+and wait for an identical acknowledgement before attaching. Only that
+connection can receive the optional `thinking` model metadata and send
+`thinkingLevel` on model selection. An older Host closes the augmented
+exchange. HarnessGUI retries the original exchange within the same startup
+budget before acquiring attachment authority. The original exchange keeps
+the two-field model result and model-only selection behavior.
+
+The reviewed decision keeps level resolution in Coding and uses the
+existing model selection authority, with an explicit opt-in to protect
+strict legacy decoders. Evidence includes the
+[connection](../../../../tests/appserver/test_execution_connection.py),
+[protocol](../../../../tests/appserver/test_protocol.py) and
+[hosted session](../../../../tests/coding/test_hosted_session.py) regressions
+and a Linux native build against an isolated managed AppHost with a
+deterministic model transport.
+
+## Automatic GUI Session Titles
+
+Internal acceptance by the implementation agent (Codex), 2026-11-09.
+Reviewed the follow-up in `feature/gui-settings-reasoning` across
+HarnessGUI and Coding. GUI-created sessions are identified by the
+`gui-new-` and `gui-default-` continuity prefixes. On the first
+model turn of an unnamed session, Coding starts an isolated title Agent
+after observing the first user message. It uses a bounded excerpt of that
+message, the selected model and the existing model-call preparation.
+The title task runs alongside the reply, without tools, and the Hosted
+Session cancels and joins it on close. The existing Session metadata
+writer persists the title, and a status event without text signals
+snapshot readers to refresh it without adding a transcript row.
+
+The primary execution can finish before the title task. Until the title
+is stored, active and historical snapshots display `New Session`.
+An unsuccessful title request leaves that label and the execution result
+in place. The title request has an eight-second time budget.
+The [hosted-session regression](../../../../tests/coding/test_hosted_session.py)
+covers both completion orders, fallback and transcript isolation.
+
 ## Accepted Resume Contract
 
 AppServer retains client framing and transport. Product readiness projections preserve old Ack completion timing and negotiate supported continuation behavior.

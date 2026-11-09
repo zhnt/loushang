@@ -80,6 +80,7 @@ pub(crate) struct LiveModelsInput {
 pub(crate) struct LiveSelectModelInput {
     session_id: String,
     model_id: String,
+    thinking_level: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -355,7 +356,7 @@ pub(crate) async fn live_create_session(
     input: LiveCreateSessionInput,
 ) -> Result<LiveCreateSessionReceipt, String> {
     let control = current_control(&state)?;
-    let continuity_id = random_id()?;
+    let continuity_id = format!("gui-new-{}", random_id()?);
     tauri::async_runtime::spawn_blocking(move || {
         let (reply, receive) = mpsc::sync_channel(1);
         control
@@ -432,6 +433,7 @@ pub(crate) async fn live_select_model(
             .send(ControlCommand::SelectModel {
                 session_id: input.session_id,
                 model_id: input.model_id,
+                thinking_level: input.thinking_level,
                 reply,
             })
             .map_err(|_| "live control connection changed".to_owned())?;

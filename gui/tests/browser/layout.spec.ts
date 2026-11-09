@@ -27,7 +27,7 @@ async function verifyLayout(page: Page, info: TestInfo, mode: string) {
       message: rect(".message.assistant"), changes: rect(".change-card"),
       playback: rect(".playback-strip"), pane: rect(".conversation-pane"),
       header: rect(".conversation-header"), headerActions: rect(".header-actions"),
-      right: document.querySelector(".environment-popover, .work-dock") ? rect(".environment-popover, .work-dock") : null,
+      right: document.querySelector(".work-dock") ? rect(".work-dock") : null,
       stacked: document.querySelector("main")!.classList.contains("right-stacked"),
       viewport: innerWidth, overflow: document.documentElement.scrollWidth > innerWidth,
     };

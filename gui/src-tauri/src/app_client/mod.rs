@@ -72,6 +72,7 @@ pub(crate) enum ControlCommand {
     SelectModel {
         session_id: String,
         model_id: String,
+        thinking_level: Option<String>,
         reply: SyncSender<Result<ModelControlResult, ()>>,
     },
 }
@@ -162,6 +163,85 @@ pub(crate) struct ConnectionOptions<'a> {
     pub(crate) control_commands: Option<&'a Receiver<ControlCommand>>,
 }
 
+type OpenChannel = (
+    TcpStream,
+    CancelOwner,
+    transport_auth::Channel<DeadlineStream, DeadlineStream>,
+    Hello,
+);
+
+#[allow(clippy::too_many_arguments)]
+fn open_channel(
+    client: &AppClient,
+    record: &transport_auth::record_value::Record,
+    profile: &str,
+    deadline: &RequestDeadline,
+    cancel: Option<Duration>,
+    stop: Option<&super::read_stop::ReadStop>,
+    attempt: &connection_epoch::Attempt,
+    request_thinking: bool,
+) -> Result<Option<OpenChannel>, ()> {
+    client.1.set("connection_failed");
+    let address = SocketAddr::from((Ipv4Addr::LOCALHOST, record.port()));
+    let stream = TcpStream::connect_timeout(&address, deadline.remaining().map_err(|_| ())?)
+        .map_err(|_| ())?;
+    let (finish, receiver) = mpsc::channel();
+    let worker = if let Some(delay) = cancel {
+        let socket = stream.try_clone().map_err(|_| ())?;
+        let fence = attempt.cancellation();
+        let stop = stop.cloned();
+        Some(thread::spawn(move || {
+            if receiver.recv_timeout(delay).is_err() {
+                if let Some(stop) = stop {
+                    stop.request();
+                } else {
+                    fence.invalidate();
+                    let _ = socket.shutdown(Shutdown::Both);
+                }
+            }
+        }))
+    } else {
+        None
+    };
+    let cancel_owner = CancelOwner {
+        finish: Some(finish),
+        worker,
+    };
+    let reader = DeadlineStream {
+        stream: stream.try_clone().map_err(|_| ())?,
+        deadline: deadline.clone(),
+    };
+    let writer = DeadlineStream {
+        stream: stream.try_clone().map_err(|_| ())?,
+        deadline: deadline.clone(),
+    };
+    client.1.set("authentication_failed");
+    let mut channel =
+        transport_auth::Channel::authenticate(transport_auth::Frames::new(reader, writer), record)?;
+    let send_deadline = deadline.clone();
+    channel.before_send(move || send_deadline.before_send());
+    client.1.set("connection_failed");
+    channel.send(b"app")?;
+    let bytes = channel.receive()?;
+    client.1.set("protocol_incompatible");
+    let hello = validate_hello(&bytes, profile)?;
+    if request_thinking {
+        let mut capabilities = serde_json::to_value(&hello).map_err(|_| ())?;
+        capabilities["sessionThinking"] = serde_json::Value::Bool(true);
+        let echo = serde_json::to_vec(&capabilities).map_err(|_| ())?;
+        channel.send(&echo)?;
+        let Ok(acknowledgement) = channel.receive() else {
+            return Ok(None);
+        };
+        if acknowledgement != echo {
+            return Err(());
+        }
+    } else {
+        channel.send(&bytes)?;
+    }
+    Ok(Some((stream, cancel_owner, channel, hello)))
+}
+
 fn run_attempt(
     client: &AppClient,
     options: ConnectionOptions<'_>,
@@ -196,54 +276,29 @@ fn run_attempt(
     if cancel == Some(Duration::ZERO) {
         return Err(());
     }
-    client.1.set("connection_failed");
-    let address = SocketAddr::from((Ipv4Addr::LOCALHOST, record.port()));
-    let stream = TcpStream::connect_timeout(&address, deadline.remaining().map_err(|_| ())?)
-        .map_err(|_| ())?;
-    let (finish, receiver) = mpsc::channel();
-    let worker = if let Some(delay) = cancel {
-        let socket = stream.try_clone().map_err(|_| ())?;
-        let fence = attempt.cancellation();
-        let stop = stop.clone();
-        Some(thread::spawn(move || {
-            if receiver.recv_timeout(delay).is_err() {
-                if let Some(stop) = stop {
-                    stop.request();
-                } else {
-                    fence.invalidate();
-                    let _ = socket.shutdown(Shutdown::Both);
-                }
-            }
-        }))
-    } else {
-        None
+    let open = |request_thinking| {
+        open_channel(
+            client,
+            &record,
+            &profile,
+            &deadline,
+            cancel,
+            stop.as_ref(),
+            &attempt,
+            request_thinking,
+        )
     };
-    let _cancel_owner = CancelOwner {
-        finish: Some(finish),
-        worker,
+    let preferred = open(control_commands.is_some())?;
+    let (stream, _cancel_owner, mut channel, hello) = match preferred {
+        Some(connection) => connection,
+        None => {
+            // An older Host closes an unrecognized hello. Retry once with
+            // the original hello before acquiring any attachment authority.
+            attempt.apply(|| Ok(()))?;
+            open(false)?.ok_or(())?
+        }
     };
-    let reader = DeadlineStream {
-        stream: stream.try_clone().map_err(|_| ())?,
-        deadline: deadline.clone(),
-    };
-    let writer = DeadlineStream {
-        stream: stream.try_clone().map_err(|_| ())?,
-        deadline: deadline.clone(),
-    };
-    client.1.set("authentication_failed");
-    let mut channel = transport_auth::Channel::authenticate(
-        transport_auth::Frames::new(reader, writer),
-        &record,
-    )?;
-    let send_deadline = deadline.clone();
-    channel.before_send(move || send_deadline.before_send());
-    client.1.set("connection_failed");
-    channel.send(b"app")?;
-    let bytes = channel.receive()?;
-    client.1.set("protocol_incompatible");
-    let hello = validate_hello(&bytes, &profile)?;
     let instance = &hello.service_instance_id;
-    channel.send(&bytes)?;
     if attach {
         client.1.set("attachment_unavailable");
         let mut session =
@@ -440,9 +495,16 @@ fn process_controls<R: Read, W: Write>(
             ControlCommand::SelectModel {
                 session_id,
                 model_id,
+                thinking_level,
                 reply,
             } => {
-                let result = authority.select_model(channel, &session_id, &model_id, &request_id);
+                let result = authority.select_model(
+                    channel,
+                    &session_id,
+                    &model_id,
+                    thinking_level.as_deref(),
+                    &request_id,
+                );
                 let failed = result.is_err();
                 let _ = reply.send(result);
                 failed

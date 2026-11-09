@@ -4,6 +4,7 @@ export default interface Resources {
     "additions": "+{{value, number}}",
     "connection": {
       "connected": "Connected",
+      "connecting": "Connecting",
       "disconnected": "Disconnected",
       "resync": "Resync required"
     },
@@ -129,7 +130,6 @@ export default interface Resources {
       "fixturePlaceholder": "Type a fixture prompt…",
       "interrupt": "Interrupt",
       "keyboardHint": "Enter to send. Ctrl+Enter for a new line.",
-      "liveControl": "AppHost control",
       "livePlaceholder": "Message the live Agent…",
       "messageFor": "Message for {{title}}",
       "send": "Send",
@@ -151,13 +151,20 @@ export default interface Resources {
       "summary_other": "Fixture playback · {{count, number}} queued events"
     },
     "models": {
-      "changeHint": "Change the model for this Session",
-      "effortUnavailable": "Effort unavailable",
+      "back": "Models",
       "endpoint": "Endpoint: {{endpoint}}",
       "label": "Session model",
+      "levels": {
+        "high": "High",
+        "low": "Low",
+        "medium": "Medium",
+        "minimal": "Minimal",
+        "off": "Default",
+        "xhigh": "Extra high"
+      },
       "none": "Model information unavailable",
       "option": "{{provider}} · {{model}}",
-      "reasoningOption": "{{provider}} · {{model}} · Reasoning",
+      "thinking": "Reasoning effort",
       "unavailable": "Model catalog unavailable"
     },
     "notice": {
@@ -183,6 +190,8 @@ export default interface Resources {
       "playback": "Playback: {{label}}.",
       "rejected": "Submission rejected.",
       "submitFailed": "Submit failed before its outcome could be confirmed. The draft was preserved.",
+      "thinkingChanged": "Reasoning effort updated.",
+      "thinkingRejected": "Could not change reasoning effort.",
       "unknownSubmission": "Submission outcome is unknown. The draft was preserved; resynchronize before retrying."
     },
     "opening": "Opening loushang…",
@@ -237,6 +246,7 @@ export default interface Resources {
     "fullscreen": "Toggle full screen",
     "generalSettings": "General",
     "help": "Help",
+    "hostSettings": "Host",
     "insertNewline": "Insert a new line",
     "language": "Interface language",
     "languageDescription": "Choose the language used in loushang.",
@@ -267,6 +277,7 @@ export default interface Resources {
     "sendMessage": "Send message",
     "sendShortcut": "Enter",
     "settings": "Settings",
+    "settingsNavigation": "Settings categories",
     "shortcuts": "Keyboard shortcuts",
     "sidebarShortcut": "Ctrl+B",
     "signOut": "Sign out",
@@ -354,7 +365,7 @@ export default interface Resources {
       "states": {
         "exited": "Host exited unexpectedly",
         "notRunning": "Host not running",
-        "running": "Host ready",
+        "running": "Running",
         "starting": "Host starting",
         "stopping": "Host stopping",
         "unknown": "Status unconfirmed"
@@ -365,21 +376,21 @@ export default interface Resources {
       "workspace": "Workspace"
     },
     "sidebar": {
-      "attached": "Attached AppHost sessions",
+      "chats": "Chats",
       "creating": "Creating…",
       "fixtureBanner": "Fixture data · no backend",
       "live": "Live · AppHost",
       "liveBanner": "Live AppHost · controlled",
-      "mux": "AppHost mux",
       "navigation": "Workspace and Session navigation",
       "newSession": "New Session",
       "offline": "Offline fixture",
+      "pinChat": "Pin {{title}}",
+      "pinned": "Pinned",
       "plain": "plain",
       "plugins": "Plugins",
       "pluginsHint": "Plugins are unavailable in the offline fixture",
       "prHint": "Pull requests are unavailable in the offline fixture",
       "pullRequests": "Pull requests",
-      "recent": "Recent",
       "scheduleHint": "Scheduling is unavailable in the offline fixture",
       "scheduled": "Scheduled",
       "searchHint": "Search is unavailable in the offline fixture",
@@ -387,9 +398,9 @@ export default interface Resources {
       "sessionLabel": "{{title}} · {{status}}",
       "shortcuts": "Application shortcuts",
       "stale": "Stale · was {{status}}",
-      "unread": "Unread updates",
-      "workspaceUnavailable": "Workspace details unavailable",
-      "workspaces": "Workspaces"
+      "unassigned": "Without a workspace",
+      "unpinChat": "Unpin {{title}}",
+      "unread": "Unread updates"
     }
   }
 }

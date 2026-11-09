@@ -280,15 +280,20 @@ class _SessionOwner:
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return value
 
-    async def select_model(self, model_id: str) -> SessionModelsV1:
+    async def select_model(self, model_id: str, thinking_level: str | None = None) -> SessionModelsV1:
         callback = getattr(self._port, "select_model", None)
         if not callable(callback):
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         snapshot = await self.snapshot()
         if snapshot.running:
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        value = await self._invoke_async(callback, model_id)
+        args = (model_id,) if thinking_level is None else (model_id, thinking_level)
+        value = await self._invoke_async(callback, *args)
         if type(value) is not SessionModelsV1 or value.current_id != model_id:
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        if thinking_level is not None and (
+            value.thinking is None or value.thinking.current_level != thinking_level
+        ):
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return value
 
@@ -1225,7 +1230,7 @@ class AppServiceV1:
         session = await self._resolve_member_session(
             request.attachment_id, request.controller_generation, request.member_id
         )
-        return await session.select_model(request.model_id)
+        return await session.select_model(request.model_id, request.thinking_level)
 
     async def start_turn(self, request: TurnTextV1) -> AckV1:
         self._require_request(request, TurnTextV1)

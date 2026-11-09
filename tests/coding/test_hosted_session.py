@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from loushang.appserver.protocol import (
     SessionEventKindV1,
     SessionScopeV1,
 )
+from loushang.appservice.execution_contract import ExecutionRequestV1, ExecutionStatusV1
 from loushang.coding.appservice_adapter import CodingHostedSessionV1
 from loushang.coding.bootstrap import create_services
 from loushang.coding.hosted_catalog import (
@@ -30,7 +32,12 @@ from loushang.coding.hosted_catalog import (
     CodingHostedScopeV1,
     CodingHostedSessionCatalogV1,
 )
-from loushang.coding.hosted_session import CodingRealHostedSessionFactoryV1
+from loushang.coding.hosted_execution import CodingHostedExecutionSessionV1
+from loushang.coding.hosted_session import (
+    CodingHostedHistoryBindingV1,
+    CodingRealHostedSessionFactoryV1,
+)
+from loushang.coding.resume_history import read_coding_resume_snapshot
 from loushang.coding.session.agent_session import AgentSession
 from loushang.harness.approval import ApprovalRequest
 from loushang.harness.config.agent import SettingsManager
@@ -102,7 +109,8 @@ async def _stream(model, context, options=None):
     return stream
 
 
-async def _construction(tmp_path: Path):
+async def _construction(tmp_path: Path, model: Model | None = None, *,
+                        continuity_id: str = "continuity-1", stream_fn=_stream):
     scope = CodingHostedScopeV1(SessionScopeV1.CWD, tmp_path / "sessions", tmp_path)
     catalog = CodingHostedSessionCatalogV1((scope,))
     candidate = await catalog.create_candidate(
@@ -111,7 +119,7 @@ async def _construction(tmp_path: Path):
                 "coding",
                 scope.fingerprint,
                 "a" * 32,
-                requested_continuity_id="continuity-1",
+                requested_continuity_id=continuity_id,
                 requested_scope=scope.discovery_scope,
             ),
             CODING_HOSTED_COMPATIBILITY_ID,
@@ -126,15 +134,15 @@ async def _construction(tmp_path: Path):
                 project_settings_path=cwd / ".loushang" / "settings.json",
             )
         ),
-        model=_model(),
-        stream_fn=_stream,
+        model=model or _model(),
+        stream_fn=stream_fn,
         tools=[],
     )
     return candidate, claimed, identity, factory
 
 
-async def _binding(tmp_path: Path):
-    candidate, claimed, identity, factory = await _construction(tmp_path)
+async def _binding(tmp_path: Path, model: Model | None = None, **kwargs):
+    candidate, claimed, identity, factory = await _construction(tmp_path, model, **kwargs)
     binding = await factory.create_session(
         binding_key=SessionBindingKeyV1(
             identity.product_id, identity.continuity_id, identity.session_id
@@ -144,6 +152,124 @@ async def _binding(tmp_path: Path):
     await claimed.close()
     await candidate.close()
     return binding
+
+
+@pytest.mark.parametrize(("title", "title_first"), [
+    ("工作区连接诊断", True),
+    ("工作区连接诊断", False),
+    ("标题" * 40, False),
+])
+def test_gui_first_turn_summarizes_without_waiting_for_the_reply(tmp_path, title, title_first):
+    title_calls = []
+    generating = asyncio.Event()
+    finish_title = asyncio.Event()
+    answering = asyncio.Event()
+    finish_reply = asyncio.Event()
+    published_title = asyncio.Event()
+    question = "能帮我检查为什么 AppHost 连不上我的工作区吗？"
+
+    @synthetic_model_transport
+    async def stream(model, context, options=None):
+        if "Write a short session title" not in (context.system_prompt or ""):
+            answering.set()
+            await finish_reply.wait()
+            return await _stream(model, context, options)
+        title_calls.append(context)
+        generating.set()
+        await finish_title.wait()
+        primary = await _stream(model, context, options)
+        message = replace(
+            await primary.result(), content=[TextPart(type="text", text=title)]
+        )
+        result = AssistantMessageEventStream()
+        result.push({"type": "done", "reason": "stop", "message": message})
+        return result
+
+    async def scenario():
+        binding = await _binding(tmp_path, continuity_id="gui-new-title-test", stream_fn=stream)
+        hosted = CodingHostedExecutionSessionV1(binding)
+        hosted.subscribe(lambda event: published_title.set() if event.kind is SessionEventKindV1.STATUS else None)
+        try:
+            assert (await hosted.snapshot_execution()).source.title == "New Session"
+            hosted.start_execution(ExecutionRequestV1("first", question))
+            await asyncio.wait_for(generating.wait(), timeout=5)
+            await asyncio.wait_for(answering.wait(), timeout=5)
+            pending = (await hosted.snapshot_execution()).source
+            assert [record.text for record in pending.records] == [question]
+            assert pending.title == "New Session"
+            if title_first:
+                finish_title.set()
+                await asyncio.wait_for(published_title.wait(), timeout=5)
+                active = (await hosted.snapshot_execution()).source
+                assert active.title == title
+                assert active.running
+                assert [record.text for record in active.records] == [question]
+            finish_reply.set()
+            outcome = await asyncio.wait_for(hosted.wait_execution("first"), timeout=5)
+            assert outcome.status is ExecutionStatusV1.SUCCEEDED
+            if not title_first:
+                assert (await hosted.snapshot_execution()).source.title == "New Session"
+                finish_title.set()
+                if len(title) <= 48:
+                    await asyncio.wait_for(published_title.wait(), timeout=5)
+                else:
+                    await asyncio.wait_for(binding._title_task, timeout=5)
+            snapshot = (await hosted.snapshot_execution()).source
+            assert [record.text for record in snapshot.records] == [question, "real Coding response"]
+            expected = title if len(title) <= 48 else "New Session"
+            assert snapshot.title == expected
+            assert binding.control.session_name == (title if len(title) <= 48 else None)
+            assert len(title_calls) == 1
+            title_context = title_calls[0]
+            assert not title_context.tools
+            assert len(title_context.messages) == 1
+            content = title_context.messages[0].content
+            assert isinstance(content, list) and len(content) == 1
+            assert isinstance(content[0], TextPart) and content[0].text == question
+            hosted.start_execution(ExecutionRequestV1("second", "还有其他原因吗？"))
+            assert (await hosted.wait_execution("second")).status is ExecutionStatusV1.SUCCEEDED
+            assert len(title_calls) == 1
+            assert (await hosted.snapshot_execution()).source.title == expected
+            path = binding.control.session_manager.session_file
+            assert path is not None
+        finally:
+            finish_title.set()
+            finish_reply.set()
+            await hosted.close()
+
+        history = read_coding_resume_snapshot(path, max_bytes=1024 * 1024)
+        restored = CodingHostedHistoryBindingV1(binding.identity, history)
+        assert restored.project_snapshot().title == expected
+
+    asyncio.run(scenario())
+
+
+def test_hosted_session_sets_only_supported_thinking_levels(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        model = Model(
+            id="thinking-model", name="Thinking test", provider="faux",
+            endpoint="anthropic-messages",
+            capabilities=Capabilities(
+                reasoning=True, reasoning_efforts=("low", "high"),
+                input=("text",), context_window=128000, max_tokens=4096,
+            ),
+        )
+        binding = await _binding(tmp_path, model)
+        hosted = CodingHostedSessionV1(binding)
+        try:
+            before = await hosted.list_models()
+            assert before.current_id is not None
+            assert before.thinking is not None
+            assert before.thinking.available_levels == ("off", "low", "high")
+            with pytest.raises(ValueError, match="coding_thinking_level_unavailable"):
+                await hosted.select_model(before.current_id, "medium")
+            after = await hosted.select_model(before.current_id, "high")
+            assert after.thinking is not None and after.thinking.current_level == "high"
+            assert binding.control.thinking_level == "high"
+        finally:
+            await hosted.close()
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.parametrize("stage", [

@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { thinkingLevels, type ThinkingLevel } from "./model";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ExecutionObservationV1,
@@ -226,8 +227,8 @@ export function createNativeLiveClient(): HarnessClientUiPort {
     async sessionModels(sessionId) {
       return validateSessionModels(await invoke("live_session_models", { input: { sessionId } }));
     },
-    async selectModel(sessionId, modelId) {
-      return validateSessionModels(await invoke("live_select_model", { input: { sessionId, modelId } }));
+    async selectModel(sessionId, modelId, thinkingLevel) {
+      return validateSessionModels(await invoke("live_select_model", { input: { sessionId, modelId, thinkingLevel } }));
     },
   };
 }
@@ -249,7 +250,15 @@ function validateSessionModels(value: unknown): SessionModels {
   if (root.currentId !== null && !models.some((model) => model.id === root.currentId)) {
     throw new Error("current session model");
   }
-  return { currentId: root.currentId as string | null, models };
+  if (root.thinking === undefined) return { currentId: root.currentId, models };
+  const { currentLevel, availableLevels } = object(root.thinking);
+  const validLevel = (level: unknown): level is ThinkingLevel => thinkingLevels.some((known) => known === level);
+  if (root.currentId === null || !validLevel(currentLevel) || !Array.isArray(availableLevels)
+    || availableLevels.length > thinkingLevels.length || !availableLevels.every(validLevel)
+    || new Set(availableLevels).size !== availableLevels.length || !availableLevels.includes(currentLevel)) {
+    throw new Error("session thinking settings");
+  }
+  return { currentId: root.currentId, models, thinking: { currentLevel, availableLevels } };
 }
 
 function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {

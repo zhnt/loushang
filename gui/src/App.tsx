@@ -6,10 +6,12 @@ import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type
 import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { ModelPicker } from "./ModelPicker";
+import { MessageMarkdown } from "./MessageMarkdown";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { isTauri } from "@tauri-apps/api/core";
 import { useSessionHistory } from "./useSessionHistory";
+import { readSidebarPreferences, saveSidebarPreferences, sidebarPreferencesKey } from "./client/sidebarPreferences";
 import { liveSelectionKey, rememberSessionSelection, restoreSessionSelection } from "./client/sessionSelection";
 import { createMockAppClient } from "./client/mockAppClient";
 import { createNativeLiveClient, nativeLiveAvailable } from "./client/nativeLiveClient";
@@ -18,12 +20,14 @@ import type {
   AgentRunProjection,
   ChangeSetProjection,
   ClientEvent,
+  ConnectionState,
   FixturePlaybackPort,
   HarnessClientUiPort,
   ReadonlyDocument,
   RunProjection,
   SessionSnapshot,
   SessionModels,
+  ThinkingLevel,
   TaskProjection,
   WorkspaceSummary,
 } from "./client/model";
@@ -264,6 +268,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
   const selectedId = state.local.selectedSessionId;
   const selectionKey = liveSelectionKey(state.remote.source);
   const connected = state.remote.connection === "connected";
+  const liveConnecting = Boolean(attachedClient && !fixture && syncing);
   useEffect(() => {
     if (connected && selectionKey && selectedId) rememberSessionSelection(selectionKey, selectedId);
   }, [connected, selectionKey, selectedId]);
@@ -271,7 +276,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
   const panelOpen = state.local.dockOpen && state.local.dockTab !== "environment";
   useEffect(() => { if (panelOpen) setEnvironmentOpen(false); }, [panelOpen]);
   const rightVisible = environmentOpen || panelOpen;
-  const rightWidth = environmentOpen ? 330 : 380;
+  const rightWidth = 380;
   const remainingWidth = viewportWidth - (sidebarOpen && viewportWidth > 760 ? sidebarWidth : 48);
   const stackedRight = rightVisible && remainingWidth < rightWidth + 360;
   const tasksAvailable = hasCapability(state, "tasks");
@@ -282,7 +287,10 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
     : null;
   const sessionModels = modelScope !== null && modelResult?.scope === modelScope ? modelResult.models : null;
   const modelRunning = selected?.status === "running";
-  const canChangeModel = Boolean(client.selectModel && sessionModels?.models.some((model) => model.id !== sessionModels.currentId));
+  const canChangeModel = Boolean(client.selectModel && sessionModels && (
+    sessionModels.models.some((model) => model.id !== sessionModels.currentId)
+    || (sessionModels.thinking?.availableLevels.length ?? 0) > 1
+  ));
   useEffect(() => {
     if (!modelScope || !selectedId || modelRunning || !client.sessionModels) return;
     let active = true;
@@ -318,7 +326,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
     (state.remote.source.kind === "fixture" && state.remote.connection === "fixture-offline")
     || (state.remote.source.kind === "live" && state.remote.connection === "connected")
   );
-  const mutationsAllowed = controlsAllowed && !awaitingPublication;
+  const mutationsAllowed = controlsAllowed && !awaitingPublication && !modelPending;
   useLayoutEffect(() => {
     transcriptPosition.current = state.local.transcriptScrollTop;
   }, [state.local.transcriptScrollTop]);
@@ -412,18 +420,22 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
     }
   }
 
-  async function selectModel(modelId: string): Promise<void> {
-    if (!selected || !modelScope || !client.selectModel || modelRunning || modelPending || !modelId) return;
+  async function selectModel(modelId: string, level?: ThinkingLevel): Promise<SessionModels | null> {
+    if (!selected || !modelScope || !client.selectModel || modelRunning || modelPending || awaitingPublication || controlPendingRef.current) return null;
     const request = ++modelRequest.current;
     setModelPending(true);
     try {
-      const models = await client.selectModel(selected.id, modelId);
-      if (request !== modelRequest.current) return;
+      const models = level === undefined
+        ? await client.selectModel(selected.id, modelId)
+        : await client.selectModel(selected.id, modelId, level);
+      if (request !== modelRequest.current) return null;
       setModelResult({ scope: modelScope, models });
       const choice = models.models.find((model) => model.id === models.currentId);
-      setNotice({ key: "notice.modelChanged", params: { model: choice?.label ?? modelId } });
+      setNotice(level === undefined ? { key: "notice.modelChanged", params: { model: choice?.label ?? modelId } } : { key: "notice.thinkingChanged" });
+      return models;
     } catch {
-      setNotice({ key: "notice.modelRejected" });
+      setNotice({ key: level === undefined ? "notice.modelRejected" : "notice.thinkingRejected" });
+      return null;
     } finally {
       setModelPending(false);
     }
@@ -502,9 +514,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
           onPointerUp={() => { sidebarDrag.current = null; }} onPointerCancel={() => { sidebarDrag.current = null; }} onLostPointerCapture={() => { sidebarDrag.current = null; }} />
         </div>
 
-        {selected ? <SessionHeader
+        {selected || (attachedClient && !fixture) ? <SessionHeader
           session={selected}
-          connection={state.remote.connection}
+          connection={liveConnecting ? "connecting" : state.remote.connection}
           dockOpen={panelOpen}
           environmentOpen={environmentOpen}
           onEnvironment={() => { if (!environmentOpen) dispatch({ type: "dock.closed" }); setEnvironmentOpen((open) => !open); }}
@@ -515,9 +527,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
         /> : null}
 
         <section ref={conversationRef} style={{ "--content-gutter": `${contentMetrics.gutter}px`, "--scrollbar-width": `${contentMetrics.scrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label={t("panels:layout.workspace")}>
-          {attachedClient && (syncing || state.diagnostic || state.remote.connection === "disconnected") ? (
+          {attachedClient && !liveConnecting && (syncing || state.diagnostic || state.remote.connection === "disconnected") ? (
             <div className="diagnostic" role="status">
-              <span>{syncing ? (fixture ? t("session:sync.fixture") : t("session:sync.live")) : t("session:diagnostic.title")}</span>
+              <span>{syncing ? t("session:sync.fixture") : t("session:diagnostic.title")}</span>
               {state.diagnostic ? <details><summary>{t("session:diagnostic.details")}</summary><pre>{state.diagnostic}</pre></details> : null}
               {fixture ? <button type="button" disabled={syncing} onClick={() => refreshRef.current?.()}>{t("session:sync.retry")}</button> : null}
             </div>
@@ -539,7 +551,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
                       <strong>{message.role === "user" ? t("session:transcript.you") : t("session:transcript.harness")}</strong>
                       <span>{valueLabel(message.phase)}</span>
                     </div>
-                    <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>
+                    {message.role === "assistant" && message.content
+                      ? <MessageMarkdown text={message.content} />
+                      : <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>}
                   </article>
                 ))}
                 {selected.execution ? <ExecutionDetail execution={selected.execution} stale={!fixture && !connected} /> : null}
@@ -602,7 +616,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
                     void submit();
                   }}
                 >
-                  <label className="visually-hidden" htmlFor="message-input">{t("session:composer.messageFor", { title: selected.title })}</label>
+                  <label className="visually-hidden" htmlFor="message-input">{t("session:composer.messageFor", { title: displaySessionTitle(selected) })}</label>
                   <textarea
                     id="message-input"
                     aria-describedby="message-keyboard-hint"
@@ -629,14 +643,15 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
                   <div className="composer-actions">
                     <div className="composer-permissions">
                       <button type="button" className="icon-button" aria-label={t("session:composer.attachUnavailable")} title={t("session:composer.attachHint")} disabled>＋</button>
-                      <span className="permission-label">◉ {state.remote.source.kind === "fixture" ? t("session:composer.fixtureAccess") : t("session:composer.liveControl")}</span>
+                      {fixture ? <span className="permission-label">◉ {t("session:composer.fixtureAccess")}</span> : null}
                     </div>
                     <p className="visually-hidden" role="status"><NoticeText notice={notice} /></p>
                     <ModelPicker
                       key={modelScope ?? selected.id}
                       models={sessionModels}
-                      disabled={!canChangeModel || modelPending || modelRunning}
-                      onSelect={(modelId) => void selectModel(modelId)}
+                      disabled={!canChangeModel || modelRunning || Boolean(awaitingPublication) || Boolean(controlPending)}
+                      busy={modelPending}
+                      onSelect={selectModel}
                     />
                     <button
                       className="composer-submit"
@@ -649,36 +664,29 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
                       {selected.status === "running" ? <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" /></svg>
                         : <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 18V6m-5 5 5-5 5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                     </button>
-                    <small className="model-effort-status" id="model-effort-status">{t("session:models.effortUnavailable")}</small>
                   </div>
                 </form>
               </div>
             </>
-          ) : (
+          ) : !liveConnecting ? (
             <div className="empty-state">
               <p>{t(attachedClient ? "session:emptySession" : "session:sync.offlineHost")}</p>
               {attachedClient ? <p role="status"><NoticeText notice={notice} /></p> : null}
             </div>
-          )}
+          ) : null}
         </section>
 
-        {environmentOpen && selected ? <aside className="environment-popover" aria-label={t("workspace:environment.summary")}>
-          <header><span>{t("workspace:environment.title")}</span><button type="button" className="icon-close" aria-label={t("workspace:environment.close")} onClick={() => setEnvironmentOpen(false)}><UiIcon name="close" /></button></header>
-          {hasCapability(state, "workspace") ? <EnvironmentPanel state={state} session={selected} />
-            : state.remote.source.kind === "live" ? <LiveContextPanel state={state} session={selected} />
-              : <UnavailablePanel label={t("workspace:capability.workspace")} />}
-          <div className="environment-links">
-            <button type="button" disabled={!changesAvailable || !selected.changeSet?.files.length} onClick={() => { const id = selected.changeSet?.files[0]?.documentId; if (id) openReview(id); }}>{t("workspace:environment.changesLink")}</button>
-            <button type="button" disabled={!hasCapability(state, "agents")} onClick={() => { setEnvironmentOpen(false); dispatch({ type: "dock.opened", tab: "agents" }); }}>{t("workspace:environment.agentsLink")}</button>
-          </div>
-        </aside> : null}
-        {!environmentOpen && panelOpen && selected ? (
+        {rightVisible && selected ? (
           <WorkDock
+            tab={environmentOpen ? "environment" : state.local.dockTab}
             state={state}
             session={selected}
             selectedDocument={selectedDocument}
-            onClose={() => dispatch({ type: "dock.closed" })}
-            onTab={(tab) => dispatch({ type: "dock.opened", tab })}
+            onClose={() => { setEnvironmentOpen(false); dispatch({ type: "dock.closed" }); }}
+            onTab={(tab) => {
+              setEnvironmentOpen(tab === "environment");
+              dispatch(tab === "environment" ? { type: "dock.closed" } : { type: "dock.opened", tab });
+            }}
             onSelectDocument={(documentId) => dispatch({ type: "document.selected", sessionId: selected.id, documentId })}
             onSelectTask={(taskId) => dispatch({ type: "task.selected", taskId })}
             onSelectAgent={(agentRunId) => dispatch({ type: "agent.selected", agentRunId })}
@@ -706,6 +714,7 @@ interface SidebarProps {
 function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar, onSettings }: SidebarProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const { t: shellText } = useTranslation("shell");
+  const preferencesKey = sidebarPreferencesKey(state.remote.source);
   return (
     <aside className="session-rail" aria-label={t("workspace:sidebar.navigation")}>
       <div className="brand-row">
@@ -728,77 +737,109 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
       </nav>
       {!managedLocal ? <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? t("workspace:sidebar.fixtureBanner") : t("workspace:sidebar.liveBanner")}</div> : null}
 
-      <nav aria-label={t("workspace:sidebar.workspaces")}>
-        {!hasCapability(state, "workspace") ? state.remote.source.kind === "live" ? (
-          <section className="workspace-group" aria-label={t("workspace:sidebar.attached")}>
-            {!managedLocal ? <div className="workspace-heading static">
-              <span className="folder-glyph"><UiIcon name="folder" /></span>
-              <span>{state.remote.source.muxName ?? t("workspace:sidebar.mux")}</span>
-            </div> : null}
-            <div className="session-list">
-              {state.remote.sessionOrder.map((id) => <SessionButton key={id} session={state.remote.sessions[id]}
-                stale={isStale(state)} selected={id === state.local.selectedSessionId} unread={Boolean(state.local.unread[id])} onSelect={() => onSelect(id)} />)}
-            </div>
-            {!managedLocal ? <p className="section-label">{t("workspace:sidebar.workspaceUnavailable")}</p> : null}
-          </section>
-        ) : <>
-          {!managedLocal ? <UnavailablePanel label={t("workspace:capability.workspace")} /> : null}
-          {state.remote.sessionOrder.map((id) => <SessionButton key={id} session={state.remote.sessions[id]}
-            stale={isStale(state)} selected={id === state.local.selectedSessionId} unread={Boolean(state.local.unread[id])} onSelect={() => onSelect(id)} />)}
-        </> : state.remote.workspaceOrder.map((workspaceId) => {
-          const workspace = state.remote.workspaces[workspaceId];
-          const sessions = state.remote.sessionOrder
-            .map((id) => state.remote.sessions[id])
-            .filter((session) => session.workspaceId === workspaceId);
-          const expanded = state.local.expandedWorkspaces[workspaceId] ?? true;
-          return (
-            <section className="workspace-group" key={workspace.id}>
-              <button
-                className="workspace-heading"
-                type="button"
-                aria-expanded={expanded}
-                onClick={() => onToggleWorkspace(workspace.id)}
-              >
-                <span className="folder-glyph"><UiIcon name="folder" /></span>
-                <span>{workspace.title}</span>
-                <VcsBadge workspace={workspace} />
-                <UiIcon name={expanded ? "chevron-up" : "chevron-down"} />
-              </button>
-              {expanded ? (
-                <div className="session-list">
-                  {sessions.map((session) => (
-                    <SessionButton
-                      key={session.id}
-                      session={session}
-                      stale={isStale(state)}
-                      selected={session.id === state.local.selectedSessionId}
-                      unread={Boolean(state.local.unread[session.id])}
-                      onSelect={() => onSelect(session.id)}
-                    />
-                  ))}
-                </div>
-              ) : null}
-            </section>
-          );
-        })}
-
-        <section className="recent-group">
-          <p className="section-label">{t("workspace:sidebar.recent")}</p>
-          {state.remote.recentSessionIds.map((sessionId) => {
-            const session = state.remote.sessions[sessionId];
-            return session ? (
-              <button className="recent-session" type="button" key={sessionId} onClick={() => onSelect(sessionId)}>
-                <span>{session.title}</span><StatusMark status={session.status} stale={isStale(state)} />
-              </button>
-            ) : null;
-          })}
-        </section>
-      </nav>
+      <SessionNavigation key={preferencesKey} preferencesKey={preferencesKey} state={state}
+        onSelect={onSelect} onToggleWorkspace={onToggleWorkspace} />
 
       </div>
       <AccountMenu account={account} onSettings={onSettings} />
     </aside>
   );
+}
+
+function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace }: Pick<SidebarProps,
+  "state" | "onSelect" | "onToggleWorkspace"> & { readonly preferencesKey: string }) {
+  const { t } = useTranslation("workspace");
+  const [preferences, setPreferences] = useState(() => readSidebarPreferences(preferencesKey));
+  const list = useRef<HTMLElement>(null);
+  const restorePinFocus = useRef<string | null>(null);
+  const { selectedSessionId } = state.local;
+  const { sessions, sessionOrder, recentSessionIds, workspaces, workspaceOrder } = state.remote;
+  const stale = isStale(state);
+
+  useEffect(() => {
+    if (!selectedSessionId || stale) return;
+    setPreferences((current) => current.recent[0] === selectedSessionId ? current : {
+      ...current,
+      recent: [selectedSessionId, ...current.recent.filter((id) => id !== selectedSessionId)].slice(0, 128),
+    });
+  }, [selectedSessionId, stale]);
+
+  useEffect(() => {
+    saveSidebarPreferences(preferencesKey, preferences);
+  }, [preferencesKey, preferences]);
+
+  useLayoutEffect(() => {
+    const id = restorePinFocus.current;
+    if (!id) return;
+    restorePinFocus.current = null;
+    Array.from(list.current?.querySelectorAll<HTMLButtonElement>("[data-pin-session]") ?? [])
+      .find((button) => button.dataset.pinSession === id)?.focus();
+  }, [preferences.pinned]);
+
+  const knownSessions = new Set(sessionOrder);
+  const pinned = new Set(preferences.pinned);
+  const orderedIds = [...new Set([...preferences.recent, ...recentSessionIds, ...sessionOrder])];
+  const availableWorkspaces = hasCapability(state, "workspace") ? workspaceOrder : [];
+  const workspaceIds = new Set(availableWorkspaces);
+  const ungrouped: SessionSnapshot[] = [];
+  const grouped = new Map<string, SessionSnapshot[]>();
+  for (const id of orderedIds) {
+    if (!knownSessions.has(id) || pinned.has(id)) continue;
+    const session = sessions[id];
+    if (!workspaceIds.has(session.workspaceId)) {
+      ungrouped.push(session);
+      continue;
+    }
+    const group = grouped.get(session.workspaceId) ?? [];
+    group.push(session);
+    grouped.set(session.workspaceId, group);
+  }
+
+  function renderSession(session: SessionSnapshot, isPinned = false) {
+    return <SessionButton key={session.id} session={session} stale={stale}
+      selected={session.id === selectedSessionId} unread={Boolean(state.local.unread[session.id])}
+      pinned={isPinned} onSelect={() => onSelect(session.id)} onTogglePin={() => {
+        restorePinFocus.current = session.id;
+        if (isPinned && workspaceIds.has(session.workspaceId) && state.local.expandedWorkspaces[session.workspaceId] === false) {
+          onToggleWorkspace(session.workspaceId);
+        }
+        setPreferences((current) => ({
+          ...current,
+          pinned: isPinned ? current.pinned.filter((id) => id !== session.id) : [session.id, ...current.pinned],
+        }));
+      }} />;
+  }
+
+  const pinnedSessions = preferences.pinned.filter((id) => knownSessions.has(id)).map((id) => sessions[id]);
+  return <nav ref={list} aria-label={t("sidebar.chats")}>
+    {pinnedSessions.length ? <section className="sidebar-session-section" aria-labelledby="pinned-sessions">
+      <h2 id="pinned-sessions" className="section-label">{t("sidebar.pinned")}</h2>
+      {pinnedSessions.map((session) => renderSession(session, true))}
+    </section> : null}
+    <section className="sidebar-session-section" aria-labelledby="chat-sessions">
+      <h2 id="chat-sessions" className="section-label">{t("sidebar.chats")}</h2>
+      {ungrouped.length ? <div className="workspace-group">
+        {grouped.size ? <p className="section-label">{t("sidebar.unassigned")}</p> : null}
+        {ungrouped.map((session) => renderSession(session))}
+      </div> : null}
+      {availableWorkspaces.map((id) => {
+        const workspace = workspaces[id];
+        const group = grouped.get(id);
+        if (!group) return null;
+        const expanded = state.local.expandedWorkspaces[id] ?? true;
+        return <section className="workspace-group" key={id}>
+          <button className="workspace-heading" type="button" aria-expanded={expanded}
+            onClick={() => onToggleWorkspace(id)}>
+            <span className="folder-glyph"><UiIcon name="folder" /></span>
+            <span>{workspace.title}</span>
+            <VcsBadge workspace={workspace} />
+            <UiIcon name={expanded ? "chevron-up" : "chevron-down"} />
+          </button>
+          {expanded ? <div className="session-list">{group.map((session) => renderSession(session))}</div> : null}
+        </section>;
+      })}
+    </section>
+  </nav>;
 }
 
 function VcsBadge({ workspace }: { readonly workspace: WorkspaceSummary }) {
@@ -807,27 +848,37 @@ function VcsBadge({ workspace }: { readonly workspace: WorkspaceSummary }) {
   return <span className={`vcs-badge ${workspace.vcs.kind}`}>{workspace.vcs.kind} · {workspace.vcs.label}</span>;
 }
 
-function SessionButton({ session, selected, unread, stale, onSelect }: {
+function SessionButton({ session, selected, unread, stale, pinned, onSelect, onTogglePin }: {
   readonly session: SessionSnapshot;
   readonly selected: boolean;
   readonly unread: boolean;
   readonly stale: boolean;
+  readonly pinned: boolean;
   readonly onSelect: () => void;
+  readonly onTogglePin: () => void;
 }) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const label = stale ? t("workspace:sidebar.stale", { status: valueLabel(session.status) }) : valueLabel(session.status);
+  const title = displaySessionTitle(session);
+  const pinLabel = t(pinned ? "workspace:sidebar.unpinChat" : "workspace:sidebar.pinChat", { title });
   return (
-    <button
-      className={`session-item${selected ? " selected" : ""}`}
-      type="button"
-      aria-current={selected ? "page" : undefined}
-      aria-label={t("workspace:sidebar.sessionLabel", { title: session.title, status: label })}
-      onClick={onSelect}
-    >
-      <span className="session-title">{session.title}</span>
-      <StatusMark status={session.status} stale={stale} />
-      {unread ? <span className="unread-dot" aria-label={t("workspace:sidebar.unread")} /> : null}
-    </button>
+    <div className={`session-row${selected ? " selected" : ""}`}>
+      <button
+        className="session-item"
+        type="button"
+        aria-current={selected ? "page" : undefined}
+        aria-label={t("workspace:sidebar.sessionLabel", { title, status: label })}
+        onClick={onSelect}
+      >
+        <span className="session-title">{title}</span>
+        <StatusMark status={session.status} stale={stale} />
+        {unread ? <span className="unread-dot" aria-label={t("workspace:sidebar.unread")} /> : null}
+      </button>
+      <button type="button" className="session-pin" data-pin-session={session.id}
+        data-pinned={pinned} aria-label={pinLabel} title={pinLabel} onClick={onTogglePin}>
+        <UiIcon name="pin" />
+      </button>
+    </div>
   );
 }
 
@@ -877,21 +928,25 @@ function ExecutionDetail({ execution, stale }: {
 function SessionHeader({ session, connection, dockOpen, onOpenDock, environmentOpen, onEnvironment }: {
   readonly environmentOpen: boolean;
   readonly onEnvironment: () => void;
-  readonly session: SessionSnapshot;
-  readonly connection: string;
+  readonly session: SessionSnapshot | undefined;
+  readonly connection: ConnectionState | "connecting";
   readonly dockOpen: boolean;
   readonly onOpenDock: () => void;
 }) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
+  const label = connectionLabel(connection);
   return (
     <header className="conversation-header">
       <div className="session-heading">
-        <UiIcon name="folder" />
-        <div><h1>{session.title}</h1></div>
-        <button type="button" aria-label={t("panels:header.actions")}><span aria-hidden="true">⋯</span></button>
+        {session ? <>
+          <UiIcon name="folder" />
+          <div><h1>{displaySessionTitle(session)}</h1></div>
+          <button type="button" aria-label={t("panels:header.actions")}><span aria-hidden="true">⋯</span></button>
+        </> : null}
       </div>
-      <div className="header-actions">
-        <span className={`connection-chip ${connection}`} title={connectionLabel(connection)}>{connectionLabel(connection)}</span>
+      <div className="header-actions" data-session-ready={Boolean(session)}>
+        <span className={`connection-chip ${connection}`} role="status"
+          title={connection === "connecting" ? t("session:sync.live") : label}>{label}</span>
         <button type="button" aria-label={t("panels:header.shareUnavailable")} disabled>{t("panels:header.share")}</button>
         <button type="button" aria-label={t("panels:header.toggleEnvironment")} title={t("workspace:environment.title")} aria-pressed={environmentOpen} onClick={onEnvironment}><PanelIcon side="environment" /></button>
         <button type="button" aria-label={t("panels:header.bottomUnavailable")} title={t("panels:header.bottomHint")} disabled><PanelIcon side="bottom" /></button>
@@ -1004,6 +1059,7 @@ function QuickLook({ document, onClose, onOpenReview }: {
 }
 
 interface WorkDockProps {
+  readonly tab: DockTab;
   readonly state: GuiState;
   readonly session: SessionSnapshot;
   readonly selectedDocument: ReadonlyDocument | undefined;
@@ -1016,8 +1072,8 @@ interface WorkDockProps {
 
 function WorkDock(props: WorkDockProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
-  const { state, session, selectedDocument, onClose, onTab, onSelectDocument, onSelectTask, onSelectAgent } = props;
-  const facet = state.local.dockTab === "environment" ? "workspace" : state.local.dockTab === "review" ? "changes" : state.local.dockTab;
+  const { tab, state, session, selectedDocument, onClose, onTab, onSelectDocument, onSelectTask, onSelectAgent } = props;
+  const facet = tab === "environment" ? "workspace" : tab === "review" ? "changes" : tab;
   const available = hasCapability(state, facet);
   const visibleRun = session.run ? {
     ...session.run,
@@ -1025,30 +1081,30 @@ function WorkDock(props: WorkDockProps) {
     agentRuns: hasCapability(state, "agents") ? session.run.agentRuns : [],
   } : null;
   return (
-    <aside className={`work-dock${state.local.dockTab === "environment" ? " environment-card" : ""}`} aria-label={t("panels:dock.title")}>
+    <aside className={`work-dock${tab === "environment" ? " dock-environment" : ""}`} aria-label={t(tab === "environment" ? "workspace:environment.summary" : "panels:dock.title")}>
       <header className="dock-header">
-        <strong>{t(dockTabs.find((tab) => tab.id === state.local.dockTab)!.label)}</strong>
-        <button type="button" className="icon-close" onClick={onClose} aria-label={t("panels:dock.close")}><UiIcon name="close" /></button>
+        <strong>{t(dockTabs.find((item) => item.id === tab)!.label)}</strong>
+        <button type="button" className="icon-close" onClick={onClose} aria-label={t(tab === "environment" ? "workspace:environment.close" : "panels:dock.close")}><UiIcon name="close" /></button>
       </header>
       <nav className="dock-tabs" aria-label={t("panels:dock.panels")}>
-        {dockTabs.filter((tab) => tab.id !== "environment").map((tab) => (
-          <button type="button" key={tab.id} aria-pressed={state.local.dockTab === tab.id} onClick={() => onTab(tab.id)}>
-            <span aria-hidden="true">{tab.glyph}</span><span>{t(tab.label)}</span>
+        {dockTabs.map((item) => (
+          <button type="button" key={item.id} aria-pressed={tab === item.id} onClick={() => onTab(item.id)}>
+            <span aria-hidden="true">{item.glyph}</span><span>{t(item.label)}</span>
           </button>
         ))}
       </nav>
       <div className="dock-content">
-        {!available ? state.local.dockTab === "environment" && state.remote.source.kind === "live"
+        {!available ? tab === "environment" && state.remote.source.kind === "live"
           ? <LiveContextPanel state={state} session={session} />
-          : <UnavailablePanel label={t("workspace:capability.missing", { capability: capabilityLabel(facet) })} /> : <>
-        {state.local.dockTab === "environment" ? <EnvironmentPanel state={state} session={session} /> : null}
-        {state.local.dockTab === "tasks" ? (
+          : <UnavailablePanel label={facet === "workspace" ? t("workspace:capability.workspace") : t("workspace:capability.missing", { capability: capabilityLabel(facet) })} /> : <>
+        {tab === "environment" ? <EnvironmentPanel state={state} session={session} /> : null}
+        {tab === "tasks" ? (
           <TasksPanel run={visibleRun} selectedTaskId={state.local.selectedTaskId} onSelectTask={onSelectTask} onSelectAgent={onSelectAgent} />
         ) : null}
-        {state.local.dockTab === "agents" ? (
+        {tab === "agents" ? (
           <AgentsPanel run={visibleRun} selectedAgentRunId={state.local.selectedAgentRunId} onSelectAgent={onSelectAgent} onSelectTask={onSelectTask} />
         ) : null}
-        {state.local.dockTab === "review" ? (
+        {tab === "review" ? (
           <ReviewPanel session={session} selectedDocument={selectedDocument} onSelectDocument={onSelectDocument} />
         ) : null}
         </>}
@@ -1283,6 +1339,11 @@ const valueLabels = {
   "complete": "common:status.complete",
   "accepted": "common:status.accepted"
 } as const;
+function displaySessionTitle(session: SessionSnapshot): string {
+  return session.context.source === "live" && session.title === "New Session"
+    ? i18n.t("workspace:sidebar.newSession") : session.title;
+}
+
 function valueLabel(value: keyof typeof valueLabels): string { return i18n.t(valueLabels[value]); }
 function capabilityLabel(value: string): string {
   switch (value) {
@@ -1297,8 +1358,14 @@ function capabilityLabel(value: string): string {
 
 
 
-function connectionLabel(connection: string): string {
-  return { "fixture-offline": i18n.t("workspace:sidebar.offline"), connected: i18n.t("common:connection.connected"), disconnected: i18n.t("common:connection.disconnected"), "resync-required": i18n.t("common:connection.resync") }[connection] ?? connection;
+function connectionLabel(connection: ConnectionState | "connecting"): string {
+  switch (connection) {
+    case "fixture-offline": return i18n.t("workspace:sidebar.offline");
+    case "connecting": return i18n.t("common:connection.connecting");
+    case "connected": return i18n.t("common:connection.connected");
+    case "disconnected": return i18n.t("common:connection.disconnected");
+    case "resync-required": return i18n.t("common:connection.resync");
+  }
 }
 
 function App({ account }: { account?: OfflineAccount | null }) {

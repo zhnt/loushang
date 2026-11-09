@@ -127,19 +127,25 @@ export default function LocalHostGate() {
   };
   const hostSettings = <>
     <section className="local-host-panel" aria-labelledby="settings-local-host">
-      <h3 id="settings-local-host">{t("localHost.title")}</h3>
-      <label>{t("localHost.workspace")}
-        <input value={workspace} disabled={!!client || busy} onChange={(event) => setWorkspace(event.target.value)} placeholder={t("localHost.pathHint")} />
-      </label>
-      <span role="status">{supported === false ? t("localHost.unsupported") : t(states[host.state])}</span>
-      <div className="local-host-actions">
-        <button disabled={busy || !supported || !workspace} onClick={() => void perform("status")}>{t("localHost.refresh")}</button>
-        {host.state === "not_running" ? <button disabled={busy || !supported} onClick={() => void perform("start")}>{t("localHost.start")}</button> : null}
-        {host.state === "running" ? <>
-          <button disabled={busy} onClick={() => void perform("connect")}>{t(client ? "localHost.reconnect" : "localHost.connect")}</button>
-          <button disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>
-          <button disabled={busy} onClick={() => stop("restart")}>{t("localHost.restart")}</button>
-        </> : null}
+      <div className="local-host-heading">
+        <h3 id="settings-local-host">{t("localHost.title")}</h3>
+        <span className="local-host-status" data-state={host.state} role="status">
+          {supported === false ? t("localHost.unsupported") : t(states[host.state])}
+        </span>
+      </div>
+      <div className="local-host-card">
+        <label>{t("localHost.workspace")}
+          <input value={workspace} disabled={!!client || busy} onChange={(event) => setWorkspace(event.target.value)} placeholder={t("localHost.pathHint")} />
+        </label>
+        <div className="local-host-actions">
+          <button disabled={busy || !supported || !workspace} onClick={() => void perform("status")}>{t("localHost.refresh")}</button>
+          {host.state === "not_running" ? <button disabled={busy || !supported} onClick={() => void perform("start")}>{t("localHost.start")}</button> : null}
+          {host.state === "running" ? <>
+            <button disabled={busy} onClick={() => void perform("connect")}>{t(client ? "localHost.reconnect" : "localHost.connect")}</button>
+            <button disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>
+            <button disabled={busy} onClick={() => stop("restart")}>{t("localHost.restart")}</button>
+          </> : null}
+        </div>
       </div>
       {reason ? <p role="alert">{errorLabel} <code>{reason}</code></p> : null}
       {host.instanceId ? <details><summary>{t("localHost.identity")}</summary><p>{t("localHost.pid")}: {host.pid ?? "—"}</p><code>{host.instanceId}</code><br /><code>{host.serviceInstanceId}</code></details> : null}

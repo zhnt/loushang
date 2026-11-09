@@ -32,6 +32,12 @@ function openSettings() {
   return within(screen.getByRole("dialog", { name: "Settings" }));
 }
 
+function openHostSettings() {
+  const settings = openSettings();
+  fireEvent.click(settings.getByRole("button", { name: "Host" }));
+  return settings;
+}
+
 beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   native.invoke.mockReset(); native.create.mockClear(); native.listeners.clear();
@@ -53,6 +59,11 @@ describe("local managed Host presentation", () => {
     const settings = openSettings();
     expect(await settings.findByText("desktop-user")).toBeVisible();
     expect(settings.getByText("local-test-id")).toBeVisible();
+    expect(settings.getByRole("combobox", { name: "Interface language" })).toBeVisible();
+    expect(settings.queryByRole("textbox", { name: "Workspace" })).not.toBeInTheDocument();
+    fireEvent.click(settings.getByRole("button", { name: "Host" }));
+    expect(settings.getByRole("textbox", { name: "Workspace" })).toBeVisible();
+    expect(settings.queryByRole("combobox", { name: "Interface language" })).not.toBeInTheDocument();
     const start = await settings.findByRole("button", { name: "Start and connect" });
     expect(native.invoke).toHaveBeenCalledWith("local_host_action", { request: { action: "connect", workspace: "/workspace" } });
     expect(native.invoke.mock.calls.filter(([, args]) => args?.request?.action === "start")).toHaveLength(0);
@@ -78,12 +89,12 @@ describe("local managed Host presentation", () => {
 
   it("confirms Host stop and preserves the mounted draft across stop and start", async () => {
     render(<LocalHostGate />);
-    fireEvent.click(await openSettings().findByRole("button", { name: "Start and connect" }));
+    fireEvent.click(await openHostSettings().findByRole("button", { name: "Start and connect" }));
     const draft = await screen.findByLabelText("Draft");
     fireEvent.change(draft, { target: { value: "unsent work" } });
     (screen.getByRole("dialog") as HTMLDialogElement).open = false;
     expect(screen.queryByRole("button", { name: "Stop Host" })).not.toBeInTheDocument();
-    openSettings();
+    openHostSettings();
     fireEvent.click(screen.getByRole("button", { name: "Stop Host" }));
     expect(native.invoke.mock.calls.filter(([, args]) => args?.request?.action === "stop")).toHaveLength(0);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -103,7 +114,7 @@ describe("local managed Host presentation", () => {
       ? { supported: true, workspace: "/workspace" }
       : { state: "unknown", errorCode: "authentication_failed" });
     render(<LocalHostGate />);
-    openSettings();
+    openHostSettings();
     expect(await screen.findByRole("alert")).toHaveTextContent("Host authentication failed");
     expect(screen.queryByRole("button", { name: "Start and connect" })).toBeNull();
   });
@@ -111,7 +122,7 @@ describe("local managed Host presentation", () => {
   it("shows unsupported platforms without attempting managed effects", async () => {
     native.invoke.mockResolvedValue({ supported: false, workspace: "/workspace" });
     render(<LocalHostGate />);
-    openSettings();
+    openHostSettings();
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Linux only"));
     expect(native.invoke.mock.calls.every(([name]) => name === "local_host_environment" || name === "offline_account")).toBe(true);
   });

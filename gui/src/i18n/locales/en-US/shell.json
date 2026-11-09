@@ -6,6 +6,8 @@
   "accountId": "Local account ID",
   "accountMenu": "Account menu",
   "generalSettings": "General",
+  "settingsNavigation": "Settings categories",
+  "hostSettings": "Host",
   "closeSettings": "Close settings",
   "system": "Follow system",
   "saveFailed": "Language changed for this window, but the preference could not be saved.",

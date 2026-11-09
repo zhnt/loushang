@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, afterEach, vi } from "vitest";
 import { HarnessGui } from "../../src/App";
 import { createMockAppClient } from "../../src/client/mockAppClient";
+import type { ClientSnapshot } from "../../src/client/model";
 import config from "../../src-tauri/tauri.conf.json";
 import capability from "../../src-tauri/capabilities/default.json";
 
@@ -26,6 +27,60 @@ describe("desktop frame", () => {
     await user.click(close);
     expect(screen.queryByLabelText("Work Dock")).not.toBeInTheDocument();
   });
+  it("pins chats above workspace groups, keeps unassigned chats, and scopes pins to the mux", async () => {
+    const user = userEvent.setup();
+    const client = createMockAppClient();
+    const fixture = await client.snapshot();
+    function attached(muxSpaceId: string, serviceInstanceId: string) {
+      return {
+        subscribe: (listener: Parameters<typeof client.subscribe>[0]) => client.subscribe(listener),
+        submitText: (input: Parameters<typeof client.submitText>[0]) => client.submitText(input),
+        interrupt: (id: string) => client.interrupt(id),
+        snapshot: async (): Promise<ClientSnapshot> => ({
+          ...fixture,
+          connection: "connected",
+          source: { kind: "live", muxSpaceId, serviceInstanceId, connectionEpoch: "1" },
+          capabilities: fixture.capabilities.map((capability) => capability.name === "workspace"
+            ? { ...capability, availability: "live", version: "loushang.workspace/v1" } : capability),
+          sessions: fixture.sessions.map((session) => session.title === "Operational ontology"
+            ? { ...session, workspaceId: "" } : session),
+        }),
+      };
+    }
+
+    const first = render(<HarnessGui client={attached("sidebar-a", "host-one")} />);
+    await screen.findByRole("heading", { name: "GUI development" });
+    expect(screen.getByText("Without a workspace")).toBeVisible();
+    const chats = screen.getByRole("region", { name: "Chats" });
+    expect(within(chats).getAllByRole("button", { name: /Operational ontology ·/ })).toHaveLength(1);
+    const workspace = within(chats).getByRole("button", { name: /^Loushang/ }).closest("section")!;
+    await user.click(within(workspace).getByRole("button", { name: /^Provider review ·/ }));
+    expect(workspace.querySelector(".session-item")).toHaveTextContent("Provider review");
+    await user.click(within(workspace).getByRole("button", { name: "Pin GUI development" }));
+    const pinned = screen.getByRole("region", { name: "Pinned" });
+    expect(pinned.nextElementSibling).toBe(chats);
+    expect(within(pinned).getByRole("button", { name: /^GUI development ·/ })).toBeVisible();
+    expect(within(chats).queryByRole("button", { name: /^GUI development ·/ })).toBeNull();
+    expect(within(pinned).getByRole("button", { name: "Unpin GUI development" })).toHaveFocus();
+    first.unmount();
+
+    const reopened = render(<HarnessGui client={attached("sidebar-a", "host-two")} />);
+    const restoredPin = await screen.findByRole("button", { name: "Unpin GUI development" });
+    expect(restoredPin).toBeVisible();
+    reopened.unmount();
+
+    const other = render(<HarnessGui client={attached("sidebar-b", "host-two")} />);
+    await screen.findByRole("button", { name: "Pin GUI development" });
+    expect(screen.queryByRole("region", { name: "Pinned" })).toBeNull();
+    other.unmount();
+
+    render(<HarnessGui client={attached("sidebar-a", "host-two")} />);
+    await user.click(await screen.findByRole("button", { name: "Unpin GUI development" }));
+    expect(screen.queryByRole("region", { name: "Pinned" })).toBeNull();
+    expect(within(screen.getByRole("region", { name: "Chats" }))
+      .getByRole("button", { name: "Pin GUI development" })).toHaveFocus();
+  });
+
   const originalWidth = window.innerWidth;
   afterEach(() => { vi.unstubAllGlobals(); Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth }); });
   it("shares measured content margins including a native scrollbar", async () => {
@@ -81,14 +136,14 @@ describe("desktop frame", () => {
     expect(screen.queryByRole("button", { name: "Minimize window" })).not.toBeInTheDocument();
   });
 
-  it("separates environment and work panel controls and links to Review", async () => {
+  it("separates environment and work panel controls and shares the Work Dock and switches to Review", async () => {
     const user = userEvent.setup();
     render(<HarnessGui client={createMockAppClient()} />);
     await screen.findByRole("heading", { name: "GUI development" });
     expect(screen.getByLabelText("Environment summary")).toBeVisible();
     expect(screen.queryByLabelText("Work Dock")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Bottom panel unavailable" })).toBeDisabled();
-    await user.click(within(screen.getByLabelText("Environment summary")).getByRole("button", { name: "Changes →" }));
+    await user.click(within(screen.getByLabelText("Environment summary")).getByRole("button", { name: "Review" }));
     expect(screen.getByLabelText("Read-only review")).toBeVisible();
     expect(screen.queryByLabelText("Environment summary")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Work Dock" }));

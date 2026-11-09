@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { HarnessGui } from "../../src/App";
 import { createMockAppClient } from "../../src/client/mockAppClient";
-import type { ClientSnapshot, FixturePlaybackPort } from "../../src/client/model";
+import type { ClientSnapshot, FixturePlaybackPort, SessionModels, ThinkingLevel } from "../../src/client/model";
 
 function withSnapshot(client: FixturePlaybackPort, snapshot: ClientSnapshot): FixturePlaybackPort {
   return {
@@ -17,6 +17,55 @@ function withSnapshot(client: FixturePlaybackPort, snapshot: ClientSnapshot): Fi
 }
 
 describe("GUI-B1 Workspace / Task / Review fixture", () => {
+  it("renders assistant Markdown while keeping user text and untrusted markup inert", async () => {
+    const fixture = createMockAppClient();
+    const snapshot = await fixture.snapshot();
+    const selected = snapshot.sessions.find((session) => session.id === snapshot.selectedSessionId)!;
+    const userText = "**Keep my exact input**";
+    const markdown = [
+      "### Report",
+      "",
+      "**Strong** text with `inline code`.",
+      "",
+      "- first item",
+      "",
+      "| A | B |",
+      "| --- | --- |",
+      "| x | y |",
+      "",
+      "```text",
+      "code sample",
+      "```",
+      "",
+      "[Website](https://example.com/) [Script](javascript:alert(1))",
+      "",
+      "![image description](https://example.com/pixel.png)",
+      "",
+      "<iframe src='https://example.com/'></iframe>",
+    ].join("\n");
+    render(<HarnessGui client={withSnapshot(fixture, {
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => session.id === selected.id ? {
+        ...session,
+        messages: [
+          { id: "user-md", role: "user", content: userText, phase: "complete" },
+          { id: "assistant-md", role: "assistant", content: markdown, phase: "streaming" },
+        ],
+      } : session),
+    })} />);
+    const reply = await screen.findByRole("article", { name: "assistant message" });
+    expect(within(reply).getByRole("heading", { name: "Report", level: 3 })).toBeVisible();
+    expect(within(reply).getByText("Strong").tagName).toBe("STRONG");
+    expect(within(reply).getByText("inline code").tagName).toBe("CODE");
+    expect(within(reply).getByRole("listitem")).toHaveTextContent("first item");
+    expect(within(reply).getByRole("table")).toBeVisible();
+    expect(reply.querySelector("pre code")).toHaveTextContent("code sample");
+    expect(within(reply).getByRole("link", { name: "Website" })).toHaveAttribute("href", "https://example.com/");
+    expect(within(reply).queryByRole("link", { name: "Script" })).toBeNull();
+    expect(reply.querySelector("iframe, img")).toBeNull();
+    expect(within(screen.getByRole("article", { name: "user message" })).getByText(userText)).toBeVisible();
+  });
+
   it("lets the user retry a failed execution that published no transcript records", async () => {
     const seed = await createMockAppClient().snapshot();
     const initial: ClientSnapshot = {
@@ -175,6 +224,26 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.getByText(/and projects shared service facts through its UI port/)).toBeVisible();
   });
 
+  it("uses the header chip while waiting for the AppHost snapshot", async () => {
+    let failSnapshot: () => void = () => {};
+    const snapshot = new Promise<ClientSnapshot>((_resolve, reject) => {
+      failSnapshot = () => reject(new Error("AppHost unavailable"));
+    });
+    const client = createMockAppClient();
+    render(<HarnessGui client={{
+      snapshot: () => snapshot,
+      subscribe: (listener) => client.subscribe(listener),
+      submitText: (input) => client.submitText(input),
+      interrupt: (id) => client.interrupt(id),
+    }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Connecting");
+    expect(screen.queryByText("No Session is available.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Connecting to AppHost…")).not.toBeInTheDocument();
+    await act(async () => failSnapshot());
+    expect(screen.getByText("Resync required")).toBeVisible();
+    expect(screen.getByText("Synchronization interrupted. Resynchronize to continue.")).toBeVisible();
+  });
+
   it("keeps drafts editable but blocks commands while disconnected", async () => {
     const user = userEvent.setup();
     const client = createMockAppClient();
@@ -264,12 +333,13 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       currentId: "provider-a:endpoint-a:shared-model",
       models: [
         { id: "provider-a:endpoint-a:shared-model", provider: "provider-a", endpointId: "endpoint-a", modelId: "shared-model", label: "Provider A", supportsThinking: true },
-        { id: "provider-b:endpoint-b:shared-model", provider: "provider-b", endpointId: "endpoint-b", modelId: "shared-model", label: "Provider B", supportsThinking: false },
+        { id: "provider-b:endpoint-b:shared-model", provider: "provider-b", endpointId: "endpoint-b", modelId: "shared-model", label: "Provider B", supportsThinking: true },
       ],
     } as const;
-    const selectModel = vi.fn(async (_sessionId: string, modelId: string) => ({
+    const selectModel = vi.fn(async (_sessionId: string, modelId: string, level?: ThinkingLevel): Promise<SessionModels> => ({
       ...models,
       currentId: modelId,
+      thinking: { currentLevel: level ?? "medium", availableLevels: ["off", "low", "medium", "high"] },
     }));
     render(<HarnessGui client={{
       snapshot: async () => ({
@@ -287,10 +357,10 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
 
     const selector = await screen.findByRole("button", { name: "Session model" });
     await waitFor(() => expect(selector).toBeEnabled());
-    expect(selector).toHaveTextContent("provider-a · shared-model · Reasoning");
+    expect(selector).toHaveTextContent("provider-a · shared-model");
     selector.focus();
     await user.keyboard("{ArrowDown}");
-    const first = screen.getByRole("menuitemradio", { name: /provider-a · shared-model · Reasoning/ });
+    const first = screen.getByRole("menuitemradio", { name: /provider-a · shared-model/ });
     const second = screen.getByRole("menuitemradio", { name: /provider-b · shared-model/ });
     expect(first).toHaveFocus();
     expect(first).toBeChecked();
@@ -302,8 +372,19 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     await user.click(selector);
     await user.click(screen.getByRole("menuitemradio", { name: /provider-b · shared-model/ }));
     expect(selectModel).toHaveBeenCalledWith("session-gui", "provider-b:endpoint-b:shared-model");
+    const effort = await screen.findByRole("menu", { name: "Reasoning effort" });
+    expect(within(effort).getByRole("menuitemradio", { name: "Medium" })).toBeChecked();
+    expect(within(effort).getByRole("menuitemradio", { name: "Default" })).toBeVisible();
+    await user.click(within(effort).getByRole("menuitemradio", { name: "High" }));
+    expect(selectModel).toHaveBeenLastCalledWith("session-gui", "provider-b:endpoint-b:shared-model", "high");
     expect(selector).toHaveTextContent("provider-b · shared-model");
+    expect(selector).toHaveTextContent("High");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    await user.click(selector);
+    await user.click(screen.getByRole("menuitemradio", { name: /provider-b · shared-model/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: "Default" }));
+    expect(selectModel).toHaveBeenLastCalledWith("session-gui", "provider-b:endpoint-b:shared-model", "off");
+    expect(selector).toHaveTextContent("Default");
   });
 
   it("refreshes the confirmed model after a restored session executes", async () => {
@@ -337,7 +418,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       } : session),
     }));
     expect(await screen.findByText("test · confirmed-model")).toBeInTheDocument();
-    expect(screen.getByText("Effort unavailable")).toBeVisible();
+    expect(screen.queryByText("Effort unavailable")).not.toBeInTheDocument();
   });
 
   it("shows accepted AppHost context without inventing a workspace or repository", async () => {
@@ -371,10 +452,11 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       interrupt: async () => ({ accepted: false }),
     }} />);
 
-    const navigation = await screen.findByLabelText("Attached AppHost sessions");
-    expect(within(navigation).getByText("Coding sessions")).toBeVisible();
+    await screen.findByRole("heading", { name: session.title });
+    const navigation = screen.getByRole("region", { name: "Chats" });
     expect(within(navigation).getByRole("button", { name: `${session.title} · Idle` })).toBeVisible();
-    expect(within(navigation).getByText("Workspace details unavailable")).toBeVisible();
+    expect(within(navigation).queryByText("Coding sessions")).not.toBeInTheDocument();
+    expect(within(navigation).queryByText("Workspace details unavailable")).not.toBeInTheDocument();
     expect(within(navigation).queryByText(/git ·/)).not.toBeInTheDocument();
     const context = within(screen.getByLabelText("Environment summary")).getByLabelText("AppHost session context");
     expect(within(context).getByText("cwd")).toBeVisible();

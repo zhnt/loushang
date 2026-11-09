@@ -674,7 +674,14 @@ impl ControlAuthority {
         session_id: &str,
         request_id: &str,
     ) -> Result<ModelControlResult, ()> {
-        self.model_request(channel, "session/models", session_id, None, request_id)
+        self.model_request(
+            channel,
+            "session/models",
+            session_id,
+            None,
+            None,
+            request_id,
+        )
     }
 
     pub(crate) fn select_model<R: Read, W: Write>(
@@ -682,9 +689,13 @@ impl ControlAuthority {
         channel: &mut Channel<R, W>,
         session_id: &str,
         model_id: &str,
+        thinking_level: Option<&str>,
         request_id: &str,
     ) -> Result<ModelControlResult, ()> {
-        if model_id.trim().is_empty() || model_id.chars().count() > 512 {
+        if model_id.trim().is_empty()
+            || model_id.chars().count() > 512
+            || thinking_level.is_some_and(|level| !THINKING_LEVELS.contains(&level))
+        {
             return Err(());
         }
         self.model_request(
@@ -692,6 +703,7 @@ impl ControlAuthority {
             "session/model/select",
             session_id,
             Some(model_id),
+            thinking_level,
             request_id,
         )
     }
@@ -702,11 +714,15 @@ impl ControlAuthority {
         operation: &str,
         session_id: &str,
         model_id: Option<&str>,
+        thinking_level: Option<&str>,
         request_id: &str,
     ) -> Result<ModelControlResult, ()> {
         let mut payload = self.app_payload(session_id)?;
         if let Some(model_id) = model_id {
             payload["modelId"] = Value::String(model_id.to_owned());
+        }
+        if let Some(level) = thinking_level {
+            payload["thinkingLevel"] = Value::String(level.to_owned());
         }
         let response = request(channel, operation, request_id, payload)?;
         decode_model_result(&response.result_type, &response.result)
@@ -820,6 +836,8 @@ impl ControlAuthority {
     }
 }
 
+const THINKING_LEVELS: [&str; 6] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+
 fn decode_model_result(result_type: &str, result: &RawValue) -> Result<ModelControlResult, ()> {
     if let Some(code) = decode_app_error(result_type, result)? {
         return Ok(ModelControlResult::Rejected(code));
@@ -829,13 +847,41 @@ fn decode_model_result(result_type: &str, result: &RawValue) -> Result<ModelCont
     }
     let value: Value = serde_json::from_str(result.get()).map_err(|_| ())?;
     let root = value.as_object().ok_or(())?;
-    if root.len() != 2 || !root.contains_key("currentId") || !root.contains_key("models") {
+    if !root.contains_key("currentId")
+        || !root.contains_key("models")
+        || root
+            .keys()
+            .any(|key| !["currentId", "models", "thinking"].contains(&key.as_str()))
+    {
         return Err(());
     }
     if !root["models"].is_array()
         || (!root["currentId"].is_null() && !root["currentId"].is_string())
     {
         return Err(());
+    }
+    if let Some(thinking) = root.get("thinking") {
+        let settings = thinking.as_object().ok_or(())?;
+        let current = settings
+            .get("currentLevel")
+            .and_then(Value::as_str)
+            .ok_or(())?;
+        let levels = settings
+            .get("availableLevels")
+            .and_then(Value::as_array)
+            .ok_or(())?;
+        if settings.len() != 2
+            || root["currentId"].is_null()
+            || levels.len() > THINKING_LEVELS.len()
+            || !levels.iter().any(|level| level.as_str() == Some(current))
+            || levels.iter().any(|level| {
+                !level
+                    .as_str()
+                    .is_some_and(|name| THINKING_LEVELS.contains(&name))
+            })
+        {
+            return Err(());
+        }
     }
     Ok(ModelControlResult::Accepted(value))
 }

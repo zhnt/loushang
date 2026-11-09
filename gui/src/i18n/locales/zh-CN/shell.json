@@ -6,6 +6,8 @@
   "accountId": "本地账户 ID",
   "accountMenu": "用户菜单",
   "generalSettings": "常规",
+  "settingsNavigation": "设置分类",
+  "hostSettings": "Host",
   "closeSettings": "关闭设置",
   "system": "跟随系统",
   "saveFailed": "当前窗口已切换语言，但未能保存语言偏好。",

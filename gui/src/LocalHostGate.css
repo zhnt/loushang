@@ -1,4 +1,9 @@
 .local-host-panel { display: grid; gap: 12px; }
+.local-host-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.local-host-heading h3 { margin: 0; }
+.local-host-status { padding: 4px 8px; border-radius: 999px; color: #53565b; background: #f0f0f2; font-size: 12px; }
+.local-host-status[data-state="running"] { color: #16613c; background: var(--green-soft); }
+.local-host-card { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
 .local-host-panel label { display: grid; gap: 6px; }
 .local-host-panel input { min-width: 0; width: 100%; padding: 7px; border: 1px solid var(--line-strong); border-radius: 6px; }
 .local-host-actions { display: flex; flex-wrap: wrap; gap: 8px; }
