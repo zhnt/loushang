@@ -1,0 +1,4528 @@
+{
+  "baselineCommit": "60944e6d4",
+  "baselineSourceSha256": "cb0943f7d5499545d5745b1ca6d6aec0068d12fcb15497bdf012dbce4b68ed5d",
+  "inputs": {
+    "authority": "real FD/stat/write/unlink; controlled OS faults and cancellation barriers",
+    "payload": "fixed payload bytes\n",
+    "privateMetadataDelta": "DTO FQN and helper bound-method metadata intentionally move; public Bridge declarations unchanged",
+    "privateRoot": "per-test TemporaryDirectory below sticky /tmp"
+  },
+  "observations": {
+    "ancestor-link": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding continuity temporary path contains an unsafe link",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {
+        "alias": "symlink"
+      },
+      "tokens": 0,
+      "trace": []
+    },
+    "async-cancel-cleanup-error": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "first-cancel",
+        "notes": [
+          "Coding continuity cancelled-write cleanup also failed: OSError"
+        ],
+        "suppress": false,
+        "type": "CancelledError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {
+        "payload/continuity-ffffffffffffffffffffffffffffffff.jsonl": "fixed payload bytes\n"
+      },
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "async-cancel-repeat": {
+      "error": {
+        "cause": null,
+        "context": {
+          "cause": null,
+          "context": null,
+          "id": 1,
+          "message": "first-cancel",
+          "notes": [],
+          "suppress": false,
+          "type": "CancelledError"
+        },
+        "id": 0,
+        "message": "second-cancel",
+        "notes": [],
+        "suppress": false,
+        "type": "CancelledError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "async-cancel-success": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "first-cancel",
+        "notes": [],
+        "suppress": false,
+        "type": "CancelledError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "async-cancel-write-error": {
+      "error": {
+        "cause": null,
+        "context": {
+          "cause": null,
+          "context": null,
+          "id": 1,
+          "message": "first-cancel",
+          "notes": [],
+          "suppress": false,
+          "type": "CancelledError"
+        },
+        "id": 0,
+        "message": "injected payload write",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "async-done-error": {
+      "error": {
+        "cause": null,
+        "context": {
+          "cause": null,
+          "context": null,
+          "id": 1,
+          "message": "injected payload write",
+          "notes": [],
+          "suppress": false,
+          "type": "OSError"
+        },
+        "id": 0,
+        "message": "done-cancel",
+        "notes": [
+          "Coding continuity temporary write also failed: OSError"
+        ],
+        "suppress": false,
+        "type": "CancelledError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "async-remove-cancel": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "first-cancel",
+        "notes": [],
+        "suppress": false,
+        "type": "CancelledError"
+      },
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "async-remove-error": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "injected payload unlink",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {
+        "payload/continuity-ffffffffffffffffffffffffffffffff.jsonl": "fixed payload bytes\n"
+      },
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "async-success": {
+      "error": null,
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "collision-retry": {
+      "error": null,
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {
+        "payload/continuity-ffffffffffffffffffffffffffffffff.jsonl": "unowned"
+      },
+      "tokens": 2,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "exhaustion": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding continuity temporary namespace is exhausted",
+        "notes": [],
+        "suppress": false,
+        "type": "FileExistsError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {
+        "payload/continuity-ffffffffffffffffffffffffffffffff.jsonl": "unowned"
+      },
+      "tokens": 128,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "existing-root": {
+      "error": null,
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "fchmod-file-error": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "injected payload fchmod",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "fstat-file-error": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "injected file fstat",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {
+        "payload/continuity-ffffffffffffffffffffffffffffffff.jsonl": "fixed payload bytes\n"
+      },
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "fsync-error": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "injected payload fsync",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "normalize-root-mode": {
+      "error": null,
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "remove-close-both": {
+      "error": {
+        "cause": null,
+        "context": {
+          "cause": null,
+          "context": null,
+          "id": 1,
+          "message": "injected close file",
+          "notes": [],
+          "suppress": false,
+          "type": "OSError"
+        },
+        "id": 0,
+        "message": "injected close root",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [
+        "fd1",
+        "fd2"
+      ],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "remove-close-file": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "injected close file",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [
+        "fd2"
+      ],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "remove-close-root": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "injected close root",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [
+        "fd1"
+      ],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "remove-missing": {
+      "error": null,
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "remove-reparse": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding continuity temporary file identity changed",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {
+        "payload/continuity-ffffffffffffffffffffffffffffffff.jsonl": "fixed payload bytes\n"
+      },
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "remove-replaced": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding continuity temporary file identity changed",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {
+        "payload/continuity-ffffffffffffffffffffffffffffffff.jsonl": "replacement"
+      },
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "remove-root-identity": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding continuity temporary root identity changed",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {
+        "payload/continuity-ffffffffffffffffffffffffffffffff.jsonl": "fixed payload bytes\n"
+      },
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "remove-root-renamed": {
+      "error": null,
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {
+        "payload/continuity-ffffffffffffffffffffffffffffffff.jsonl": "unowned new root"
+      },
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "remove-stat-error": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "injected named stat",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {
+        "payload/continuity-ffffffffffffffffffffffffffffffff.jsonl": "fixed payload bytes\n"
+      },
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "remove-symlink": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding continuity temporary file identity changed",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {
+        "payload/continuity-ffffffffffffffffffffffffffffffff.jsonl": "symlink"
+      },
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "remove-unlink-error": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "injected payload unlink",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {
+        "payload/continuity-ffffffffffffffffffffffffffffffff.jsonl": "fixed payload bytes\n"
+      },
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "root-identity": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding continuity temporary root identity changed",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 0,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "root-link": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding continuity temporary path contains an unsafe link",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {
+        "payload": "symlink"
+      },
+      "tokens": 0,
+      "trace": []
+    },
+    "root-owner": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding continuity temporary root belongs to another user: <ROOT>/payload",
+        "notes": [],
+        "suppress": false,
+        "type": "PermissionError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 0,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "root-reparse": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding continuity temporary root is unsafe",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 0,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "short-write": {
+      "error": null,
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "write",
+          "fd2",
+          17
+        ],
+        [
+          "write",
+          "fd2",
+          14
+        ],
+        [
+          "write",
+          "fd2",
+          11
+        ],
+        [
+          "write",
+          "fd2",
+          8
+        ],
+        [
+          "write",
+          "fd2",
+          5
+        ],
+        [
+          "write",
+          "fd2",
+          2
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "sticky-root": {
+      "error": null,
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "unsupported": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "Secure directory-relative Continuity staging is unavailable on this platform",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 0,
+      "trace": []
+    },
+    "valid": {
+      "error": null,
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.jsonl",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "writable-root": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding continuity temporary path has a writable ancestor",
+        "notes": [],
+        "suppress": false,
+        "type": "PermissionError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 0,
+      "trace": []
+    },
+    "write-close-both-error": {
+      "error": {
+        "cause": null,
+        "context": {
+          "cause": null,
+          "context": {
+            "cause": null,
+            "context": null,
+            "id": 2,
+            "message": "injected payload write",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "id": 1,
+          "message": "injected close file",
+          "notes": [],
+          "suppress": false,
+          "type": "OSError"
+        },
+        "id": 0,
+        "message": "injected close root",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [
+        "fd1",
+        "fd2"
+      ],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "write-close-file-error": {
+      "error": {
+        "cause": null,
+        "context": {
+          "cause": null,
+          "context": null,
+          "id": 1,
+          "message": "injected payload write",
+          "notes": [],
+          "suppress": false,
+          "type": "OSError"
+        },
+        "id": 0,
+        "message": "injected close file",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [
+        "fd2"
+      ],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "write-error": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "injected payload write",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "write-error-missing": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "injected payload write",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "write-error-replaced": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "injected payload write",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {
+        "payload/continuity-ffffffffffffffffffffffffffffffff.jsonl": "replacement"
+      },
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "zero-write": {
+      "error": {
+        "cause": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding continuity temporary write made no progress",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "info": null,
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl",
+          false
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.jsonl"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    },
+    "zip": {
+      "error": null,
+      "info": {
+        "data": "fixed payload bytes\n",
+        "fields": [
+          "path",
+          "file_identity",
+          "root_identity",
+          "root_descriptor",
+          "file_descriptor"
+        ],
+        "fileIdentity": true,
+        "fileInheritable": false,
+        "fileMode": 384,
+        "path": "<ROOT>/payload/continuity-ffffffffffffffffffffffffffffffff.loushang.zip",
+        "rootIdentity": true,
+        "rootInheritable": false,
+        "rootMode": 448
+      },
+      "outstanding": [],
+      "remaining": {},
+      "tokens": 1,
+      "trace": [
+        [
+          "open",
+          "<ROOT>/payload",
+          720896,
+          [],
+          null
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd1",
+          448
+        ],
+        [
+          "open",
+          "continuity-ffffffffffffffffffffffffffffffff.loushang.zip",
+          655553,
+          [
+            384
+          ],
+          "fd1"
+        ],
+        [
+          "fchmod",
+          "fd2",
+          384
+        ],
+        [
+          "write",
+          "fd2",
+          20
+        ],
+        [
+          "fsync",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd2"
+        ],
+        [
+          "fstat",
+          "fd1"
+        ],
+        [
+          "stat",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.loushang.zip",
+          false
+        ],
+        [
+          "unlink",
+          "fd1",
+          "continuity-ffffffffffffffffffffffffffffffff.loushang.zip"
+        ],
+        [
+          "close",
+          "fd2"
+        ],
+        [
+          "close",
+          "fd1"
+        ]
+      ]
+    }
+  },
+  "schemaVersion": 1
+}

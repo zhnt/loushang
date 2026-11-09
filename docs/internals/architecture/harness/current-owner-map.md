@@ -185,6 +185,15 @@ The four focused [owned-task scenarios](../../../../tests/harness/runtime/test_o
 cover result reuse and repeated caller cancellation with success, failure or
 task cancellation; execution results belong to the implementation evidence.
 
+Continuity's internal `_payload_staging` owns the complete private payload
+write/pin/identity-checked-delete and cancellation settlement program. It uses
+the original journal write-all loop and owned-task join with one pure diagnostic
+label; it receives no Product authority or Code IO callbacks. Coding retains
+source/cwd/limit admission and restore/abort/lease business. Private DTO aliases
+preserve the Code import entry, with definition/reflection metadata moved.
+The [bounded custody evidence](key-designs/continuity-payload-custody-convergence.md)
+does not complete KD003 bytes import or eliminate the compatibility Path.
+
 The bounded [Product composition input preparation](plugin/composition-route-inputs.md)
 keeps owner grouping, structural supplied-binding checks, ordering and selection
 seed construction in the existing private Session assembly. Coding retains its

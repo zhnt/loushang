@@ -2,11 +2,40 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P1/A1–A67指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P1/A1–A67指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A67 及独立清理修复）
+## 当前状态（2026-11-09，A68）
+
+A68 从`60944e6d4`继续完整Goal，保留专用任务worktree和各lane用户改动。
+完整Continuity临时载荷mkdir/路径准入/独占写入/双FD与inode固定/身份删除及
+atomic取消结清归原Harness.Continuity。Core单label纯绑定，无Code IO回调；
+直接复用原write_all与await_owned_task，原特殊shield取消程序保持。
+Code保Bridge来源/限额/cwd/restore/abort/lease和其它32业务声明，AST全等原；
+11旧stage定义退出，私有DTO定义模块/bound alias反射差异单列，字段/slots保持。
+
+Code1555→1359（−196）、Core219、系统+23；当前Coding430文件118177行、
+系统1955源644571行，距15K仍103177。所有1953其它旧源SHA不变，清单C04与
+总量刷新。迁移、兼容及格式全部计账，不称系统净精简或KD003 bytes入口完成。
+
+未改源码时原消费者14fail/3pass/1skip、新probe前两例fail，均因本机工作区
+0775祖先被原规则拒绝。保留这些终态；仅用显式命令级fixture给每例私有/tmp
+输入，保managed wrapper/指定runtime/产品权限检查，不改workspace mode。
+43固定旧观察与17原消费者before/after各60过/1原skip；持久43对照无capture，
+连同原Bridge/Provider/bootstrap/lease/import及边界151过/1原skip（31.43s），
+不将重叠轮次相加。两种写取消首错/notes、重复取消、root rename保护新文件、
+128collision及失败清理的真实FD/文件证据均固定；不外推全平台/SDK/模型执行。
+
+原测试只迁故障hook到真实Core，62个assert及15个raises AST不变，节点和选择器
+保持。三个独立设计与实际代码视角无本片阻断，实施owner有界接受。两源类型、
+Ruff/格式、文档、依赖freshness、plan及diff检查通过，原CI发现/catalog/routes/
+workflow/platform不扩大。AI原通过记录保留，相关实现/输入未改变。
+详细来源、SHA、成本和接受见[本片工作件](key-designs/continuity-payload-custody-convergence.md)。
+native install/repair厚IO回借形状未采用，仍是剩余职责；KD003及KD011/A33
+原待确认边界不自动采用，P1–P4及≤15K完整Goal保持active。
+
+## A67 历史状态及独立清理修复（2026-11-09）
 
 A67 在专用任务分支完成 generated/installed Linux H6 release 的完整 inert
 reader 闭环：目录、成员/稳定 stat、canonical catalog、RECORD/发行身份及 ELF

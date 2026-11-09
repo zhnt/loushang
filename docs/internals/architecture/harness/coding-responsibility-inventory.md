@@ -124,7 +124,7 @@
 | [compaction/profiles.py](../../../../src/loushang/coding/compaction/profiles.py) | C19 | 266 | K | C19 压缩 profile/适配 | 5325b9284b25 | 266 | 5325b9284b25 |
 | [composition_provenance.py](../../../../src/loushang/coding/composition_provenance.py) | C01 | 214 | M | C01 启动、Plugin 与资源装配 | 30a8b59d8d49 | 214 | 30a8b59d8d49 |
 | [composition_sets.py](../../../../src/loushang/coding/composition_sets.py) | C01 | 236 | M | C01 启动、Plugin 与资源装配 | e77cb0ebf1e1 | 236 | e77cb0ebf1e1 |
-| [continuity.py](../../../../src/loushang/coding/continuity.py) | C04 | 1,555 | M | C04 Continuity | cb0943f7d549 | 1,555 | cb0943f7d549 |
+| [continuity.py](../../../../src/loushang/coding/continuity.py) | C04 | 1,555 | M | C04 Continuity | cb0943f7d549 | 1359 | 0119e90b2357 |
 | [continuity_bootstrap.py](../../../../src/loushang/coding/continuity_bootstrap.py) | C04 | 1,622 | M | C04 Continuity | acbe4067566c | 1,609 | 76e2fc91bd73 |
 | [control/__init__.py](../../../../src/loushang/coding/control/__init__.py) | C26 | 39 | R/K | C26 配置兼容导出与路径 | 6bbbc65acf54 | 39 | 6bbbc65acf54 |
 | [control/settings_store.py](../../../../src/loushang/coding/control/settings_store.py) | C26 | 13 | K | C26 配置兼容导出与路径 | ff84662c1150 | 13 | ff84662c1150 |
@@ -456,7 +456,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C01 | 22 | 13,065 |
 | C02 | 28 | 8,413 |
 | C03 | 15 | 4,132 |
-| C04 | 2 | 3,164 |
+| C04 | 2 | 2,968 |
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
 | C07 | 112 | 25,170 |
@@ -481,4 +481,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 118,373 |
+| 合计 | 430 | 118,177 |

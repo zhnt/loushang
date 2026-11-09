@@ -97,3 +97,19 @@ one explicit expected cleanup delta. Seven additional local faults check each
 directory level, compound close failures and interrupt/cancellation propagation.
 
 Explicit local path: [probe_native_release_readers_compatibility.py](../../../tests/coding/probe_native_release_readers_compatibility.py).
+
+The Continuity payload custody probe compares43 immutable original observations
+over real private files/descriptors, identity-checked deletion and barrier-controlled
+cancellation. Its fixture has baseline source provenance and no capture path.
+The original consumer assertions remain intact; fault hooks follow the shared owner.
+
+Explicit local path: [probe_continuity_payload_custody.py](../../../tests/coding/probe_continuity_payload_custody.py).
+
+For strict path-input tests on this machine, workspace mode0775 is correctly
+refused as a writable ancestor. The probe supplies per-test private `/tmp` input
+directories; pytest's managed lease/runtime stay unchanged. To apply the same
+local input fixture to original Bridge consumers, explicitly add
+`-p tests.coding.probe_continuity_payload_custody`, with the worktree root appended
+to its `src` PYTHONPATH. Keep the managed wrapper, mandated runtime environment
+and original non-live/host-runtime selectors. This plugin is local opt-in and
+does not alter default test discovery or Product path-admission rules.

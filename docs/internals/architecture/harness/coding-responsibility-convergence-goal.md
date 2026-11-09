@@ -6,7 +6,7 @@
 
 - Authority: accepted execution goal；用户2026-11-07将本描述设为active Goal。本文件不替代各组件的已接受架构合同。
 - Design status: accepted goal scope；各波次专项架构仍须设计、评审及按原约定由用户审阅重要工作件。
-- 当前实施摘要：A56装配、A57查询取得、A58/A59恢复协调及A61完整Canary生命周期及A63完整operator query已接通并有界接受；A60/KD011 R6仍待用户图审。当前计量及欠账见下文“A63当前计量”。以下逐项保留各历史接受范围。
+- 当前实施摘要：最新A68将完整Continuity临时载荷custody归原Harness，A67 native reader与独立清理修复已提交；当前计量及欠账见下文“当前状态”。KD011/A33待用户工作件保持，KD003 bytes-import仍未实施；以下逐项保留各历史接受范围。
 - Implementation status: partial（P1/P2/P3/P4）；指定五流/Rooted命令、payload、checkpoint/快照及A13–A15 Windows指定路径已获有界技术接受；A17图关系归原Session，A19本地启动阶段复用、A20托管Session桥接、A21 foreground Product所有权接缝、A22受控Wheel Source目录共享程序及A23依赖来源完整操作复用也已获有界接受。P2 R2.1职责方向已于2026-11-08获用户接受，D3完整兼容捕获路径获有界技术接受（181实际通过/5原skip），D1/D2的owner租约/证据账本与startup、D4完整成员/退役/关闭协同均已接入并获有界接受，P2启动装配首批owner publication亦已接通并获有界代码接受（75项实际回归及21组冻结观察对照），三种构造/发布前后清理路径也已复用Session共同程序并完成有界评审，原Loader回执至Catalog source specs完整交接也已接入（原47节点通过/失败集合不变，16固定观察通过，保留10项迁前失败），其余bootstrap/共同输入与刷新装配仍待收敛；KD010六Windows基线/join已整体接入Worker.history并取得实际有限验证，P4的F06 Goal记录后端亦已本地接通（14原节点及7固定IO观察通过，2项Session准入失败用旧后端复现），A24十三个Payload入口已复用原Storage根借用、删除重复根IO骨架（Code−71/系统净−48，实际48项通过及代码三视角有界接受），A25内置Source四个物理程序也已接入原Resources（Code−216/系统+4，65过/1原native skip，代码三视角有界接受）；A26 Windows Worker Source完整目录协调已归原Package Product（Code−204/系统+78，117过/1原native skip，代码三视角有界接受）；A27两平台候选事实联接及四条安装/更新共同程序已归原Package Product（Code−313/系统净−123，103过/2原skip，代码三视角有界接受）；其余Worker、其它托管/Continuity与P4剩余入口仍未完成，Coding≤15K及现行职责/复用/成本准则保持，实际测试与全成本见[执行记录](coding-responsibility-convergence-progress.md)。
 - Owner: Coding与各接收组件原owner；跨组件决定由共同上级架构owner综合接受。
 - 依据：[全量重构方案](coding-reconstruction-proposal.md)、[逐文件职责清单](coding-responsibility-inventory.md)、[Current Owner Map](current-owner-map.md)。方案与清单中的旧行数不是本轮当前事实。
@@ -27,7 +27,23 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-09，A67 及独立清理修复）
+## 当前状态（2026-11-09，A68）
+
+完整 P1–P4、Coding ≤15K、Harness 复用及兼容恢复目标保持。A68 将临时
+Continuity payload 的完整写入/双FD与inode固定/身份删除/取消结清归原Continuity，
+复用原write_all及await_owned_task；Code保留Bridge准入、限额、来源/cwd和
+restore/abort/lease业务，32原业务声明AST不变。Code −196、Core +219、系统 +23；
+当前Coding430文件118177行、系统1955源644571行，距15K仍103177，Goal未完成。
+
+43固定旧观察及17原Bridge消费者before/after各60过/1原skip；更广真实消费者、
+边界与持久探针151过/1原skip（31.43s），不重叠累加。原安全规则拒绝本机
+0775工作区祖先的失败记录保留；命令级私有输入fixture纠正，不改Product或runtime。
+三个独立设计/实际代码视角有界接受，类型/Ruff/格式/文档/依赖/plan检查通过。
+私有DTO定义模块与bound-method反射位置变化明确单列；无产品持久schema变化。
+KD003 bytes-import仍draft/not-started，native install/repair及其余职责仍待收敛，
+详见[本片设计及交付](key-designs/continuity-payload-custody-convergence.md)。
+
+## A67 历史状态及独立清理修复（2026-11-09）
 
 完整 P1–P4、Coding ≤15K、Harness 复用和兼容恢复目标保持。A67 将 generated/
 installed Linux H6 release 完整惰性读取与校验归原 Worker，复用原 bounded-prefix

@@ -89,3 +89,12 @@ R2的完整非owned接续不能简化为调用一次_frozen helper：应分别�
 - **非持久JSONL仍有公开引用。** 实际`get_session_file()`在bridge.prepare返回后是已清理的源PosixPath；consume后原runtime当前引用仍是该路径字符串。无文件导入若返回None或另一种ref，是需要显式比较的行为变化；不能用`_import_frozen(persist=False)`直接推导等价，也不伪造physicalPath。是否保留旧兼容适配或演进引用仍未决，本轮没有接受任一方案。
 
 普通Path、owned、legacy非owned与detached的职责、来源准入、before hook、fallback及清理范围继续分列。保留真实Path兼容适配时，不把旧staging原样搬入Harness当作算法复用；直接复用现成RootedFileIO也须注意其Linux限制不能收紧原POSIX支持。还没有完整替代diff、全成本或R3接受，R2继续draft/not-started，原Goal数量及完成条件不变。
+
+## A68：独立临时载荷职责归位，bytes 目标仍未实施
+
+[完整临时载荷custody](continuity-payload-custody-convergence.md)已作为独立中间
+职责切片接通原Harness.Continuity。原写/固定/身份删/取消程序及Path导入合同保持，
+Code保来源/限额/cwd和restore政策；只将短写循环实际接入原write_all，不把其余
+迁移说成算法复用或系统去重（Code−196/Core219/系统+23）。公开Bridge/attachment/
+FileCopy及owned/legacy/detached差异没有替换，本稿的不可变输入API、暂存退出、
+完整非owned接续及成本决策仍draft/not-started，不因此接受KD003目标或关闭缺口。
