@@ -7,31 +7,36 @@ permission to launch or delete a payload.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from dataclasses import dataclass
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from loushang.harness.package_product._worker_windows_attempt import (
+    WindowsProductWorkerIntentRecords,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    windows_listdir_at,
-)
 from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
+from loushang.harness.worker.history._base_codec import _BaseWireMethods, _unchanged
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
 )
 
 from .package_legacy_windows_receipt import (
-    read_windows_private_receipt,
-    write_windows_private_receipt,
+    _MAX_RECEIPT_BYTES,
+    _receipt_io,
 )
 from .package_product_worker_windows_receipt import (
     CodingWindowsWorkerProductReceiptOwner,
@@ -57,7 +62,16 @@ class CodingWindowsWorkerLaunchIntentError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerLaunchIntentV1:
+class CodingWindowsWorkerLaunchIntentV1(_BaseWireMethods):
+    _wire_label = "Windows Worker launch intent"
+    _wire_lists = ("stageIdentity",)
+    _wire_error_type = CodingWindowsWorkerLaunchIntentError
+    _wire_error_code = "coding_worker_launch_intent_invalid"
+
+    @classmethod
+    def _wire_maximum(cls) -> int:
+        return _MAX_BYTES
+
     attempt_id: str
     stage_identity: tuple[int, int]
     receipt_fingerprint: str
@@ -121,49 +135,14 @@ class CodingWindowsWorkerLaunchIntentV1:
 
     @classmethod
     def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerLaunchIntentV1:
-        if type(raw) is not bytes or not raw or len(raw) > _MAX_BYTES:
-            raise CodingWindowsWorkerLaunchIntentError(
-                "coding_worker_launch_intent_invalid"
-            )
-        try:
-            value = json.loads(raw)
-            if (
-                type(value) is not dict
-                or set(value)
-                != {
-                    "attemptId",
-                    "identityFingerprint",
-                    "intentVersion",
-                    "ownerId",
-                    "payloadDigest",
-                    "receiptFingerprint",
-                    "requestFingerprint",
-                    "runtimeFingerprint",
-                    "stageIdentity",
-                    "supervisorEpoch",
-                }
-                or type(value["stageIdentity"]) is not list
-            ):
-                raise ValueError("Windows Worker launch intent fields changed")
-            intent = cls(
-                attempt_id=value["attemptId"],
-                stage_identity=tuple(value["stageIdentity"]),
-                receipt_fingerprint=value["receiptFingerprint"],
-                request_fingerprint=value["requestFingerprint"],
-                identity_fingerprint=value["identityFingerprint"],
-                runtime_fingerprint=value["runtimeFingerprint"],
-                payload_digest=value["payloadDigest"],
-                owner_id=value["ownerId"],
-                supervisor_epoch=value["supervisorEpoch"],
-                intent_version=value["intentVersion"],
-            )
-            if intent.to_bytes() != raw:
-                raise ValueError("Windows Worker launch intent encoding changed")
-            return intent
-        except (TypeError, ValueError, UnicodeError, KeyError) as exc:
-            raise CodingWindowsWorkerLaunchIntentError(
-                "coding_worker_launch_intent_invalid"
-            ) from exc
+        return cls._from_wire_bytes(raw)
+
+
+CodingWindowsWorkerLaunchIntentV1._wire_schema = RecordSchema.for_dataclass(
+    CodingWindowsWorkerLaunchIntentV1,
+    _unchanged,
+    RecordField("stage_identity", decoder=tuple),
+)
 
 
 def commit_coding_windows_product_worker_launch_intent(
@@ -175,7 +154,6 @@ def commit_coding_windows_product_worker_launch_intent(
     payload_lease: CodingWindowsWorkerPayloadLeaseV1,
 ) -> CodingWindowsWorkerLaunchIntentV1:
     """Publish one exact launch identity before any native or process effect."""
-
     from .package_product_worker_windows_payload import (
         CodingWindowsWorkerPayloadLeaseV1,
         _require_coding_windows_product_bound_request,
@@ -187,28 +165,38 @@ def commit_coding_windows_product_worker_launch_intent(
         type(receipt_owner) is not CodingWindowsWorkerProductReceiptOwner
         or receipt_owner.product_owner is not product
         or type(receipt) is not ProductWorkerActivationReceiptV1
-        or type(request) is not ManagedWorkerLaunchRequestV1
-        or type(payload_lease) is not CodingWindowsWorkerPayloadLeaseV1
-        or request.identity.product_id != "coding"
-        or receipt.policy.product_id != "coding"
-        or request.identity.scope_id != receipt.policy.product_scope_id
-        or request.identity.plugin_id != receipt.policy.plugin_id
-        or request.identity.plugin_revision_digest
-        != receipt.policy.plugin_revision_digest
-        or request.identity.contribution_id != receipt.policy.contribution_id
-        or request.identity.owner_generation
-        != receipt.policy.owner_selection_generation
-        or request.identity.declaration_fingerprint
-        != receipt.policy.declaration_fingerprint
-        or request.identity.worker_configuration_fingerprint
-        != receipt.policy.worker_configuration_fingerprint
-        or request.identity.attempt_id != payload_lease.attempt_id
-        or request.identity.owner_id != payload_lease.owner_id
-        or request.runtime != payload_lease.runtime
-        or receipt.fingerprint != payload_lease.receipt_fingerprint
-        or request.runtime.executable_digest != payload_lease.payload_digest
-        or (request.runtime.cwd_device, request.runtime.cwd_inode)
-        != payload_lease.stage_identity
+        or (type(request) is not ManagedWorkerLaunchRequestV1)
+        or (type(payload_lease) is not CodingWindowsWorkerPayloadLeaseV1)
+        or (request.identity.product_id != "coding")
+        or (receipt.policy.product_id != "coding")
+        or (request.identity.scope_id != receipt.policy.product_scope_id)
+        or (request.identity.plugin_id != receipt.policy.plugin_id)
+        or (
+            request.identity.plugin_revision_digest
+            != receipt.policy.plugin_revision_digest
+        )
+        or (request.identity.contribution_id != receipt.policy.contribution_id)
+        or (
+            request.identity.owner_generation
+            != receipt.policy.owner_selection_generation
+        )
+        or (
+            request.identity.declaration_fingerprint
+            != receipt.policy.declaration_fingerprint
+        )
+        or (
+            request.identity.worker_configuration_fingerprint
+            != receipt.policy.worker_configuration_fingerprint
+        )
+        or (request.identity.attempt_id != payload_lease.attempt_id)
+        or (request.identity.owner_id != payload_lease.owner_id)
+        or (request.runtime != payload_lease.runtime)
+        or (receipt.fingerprint != payload_lease.receipt_fingerprint)
+        or (request.runtime.executable_digest != payload_lease.payload_digest)
+        or (
+            (request.runtime.cwd_device, request.runtime.cwd_inode)
+            != payload_lease.stage_identity
+        )
     ):
         raise CodingWindowsWorkerLaunchIntentError(
             "coding_worker_launch_intent_binding_mismatch"
@@ -224,52 +212,27 @@ def commit_coding_windows_product_worker_launch_intent(
         owner_id=payload_lease.owner_id,
         supervisor_epoch=request.identity.supervisor_epoch,
     )
-    with product.gc_gate.guard(require_write=True):
-        product.assert_root_gc_authority_current()
-        _require_coding_windows_product_bound_request(
+    return _intent_records(product).commit(
+        receipt_owner=receipt_owner,
+        receipt=receipt,
+        request=request,
+        payload_lease=payload_lease,
+        intent=intent,
+        require_bound=partial(
+            _require_coding_windows_product_bound_request,
             receipt_owner=receipt_owner,
             receipt=receipt,
             payload_lease=payload_lease,
             request=request,
-        )
-        selected = receipt_owner.current_selected_payload(receipt)
-        owner_id = receipt_owner.current_worker_owner_id(receipt)
-        if (
-            selected.digest != payload_lease.payload_digest
-            or selected.configuration.fingerprint
-            != request.runtime.worker_configuration_fingerprint
-            or len(selected.body) != request.runtime.executable_size
-            or owner_id != payload_lease.owner_id
-        ):
-            raise CodingWindowsWorkerLaunchIntentError(
-                "coding_worker_launch_intent_selection_stale"
-            )
-        _verify_stage_marker(
+        ),
+        verify_marker=partial(
+            _verify_stage_marker,
             receipt_owner=receipt_owner,
             receipt=receipt,
             payload_lease=payload_lease,
-            entrypoint=selected.configuration.entrypoint,
             initial=True,
-        )
-        request.runtime.verify()
-        request.validate_current()
-        existing = _read_intent_under_gc_guard(
-            product, intent.attempt_id, allow_unpublished_stage=True
-        )
-        if existing is not None:
-            raise CodingWindowsWorkerLaunchIntentError(
-                "coding_worker_launch_intent_attempt_reused"
-            )
-        with product.epoch_runtime.borrow_product_state_root_descriptor():
-            write_windows_private_receipt(
-                _path(product, intent.attempt_id), intent.to_bytes()
-            )
-            if _read_intent_under_gc_guard(product, intent.attempt_id) != intent:
-                raise CodingWindowsWorkerLaunchIntentError(
-                    "coding_worker_launch_intent_publication_changed"
-                )
-        product.assert_root_gc_authority_current()
-        return intent
+        ),
+    )
 
 
 def read_coding_windows_product_worker_launch_intent(
@@ -296,31 +259,7 @@ def inspect_coding_windows_product_worker_launch_intents(
 def _inspect_intents_under_gc_guard(
     product: WindowsLocalWheelProductSessionOwner,
 ) -> tuple[CodingWindowsWorkerLaunchIntentV1, ...]:
-    product.assert_root_gc_authority_current()
-    with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-        names = windows_listdir_at(root)
-        prefixed = {name for name in names if name.casefold().startswith(_PREFIX)}
-        histories = {name for name in prefixed if _NAME.fullmatch(name)}
-        if prefixed != histories or len(histories) > _MAX_ATTEMPTS:
-            raise CodingWindowsWorkerLaunchIntentError(
-                "coding_worker_launch_intent_inventory_unsafe"
-            )
-        intents = []
-        for name in sorted(histories):
-            match = _NAME.fullmatch(name)
-            assert match is not None
-            intent = _read_intent_under_gc_guard(product, match.group(1))
-            if intent is None:
-                raise CodingWindowsWorkerLaunchIntentError(
-                    "coding_worker_launch_intent_inventory_unsafe"
-                )
-            intents.append(intent)
-        if set(windows_listdir_at(root)) != set(names):
-            raise CodingWindowsWorkerLaunchIntentError(
-                "coding_worker_launch_intent_inventory_changed"
-            )
-    product.assert_root_gc_authority_current()
-    return tuple(intents)
+    return _intent_records(product).inspect()
 
 
 def _read_intent_under_gc_guard(
@@ -329,20 +268,9 @@ def _read_intent_under_gc_guard(
     *,
     allow_unpublished_stage: bool = False,
 ) -> CodingWindowsWorkerLaunchIntentV1 | None:
-    product.assert_root_gc_authority_current()
-    with product.epoch_runtime.borrow_product_state_root_descriptor():
-        raw = read_windows_private_receipt(
-            _path(product, attempt_id),
-            maximum_bytes=_MAX_BYTES,
-            allow_unpublished_stage=allow_unpublished_stage,
-        )
-    intent = None if raw is None else CodingWindowsWorkerLaunchIntentV1.from_bytes(raw)
-    if intent is not None and intent.attempt_id != attempt_id:
-        raise CodingWindowsWorkerLaunchIntentError(
-            "coding_worker_launch_intent_invalid"
-        )
-    product.assert_root_gc_authority_current()
-    return intent
+    return _intent_records(product).read(
+        attempt_id, allow_unpublished_stage=allow_unpublished_stage
+    )
 
 
 def _path(product: WindowsLocalWheelProductSessionOwner, attempt_id: str) -> Path:
@@ -371,3 +299,21 @@ __all__ = [
     "inspect_coding_windows_product_worker_launch_intents",
     "read_coding_windows_product_worker_launch_intent",
 ]
+
+
+def _intent_records(
+    product: WindowsLocalWheelProductSessionOwner,
+) -> WindowsProductWorkerIntentRecords[CodingWindowsWorkerLaunchIntentV1]:
+    return WindowsProductWorkerIntentRecords(
+        _product=product,
+        _io=_receipt_io,
+        _record_type=CodingWindowsWorkerLaunchIntentV1,
+        _path=partial(_path, product),
+        _prefix=_PREFIX,
+        _name_pattern=_NAME,
+        _maximum_bytes=lambda: _MAX_BYTES,
+        _maximum_attempts=lambda: _MAX_ATTEMPTS,
+        _error_type=CodingWindowsWorkerLaunchIntentError,
+        _error_prefix="coding_worker_launch_intent",
+        _write_maximum_bytes=_MAX_RECEIPT_BYTES,
+    )

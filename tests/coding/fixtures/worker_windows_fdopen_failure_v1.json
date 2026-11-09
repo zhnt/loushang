@@ -1,0 +1,212 @@
+{
+  "native_approval:read:fdopen_failure": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file-wrapper failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        false,
+        false,
+        null,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 1,
+    "files": {
+      "worker-native-release-approvals.jsonl": "7072696f72"
+    }
+  },
+  "native_approval:append:fdopen_failure": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file-wrapper failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        true,
+        true,
+        123,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 1,
+    "files": {
+      "worker-native-release-approvals.jsonl": ""
+    }
+  },
+  "opt_in:read:fdopen_failure": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file-wrapper failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        false,
+        false,
+        null,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 1,
+    "files": {
+      "worker-opt-in.jsonl": "7072696f72"
+    }
+  },
+  "opt_in:append:fdopen_failure": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file-wrapper failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        true,
+        true,
+        123,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 1,
+    "files": {
+      "worker-opt-in.jsonl": ""
+    }
+  },
+  "receipt:read:fdopen_failure": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file-wrapper failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        false,
+        false,
+        null,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 1,
+    "files": {
+      "worker-activation-receipts.jsonl": "7072696f72"
+    }
+  },
+  "receipt:append:fdopen_failure": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file-wrapper failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        true,
+        true,
+        123,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 1,
+    "files": {
+      "worker-activation-receipts.jsonl": ""
+    }
+  },
+  "supervisor:read:fdopen_failure": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file-wrapper failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        false,
+        false,
+        null,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 1,
+    "files": {
+      "worker-supervisor.jsonl": "7072696f72"
+    }
+  },
+  "supervisor:append:fdopen_failure": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file-wrapper failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        true,
+        true,
+        123,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 1,
+    "files": {
+      "worker-supervisor.jsonl": ""
+    }
+  },
+  "activation_state:read:fdopen_failure": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file-wrapper failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        false,
+        false,
+        null,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 1,
+    "files": {
+      "worker-activation-state.jsonl": "7072696f72"
+    }
+  },
+  "activation_state:append:fdopen_failure": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file-wrapper failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        true,
+        true,
+        123,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 1,
+    "files": {
+      "worker-activation-state.jsonl": ""
+    }
+  }
+}

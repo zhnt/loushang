@@ -1,0 +1,378 @@
+{
+  "lsp:disable_before_stage": {
+    "calls": [
+      {
+        "name": "document_outline",
+        "enabled": false,
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        }
+      },
+      {
+        "name": "inspect_symbol",
+        "enabled": false,
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        }
+      }
+    ],
+    "receipt": {
+      "contributionIds": [
+        "coding-lsp-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools",
+      "retirementHandle": "registration-scope:8df5c5459cb953591b29c730e861112b1202f2b938e5dc2a7d74b8928c195255"
+    }
+  },
+  "lsp:enable_before_stage": {
+    "calls": [
+      {
+        "name": "document_outline",
+        "enabled": true,
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        }
+      },
+      {
+        "name": "inspect_symbol",
+        "enabled": true,
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        }
+      }
+    ],
+    "receipt": {
+      "contributionIds": [
+        "coding-lsp-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools",
+      "retirementHandle": "registration-scope:8df5c5459cb953591b29c730e861112b1202f2b938e5dc2a7d74b8928c195255"
+    }
+  },
+  "lsp:scope_before_stage": {
+    "calls": [
+      {
+        "name": "document_outline",
+        "enabled": false,
+        "runtime_id": "workspace:changed:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        }
+      },
+      {
+        "name": "inspect_symbol",
+        "enabled": false,
+        "runtime_id": "workspace:changed:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        }
+      }
+    ],
+    "receipt": {
+      "contributionIds": [
+        "coding-lsp-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:changed:coding.lsp.default:coding-lsp-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:changed:coding.lsp.default:coding-lsp-tools",
+      "retirementHandle": "registration-scope:8fa8484df8907086bf6dd8e9bbf9e02ef84d64e5437d648ce265425799d61b4d"
+    }
+  },
+  "lsp:admission_before_stage": {
+    "calls": [
+      {
+        "name": "document_outline",
+        "enabled": false,
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 8,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "907adcd510e20ef41bae45e87224d669fae0d3c94f2ad2d8d16b9a443ef1c34f"
+        }
+      },
+      {
+        "name": "inspect_symbol",
+        "enabled": false,
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 8,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "907adcd510e20ef41bae45e87224d669fae0d3c94f2ad2d8d16b9a443ef1c34f"
+        }
+      }
+    ],
+    "receipt": {
+      "contributionIds": [
+        "coding-lsp-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools:generation:8",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools",
+      "retirementHandle": "registration-scope:a865bdeb7e857a6ca2af1804554a60c4272f4325bddbd2f60e1ce1979a0153b3"
+    }
+  },
+  "lsp:metadata_after_projection": {
+    "calls": [
+      {
+        "name": "document_outline",
+        "enabled": true,
+        "runtime_id": "workspace:after-projection:coding.lsp.default:coding-lsp-tools",
+        "generation": 8,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "907adcd510e20ef41bae45e87224d669fae0d3c94f2ad2d8d16b9a443ef1c34f"
+        }
+      },
+      {
+        "name": "inspect_symbol",
+        "enabled": true,
+        "runtime_id": "workspace:after-projection:coding.lsp.default:coding-lsp-tools",
+        "generation": 8,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "907adcd510e20ef41bae45e87224d669fae0d3c94f2ad2d8d16b9a443ef1c34f"
+        }
+      }
+    ],
+    "receipt": {
+      "contributionIds": [
+        "coding-lsp-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:after-projection:coding.lsp.default:coding-lsp-tools:generation:8",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:after-projection:coding.lsp.default:coding-lsp-tools",
+      "retirementHandle": "registration-scope:7135ea4456da563ff3c5e7eb89276bd660536647befd8ac993106538aeff1ba8"
+    }
+  },
+  "lsp:receipt_after_stage": {
+    "calls": [
+      {
+        "name": "document_outline",
+        "enabled": false,
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        }
+      },
+      {
+        "name": "inspect_symbol",
+        "enabled": false,
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        }
+      }
+    ],
+    "receipt": {
+      "contributionIds": [
+        "coding-arch-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools",
+      "retirementHandle": "registration-scope:8df5c5459cb953591b29c730e861112b1202f2b938e5dc2a7d74b8928c195255"
+    }
+  },
+  "arch:disable_before_stage": {
+    "calls": [
+      {
+        "name": "inspect_import_graph",
+        "enabled": false,
+        "runtime_id": "workspace:sample:coding.arch.default:coding-arch-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.arch.default",
+          "contribution_id": "coding-arch-tools",
+          "admission_fingerprint": "f7f5308ccd0fa6381a711e7e0d0d0dd88c5f81c3bc955f6a55105138e493512b"
+        }
+      }
+    ],
+    "receipt": {
+      "contributionIds": [
+        "coding-arch-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools",
+      "retirementHandle": "registration-scope:8db86da04d43b509d110c3176642cf5754550b4c29bac1c1b0c308678565fd83"
+    }
+  },
+  "arch:enable_before_stage": {
+    "calls": [
+      {
+        "name": "inspect_import_graph",
+        "enabled": true,
+        "runtime_id": "workspace:sample:coding.arch.default:coding-arch-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.arch.default",
+          "contribution_id": "coding-arch-tools",
+          "admission_fingerprint": "f7f5308ccd0fa6381a711e7e0d0d0dd88c5f81c3bc955f6a55105138e493512b"
+        }
+      }
+    ],
+    "receipt": {
+      "contributionIds": [
+        "coding-arch-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools",
+      "retirementHandle": "registration-scope:8db86da04d43b509d110c3176642cf5754550b4c29bac1c1b0c308678565fd83"
+    }
+  },
+  "arch:scope_before_stage": {
+    "calls": [
+      {
+        "name": "inspect_import_graph",
+        "enabled": false,
+        "runtime_id": "workspace:changed:coding.arch.default:coding-arch-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.arch.default",
+          "contribution_id": "coding-arch-tools",
+          "admission_fingerprint": "f7f5308ccd0fa6381a711e7e0d0d0dd88c5f81c3bc955f6a55105138e493512b"
+        }
+      }
+    ],
+    "receipt": {
+      "contributionIds": [
+        "coding-arch-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:changed:coding.arch.default:coding-arch-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:changed:coding.arch.default:coding-arch-tools",
+      "retirementHandle": "registration-scope:9ed91f53e290c5265ba68f085cbecaf5c876f59ca1ff8f6da965a6a0e7fd7c71"
+    }
+  },
+  "arch:admission_before_stage": {
+    "calls": [
+      {
+        "name": "inspect_import_graph",
+        "enabled": false,
+        "runtime_id": "workspace:sample:coding.arch.default:coding-arch-tools",
+        "generation": 8,
+        "source_fields": {
+          "plugin_id": "coding.arch.default",
+          "contribution_id": "coding-arch-tools",
+          "admission_fingerprint": "e7b786ad9ac9a824a59116045fe4ff88b2aa6a065aa52b737abe50093998903a"
+        }
+      }
+    ],
+    "receipt": {
+      "contributionIds": [
+        "coding-arch-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools:generation:8",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools",
+      "retirementHandle": "registration-scope:0a3f88fc56c9f107afa57cad239333881958a125e9f6051a3b8025d4c34723cd"
+    }
+  },
+  "arch:metadata_after_projection": {
+    "calls": [
+      {
+        "name": "inspect_import_graph",
+        "enabled": true,
+        "runtime_id": "workspace:after-projection:coding.arch.default:coding-arch-tools",
+        "generation": 8,
+        "source_fields": {
+          "plugin_id": "coding.arch.default",
+          "contribution_id": "coding-arch-tools",
+          "admission_fingerprint": "e7b786ad9ac9a824a59116045fe4ff88b2aa6a065aa52b737abe50093998903a"
+        }
+      }
+    ],
+    "receipt": {
+      "contributionIds": [
+        "coding-arch-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:after-projection:coding.arch.default:coding-arch-tools:generation:8",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:after-projection:coding.arch.default:coding-arch-tools",
+      "retirementHandle": "registration-scope:9bbc723563db33b9e0c0c39b6a2f54cd8cd672106f1546cc20abf1d664c6427c"
+    }
+  },
+  "arch:receipt_after_stage": {
+    "calls": [
+      {
+        "name": "inspect_import_graph",
+        "enabled": false,
+        "runtime_id": "workspace:sample:coding.arch.default:coding-arch-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.arch.default",
+          "contribution_id": "coding-arch-tools",
+          "admission_fingerprint": "f7f5308ccd0fa6381a711e7e0d0d0dd88c5f81c3bc955f6a55105138e493512b"
+        }
+      }
+    ],
+    "receipt": {
+      "contributionIds": [
+        "coding-lsp-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools",
+      "retirementHandle": "registration-scope:8db86da04d43b509d110c3176642cf5754550b4c29bac1c1b0c308678565fd83"
+    }
+  },
+  "lsp:mode_between_tools": {
+    "calls": [
+      {
+        "name": "document_outline",
+        "enabled": false,
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        }
+      },
+      {
+        "name": "inspect_symbol",
+        "enabled": true,
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        }
+      }
+    ],
+    "receipt": {
+      "contributionIds": [
+        "coding-lsp-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools",
+      "retirementHandle": "registration-scope:8df5c5459cb953591b29c730e861112b1202f2b938e5dc2a7d74b8928c195255"
+    }
+  }
+}

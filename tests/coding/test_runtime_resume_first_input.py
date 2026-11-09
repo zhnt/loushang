@@ -203,7 +203,7 @@ def test_root_first_input_uses_native_model_transport_once(tmp_path, monkeypatch
                 await prepared.run_first_input()
             assert path.read_bytes() == committed
             assert not requests
-            assert not candidate._coding_resume_dispatch_claimed
+            assert not candidate._resume_dispatch_claimed
             await prepared.consume()
             assert root.current_session is candidate
             component_checks = []
@@ -257,11 +257,11 @@ def test_root_first_input_uses_native_model_transport_once(tmp_path, monkeypatch
             elif mode == "epoch_selection_fenced":
                 with pytest.raises(RuntimeError, match="Resume epoch is unavailable"):
                     await prepared.run_first_input()
-                assert not candidate._coding_resume_dispatch_claimed
+                assert not candidate._resume_dispatch_claimed
             elif mode == "component_publication_missing":
                 with pytest.raises(RuntimeError, match="component publication is unavailable"):
                     await prepared.run_first_input()
-                assert not candidate._coding_resume_dispatch_claimed
+                assert not candidate._resume_dispatch_claimed
             elif mode in {"workspace_changed", "epoch_control_changed"}:
                 # Replace an original owner's real directory, then restore it
                 # before native cleanup. Paths do not preserve its authority.
@@ -273,7 +273,7 @@ def test_root_first_input_uses_native_model_transport_once(tmp_path, monkeypatch
                 try:
                     with pytest.raises(ValueError, match=expected):
                         await prepared.run_first_input()
-                    assert not candidate._coding_resume_dispatch_claimed
+                    assert not candidate._resume_dispatch_claimed
                 finally:
                     target.rmdir()
                     retained.rename(target)

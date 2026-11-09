@@ -6,7 +6,6 @@ The Product must bind it to current references and a separate repair policy.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from hashlib import sha256
@@ -296,13 +295,10 @@ class PackageDependencyGcRepairReviewJournal:
             record_codec=_CODEC,
             format_profile=SORTED_UNICODE_JSONL_FORMAT,
             durability=self._durability,
-            load_policy=self._load_policy,
+            load_policy=replace(self._load_policy, collect_duplicate_keys=True),
         )
         records = snapshot.records
-        with self._path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                if line.strip():
-                    json.loads(line, object_pairs_hook=_unique_json_object)
+        snapshot.require_unique_keys('Dependency GC repair review has a duplicate JSON key')
         latest: dict[str, PackageDependencyGcRepairReviewV1] = {}
         seen_ids: set[str] = set()
         for revision, item in enumerate(records, 1):
@@ -321,15 +317,6 @@ class PackageDependencyGcRepairReviewJournal:
             latest[item.start_id] = item
             seen_ids.add(item.review_id)
         return records
-
-
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Dependency GC repair review has a duplicate JSON key")
-        result[key] = value
-    return result
 
 
 __all__ = [

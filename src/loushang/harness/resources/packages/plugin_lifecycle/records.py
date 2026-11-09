@@ -886,18 +886,7 @@ class PackageLifecycleRestartRequestV1:
         object.__setattr__(self, "restart_id", _fingerprint(self._identity_dict()))
 
     def _identity_dict(self) -> dict[str, object]:
-        return {
-            "operationId": self.operation_id,
-            "requestFingerprint": self.request_fingerprint,
-            "expectedPhase": self.expected_phase,
-            "expectedJournalRevision": self.expected_journal_revision,
-            "expectedAttemptEpoch": self.expected_attempt_epoch,
-            "expectedAttemptRevision": self.expected_attempt_revision,
-            "sourceProofRef": self.source_proof_ref,
-            "cleanupEvidenceRef": self.cleanup_evidence_ref,
-            "leaseSnapshotId": self.lease_snapshot_id,
-            "requestVersion": self.request_version,
-        }
+        return _RESTARTREQUEST_V1_SCHEMA.encode(self)
 
     def to_dict(self) -> dict[str, object]:
         return {"restartId": self.restart_id, **self._identity_dict()}
@@ -906,50 +895,10 @@ class PackageLifecycleRestartRequestV1:
     def from_dict(cls, value: object) -> PackageLifecycleRestartRequestV1:
         document = _exact_dict(
             value,
-            fields={
-                "restartId",
-                "operationId",
-                "requestFingerprint",
-                "expectedPhase",
-                "expectedJournalRevision",
-                "expectedAttemptEpoch",
-                "expectedAttemptRevision",
-                "sourceProofRef",
-                "cleanupEvidenceRef",
-                "leaseSnapshotId",
-                "requestVersion",
-            },
+            fields=_RESTARTREQUEST_V1_SCHEMA.keys | {"restartId"},
             name="Package restart request",
         )
-        result = cls(
-            operation_id=_wire_string(document["operationId"], name="operation id"),
-            request_fingerprint=_wire_string(
-                document["requestFingerprint"], name="request fingerprint"
-            ),
-            expected_phase=cast(
-                PackageLifecyclePhase,
-                _wire_string(document["expectedPhase"], name="expected phase"),
-            ),
-            expected_journal_revision=_wire_positive(
-                document["expectedJournalRevision"], name="operation revision"
-            ),
-            expected_attempt_epoch=_wire_positive(
-                document["expectedAttemptEpoch"], name="attempt epoch"
-            ),
-            expected_attempt_revision=_wire_positive(
-                document["expectedAttemptRevision"], name="attempt revision"
-            ),
-            source_proof_ref=_wire_string(
-                document["sourceProofRef"], name="Source proof ref"
-            ),
-            cleanup_evidence_ref=_wire_string(
-                document["cleanupEvidenceRef"], name="cleanup evidence ref"
-            ),
-            lease_snapshot_id=_wire_string(
-                document["leaseSnapshotId"], name="lease snapshot id"
-            ),
-            request_version=_wire_int(document["requestVersion"], name="version"),
-        )
+        result = _RESTARTREQUEST_V1_SCHEMA.decode(cls, document)
         if result.restart_id != document["restartId"]:
             raise ValueError("Package restart identity changed")
         return result
@@ -993,13 +942,7 @@ class PackageLifecycleRestartRecordV1:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "priorAttemptRevision": self.prior_attempt_revision,
-            "priorOperationRevision": self.prior_operation_revision,
-            "recordKind": self.record_kind,
-            "recordRevision": self.record_revision,
-            "recordVersion": self.record_version,
-            "request": self.request.to_dict(),
-            "status": self.status.to_dict(),
+            **_RECOVERY_RECORD_V1_SCHEMA.encode(self),
             "restart": self.restart.to_dict(),
         }
 
@@ -1007,16 +950,7 @@ class PackageLifecycleRestartRecordV1:
     def from_dict(cls, value: object) -> PackageLifecycleRestartRecordV1:
         document = _exact_dict(
             value,
-            fields={
-                "priorAttemptRevision",
-                "priorOperationRevision",
-                "recordKind",
-                "recordRevision",
-                "recordVersion",
-                "request",
-                "status",
-                "restart",
-            },
+            fields=_RECOVERY_RECORD_V1_SCHEMA.keys | {"restart"},
             name="Package restart record",
         )
         request = decode_package_lifecycle_request(document["request"])
@@ -1077,17 +1011,7 @@ class PackageLifecycleRebindRequestV1:
         object.__setattr__(self, "decision_id", _fingerprint(self._identity_dict()))
 
     def _identity_dict(self) -> dict[str, object]:
-        return {
-            "operationId": self.operation_id,
-            "requestFingerprint": self.request_fingerprint,
-            "expectedAttemptEpoch": self.expected_attempt_epoch,
-            "expectedAttemptRevision": self.expected_attempt_revision,
-            "newRuntimeAdmissionRequestId": self.new_runtime_admission_request_id,
-            "sourceProofRef": self.source_proof_ref,
-            "cleanupEvidenceRef": self.cleanup_evidence_ref,
-            "leaseSnapshotId": self.lease_snapshot_id,
-            "requestVersion": self.request_version,
-        }
+        return _REBINDREQUEST_V1_SCHEMA.encode(self)
 
     def to_dict(self) -> dict[str, object]:
         return {"decisionId": self.decision_id, **self._identity_dict()}
@@ -1096,45 +1020,10 @@ class PackageLifecycleRebindRequestV1:
     def from_dict(cls, value: object) -> PackageLifecycleRebindRequestV1:
         document = _exact_dict(
             value,
-            fields={
-                "decisionId",
-                "operationId",
-                "requestFingerprint",
-                "expectedAttemptEpoch",
-                "expectedAttemptRevision",
-                "newRuntimeAdmissionRequestId",
-                "sourceProofRef",
-                "cleanupEvidenceRef",
-                "leaseSnapshotId",
-                "requestVersion",
-            },
+            fields=_REBINDREQUEST_V1_SCHEMA.keys | {"decisionId"},
             name="Package rebind request",
         )
-        result = cls(
-            operation_id=_wire_string(document["operationId"], name="operation id"),
-            request_fingerprint=_wire_string(
-                document["requestFingerprint"], name="request fingerprint"
-            ),
-            expected_attempt_epoch=_wire_positive(
-                document["expectedAttemptEpoch"], name="attempt epoch"
-            ),
-            expected_attempt_revision=_wire_positive(
-                document["expectedAttemptRevision"], name="attempt revision"
-            ),
-            new_runtime_admission_request_id=_wire_string(
-                document["newRuntimeAdmissionRequestId"], name="new admission id"
-            ),
-            source_proof_ref=_wire_string(
-                document["sourceProofRef"], name="Source proof ref"
-            ),
-            cleanup_evidence_ref=_wire_string(
-                document["cleanupEvidenceRef"], name="cleanup evidence ref"
-            ),
-            lease_snapshot_id=_wire_string(
-                document["leaseSnapshotId"], name="lease snapshot id"
-            ),
-            request_version=_wire_int(document["requestVersion"], name="version"),
-        )
+        result = _REBINDREQUEST_V1_SCHEMA.decode(cls, document)
         if result.decision_id != document["decisionId"]:
             raise ValueError("Package rebind decision identity changed")
         return result
@@ -1176,19 +1065,7 @@ class PackageLifecyclePinnedAdoptionRequestV1:
         object.__setattr__(self, "decision_id", _fingerprint(self._identity_dict()))
 
     def _identity_dict(self) -> dict[str, object]:
-        return {
-            "operationId": self.operation_id,
-            "requestFingerprint": self.request_fingerprint,
-            "expectedJournalRevision": self.expected_journal_revision,
-            "expectedAttemptEpoch": self.expected_attempt_epoch,
-            "expectedAttemptRevision": self.expected_attempt_revision,
-            "newRuntimeAdmissionRequestId": self.new_runtime_admission_request_id,
-            "sourceProofRef": self.source_proof_ref,
-            "closurePlanFingerprint": self.closure_plan_fingerprint,
-            "pinReceiptId": self.pin_receipt_id,
-            "leaseSnapshotId": self.lease_snapshot_id,
-            "requestVersion": self.request_version,
-        }
+        return _PINNEDADOPTIONREQUEST_V1_SCHEMA.encode(self)
 
     def to_dict(self) -> dict[str, object]:
         return {"decisionId": self.decision_id, **self._identity_dict()}
@@ -1197,51 +1074,10 @@ class PackageLifecyclePinnedAdoptionRequestV1:
     def from_dict(cls, value: object) -> PackageLifecyclePinnedAdoptionRequestV1:
         document = _exact_dict(
             value,
-            fields={
-                "decisionId",
-                "operationId",
-                "requestFingerprint",
-                "expectedJournalRevision",
-                "expectedAttemptEpoch",
-                "expectedAttemptRevision",
-                "newRuntimeAdmissionRequestId",
-                "sourceProofRef",
-                "closurePlanFingerprint",
-                "pinReceiptId",
-                "leaseSnapshotId",
-                "requestVersion",
-            },
+            fields=_PINNEDADOPTIONREQUEST_V1_SCHEMA.keys | {"decisionId"},
             name="Package pinned adoption request",
         )
-        result = cls(
-            operation_id=_wire_string(document["operationId"], name="operation id"),
-            request_fingerprint=_wire_string(
-                document["requestFingerprint"], name="request fingerprint"
-            ),
-            expected_journal_revision=_wire_positive(
-                document["expectedJournalRevision"], name="operation revision"
-            ),
-            expected_attempt_epoch=_wire_positive(
-                document["expectedAttemptEpoch"], name="attempt epoch"
-            ),
-            expected_attempt_revision=_wire_nonnegative(
-                document["expectedAttemptRevision"], name="attempt revision"
-            ),
-            new_runtime_admission_request_id=_wire_string(
-                document["newRuntimeAdmissionRequestId"], name="admission id"
-            ),
-            source_proof_ref=_wire_string(
-                document["sourceProofRef"], name="Source proof ref"
-            ),
-            closure_plan_fingerprint=_wire_string(
-                document["closurePlanFingerprint"], name="closure plan fingerprint"
-            ),
-            pin_receipt_id=_wire_string(document["pinReceiptId"], name="pin receipt"),
-            lease_snapshot_id=_wire_string(
-                document["leaseSnapshotId"], name="lease snapshot"
-            ),
-            request_version=_wire_int(document["requestVersion"], name="version"),
-        )
+        result = _PINNEDADOPTIONREQUEST_V1_SCHEMA.decode(cls, document)
         if result.decision_id != document["decisionId"]:
             raise ValueError("Package pinned adoption decision identity changed")
         return result
@@ -1300,13 +1136,7 @@ class PackageLifecyclePinnedAdoptionRecordV1:
 
     def to_dict(self) -> dict[str, object]:
         document: dict[str, object] = {
-            "priorAttemptRevision": self.prior_attempt_revision,
-            "priorOperationRevision": self.prior_operation_revision,
-            "recordKind": self.record_kind,
-            "recordRevision": self.record_revision,
-            "recordVersion": self.record_version,
-            "request": self.request.to_dict(),
-            "status": self.status.to_dict(),
+            **_RECOVERY_RECORD_V1_SCHEMA.encode(self),
             "decision": self.decision.to_dict(),
         }
         if self.record_kind == "pinned_adoption_supersession":
@@ -1320,16 +1150,8 @@ class PackageLifecyclePinnedAdoptionRecordV1:
         supersession = value.get("recordKind") == "pinned_adoption_supersession"
         document = _exact_dict(
             value,
-            fields={
-                "priorAttemptRevision",
-                "priorOperationRevision",
-                "recordKind",
-                "recordRevision",
-                "recordVersion",
-                "request",
-                "status",
-                "decision",
-            }
+            fields=_RECOVERY_RECORD_V1_SCHEMA.keys
+            | {"decision"}
             | ({"supersedesDecisionId"} if supersession else set()),
             name="Package pinned adoption record",
         )
@@ -1410,21 +1232,7 @@ class PackageLifecycleStagingAdoptionRequestV1:
             raise ValueError("Staging adoption cannot supersede itself")
 
     def _identity_dict(self) -> dict[str, object]:
-        return {
-            "operationId": self.operation_id,
-            "requestFingerprint": self.request_fingerprint,
-            "expectedJournalRevision": self.expected_journal_revision,
-            "expectedAttemptEpoch": self.expected_attempt_epoch,
-            "expectedAttemptRevision": self.expected_attempt_revision,
-            "newRuntimeAdmissionRequestId": self.new_runtime_admission_request_id,
-            "sourceProofRef": self.source_proof_ref,
-            "closurePlanFingerprint": self.closure_plan_fingerprint,
-            "pinReceiptId": self.pin_receipt_id,
-            "stagingCheckpointId": self.staging_checkpoint_id,
-            "leaseSnapshotId": self.lease_snapshot_id,
-            "previousSelectedDecisionId": self.previous_selected_decision_id,
-            "requestVersion": self.request_version,
-        }
+        return _STAGINGADOPTIONREQUEST_V1_SCHEMA.encode(self)
 
     def to_dict(self) -> dict[str, object]:
         return {"decisionId": self.decision_id, **self._identity_dict()}
@@ -1433,59 +1241,10 @@ class PackageLifecycleStagingAdoptionRequestV1:
     def from_dict(cls, value: object) -> PackageLifecycleStagingAdoptionRequestV1:
         document = _exact_dict(
             value,
-            fields={
-                "decisionId",
-                "operationId",
-                "requestFingerprint",
-                "expectedJournalRevision",
-                "expectedAttemptEpoch",
-                "expectedAttemptRevision",
-                "newRuntimeAdmissionRequestId",
-                "sourceProofRef",
-                "closurePlanFingerprint",
-                "pinReceiptId",
-                "stagingCheckpointId",
-                "leaseSnapshotId",
-                "previousSelectedDecisionId",
-                "requestVersion",
-            },
+            fields=_STAGINGADOPTIONREQUEST_V1_SCHEMA.keys | {"decisionId"},
             name="Package staging adoption request",
         )
-        result = cls(
-            operation_id=_wire_string(document["operationId"], name="operation id"),
-            request_fingerprint=_wire_string(
-                document["requestFingerprint"], name="request fingerprint"
-            ),
-            expected_journal_revision=_wire_positive(
-                document["expectedJournalRevision"], name="operation revision"
-            ),
-            expected_attempt_epoch=_wire_positive(
-                document["expectedAttemptEpoch"], name="attempt epoch"
-            ),
-            expected_attempt_revision=_wire_nonnegative(
-                document["expectedAttemptRevision"], name="attempt revision"
-            ),
-            new_runtime_admission_request_id=_wire_string(
-                document["newRuntimeAdmissionRequestId"], name="admission id"
-            ),
-            source_proof_ref=_wire_string(
-                document["sourceProofRef"], name="Source proof ref"
-            ),
-            closure_plan_fingerprint=_wire_string(
-                document["closurePlanFingerprint"], name="closure fingerprint"
-            ),
-            pin_receipt_id=_wire_string(document["pinReceiptId"], name="pin receipt"),
-            staging_checkpoint_id=_wire_string(
-                document["stagingCheckpointId"], name="checkpoint id"
-            ),
-            lease_snapshot_id=_wire_string(
-                document["leaseSnapshotId"], name="lease snapshot"
-            ),
-            previous_selected_decision_id=_wire_optional_string(
-                document["previousSelectedDecisionId"], name="previous decision"
-            ),
-            request_version=_wire_int(document["requestVersion"], name="version"),
-        )
+        result = _STAGINGADOPTIONREQUEST_V1_SCHEMA.decode(cls, document)
         if result.decision_id != document["decisionId"]:
             raise ValueError("Package staging adoption decision identity changed")
         return result
@@ -1533,13 +1292,7 @@ class PackageLifecycleStagingAdoptionRecordV1:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "priorAttemptRevision": self.prior_attempt_revision,
-            "priorOperationRevision": self.prior_operation_revision,
-            "recordKind": self.record_kind,
-            "recordRevision": self.record_revision,
-            "recordVersion": self.record_version,
-            "request": self.request.to_dict(),
-            "status": self.status.to_dict(),
+            **_RECOVERY_RECORD_V1_SCHEMA.encode(self),
             "decision": self.decision.to_dict(),
         }
 
@@ -1547,16 +1300,7 @@ class PackageLifecycleStagingAdoptionRecordV1:
     def from_dict(cls, value: object) -> PackageLifecycleStagingAdoptionRecordV1:
         document = _exact_dict(
             value,
-            fields={
-                "priorAttemptRevision",
-                "priorOperationRevision",
-                "recordKind",
-                "recordRevision",
-                "recordVersion",
-                "request",
-                "status",
-                "decision",
-            },
+            fields=_RECOVERY_RECORD_V1_SCHEMA.keys | {"decision"},
             name="Package staging adoption record",
         )
         request = decode_package_lifecycle_request(document["request"])
@@ -1634,13 +1378,7 @@ class PackageLifecycleRebindRecordV1:
 
     def to_dict(self) -> dict[str, object]:
         document: dict[str, object] = {
-            "priorAttemptRevision": self.prior_attempt_revision,
-            "priorOperationRevision": self.prior_operation_revision,
-            "recordKind": self.record_kind,
-            "recordRevision": self.record_revision,
-            "recordVersion": self.record_version,
-            "request": self.request.to_dict(),
-            "status": self.status.to_dict(),
+            **_RECOVERY_RECORD_V1_SCHEMA.encode(self),
             "decision": self.decision.to_dict(),
         }
         if self.record_kind == "rebind_supersession":
@@ -1654,16 +1392,8 @@ class PackageLifecycleRebindRecordV1:
         supersession = value.get("recordKind") == "rebind_supersession"
         document = _exact_dict(
             value,
-            fields={
-                "priorAttemptRevision",
-                "priorOperationRevision",
-                "recordKind",
-                "recordRevision",
-                "recordVersion",
-                "request",
-                "status",
-                "decision",
-            }
+            fields=_RECOVERY_RECORD_V1_SCHEMA.keys
+            | {"decision"}
             | ({"supersedesDecisionId"} if supersession else set()),
             name="Package rebind record",
         )
@@ -1837,6 +1567,42 @@ def _validate_canonical_json_value(value: object) -> None:
     raise TypeError("PLC9B canonical JSON accepts only inert JSON values")
 
 
+def _nonempty_string(value: object, *, name: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise TypeError(f"{name} must be a non-empty string")
+    return value
+
+
+def _versioned_dict(value: object, *, fields: set[str], name: str) -> dict[str, object]:
+    if not isinstance(value, dict) or set(value) != fields:
+        raise ValueError(f"{name} does not match its versioned schema")
+    return value
+
+
+def _string_value(value: object, *, name: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string")
+    return value
+
+
+def _list_value(value: object, *, name: str) -> list[object]:
+    if not isinstance(value, list):
+        raise TypeError(f"{name} must be a list")
+    return value
+
+
+def _exact_integer(value: object, *, name: str) -> int:
+    if type(value) is not int:
+        raise TypeError(f"{name} must be an integer")
+    return cast(int, value)
+
+
+def _bool_checked_integer(value: object, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{name} must be an integer")
+    return value
+
+
 def _exact_dict(
     value: object,
     *,
@@ -1951,28 +1717,18 @@ _CLASSIFICATION_BASIS_FACT_V1_SCHEMA = RecordSchema(
 )
 
 
-_LIFECYCLE_REQUEST_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("operation_id", "operation id"),
-        RecordField("action", "Package action"),
-        RecordField("product_id", "Product id"),
-        RecordField("scope_id", "scope id"),
-        RecordField("requested_package", "requested Package"),
-        RecordField(
-            "requested_plugin_id", "requested Plugin id", _wire_optional_string
-        ),
-        RecordField("canonical_source_identity", "canonical Source identity"),
-        RecordField("policy_revision", "Package policy revision"),
-        RecordField("quota_profile_revision", "quota profile revision"),
-        RecordField(
-            "resolution_environment_fingerprint", "resolution environment fingerprint"
-        ),
-        RecordField(
-            "classification_facts", decoder=PackageClassificationFactsV1.from_dict
-        ),
-        RecordField("request_version", "request version", _wire_int),
-    ),
+_LIFECYCLE_REQUEST_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageLifecycleRequestV1,
+    _wire_string,
+    RecordField("action", "Package action"),
+    RecordField("product_id", "Product id"),
+    RecordField("requested_package", "requested Package"),
+    RecordField("requested_plugin_id", "requested Plugin id", _wire_optional_string),
+    RecordField("canonical_source_identity", "canonical Source identity"),
+    RecordField("policy_revision", "Package policy revision"),
+    RecordField("classification_facts", decoder=PackageClassificationFactsV1.from_dict),
+    RecordField("request_version", "request version", _wire_int),
+    derive_labels=True,
 )
 
 
@@ -2002,63 +1758,55 @@ _LIFECYCLE_REQUEST_V2_SCHEMA = RecordSchema(
 )
 
 
-_PLUGIN_BOUND_PACKAGE_CLASSIFICATION_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("decision", "classification decision"),
-        RecordField("request_fingerprint", "request fingerprint"),
-        RecordField("basis_facts", decoder=PackageClassificationFactsV1.from_dict),
-        RecordField("policy_revision", "classification policy revision"),
-        RecordField("classifier_epoch", "classifier epoch", _wire_positive),
-        RecordField("canonical_source_identity", "canonical Source identity"),
-        RecordField("recheck_rule", "classification recheck rule"),
-        RecordField("classification_version", "classification version", _wire_int),
-    ),
+_PLUGIN_BOUND_PACKAGE_CLASSIFICATION_V1_SCHEMA = RecordSchema.for_dataclass(
+    PluginBoundPackageClassificationV1,
+    _wire_string,
+    RecordField("decision", "classification decision"),
+    RecordField("basis_facts", decoder=PackageClassificationFactsV1.from_dict),
+    RecordField("policy_revision", "classification policy revision"),
+    RecordField("classifier_epoch", "classifier epoch", _wire_positive),
+    RecordField("canonical_source_identity", "canonical Source identity"),
+    RecordField("recheck_rule", "classification recheck rule"),
+    RecordField("classification_version", "classification version", _wire_int),
+    derive_labels=True,
 )
 
 
-_LIFECYCLE_STATUS_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("operation_id", "operation id"),
-        RecordField("request_fingerprint", "request fingerprint"),
-        RecordField("phase", "Package lifecycle phase"),
-        RecordField("disposition", "Package lifecycle disposition"),
-        RecordField("attempt_epoch", "attempt epoch", _wire_positive),
-        RecordField("journal_revision", "journal revision", _wire_nonnegative),
-        RecordField("attempt_revision", "attempt revision", _wire_nonnegative),
-        RecordField(
-            "classification",
-            decoder=partial(
-                decode_nullable, decoder=PluginBoundPackageClassificationV1.from_dict
-            ),
+_LIFECYCLE_STATUS_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageLifecycleStatusV1,
+    _wire_string,
+    RecordField("phase", "Package lifecycle phase"),
+    RecordField("disposition", "Package lifecycle disposition"),
+    RecordField("attempt_epoch", "attempt epoch", _wire_positive),
+    RecordField("journal_revision", "journal revision", _wire_nonnegative),
+    RecordField("attempt_revision", "attempt revision", _wire_nonnegative),
+    RecordField(
+        "classification",
+        decoder=partial(
+            decode_nullable, decoder=PluginBoundPackageClassificationV1.from_dict
         ),
-        RecordField(
-            "failure",
-            decoder=partial(
-                decode_nullable, decoder=PackageLifecycleFailureV1.from_dict
-            ),
-        ),
-        RecordField("status_version", "status version", _wire_int),
     ),
+    RecordField(
+        "failure",
+        decoder=partial(decode_nullable, decoder=PackageLifecycleFailureV1.from_dict),
+    ),
+    RecordField("status_version", "status version", _wire_int),
+    derive_labels=True,
 )
 
 
-_LIFECYCLE_JOURNAL_RECORD_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("record_kind", "record kind"),
-        RecordField("record_revision", "record revision", _wire_positive),
-        RecordField(
-            "prior_operation_revision", "prior operation revision", _wire_nonnegative
-        ),
-        RecordField(
-            "prior_attempt_revision", "prior attempt revision", _wire_nonnegative
-        ),
-        RecordField("request", decoder=decode_package_lifecycle_request),
-        RecordField("status", decoder=PackageLifecycleStatusV1.from_dict),
-        RecordField("record_version", "record version", _wire_int),
+_LIFECYCLE_JOURNAL_RECORD_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageLifecycleJournalRecordV1,
+    _wire_string,
+    RecordField("record_revision", "record revision", _wire_positive),
+    RecordField(
+        "prior_operation_revision", "prior operation revision", _wire_nonnegative
     ),
+    RecordField("prior_attempt_revision", "prior attempt revision", _wire_nonnegative),
+    RecordField("request", decoder=decode_package_lifecycle_request),
+    RecordField("status", decoder=PackageLifecycleStatusV1.from_dict),
+    RecordField("record_version", "record version", _wire_int),
+    derive_labels=True,
 )
 
 
@@ -2085,5 +1833,92 @@ _LIFECYCLE_FAILURE_V1_SCHEMA = RecordSchema(
             ),
         ),
         RecordField("failure_version", "failure version", _wire_int),
+    ),
+)
+
+
+_RESTARTREQUEST_V1_SCHEMA = RecordSchema(
+    _wire_string,
+    (
+        RecordField("operation_id", "operation id"),
+        RecordField("request_fingerprint", "request fingerprint"),
+        RecordField("expected_phase", "expected phase"),
+        RecordField("expected_journal_revision", "operation revision", _wire_positive),
+        RecordField("expected_attempt_epoch", "attempt epoch", _wire_positive),
+        RecordField("expected_attempt_revision", "attempt revision", _wire_positive),
+        RecordField("source_proof_ref", "Source proof ref"),
+        RecordField("cleanup_evidence_ref", "cleanup evidence ref"),
+        RecordField("lease_snapshot_id", "lease snapshot id"),
+        RecordField("request_version", "version", _wire_int),
+    ),
+)
+
+
+_REBINDREQUEST_V1_SCHEMA = RecordSchema(
+    _wire_string,
+    (
+        RecordField("operation_id", "operation id"),
+        RecordField("request_fingerprint", "request fingerprint"),
+        RecordField("expected_attempt_epoch", "attempt epoch", _wire_positive),
+        RecordField("expected_attempt_revision", "attempt revision", _wire_positive),
+        RecordField("new_runtime_admission_request_id", "new admission id"),
+        RecordField("source_proof_ref", "Source proof ref"),
+        RecordField("cleanup_evidence_ref", "cleanup evidence ref"),
+        RecordField("lease_snapshot_id", "lease snapshot id"),
+        RecordField("request_version", "version", _wire_int),
+    ),
+)
+
+
+_PINNEDADOPTIONREQUEST_V1_SCHEMA = RecordSchema(
+    _wire_string,
+    (
+        RecordField("operation_id", "operation id"),
+        RecordField("request_fingerprint", "request fingerprint"),
+        RecordField("expected_journal_revision", "operation revision", _wire_positive),
+        RecordField("expected_attempt_epoch", "attempt epoch", _wire_positive),
+        RecordField("expected_attempt_revision", "attempt revision", _wire_nonnegative),
+        RecordField("new_runtime_admission_request_id", "admission id"),
+        RecordField("source_proof_ref", "Source proof ref"),
+        RecordField("closure_plan_fingerprint", "closure plan fingerprint"),
+        RecordField("pin_receipt_id", "pin receipt"),
+        RecordField("lease_snapshot_id", "lease snapshot"),
+        RecordField("request_version", "version", _wire_int),
+    ),
+)
+
+
+_STAGINGADOPTIONREQUEST_V1_SCHEMA = RecordSchema(
+    _wire_string,
+    (
+        RecordField("operation_id", "operation id"),
+        RecordField("request_fingerprint", "request fingerprint"),
+        RecordField("expected_journal_revision", "operation revision", _wire_positive),
+        RecordField("expected_attempt_epoch", "attempt epoch", _wire_positive),
+        RecordField("expected_attempt_revision", "attempt revision", _wire_nonnegative),
+        RecordField("new_runtime_admission_request_id", "admission id"),
+        RecordField("source_proof_ref", "Source proof ref"),
+        RecordField("closure_plan_fingerprint", "closure fingerprint"),
+        RecordField("pin_receipt_id", "pin receipt"),
+        RecordField("staging_checkpoint_id", "checkpoint id"),
+        RecordField("lease_snapshot_id", "lease snapshot"),
+        RecordField(
+            "previous_selected_decision_id", "previous decision", _wire_optional_string
+        ),
+        RecordField("request_version", "version", _wire_int),
+    ),
+)
+
+
+_RECOVERY_RECORD_V1_SCHEMA = RecordSchema(
+    _wire_string,
+    (
+        RecordField("prior_attempt_revision"),
+        RecordField("prior_operation_revision"),
+        RecordField("record_kind"),
+        RecordField("record_revision"),
+        RecordField("record_version"),
+        RecordField("request", encoder=lambda value: value.to_dict()),
+        RecordField("status", encoder=lambda value: value.to_dict()),
     ),
 )

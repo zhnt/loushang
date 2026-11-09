@@ -6,7 +6,14 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.harness.plugin_management._private_data_records import (
+    _valid_digest as _digest,
+)
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -47,39 +54,13 @@ class CodingArchPrivateDataBackupReceiptV1:
             raise ValueError("Coding Arch backup receipt is invalid")
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "backupId": self.backup_id,
-            "byteCount": self.byte_count,
-            "fileCount": self.file_count,
-            "installationKey": self.installation_key.to_dict(),
-            "receiptId": self.receipt_id,
-            "receiptVersion": self.receipt_version,
-            "sourceTargetId": self.source_target_id,
-        }
+        return _SCHEMA_BACKUP_RECEIPT_V1.encode(self, sort_keys=True)
 
     @classmethod
     def from_dict(cls, value: object) -> CodingArchPrivateDataBackupReceiptV1:
-        if type(value) is not dict or set(value) != {
-            "backupId",
-            "byteCount",
-            "fileCount",
-            "installationKey",
-            "receiptId",
-            "receiptVersion",
-            "sourceTargetId",
-        }:
+        if type(value) is not dict or set(value) != _SCHEMA_BACKUP_RECEIPT_V1.keys:
             raise ValueError("Coding Arch backup receipt fields are invalid")
-        return cls(
-            installation_key=PluginInstallationKeyV1.from_dict(
-                value["installationKey"]
-            ),
-            source_target_id=value["sourceTargetId"],
-            backup_id=value["backupId"],
-            file_count=value["fileCount"],
-            byte_count=value["byteCount"],
-            receipt_id=value["receiptId"],
-            receipt_version=value["receiptVersion"],
-        )
+        return _SCHEMA_BACKUP_RECEIPT_V1.decode(cls, value)
 
 
 def backup_parent(
@@ -100,13 +81,15 @@ def backup_id(
     ).hexdigest()
 
 
-def _digest(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and len(value) == 64
-        and all(character in "0123456789abcdef" for character in value)
-    )
-
+_SCHEMA_BACKUP_RECEIPT_V1 = RecordSchema.for_dataclass(
+    CodingArchPrivateDataBackupReceiptV1,
+    lambda value: value,
+    RecordField(
+        "installation_key",
+        decoder=PluginInstallationKeyV1.from_dict,
+        encoder=PluginInstallationKeyV1.to_dict,
+    ),
+)
 
 __all__ = [
     "CodingArchPrivateDataBackupReceiptV1",

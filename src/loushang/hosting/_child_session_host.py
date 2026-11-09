@@ -8,7 +8,11 @@ import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import TypeVar, cast
+from typing import TypeVar
+
+from loushang.foundation._owned_tasks import (
+    _join_cancellation_first,
+)
 
 from ._endpoint_host import _InheritedEndpointHost, _InheritedEndpointLease
 from ._launch_preparation import (
@@ -729,24 +733,7 @@ def _failure_category(error: BaseException) -> HostingFailureCategory:
     return HostingFailureCategory.SPAWN_FAILED
 
 
-async def _await_owned(task: asyncio.Task[_T]) -> _T:
-    cancellation: asyncio.CancelledError | None = None
-    while True:
-        try:
-            result = await asyncio.shield(task)
-            break
-        except asyncio.CancelledError as exc:
-            if task.cancelled():
-                raise
-            if cancellation is None:
-                cancellation = exc
-        except BaseException as exc:
-            if cancellation is not None:
-                raise cancellation from exc
-            raise
-    if cancellation is not None:
-        raise cancellation
-    return cast(_T, result)
+_await_owned = _join_cancellation_first
 
 
 def _owner_task_failed(task: asyncio.Task[object]) -> bool:

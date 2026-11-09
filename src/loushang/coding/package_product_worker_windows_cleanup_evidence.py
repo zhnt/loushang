@@ -9,9 +9,13 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import partial
 from hashlib import sha256
 from typing import cast
 
+from loushang.harness.package_product._worker_windows_attempt import (
+    capture_windows_product_worker_cleanup,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -184,32 +188,17 @@ class CodingWindowsWorkerCleanupEvidenceAuthority:
     ) -> CodingWindowsWorkerLiveCleanupReviewV1:
         if attempt_id != self._attempt_id:
             raise ValueError("Windows C5 cleanup attempt changed")
-        registry = self._product.epoch_runtime.registry
-        orphans = registry.review_orphans(store_id=registry.store_id)
-        with self._product.gc_gate.guard():
-            self._product.assert_root_gc_authority_current()
-            runtime = _review_under_gc_guard(
-                self._product, attempt_id=attempt_id, orphans=orphans
-            )
-            native = tuple(
-                item
-                for item in inspect_coding_windows_product_worker_provisioning_attempts(
-                    self._product
-                )
-                if item.attempt_id == attempt_id
-            )
-            retained = tuple(
-                item
-                for item in CodingWindowsWorkerActivationStateJournal(
-                    self._product
-                ).retained_attempts_read_only()
-                if item.attempt_id == attempt_id
-            )
-            self._product.assert_root_gc_authority_current()
+        runtime, native, activation = capture_windows_product_worker_cleanup(
+            self._product,
+            attempt_id=attempt_id,
+            review_runtime=_review_under_gc_guard,
+            inspect_native=inspect_coding_windows_product_worker_provisioning_attempts,
+            activation_journal=partial(
+                CodingWindowsWorkerActivationStateJournal, self._product
+            ),
+        )
         return CodingWindowsWorkerLiveCleanupReviewV1(
-            runtime=runtime,
-            native=native[0] if len(native) == 1 else None,
-            activation=retained[0] if len(retained) == 1 else None,
+            runtime=runtime, native=native, activation=activation
         )
 
     def _current_review_matches(

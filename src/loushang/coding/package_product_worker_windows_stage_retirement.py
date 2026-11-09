@@ -7,29 +7,35 @@ member deletion is resumed from that review and never broadens its file set.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
-from typing import Protocol
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.package_product._worker_windows_attempt import (
+    inspect_windows_product_worker_retirement_ids,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_deletion_entry_at,
-    open_windows_directory,
-    windows_delete_open_entry,
-    windows_flush_directory,
     windows_listdir_at,
-    windows_stat_at,
+)
+from loushang.harness.worker.history._base_codec import _BaseWireMethods, _unchanged
+from loushang.harness.worker.payload._windows_stage_retirement import (
+    CompleteStageProof as _CompleteStageProof,
+)
+from loushang.harness.worker.payload._windows_stage_retirement import (
+    WindowsStageRetirement,
 )
 
 from .package_legacy_windows_receipt import (
@@ -46,10 +52,9 @@ from .package_product_worker_windows_recovery_inventory import (
 )
 from .package_product_worker_windows_stage_review import (
     CodingWindowsWorkerStageReviewV1,
-    _read_checked_file,
+    _inspection,
     _require_direct,
     _review_complete_stage_under_gc_guard,
-    _verify_marker,
 )
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
@@ -69,33 +74,18 @@ class CodingWindowsWorkerStageRetirementError(RuntimeError):
         self.code = code
 
 
-class _CompleteStageProof(Protocol):
-    @property
-    def attempt_id(self) -> str: ...
-
-    @property
-    def entrypoint(self) -> str: ...
-
-    @property
-    def stage_identity(self) -> tuple[int, int, int, int, int]: ...
-
-    @property
-    def directory_identities(
-        self,
-    ) -> tuple[tuple[str, tuple[int, int, int, int, int]], ...]: ...
-
-    @property
-    def marker_identity(self) -> tuple[int, int, int, int, int]: ...
-
-    @property
-    def executable_identity(self) -> tuple[int, int, int, int, int]: ...
-
-    @property
-    def executable_digest(self) -> str: ...
-
-
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerStageRetirementReceiptV1:
+class CodingWindowsWorkerStageRetirementReceiptV1(_BaseWireMethods):
+    _wire_label = "Worker stage retirement receipt"
+    _wire_lists = ("stageIdentity",)
+    _wire_error_type = CodingWindowsWorkerStageRetirementError
+    _wire_error_code = "coding_worker_stage_retirement_receipt_invalid"
+    _wire_invalid_encoding = "bytes changed"
+
+    @classmethod
+    def _wire_maximum(cls) -> int:
+        return _MAX_RECEIPT_BYTES
+
     attempt_id: str
     review_fingerprint: str
     stage_identity: tuple[int, int]
@@ -128,37 +118,14 @@ class CodingWindowsWorkerStageRetirementReceiptV1:
 
     @classmethod
     def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerStageRetirementReceiptV1:
-        if type(raw) is not bytes or not raw or len(raw) > _MAX_RECEIPT_BYTES:
-            raise CodingWindowsWorkerStageRetirementError(
-                "coding_worker_stage_retirement_receipt_invalid"
-            )
-        try:
-            value = json.loads(raw)
-            if (
-                type(value) is not dict
-                or set(value)
-                != {
-                    "attemptId",
-                    "receiptVersion",
-                    "reviewFingerprint",
-                    "stageIdentity",
-                }
-                or type(value["stageIdentity"]) is not list
-            ):
-                raise ValueError("Worker stage retirement receipt fields changed")
-            receipt = cls(
-                attempt_id=value["attemptId"],
-                review_fingerprint=value["reviewFingerprint"],
-                stage_identity=tuple(value["stageIdentity"]),
-                receipt_version=value["receiptVersion"],
-            )
-            if receipt.to_bytes() != raw:
-                raise ValueError("Worker stage retirement receipt bytes changed")
-            return receipt
-        except (KeyError, TypeError, ValueError, UnicodeError) as exc:
-            raise CodingWindowsWorkerStageRetirementError(
-                "coding_worker_stage_retirement_receipt_invalid"
-            ) from exc
+        return cls._from_wire_bytes(raw)
+
+
+CodingWindowsWorkerStageRetirementReceiptV1._wire_schema = RecordSchema.for_dataclass(
+    CodingWindowsWorkerStageRetirementReceiptV1,
+    _unchanged,
+    RecordField("stage_identity", decoder=tuple),
+)
 
 
 def retire_coding_windows_product_worker_complete_stage(
@@ -360,313 +327,27 @@ def _remove_remaining_stage(
     ]
     | None = None,
 ) -> None:
-    stage_name = "worker-payload-" + review.attempt_id
-    with WindowsPrivateDirectoryAcl() as acl:
-        _require_direct(root, acl, directory=True)
-        try:
-            stage = open_windows_directory(
-                stage_name, dir_fd=root, share_delete=False, read_control=True
-            )
-        except FileNotFoundError:
+    with _retirement().complete(root, review, intent) as stage:
+        if stage is None:
             return
-        try:
-            _require_remaining_subset(stage, review, intent, acl)
-            parts = review.entrypoint.split("/")
-            parent = _open_existing_parent(stage, parts[:-1], review, acl)
-            if parent is not None:
-                descriptor, opened = parent
-                try:
-                    _delete_file_if_present(
-                        descriptor,
-                        parts[-1],
-                        review.executable_identity,
-                        review.executable_digest,
-                        acl,
-                    )
-                finally:
-                    _close_opened(opened)
-            for depth in range(len(parts) - 1, 0, -1):
-                prefix = parts[: depth - 1]
-                parent = _open_existing_parent(stage, prefix, review, acl)
-                if parent is None:
-                    continue
-                descriptor, opened = parent
-                try:
-                    identity = review.directory_identities[depth - 1][1]
-                    _delete_directory_if_empty(
-                        descriptor, parts[depth - 1], identity, acl
-                    )
-                finally:
-                    _close_opened(opened)
-            _delete_file_if_present(
-                stage,
-                "worker-payload.json",
-                review.marker_identity,
-                None,
-                acl,
-                intent=intent,
-                stage_identity=review.stage_identity[:2],
-                expected_entrypoint=review.entrypoint,
-                expected_payload_size=review.executable_identity[3],
-            )
-            if windows_listdir_at(stage):
-                raise CodingWindowsWorkerStageRetirementError(
-                    "coding_worker_stage_retirement_extra_member"
-                )
-            read_intent = read_root_delete_intent or (
-                lambda: _read_root_delete_intent(product, review.attempt_id)
-            )
-            if read_intent() is None:
-                write_windows_private_receipt(
-                    root_delete_intent_path
-                    or _root_delete_intent_path(product, review.attempt_id),
-                    receipt.to_bytes(),
-                    maximum_bytes=_MAX_RECEIPT_BYTES,
-                )
-            if read_intent() != receipt:
-                raise CodingWindowsWorkerStageRetirementError(
-                    "coding_worker_stage_retirement_root_intent_changed"
-                )
-        finally:
-            os.close(stage)
-        _delete_directory_if_empty(root, stage_name, review.stage_identity, acl)
-
-
-def _require_remaining_subset(
-    stage: int,
-    review: _CompleteStageProof,
-    intent: CodingWindowsWorkerLaunchIntentV1,
-    acl: WindowsPrivateDirectoryAcl,
-) -> None:
-    if _require_direct(stage, acl, directory=True)[:2] != review.stage_identity[:2]:
-        raise CodingWindowsWorkerStageRetirementError(
-            "coding_worker_stage_retirement_stage_changed"
-        )
-    parts = review.entrypoint.split("/")
-    if not set(windows_listdir_at(stage)) <= {"worker-payload.json", parts[0]}:
-        raise CodingWindowsWorkerStageRetirementError(
-            "coding_worker_stage_retirement_extra_member"
-        )
-    if "worker-payload.json" in windows_listdir_at(stage):
-        marker, identity = _read_checked_file(
-            stage, "worker-payload.json", acl, maximum_bytes=1024
-        )
-        marker_entrypoint, payload_size = _verify_marker(
-            marker, intent=intent, stage_identity=review.stage_identity[:2]
-        )
-        if (
-            identity != review.marker_identity
-            or marker_entrypoint != review.entrypoint
-            or payload_size != review.executable_identity[3]
-        ):
-            raise CodingWindowsWorkerStageRetirementError(
-                "coding_worker_stage_retirement_marker_changed"
-            )
-    current = stage
-    opened: list[int] = []
-    try:
-        for index, name in enumerate(parts[:-1]):
-            if name not in windows_listdir_at(current):
-                return
-            child = open_windows_directory(
-                name, dir_fd=current, share_delete=False, read_control=True
-            )
-            opened.append(child)
-            if (
-                _require_direct(child, acl, directory=True)[:2]
-                != review.directory_identities[index][1][:2]
-            ):
-                raise CodingWindowsWorkerStageRetirementError(
-                    "coding_worker_stage_retirement_directory_changed"
-                )
-            if not set(windows_listdir_at(child)) <= {parts[index + 1]}:
-                raise CodingWindowsWorkerStageRetirementError(
-                    "coding_worker_stage_retirement_extra_member"
-                )
-            current = child
-        if parts[-1] in windows_listdir_at(current):
-            body, identity = _read_checked_file(
-                current, parts[-1], acl, maximum_bytes=16 * 1024 * 1024
-            )
-            if (
-                identity != review.executable_identity
-                or sha256(body).hexdigest() != review.executable_digest
-            ):
-                raise CodingWindowsWorkerStageRetirementError(
-                    "coding_worker_stage_retirement_payload_changed"
-                )
-        elif windows_listdir_at(current):
+        if windows_listdir_at(stage):
             raise CodingWindowsWorkerStageRetirementError(
                 "coding_worker_stage_retirement_extra_member"
             )
-    finally:
-        _close_opened(opened)
-
-
-def _open_existing_parent(
-    stage: int,
-    parts: list[str],
-    review: _CompleteStageProof,
-    acl: WindowsPrivateDirectoryAcl,
-) -> tuple[int, list[int]] | None:
-    current = stage
-    opened: list[int] = []
-    try:
-        for index, name in enumerate(parts):
-            if name not in windows_listdir_at(current):
-                _close_opened(opened)
-                return None
-            child = open_windows_directory(
-                name, dir_fd=current, share_delete=False, read_control=True
-            )
-            opened.append(child)
-            if (
-                _require_direct(child, acl, directory=True)[:2]
-                != review.directory_identities[index][1][:2]
-            ):
-                raise CodingWindowsWorkerStageRetirementError(
-                    "coding_worker_stage_retirement_directory_changed"
-                )
-            current = child
-        return current, opened
-    except BaseException:
-        _close_opened(opened)
-        raise
-
-
-def _delete_file_if_present(
-    parent: int,
-    name: str,
-    expected: tuple[int, int, int, int, int],
-    digest: str | None,
-    acl: WindowsPrivateDirectoryAcl,
-    *,
-    intent: CodingWindowsWorkerLaunchIntentV1 | None = None,
-    stage_identity: tuple[int, int] | None = None,
-    expected_entrypoint: str | None = None,
-    expected_payload_size: int | None = None,
-) -> None:
-    if name not in windows_listdir_at(parent):
-        return
-    descriptor = open_windows_deletion_entry_at(parent, name, directory=False)
-    try:
-        if _require_direct(descriptor, acl, directory=False) != expected:
-            raise CodingWindowsWorkerStageRetirementError(
-                "coding_worker_stage_retirement_file_changed"
-            )
-        raw = _read_exact(descriptor, expected[3])
-        if digest is None:
-            if intent is None or stage_identity is None:
-                raise CodingWindowsWorkerStageRetirementError(
-                    "coding_worker_stage_retirement_marker_unbound"
-                )
-            entrypoint, payload_size = _verify_marker(
-                raw, intent=intent, stage_identity=stage_identity
-            )
-            if (
-                entrypoint != expected_entrypoint
-                or payload_size != expected_payload_size
-            ):
-                raise CodingWindowsWorkerStageRetirementError(
-                    "coding_worker_stage_retirement_marker_changed"
-                )
-        elif sha256(raw).hexdigest() != digest:
-            raise CodingWindowsWorkerStageRetirementError(
-                "coding_worker_stage_retirement_payload_changed"
-            )
-        if (
-            _require_direct(descriptor, acl, directory=False) != expected
-            or _file_identity_at(parent, name) != expected
-        ):
-            raise CodingWindowsWorkerStageRetirementError(
-                "coding_worker_stage_retirement_file_changed"
-            )
-        _delete_open_stage_entry(descriptor, expected=expected, directory=False)
-    finally:
-        os.close(descriptor)
-    windows_flush_directory(parent)
-
-
-def _delete_directory_if_empty(
-    parent: int,
-    name: str,
-    expected: tuple[int, int, int, int, int],
-    acl: WindowsPrivateDirectoryAcl,
-) -> None:
-    if name not in windows_listdir_at(parent):
-        return
-    descriptor = open_windows_deletion_entry_at(parent, name, directory=True)
-    try:
-        current = _require_direct(descriptor, acl, directory=True)
-        if (
-            current[:2] != expected[:2]
-            or _file_identity_at(parent, name) != current
-            or windows_listdir_at(descriptor)
-        ):
-            raise CodingWindowsWorkerStageRetirementError(
-                "coding_worker_stage_retirement_directory_changed"
-            )
-        _delete_open_stage_entry(descriptor, expected=current, directory=True)
-    finally:
-        os.close(descriptor)
-    windows_flush_directory(parent)
-
-
-def _read_exact(descriptor: int, size: int) -> bytes:
-    raw = bytearray()
-    while len(raw) <= size:
-        chunk = os.read(descriptor, min(_READ_CHUNK, size + 1 - len(raw)))
-        if not chunk:
-            break
-        raw.extend(chunk)
-    if len(raw) != size:
-        raise CodingWindowsWorkerStageRetirementError(
-            "coding_worker_stage_retirement_file_changed"
+        read_intent = read_root_delete_intent or (
+            lambda: _read_root_delete_intent(product, review.attempt_id)
         )
-    return bytes(raw)
-
-
-def _file_identity_at(parent: int, name: str) -> tuple[int, int, int, int, int]:
-    metadata = windows_stat_at(parent, name)
-    return (
-        metadata.st_dev,
-        metadata.st_ino,
-        metadata.st_nlink,
-        metadata.st_size,
-        metadata.st_mtime_ns,
-    )
-
-
-def _delete_open_stage_entry(
-    descriptor: int,
-    *,
-    expected: tuple[int, int, int, int, int],
-    directory: bool,
-) -> None:
-    """Bridge Product's link-count identity to the native API's mode identity."""
-
-    metadata = os.fstat(descriptor)
-    if (
-        metadata.st_dev,
-        metadata.st_ino,
-        metadata.st_nlink,
-        metadata.st_size,
-        metadata.st_mtime_ns,
-    ) != expected:
-        raise CodingWindowsWorkerStageRetirementError(
-            "coding_worker_stage_retirement_file_changed"
-        )
-    windows_delete_open_entry(
-        descriptor,
-        expected_identity=(
-            metadata.st_dev,
-            metadata.st_ino,
-            metadata.st_mode,
-            metadata.st_size,
-            metadata.st_mtime_ns,
-        ),
-        directory=directory,
-    )
+        if read_intent() is None:
+            write_windows_private_receipt(
+                root_delete_intent_path
+                or _root_delete_intent_path(product, review.attempt_id),
+                receipt.to_bytes(),
+                maximum_bytes=_MAX_RECEIPT_BYTES,
+            )
+        if read_intent() != receipt:
+            raise CodingWindowsWorkerStageRetirementError(
+                "coding_worker_stage_retirement_root_intent_changed"
+            )
 
 
 def _stage_exists(root: int, attempt_id: str) -> bool:
@@ -699,17 +380,13 @@ def _partial_retirement_artifact_present(
 def _inspect_retirement_attempt_ids_under_gc_guard(
     product: WindowsLocalWheelProductSessionOwner,
 ) -> frozenset[str]:
-    product.assert_root_gc_authority_current()
-    with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-        with WindowsPrivateDirectoryAcl() as acl:
-            _require_direct(root, acl, directory=True)
-            if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
-                raise CodingWindowsWorkerStageRetirementError(
-                    "coding_worker_stage_retirement_root_changed"
-                )
-            attempts = _retirement_attempt_ids_from_names(windows_listdir_at(root))
-    product.assert_root_gc_authority_current()
-    return attempts
+    return inspect_windows_product_worker_retirement_ids(
+        product,
+        inspect_names=_retirement_attempt_ids_from_names,
+        inspection=_inspection,
+        error_type=CodingWindowsWorkerStageRetirementError,
+        error_prefix="coding_worker_stage_retirement",
+    )
 
 
 def _retirement_attempt_ids_from_names(names: tuple[str, ...]) -> frozenset[str]:
@@ -735,11 +412,6 @@ def _retirement_attempt_ids_from_names(names: tuple[str, ...]) -> frozenset[str]
                 "coding_worker_stage_retirement_capacity"
             )
     return frozenset(attempts)
-
-
-def _close_opened(opened: list[int]) -> None:
-    for descriptor in reversed(opened):
-        os.close(descriptor)
 
 
 def _read_review(
@@ -817,3 +489,11 @@ __all__ = [
     "CodingWindowsWorkerStageRetirementReceiptV1",
     "retire_coding_windows_product_worker_complete_stage",
 ]
+
+
+def _retirement() -> WindowsStageRetirement:
+    return WindowsStageRetirement(
+        _inspection(),
+        CodingWindowsWorkerStageRetirementError,
+        "coding_worker_stage_retirement",
+    )

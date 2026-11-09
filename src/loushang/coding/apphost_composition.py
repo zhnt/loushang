@@ -24,6 +24,7 @@ from loushang.apphost import (
     SessionCreateRequestV1,
     SessionIdentityCatalogPortV1,
 )
+from loushang.harness.runtime import await_owned_task as _await_owned_task
 
 from .apphost_product import (
     CodingAppHostProductFactoryV1,
@@ -84,10 +85,7 @@ class CodingAppHostRollbackLatchV1:
     latch_version: int = CODING_APPHOST_ROLLBACK_REPORT_VERSION
 
     def __post_init__(self) -> None:
-        if (
-            type(self.selection_generation) is not int
-            or self.selection_generation < 1
-        ):
+        if type(self.selection_generation) is not int or self.selection_generation < 1:
             raise ValueError("Coding AppHost rollback generation is invalid")
         fingerprints = self.active_attempt_fingerprints
         if (
@@ -335,9 +333,7 @@ class CodingAppHostCompositionV1:
             mode = self._control_mode
             if mode == "close" and requested_mode == "rollback":
                 assert task is not None
-                task = asyncio.create_task(
-                    self._upgrade_close_to_rollback(task)
-                )
+                task = asyncio.create_task(self._upgrade_close_to_rollback(task))
                 task.add_done_callback(_observe_background_result)
                 self._control_task = task
                 self._control_mode = "rollback"
@@ -521,18 +517,7 @@ async def _join_failed_construction_cleanup(
     operation = asyncio.create_task(
         _settle_failed_construction(catalog, product_factory)
     )
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not operation.done():
-        try:
-            await asyncio.shield(operation)
-        except asyncio.CancelledError as error:
-            if caller is None or caller.cancelling() == 0:
-                return operation.result()
-            cancellation = error
-    operation.result()
-    if cancellation is not None:
-        raise cancellation
+    await _await_owned_task(operation)
 
 
 def _require_opaque(value: object, *, name: str) -> None:

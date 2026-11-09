@@ -12,6 +12,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
+from loushang.harness.package_product._worker_windows_attempt import (
+    capture_windows_product_worker_orphan_runtime,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -86,8 +89,7 @@ class CodingWindowsWorkerOrphanRuntimeReviewV1:
             or self.orphan_leases[0].runtime_id
             != receipt.receipt.policy.product_runtime_id
             or self.orphan_leases[0].runtime_epoch != self.runtime_epoch
-            or self.orphan_leases[0].store_root_identity
-            != self.store_root_identity
+            or self.orphan_leases[0].store_root_identity != self.store_root_identity
         ):
             missing.append("orphan_lease_identity_mismatch")
         if attempt is not None and attempt.native_job_name is not None:
@@ -133,7 +135,9 @@ def repair_coding_windows_product_worker_clean_exit_orphan_runtime(
         or product.policy.product_id != "coding"
         or type(expected_review) is not CodingWindowsWorkerOrphanRuntimeReviewV1
     ):
-        raise ValueError("Windows Worker clean-exit repair requires exact Product proof")
+        raise ValueError(
+            "Windows Worker clean-exit repair requires exact Product proof"
+        )
     if not expected_review.clean_exit_repair_candidate:
         raise ValueError("Windows Worker clean-exit repair is unproven")
     [expected_lease] = expected_review.orphan_leases
@@ -156,7 +160,9 @@ def repair_coding_windows_product_worker_clean_exit_orphan_runtime(
             yield
             product.assert_root_gc_authority_current()
 
-    registry.repair_orphan(expected_lease.lease_id, validation_guard=validate_while_locked)
+    registry.repair_orphan(
+        expected_lease.lease_id, validation_guard=validate_while_locked
+    )
     return expected_lease
 
 
@@ -167,47 +173,14 @@ def _review_under_gc_guard(
     orphans: tuple[PackageEpochRuntimeLeaseV1, ...],
 ) -> CodingWindowsWorkerOrphanRuntimeReviewV1:
     """Read Product facts with the caller's Package-before-GC lock order."""
-
-    product.assert_root_gc_authority_current()
-    attempts = _inspect_windows_worker_recovery_inventory_under_gc_guard(product)
-    attempt = next((item for item in attempts if item.attempt_id == attempt_id), None)
-    journal = CodingWindowsWorkerReceiptJournal(
-        product.state_root / "worker-activation-receipts.jsonl",
-        scope_id=product.policy.project_scope_id,
-    )
-    with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-        receipts = journal.records(directory_fd=root)
-    fingerprint = None if attempt is None else attempt.launch_receipt_fingerprint
-    receipt = next(
-        (
-            item
-            for item in receipts
-            if fingerprint is not None and item.receipt.fingerprint == fingerprint
-        ),
-        None,
-    )
-    runtime_id = None if receipt is None else receipt.receipt.policy.product_runtime_id
-    matching = (
-        ()
-        if runtime_id is None
-        else tuple(item for item in orphans if item.runtime_id == runtime_id)
-    )
-    fence = product.epoch_runtime.cutover_result.fence
-    if fence is None:
-        raise ValueError("Windows Worker Product fence is unavailable")
-    product.assert_root_gc_authority_current()
-    return CodingWindowsWorkerOrphanRuntimeReviewV1(
+    return capture_windows_product_worker_orphan_runtime(
+        product,
         attempt_id=attempt_id,
-        attempt=attempt,
-        receipt_record=receipt,
-        orphan_leases=matching,
-        runtime_epoch=fence.epoch,
-        store_root_identity=fence.fenced_root_identity,
-        native_job_absent=(
-            None
-            if attempt is None or attempt.native_job_name is None
-            else observe_windows_worker_job_absent(attempt.native_job_name)
-        ),
+        orphans=orphans,
+        inspect_inventory=_inspect_windows_worker_recovery_inventory_under_gc_guard,
+        receipt_journal=CodingWindowsWorkerReceiptJournal,
+        observe_job_absent=observe_windows_worker_job_absent,
+        review_type=CodingWindowsWorkerOrphanRuntimeReviewV1,
     )
 
 

@@ -383,12 +383,9 @@ def _rooted_file(root: Path, path: Path) -> Iterator[RootedFile]:
             raise CodingLegacySourceConsumptionError(
                 "Configured Source Product state directory is unsafe"
             )
-        file_io = RootedFileIO(root, descriptor)
-        try:
+        with RootedFileIO(root, descriptor) as file_io:
             with file_io.bind(path) as target:
                 yield target
-        finally:
-            file_io.cleanup()
     finally:
         os.close(descriptor)
 

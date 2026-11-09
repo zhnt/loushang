@@ -36,6 +36,16 @@ outcome/error and durable-owner seam; it never exposes private stores, leases,
 records, exceptions, reasons, or broad mappings as public API. C5.1 adds no
 native-profile port and does not create `_native_profile_bridge.py`.
 
+The later accepted [Worker history convergence](../key-designs/worker-history-responsibility-convergence.md)
+adds three bounded internal consumers: `history/_activation.py` reuses this
+aggregate's transition table, while `history/_receipts.py` and
+`history/_receipt_store.py` reuse the same receipt value and codec. They do not
+create another lifecycle aggregate, expose additional facade contracts, or
+acquire Product/Hosting authority. The C5.1 consumer inventory includes these
+three modules; the original exclusion for all other Worker implementation
+consumers remains. This records the accepted internal split rather than a new
+Product or native activation route.
+
 ## Authority-Free Policy And Receipt
 
 `ProductWorkerActivationPolicyV1` is an immutable value binding:

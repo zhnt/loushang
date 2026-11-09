@@ -1,0 +1,224 @@
+{
+  "first-intent": {
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": {
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workerIdentityFingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+      "identity": null,
+      "journalRevision": 1,
+      "nativeClosureDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+      "phase": "intent",
+      "policyFingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+      "receiptFingerprint": "2222222222222222222222222222222222222222222222222222222222222222",
+      "recordVersion": 1,
+      "scopeId": "session-scope",
+      "recordDigest": "4117ef605c8566d4a26c5ab9cc48ac103ff043588bd4275ad50540168d9e2152"
+    },
+    "error": null,
+    "files": {
+      "worker-activation-state.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-start-gates.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-state.head.json": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554",
+      "worker-activation-state.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-start-gates.head.json": "34ad9ba639ced51bc7c012086711df3cd135a564ee9a6e892c4ba8bcf032004c",
+      "worker-start-gates.jsonl": "2ebdf450faafbc41e1c3d3060f43546e9f2a9cd46c3ab9e2eef8133859e947ac"
+    }
+  },
+  "late-first-intent": {
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": {
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workerIdentityFingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+      "identity": null,
+      "journalRevision": 1,
+      "nativeClosureDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+      "phase": "intent",
+      "policyFingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+      "receiptFingerprint": "2222222222222222222222222222222222222222222222222222222222222222",
+      "recordVersion": 1,
+      "scopeId": "session-scope",
+      "recordDigest": "4117ef605c8566d4a26c5ab9cc48ac103ff043588bd4275ad50540168d9e2152"
+    },
+    "error": null,
+    "files": {
+      "worker-activation-state.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-start-gates.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-state.head.json": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554",
+      "worker-activation-state.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-start-gates.head.json": "34ad9ba639ced51bc7c012086711df3cd135a564ee9a6e892c4ba8bcf032004c",
+      "worker-start-gates.jsonl": "2ebdf450faafbc41e1c3d3060f43546e9f2a9cd46c3ab9e2eef8133859e947ac"
+    }
+  },
+  "bound-without-intent": {
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerStartGateJournalError",
+        "coding_worker_start_gate_attempt_conflict",
+        "coding_worker_start_gate_attempt_conflict",
+        false
+      ]
+    ],
+    "files": {
+      "worker-start-gates.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-start-gates.head.json": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb",
+      "worker-start-gates.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "existing-missing-activation": {
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerStartGateJournalError",
+        "coding_worker_start_gate_activation_history_missing",
+        "coding_worker_start_gate_activation_history_missing",
+        false
+      ]
+    ],
+    "files": {
+      "worker-start-gates.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-start-gates.head.json": "34ad9ba639ced51bc7c012086711df3cd135a564ee9a6e892c4ba8bcf032004c",
+      "worker-start-gates.jsonl": "2ebdf450faafbc41e1c3d3060f43546e9f2a9cd46c3ab9e2eef8133859e947ac"
+    }
+  },
+  "candidate-denied": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "ValueError",
+        "Coding Worker candidate Product owner is required",
+        null,
+        false
+      ]
+    ],
+    "files": {}
+  },
+  "binding-changed": {
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerStartGateJournalError",
+        "coding_worker_start_gate_binding_changed",
+        "coding_worker_start_gate_binding_changed",
+        false
+      ]
+    ],
+    "files": {
+      "worker-activation-state.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-start-gates.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-state.head.json": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554",
+      "worker-activation-state.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-start-gates.head.json": "34ad9ba639ced51bc7c012086711df3cd135a564ee9a6e892c4ba8bcf032004c",
+      "worker-start-gates.jsonl": "2ebdf450faafbc41e1c3d3060f43546e9f2a9cd46c3ab9e2eef8133859e947ac"
+    }
+  },
+  "v2-empty-current": {
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      "bound-enter",
+      "activation-construct",
+      "activation-presence",
+      "activation-load",
+      "bound-exit",
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "stop at original activation load",
+        null,
+        false
+      ]
+    ],
+    "files": {}
+  },
+  "v2-nonempty-current": {
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      "bound-enter",
+      "activation-construct",
+      "activation-presence",
+      "bound-exit",
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerStartGateJournalError",
+        "coding_worker_start_gate_activation_history_missing",
+        "coding_worker_start_gate_activation_history_missing",
+        false
+      ]
+    ],
+    "files": {}
+  }
+}

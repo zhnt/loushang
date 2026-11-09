@@ -118,6 +118,7 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/apphost/application.py"),
         Path("src/loushang/apphost/continuity.py"),
         Path("src/loushang/apphost/foreground.py"),
+        Path("src/loushang/apphost/integrations/session_control.py"),
         Path("src/loushang/coding/hosted_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
         Path("src/loushang/coding/hosted_bootstrap.py"),

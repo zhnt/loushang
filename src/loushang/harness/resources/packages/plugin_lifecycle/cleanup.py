@@ -10,6 +10,7 @@ from functools import partial
 from pathlib import Path
 from typing import Literal
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
@@ -35,6 +36,15 @@ from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleFailureV1,
     PackageLifecyclePhase,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _nonempty_string as _wire_string,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _versioned_dict as _exact_dict,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_int as _wire_int,
 )
 
 PACKAGE_QUARANTINE_CLEANUP_STATUS_VERSION = 1
@@ -440,31 +450,9 @@ def _assert_no_duplicate_json_keys(path: Path) -> None:
             json.loads(line, object_pairs_hook=_unique_json_object)
 
 
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Package cleanup journal contains duplicate JSON keys")
-        result[key] = value
-    return result
-
-
-def _exact_dict(value: object, *, fields: set[str], name: str) -> dict[str, object]:
-    if not isinstance(value, dict) or set(value) != fields:
-        raise ValueError(f"{name} does not match its versioned schema")
-    return value
-
-
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise TypeError(f"{name} must be a non-empty string")
-    return value
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an integer")
-    return value
+_unique_json_object = _unique_json_object_hook(
+    lambda: "Package cleanup journal contains duplicate JSON keys",
+)
 
 
 __all__ = [
@@ -477,22 +465,18 @@ __all__ = [
 ]
 
 
-_QUARANTINE_CLEANUP_STATUS_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("target", decoder=PackageQuarantineCleanupTargetV1.from_dict),
-        RecordField("rejection_code", "rejection code"),
-        RecordField("rejection_stage", "rejection stage"),
-        RecordField("disposition", "cleanup disposition"),
-        RecordField("cleanup_revision", "cleanup revision", _wire_int),
-        RecordField(
-            "failure",
-            decoder=partial(
-                decode_nullable, decoder=PackageLifecycleFailureV1.from_dict
-            ),
-        ),
-        RecordField("status_version", "cleanup status version", _wire_int),
+_QUARANTINE_CLEANUP_STATUS_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageQuarantineCleanupStatusV1,
+    _wire_string,
+    RecordField("target", decoder=PackageQuarantineCleanupTargetV1.from_dict),
+    RecordField("disposition", "cleanup disposition"),
+    RecordField("cleanup_revision", "cleanup revision", _wire_int),
+    RecordField(
+        "failure",
+        decoder=partial(decode_nullable, decoder=PackageLifecycleFailureV1.from_dict),
     ),
+    RecordField("status_version", "cleanup status version", _wire_int),
+    derive_labels=True,
 )
 
 

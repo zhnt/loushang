@@ -7,7 +7,7 @@ all cross-field invariants stay with the original record and its value helpers.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import TypeVar, cast
 
 RecordT = TypeVar("RecordT")
@@ -19,6 +19,7 @@ class RecordField:
     attribute: str
     label: str | None = None
     decoder: ValueDecoder | None = None
+    encoder: ValueDecoder | None = None
     wire_key: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -33,9 +34,43 @@ class RecordSchema:
     text_decoder: ValueDecoder
     fields: tuple[RecordField, ...]
 
+    @classmethod
+    def for_dataclass(
+        cls,
+        record_type: type,
+        text_decoder: ValueDecoder,
+        *overrides: RecordField,
+        derive_labels: bool = False,
+    ) -> RecordSchema:
+        """Compile once: all dataclass fields are wire fields in declaration order."""
+        names = tuple(member.name for member in fields(record_type))
+        configured = {item.attribute: item for item in overrides}
+        if len(configured) != len(overrides) or not configured.keys() <= set(names):
+            raise ValueError("Record schema overrides do not match dataclass fields")
+        return cls(
+            text_decoder,
+            tuple(
+                configured[name]
+                if name in configured
+                else RecordField(
+                    name, name.replace("_", " ") if derive_labels else None
+                )
+                for name in names
+            ),
+        )
+
     @property
     def keys(self) -> set[str]:
         return {item.wire_key for item in self.fields}
+
+    def encode(self, value: object, *, sort_keys: bool = False) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for item in self.fields:
+            member = getattr(value, item.attribute)
+            result[item.wire_key] = (
+                member if item.encoder is None else item.encoder(member)
+            )
+        return {key: result[key] for key in sorted(result)} if sort_keys else result
 
     def decode(
         self, constructor: Callable[..., RecordT], document: dict[str, object]

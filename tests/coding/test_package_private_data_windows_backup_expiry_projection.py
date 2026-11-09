@@ -12,6 +12,7 @@ import pytest
 
 import loushang.coding.package_private_data_windows_backup as backup_module
 import loushang.coding.package_private_data_windows_backup_expiry_journal as journal
+import loushang.harness.resources.packages._private_tree_windows as native_tree
 from loushang.coding.package_private_data_windows_backup import (
     CodingWindowsArchPrivateDataBackupOwner,
 )
@@ -79,9 +80,9 @@ def test_windows_backup_status_requires_terminal_receipt_for_expired(
         "inspect_windows_product_private_directory_identity",
         lambda path: (1, 4),
     )
-    native_open_directory = backup_module.open_windows_directory
+    native_open_directory = native_tree.open_windows_directory
     monkeypatch.setattr(
-        backup_module,
+        native_tree,
         "open_windows_directory",
         lambda path, **kwargs: (
             native_open_directory(path, **kwargs)
@@ -131,7 +132,7 @@ def test_windows_backup_status_requires_terminal_receipt_for_expired(
         missing_state,
     )
     monkeypatch.setattr(
-        backup_module,
+        native_tree,
         "open_windows_directory",
         lambda path, **kwargs: pytest.fail("read created Product state"),
     )

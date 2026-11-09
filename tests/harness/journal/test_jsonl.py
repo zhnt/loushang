@@ -35,6 +35,53 @@ class _RecordCodec:
         return _Record(record_id=str(value["recordId"]), text=str(value["text"]))
 
 
+def test_duplicate_collection_keeps_repair_prefix_and_skips_uncommitted_tail(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import pytest
+
+    import loushang.harness.journal.jsonl as journal_module
+    from loushang.harness.journal import JournalLoadPolicy, load_jsonl
+
+    path = tmp_path / "records.jsonl"
+    plain = '{"recordId":"one","text":"last"}\n'
+    repeated = '{"recordId":"one","text":"first","text":"last"}\n'
+    original_loads = journal_module.json.loads
+    parsed = []
+
+    def observe(raw, **kwargs):
+        parsed.append(raw)
+        return original_loads(raw, **kwargs)
+
+    for committed, tail, duplicates in (
+        (repeated, '{"partial":', True),
+        (plain, repeated.rstrip("\n"), False),
+    ):
+        path.write_text(committed + tail)
+        parsed.clear()
+        with monkeypatch.context() as patch:
+            patch.setattr(journal_module.json, "loads", observe)
+            snapshot = load_jsonl(
+                path,
+                record_codec=_RecordCodec(),
+                load_policy=JournalLoadPolicy(
+                    partial_tail="repair", collect_duplicate_keys=True
+                ),
+            )
+        assert len(parsed) == 1
+        assert snapshot.records == (_Record("one", "last"),)
+        assert path.read_text() == committed
+        if duplicates:
+            with pytest.raises(ValueError, match="original duplicate failure"):
+                snapshot.require_unique_keys("original duplicate failure")
+        else:
+            snapshot.require_unique_keys("original duplicate failure")
+    path.write_text(repeated)
+    default = load_jsonl(path, record_codec=_RecordCodec())
+    assert default.duplicate_key_line is None
+    assert default.records == (_Record("one", "last"),)
+
+
 def test_descriptor_relative_journal_read_stays_beneath_open_directory(
     tmp_path: Path,
 ) -> None:
@@ -260,18 +307,27 @@ def test_text_journal_writers_preserve_configured_newline_bytes(
             "durability": PROCESS_LOCAL_JOURNAL,
         }
         append_jsonl_record(path, _Record("one", "alpha"), **options)
-        assert path.read_bytes() == ('{"recordId": "one", "text": "alpha"}' + newline).encode()
+        assert (
+            path.read_bytes()
+            == ('{"recordId": "one", "text": "alpha"}' + newline).encode()
+        )
 
         append_jsonl_records(path, [_Record("two", "beta")], **options)
-        assert path.read_bytes() == (
-            '{"recordId": "one", "text": "alpha"}'
-            + newline
-            + '{"recordId": "two", "text": "beta"}'
-            + newline
-        ).encode()
+        assert (
+            path.read_bytes()
+            == (
+                '{"recordId": "one", "text": "alpha"}'
+                + newline
+                + '{"recordId": "two", "text": "beta"}'
+                + newline
+            ).encode()
+        )
 
         write_jsonl(path, [_Record("three", "gamma")], **options)
-        assert path.read_bytes() == ('{"recordId": "three", "text": "gamma"}' + newline).encode()
+        assert (
+            path.read_bytes()
+            == ('{"recordId": "three", "text": "gamma"}' + newline).encode()
+        )
 
 
 def test_decoder_accepts_jsonl_cr_lf_framing() -> None:
@@ -467,7 +523,9 @@ def test_owner_validation_runs_under_lock_before_partial_tail_repair(
 
     with pytest.raises(ValueError, match="owner cannot reconcile"):
         load_jsonl(
-            path, record_codec=_RecordCodec(), lock_factory=lock_factory,
+            path,
+            record_codec=_RecordCodec(),
+            lock_factory=lock_factory,
             load_policy=JournalLoadPolicy(partial_tail="repair"),
             validate_snapshot=validate_snapshot,
         )
@@ -476,7 +534,9 @@ def test_owner_validation_runs_under_lock_before_partial_tail_repair(
 
     reject = False
     snapshot = load_jsonl(
-        path, record_codec=_RecordCodec(), lock_factory=lock_factory,
+        path,
+        record_codec=_RecordCodec(),
+        lock_factory=lock_factory,
         load_policy=JournalLoadPolicy(partial_tail="repair"),
         validate_snapshot=validate_snapshot,
     )
@@ -748,3 +808,27 @@ def test_journal_lock_never_rewrites_existing_group_writable_ancestor(
         pass
 
     assert stat.S_IMODE(existing.stat().st_mode) == 0o2775
+
+
+def test_record_duplicate_diagnostics_are_lazy_and_keep_the_original_cause():
+    import pytest
+
+    from loushang.harness.journal.codec import decode_json_record
+
+    formatted = []
+
+    class Label(str):
+        def __format__(self, spec):
+            formatted.append(spec)
+            return "record"
+
+    label = Label("record")
+    assert decode_json_record(
+        b'{"valid": {"value": 1}}', lambda value: value, label=label
+    ) == {"valid": {"value": 1}}
+    assert formatted == []
+    with pytest.raises(ValueError, match="record is invalid") as caught:
+        decode_json_record(b'{"a":1,"a":2}', lambda value: value, label=label)
+    assert formatted == ["", ""]
+    assert type(caught.value.__cause__) is ValueError
+    assert str(caught.value.__cause__) == "record has duplicate fields"

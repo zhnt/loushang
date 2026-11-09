@@ -23,34 +23,25 @@ from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionPlanV1,
     PluginPrivateDataDeletionReceiptV1,
     PrivateDataDeletionDisposition,
+    remove_started_private_tree,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
-    _rename_directory_noreplace,
-)
 
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .package_installation_private_data import (
     coding_arch_installation_private_data_root,
 )
+from .package_private_data_backup import _private_io
 from .package_private_data_deletion_journal import (
     CodingArchPrivateDataDeletionEventV1,
     CodingArchPrivateDataDeletionJournal,
 )
 from .package_private_data_deletion_preview import (
     CodingArchPrivateDataDeletionPreview,
-    CodingArchPrivateDataMemberV1,
-    CodingArchPrivateDataTargetSnapshotV1,
     _capture_target_snapshot,
-    _identity,
 )
 
 _OWNER_ID = "coding.arch.private-data:posix-v1"
-_DIRECTORY_FLAGS = (
-    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-    if os.name == "posix"
-    else -1
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,152 +153,14 @@ def _delete_started(
     private_base: Path,
     journal: CodingArchPrivateDataDeletionJournal,
 ) -> tuple[PrivateDataDeletionDisposition, CodingArchPrivateDataDeletionEventV1]:
-    target = started.target
-    current = _capture_target_snapshot(root, private_base=private_base)
-    if target.root_identity is None:
-        if current.root_identity is not None:
-            raise ValueError("Absent Coding Arch private-data target changed")
-        return "already_absent", started
-
-    tombstone_name = _tombstone_name(started)
-    parent = root.parent
-    parent_fd = os.open(parent, _DIRECTORY_FLAGS)
-    try:
-        parent_identity = _identity(os.fstat(parent_fd))
-        if parent_identity != _identity(parent.lstat()):
-            raise ValueError("Coding Arch private-data parent changed")
-        tombstone = parent / tombstone_name
-        try:
-            tombstone_metadata = os.stat(
-                tombstone_name, dir_fd=parent_fd, follow_symlinks=False
-            )
-        except FileNotFoundError:
-            tombstone_metadata = None
-        if tombstone_metadata is None:
-            if current.root_identity is None:
-                if started.phase != "renamed":
-                    raise ValueError("Coding Arch private-data deletion is ambiguous")
-                return "deleted", started
-            if started.phase != "started":
-                raise ValueError("Coding Arch private-data tombstone disappeared")
-            if current != target:
-                raise ValueError(
-                    "Coding Arch private-data target changed before rename"
-                )
-            source_metadata = os.stat(
-                root.name, dir_fd=parent_fd, follow_symlinks=False
-            )
-            if _identity(source_metadata) != target.root_identity:
-                raise ValueError("Coding Arch private-data target identity changed")
-            _rename_directory_noreplace(parent_fd, root.name, parent_fd, tombstone_name)
-            os.fsync(parent_fd)
-        elif current.root_identity is not None:
-            raise ValueError("Coding Arch private-data root and tombstone coexist")
-        tombstone_fd = os.open(tombstone_name, _DIRECTORY_FLAGS, dir_fd=parent_fd)
-        try:
-            metadata = os.fstat(tombstone_fd)
-            if (metadata.st_dev, metadata.st_ino) != target.root_identity[:2]:
-                raise ValueError("Coding Arch private-data tombstone identity changed")
-            renamed = journal.record_renamed(started)
-            remaining = _capture_target_snapshot(tombstone, private_base=private_base)
-            _require_remaining_subset(remaining, target)
-            _remove_members(tombstone_fd, remaining.members, target)
-            if os.listdir(tombstone_fd):
-                raise ValueError("Coding Arch private-data tombstone is not empty")
-            os.fsync(tombstone_fd)
-        finally:
-            os.close(tombstone_fd)
-        if (
-            os.stat(tombstone_name, dir_fd=parent_fd, follow_symlinks=False).st_ino
-            != target.root_identity[1]
-        ):
-            raise ValueError("Coding Arch private-data tombstone changed")
-        os.rmdir(tombstone_name, dir_fd=parent_fd)
-        os.fsync(parent_fd)
-        if _exists_at(parent_fd, root.name):
-            raise ValueError("Coding Arch private-data root was recreated")
-        return "deleted", renamed
-    finally:
-        os.close(parent_fd)
-
-
-def _require_remaining_subset(
-    remaining: CodingArchPrivateDataTargetSnapshotV1,
-    original: CodingArchPrivateDataTargetSnapshotV1,
-) -> None:
-    if (
-        remaining.root_identity is None
-        or original.root_identity is None
-        or remaining.root_identity[:3] != original.root_identity[:3]
-    ):
-        raise ValueError("Coding Arch private-data tombstone changed")
-    expected = {member.relative_path: member for member in original.members}
-    for member in remaining.members:
-        prior = expected.get(member.relative_path)
-        if (
-            prior is None
-            or member.kind != prior.kind
-            or (
-                member.identity != prior.identity
-                if member.kind == "file"
-                else member.identity[:3] != prior.identity[:3]
-            )
-            or member.content_sha256 != prior.content_sha256
-        ):
-            raise ValueError("Coding Arch private-data tombstone member changed")
-
-
-def _remove_members(
-    tombstone_fd: int,
-    members: tuple[CodingArchPrivateDataMemberV1, ...],
-    original: CodingArchPrivateDataTargetSnapshotV1,
-) -> None:
-    expected = {member.relative_path: member for member in original.members}
-    for member in sorted(
-        members,
-        key=lambda item: (item.relative_path.count("/"), item.relative_path),
-        reverse=True,
-    ):
-        parts = member.relative_path.split("/")
-        parent_fd = os.dup(tombstone_fd)
-        try:
-            path = ""
-            for part in parts[:-1]:
-                path = part if not path else path + "/" + part
-                next_fd = os.open(part, _DIRECTORY_FLAGS, dir_fd=parent_fd)
-                try:
-                    prior = expected[path]
-                    metadata = os.fstat(next_fd)
-                    if (
-                        prior.kind != "directory"
-                        or _identity(metadata)[:3] != prior.identity[:3]
-                    ):
-                        raise ValueError("Coding Arch private-data directory changed")
-                except BaseException:
-                    os.close(next_fd)
-                    raise
-                os.close(parent_fd)
-                parent_fd = next_fd
-            metadata = os.stat(parts[-1], dir_fd=parent_fd, follow_symlinks=False)
-            if member.kind == "file":
-                if _identity(metadata) != member.identity:
-                    raise ValueError("Coding Arch private-data file changed")
-                os.unlink(parts[-1], dir_fd=parent_fd)
-            else:
-                if _identity(metadata)[:3] != member.identity[:3]:
-                    raise ValueError("Coding Arch private-data directory changed")
-                os.rmdir(parts[-1], dir_fd=parent_fd)
-            os.fsync(parent_fd)
-        finally:
-            os.close(parent_fd)
-
-
-def _exists_at(directory_fd: int, name: str) -> bool:
-    try:
-        os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
-    except FileNotFoundError:
-        return False
-    return True
+    return remove_started_private_tree(
+        root,
+        started,
+        io=_private_io,
+        capture=lambda path: _capture_target_snapshot(path, private_base=private_base),
+        make_tombstone_name=lambda: _tombstone_name(started),
+        record_renamed=journal.record_renamed,
+    )
 
 
 def _tombstone_name(started: CodingArchPrivateDataDeletionEventV1) -> str:

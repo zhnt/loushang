@@ -7,14 +7,18 @@ writer and publish it under runtime quiescence and the GC write gate.
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from hashlib import sha256
 
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
+from loushang.harness.worker.history._base_codec import _BaseWireMethods, _unchanged
 
 from .package_product_worker_windows_base_files import (
     WINDOWS_WORKER_BASE_FILES,
@@ -30,7 +34,17 @@ _BASE_KEYS = tuple(key for key, _ in WINDOWS_WORKER_BASE_FILES)
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerHistoryCutoverRecordV1:
+class CodingWindowsWorkerHistoryCutoverRecordV1(_BaseWireMethods):
+    _wire_label = "Windows Worker history cutover record"
+    _wire_lists = ("baseDigests",)
+    _wire_invalid_bytes = _wire_invalid_fields = _wire_invalid_encoding = "is invalid"
+    _wire_errors = (KeyError, RecursionError, TypeError, UnicodeError, ValueError)
+    _wire_nested_lists = ("baseDigests",)
+
+    @classmethod
+    def _wire_maximum(cls) -> int:
+        return _MAX_BYTES
+
     scope_id: str
     store_id: str
     checkpoint_digest: str
@@ -89,42 +103,7 @@ class CodingWindowsWorkerHistoryCutoverRecordV1:
 
     @classmethod
     def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerHistoryCutoverRecordV1:
-        if type(raw) is not bytes or not raw or len(raw) > _MAX_BYTES:
-            raise ValueError("Windows Worker history cutover record is invalid")
-        try:
-            value = json.loads(raw)
-            if (
-                type(value) is not dict
-                or set(value)
-                != {
-                    "baseDigests",
-                    "checkpointDigest",
-                    "cutoverVersion",
-                    "recordDigest",
-                    "scopeId",
-                    "sourceSnapshotDigest",
-                    "storeId",
-                }
-                or type(value["baseDigests"]) is not list
-                or any(type(item) is not list for item in value["baseDigests"])
-            ):
-                raise ValueError("Windows Worker history cutover record is invalid")
-            record = cls(
-                scope_id=value["scopeId"],
-                store_id=value["storeId"],
-                checkpoint_digest=value["checkpointDigest"],
-                source_snapshot_digest=value["sourceSnapshotDigest"],
-                base_digests=tuple(tuple(item) for item in value["baseDigests"]),
-                record_digest=value["recordDigest"],
-                cutover_version=value["cutoverVersion"],
-            )
-            if record.to_bytes() != raw:
-                raise ValueError("Windows Worker history cutover record is invalid")
-            return record
-        except (KeyError, RecursionError, TypeError, UnicodeError, ValueError) as exc:
-            raise ValueError(
-                "Windows Worker history cutover record is invalid"
-            ) from exc
+        return cls._from_wire_bytes(raw)
 
     @classmethod
     def from_persisted_bases(
@@ -156,6 +135,15 @@ class CodingWindowsWorkerHistoryCutoverRecordV1:
     ) -> None:
         if self != self.from_persisted_bases(persisted):
             raise ValueError("Windows Worker history cutover bases changed")
+
+
+CodingWindowsWorkerHistoryCutoverRecordV1._wire_schema = RecordSchema.for_dataclass(
+    CodingWindowsWorkerHistoryCutoverRecordV1,
+    _unchanged,
+    RecordField(
+        "base_digests", decoder=lambda value: tuple(tuple(item) for item in value)
+    ),
+)
 
 
 __all__ = [

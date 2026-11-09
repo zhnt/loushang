@@ -12,7 +12,11 @@ import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, TypeVar, cast, runtime_checkable
+from typing import Protocol, TypeVar, runtime_checkable
+
+from loushang.foundation._owned_tasks import (
+    _join_cancellation_first,
+)
 
 from ._process_backend import (
     _ManagedProcessPreparation,
@@ -755,24 +759,7 @@ class _ManagedPreparationLease(LaunchPreparationLease, _ManagedProcessPreparatio
             )
 
 
-async def _await_owned(task: asyncio.Task[_T]) -> _T:
-    cancellation: asyncio.CancelledError | None = None
-    while True:
-        try:
-            result = await asyncio.shield(task)
-            break
-        except asyncio.CancelledError as exc:
-            if task.cancelled():
-                raise
-            if cancellation is None:
-                cancellation = exc
-        except BaseException as exc:
-            if cancellation is not None:
-                raise cancellation from exc
-            raise
-    if cancellation is not None:
-        raise cancellation
-    return cast(_T, result)
+_await_owned = _join_cancellation_first
 
 
 def _owner_task_failed(task: asyncio.Task[object]) -> bool:

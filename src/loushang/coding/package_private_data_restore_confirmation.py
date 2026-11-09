@@ -2,31 +2,33 @@
 
 from __future__ import annotations
 
-import json
-import os
-import stat
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.journal import (
-    DURABLE_LOCKED_JOURNAL,
-    SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
     JournalCodecError,
-    JournalLoadPolicy,
-    JsonlSnapshot,
-    append_jsonl_record,
-    journal_file_lock,
-    journal_file_read_lock,
-    load_jsonl,
+)
+from loushang.harness.plugin_management._private_data_records import (
+    _valid_digest as _digest,
+)
+from loushang.harness.plugin_management.private_data_restore_journal import (
+    PrivateDataRestoreConfirmationJournal,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
-from .package_private_data_restore_journal import restore_id_for
+from .package_private_data_restore_journal import (
+    CodingArchPrivateDataRestoreEventV1,
+    restore_id_for,
+)
 
 _JOURNAL_NAME = "private-data-restore-confirmations.jsonl"
 _MAX_RECORDS = 4096
@@ -145,35 +147,27 @@ class CodingArchPrivateDataRestoreConfirmationV1:
     def to_dict(self) -> dict[str, object]:
         return {**self._unsigned(), "recordDigest": self.record_digest}
 
+    def matches_restore_result(
+        self, other: CodingArchPrivateDataRestoreConfirmationV1
+    ) -> bool:
+        return (
+            self.to_dict()
+            == {
+                **other.to_dict(),
+                "revision": self.revision,
+                "recordDigest": self.record_digest,
+            }
+            and self.confirmation_id == other.confirmation_id
+        )
+
     @classmethod
     def from_dict(cls, value: object) -> CodingArchPrivateDataRestoreConfirmationV1:
-        if type(value) is not dict or set(value) != {
-            "backupId",
-            "confirmationId",
-            "deletionReceiptId",
-            "installationKey",
-            "recordDigest",
-            "recordVersion",
-            "restoreCompletionDigest",
-            "restoredTargetId",
-            "restoreId",
-            "revision",
-        }:
+        if (
+            type(value) is not dict
+            or set(value) != _SCHEMA_RESTORE_CONFIRMATION_V1.keys
+        ):
             raise ValueError("Coding Arch restore confirmation fields are invalid")
-        return cls(
-            revision=value["revision"],
-            installation_key=PluginInstallationKeyV1.from_dict(
-                value["installationKey"]
-            ),
-            backup_id=value["backupId"],
-            deletion_receipt_id=value["deletionReceiptId"],
-            restore_id=value["restoreId"],
-            restore_completion_digest=value["restoreCompletionDigest"],
-            restored_target_id=value["restoredTargetId"],
-            confirmation_id=value["confirmationId"],
-            record_digest=value["recordDigest"],
-            record_version=value["recordVersion"],
-        )
+        return _SCHEMA_RESTORE_CONFIRMATION_V1.decode(cls, value)
 
 
 def _decode(value: object) -> CodingArchPrivateDataRestoreConfirmationV1:
@@ -192,9 +186,9 @@ _CODEC = FunctionalJournalRecordCodec(
 )
 
 
-class CodingArchPrivateDataRestoreConfirmationJournal:
-    """Append one exact verified tree confirmation per completed restore."""
-
+class CodingArchPrivateDataRestoreConfirmationJournal(
+    PrivateDataRestoreConfirmationJournal[CodingArchPrivateDataRestoreConfirmationV1]
+):
     def __init__(self, state_root: Path) -> None:
         if (
             not isinstance(state_root, Path)
@@ -202,123 +196,52 @@ class CodingArchPrivateDataRestoreConfirmationJournal:
             or ".." in state_root.parts
         ):
             raise ValueError("Coding Arch restore confirmation root is invalid")
-        self._path = state_root / _JOURNAL_NAME
-        self._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-        self._load_policy = JournalLoadPolicy(partial_tail="raise", create_lock=False)
-
-    @property
-    def path(self) -> Path:
-        return self._path
-
-    def records(self) -> tuple[CodingArchPrivateDataRestoreConfirmationV1, ...]:
-        self._require_private_parent()
-        with journal_file_read_lock(self._path, "shared", create_lock=False):
-            return self._load_unlocked()
-
-    def record(
-        self, confirmation: CodingArchPrivateDataRestoreConfirmationV1
-    ) -> CodingArchPrivateDataRestoreConfirmationV1:
-        if not isinstance(confirmation, CodingArchPrivateDataRestoreConfirmationV1):
-            raise TypeError("Coding Arch restore confirmation is required")
-        self._require_private_parent()
-        with journal_file_lock(self._path, "exclusive"):
-            records = self._load_unlocked()
-            previous = next(
-                (
-                    item
-                    for item in reversed(records)
-                    if item.restore_id == confirmation.restore_id
-                ),
-                None,
-            )
-            if previous is not None:
-                if (
-                    previous.to_dict()
-                    != {
-                        **confirmation.to_dict(),
-                        "revision": previous.revision,
-                        "recordDigest": previous.record_digest,
-                    }
-                    or previous.confirmation_id != confirmation.confirmation_id
-                ):
-                    raise ValueError("Coding Arch restore confirmation changed")
-                return previous
-            if (
-                len(records) >= _MAX_RECORDS
-                or confirmation.revision != len(records) + 1
-            ):
-                raise ValueError("Coding Arch restore confirmation revision changed")
-            append_jsonl_record(
-                self._path,
-                confirmation,
-                record_codec=_CODEC,
-                format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                durability=self._durability,
-            )
-            return confirmation
-
-    def _load_unlocked(self) -> tuple[CodingArchPrivateDataRestoreConfirmationV1, ...]:
-        try:
-            metadata = self._path.lstat()
-        except FileNotFoundError:
-            return ()
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or metadata.st_nlink != 1
-            or metadata.st_uid != os.geteuid()
-            or metadata.st_mode & 0o077
-            or metadata.st_size > _MAX_BYTES
-        ):
-            raise ValueError("Coding Arch restore confirmation journal is unsafe")
-        loaded: JsonlSnapshot[None, CodingArchPrivateDataRestoreConfirmationV1] = (
-            load_jsonl(
-                self._path,
-                record_codec=_CODEC,
-                format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                durability=self._durability,
-                load_policy=self._load_policy,
-            )
+        super().__init__(
+            state_root / _JOURNAL_NAME,
+            record_type=CodingArchPrivateDataRestoreConfirmationV1,
+            codec=_CODEC,
+            label="Coding Arch",
+            max_records=_MAX_RECORDS,
+            max_bytes=_MAX_BYTES,
         )
-        with self._path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                if line.strip():
-                    json.loads(line, object_pairs_hook=_unique_object)
-        records = loaded.records
-        if len(records) > _MAX_RECORDS:
-            raise ValueError("Coding Arch restore confirmation journal is full")
-        seen: set[str] = set()
-        for revision, record in enumerate(records, 1):
-            if record.revision != revision or record.restore_id in seen:
-                raise ValueError("Coding Arch restore confirmations changed")
-            seen.add(record.restore_id)
-        return records
-
-    def _require_private_parent(self) -> None:
-        metadata = self._path.parent.lstat()
-        if (
-            not stat.S_ISDIR(metadata.st_mode)
-            or metadata.st_uid != os.geteuid()
-            or metadata.st_mode & 0o077
-        ):
-            raise ValueError("Coding Arch restore confirmation root is not private")
 
 
-def _digest(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and len(value) == 64
-        and all(character in "0123456789abcdef" for character in value)
+def _require_restore_confirmation(
+    records: tuple[CodingArchPrivateDataRestoreConfirmationV1, ...],
+    confirmation_id: str,
+    key: PluginInstallationKeyV1,
+    backup_id: str,
+    completion: CodingArchPrivateDataRestoreEventV1,
+    target_id: str,
+    *,
+    message: str,
+) -> CodingArchPrivateDataRestoreConfirmationV1:
+    matched = next(
+        (item for item in reversed(records) if item.confirmation_id == confirmation_id),
+        None,
     )
+    if (
+        matched is None
+        or matched.installation_key != key
+        or matched.backup_id != backup_id
+        or matched.restore_id != completion.restore_id
+        or matched.deletion_receipt_id != completion.deletion_receipt_id
+        or matched.restore_completion_digest != completion.record_digest
+        or matched.restored_target_id != target_id
+    ):
+        raise ValueError(message)
+    return matched
 
 
-def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Coding Arch restore confirmation repeats a field")
-        result[key] = value
-    return result
-
+_SCHEMA_RESTORE_CONFIRMATION_V1 = RecordSchema.for_dataclass(
+    CodingArchPrivateDataRestoreConfirmationV1,
+    lambda value: value,
+    RecordField(
+        "installation_key",
+        decoder=PluginInstallationKeyV1.from_dict,
+        encoder=PluginInstallationKeyV1.to_dict,
+    ),
+)
 
 __all__ = [
     "CodingArchPrivateDataRestoreConfirmationJournal",

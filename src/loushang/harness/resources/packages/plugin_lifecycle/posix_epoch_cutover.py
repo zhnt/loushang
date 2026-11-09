@@ -29,6 +29,12 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceRequestV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _exact_integer as _wire_int,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _string_value as _wire_string,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
@@ -1112,22 +1118,10 @@ def _wire_object(
     return document
 
 
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str):
-        raise TypeError(f"{name} must be a string")
-    return value
-
-
 def _wire_optional_string(value: object, *, name: str) -> str | None:
     if value is None:
         return None
     return _wire_string(value, name=name)
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if type(value) is not int:
-        raise TypeError(f"{name} must be an integer")
-    return cast(int, value)
 
 
 def _wire_string_tuple(value: object, *, name: str) -> tuple[str, ...]:
@@ -1150,92 +1144,65 @@ __all__ = [
 ]
 
 
-_EPOCH_CUTOVER_QUIESCENCE_RECEIPT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("receipt_id", "receipt id"),
-        RecordField("store_id", "store id"),
-        RecordField("owner_revision", "owner revision", _wire_int),
-        RecordField(
-            "active_runtime_lease_ids", "active runtime lease ids", _wire_string_tuple
-        ),
-        RecordField(
-            "active_pre_fence_registration_ids",
-            "active pre-fence registration ids",
-            _wire_string_tuple,
-        ),
-        RecordField("receipt_version", "receipt version", _wire_int),
+_EPOCH_CUTOVER_QUIESCENCE_RECEIPT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageEpochCutoverQuiescenceReceiptV1,
+    _wire_string,
+    RecordField("owner_revision", "owner revision", _wire_int),
+    RecordField(
+        "active_runtime_lease_ids", "active runtime lease ids", _wire_string_tuple
     ),
+    RecordField(
+        "active_pre_fence_registration_ids",
+        "active pre-fence registration ids",
+        _wire_string_tuple,
+    ),
+    RecordField("receipt_version", "receipt version", _wire_int),
+    derive_labels=True,
 )
 
 
-_EPOCH_CUTOVER_SNAPSHOT_RECEIPT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("receipt_id", "receipt id"),
-        RecordField("store_id", "store id"),
-        RecordField("legacy_root_identity", "legacy root identity"),
-        RecordField("quiescence_receipt_id", "quiescence receipt id"),
-        RecordField("snapshot_id", "snapshot id"),
-        RecordField("snapshot_revision", "snapshot revision", _wire_int),
-        RecordField("entry_count", "entry count", _wire_int),
-        RecordField("byte_count", "byte count", _wire_int),
-        RecordField("receipt_version", "receipt version", _wire_int),
-    ),
+_EPOCH_CUTOVER_SNAPSHOT_RECEIPT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageEpochCutoverSnapshotReceiptV1,
+    _wire_string,
+    RecordField("snapshot_revision", "snapshot revision", _wire_int),
+    RecordField("entry_count", "entry count", _wire_int),
+    RecordField("byte_count", "byte count", _wire_int),
+    RecordField("receipt_version", "receipt version", _wire_int),
+    derive_labels=True,
 )
 
 
-_POSIX_EPOCH_CUTOVER_REQUEST_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("request_id", "request id"),
-        RecordField("store_id", "store id"),
-        RecordField("prior_epoch", "prior epoch", _wire_int),
-        RecordField("prior_fence_id", "prior fence id", _wire_optional_string),
-        RecordField("prior_fence_revision", "prior fence revision", _wire_int),
-        RecordField("expected_legacy_root_identity", "expected legacy root identity"),
-        RecordField("namespace_id", "namespace id"),
-        RecordField("minimum_runtime_version", "minimum runtime version"),
-        RecordField(
-            "minimum_runtime_protocol_epoch",
-            "minimum runtime protocol epoch",
-            _wire_int,
-        ),
-        RecordField("request_version", "request version", _wire_int),
+_POSIX_EPOCH_CUTOVER_REQUEST_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackagePosixEpochCutoverRequestV1,
+    _wire_string,
+    RecordField("prior_epoch", "prior epoch", _wire_int),
+    RecordField("prior_fence_id", "prior fence id", _wire_optional_string),
+    RecordField("prior_fence_revision", "prior fence revision", _wire_int),
+    RecordField(
+        "minimum_runtime_protocol_epoch",
+        "minimum runtime protocol epoch",
+        _wire_int,
     ),
+    RecordField("request_version", "request version", _wire_int),
+    derive_labels=True,
 )
 
 
-_POSIX_EPOCH_ROOT_SWITCH_RECEIPT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("switch_receipt_id", "switch receipt id"),
-        RecordField("request_id", "request id"),
-        RecordField("store_id", "store id"),
-        RecordField("prior_epoch", "prior epoch", _wire_int),
-        RecordField("next_epoch", "next epoch", _wire_int),
-        RecordField("legacy_root_identity", "legacy root identity"),
-        RecordField("fenced_root_identity", "fenced root identity"),
-        RecordField("namespace_id", "namespace id"),
-        RecordField("quiescence_receipt_id", "quiescence receipt id"),
-        RecordField("snapshot_receipt_id", "snapshot receipt id"),
-        RecordField("switch_authority", "switch authority"),
-        RecordField("receipt_version", "receipt version", _wire_int),
-    ),
+_POSIX_EPOCH_ROOT_SWITCH_RECEIPT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackagePosixEpochRootSwitchReceiptV1,
+    _wire_string,
+    RecordField("prior_epoch", "prior epoch", _wire_int),
+    RecordField("next_epoch", "next epoch", _wire_int),
+    RecordField("receipt_version", "receipt version", _wire_int),
+    derive_labels=True,
 )
 
 
-_POSIX_EPOCH_CUTOVER_FAILURE_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("failure_id", "failure id"),
-        RecordField("request_id", "request id"),
-        RecordField("evidence_ref", "evidence ref"),
-        RecordField("barrier", "barrier"),
-        RecordField("code", "code"),
-        RecordField("operator_action", "operator action"),
-        RecordField("failure_version", "failure version", _wire_int),
-    ),
+_POSIX_EPOCH_CUTOVER_FAILURE_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackagePosixEpochCutoverFailureV1,
+    _wire_string,
+    RecordField("failure_version", "failure version", _wire_int),
+    derive_labels=True,
 )
 
 
@@ -1264,6 +1231,100 @@ class _PackageEpochCutoverWorkflow:
     Concrete owners retain constructor admission, rooted handle acquisition,
     native errors and platform-specific cleanup ordering.
     """
+
+    @classmethod
+    def _reopen_fenced(
+        cls,
+        authority_root: Path,
+        *,
+        store_id: str,
+        epoch_journal: PackageEpochFenceJournal,
+        epochs_root_name: str,
+        open_authority: Callable[[Path], _EpochCutoverPinnedAuthority],
+        native_identity: Callable[[int], _NativeIdentity],
+    ) -> PackagePosixEpochCutoverResultV1:
+        """Recheck one recorded fence through the existing native workflow ports."""
+        error_type = cast(_EpochCutoverErrorFactory, cls._error_type)
+        if (
+            not isinstance(authority_root, Path)
+            or not authority_root.is_absolute()
+            or ".." in authority_root.parts
+            or authority_root == Path(authority_root.anchor)
+            or not isinstance(epoch_journal, PackageEpochFenceJournal)
+        ):
+            raise ValueError("Package epoch reopen authority is invalid")
+        _require_safe_id(store_id, name="Package store identity")
+        _require_component(epochs_root_name, name="Package epochs root name")
+        records = epoch_journal.records()
+        if not records or records[-1].receipt.store_id != store_id:
+            raise error_type(
+                "Package epoch fence is unavailable",
+                code="package_epoch_fence_stale",
+            )
+        current = records[-1].receipt
+        prior = records[-2].receipt if len(records) > 1 else None
+        source = current.request
+        request = PackagePosixEpochCutoverRequestV1.create(
+            store_id=store_id,
+            prior_fence=prior,
+            expected_legacy_root_identity=source.legacy_root_identity,
+            namespace_id=source.namespace_id,
+            minimum_runtime_version=source.minimum_runtime_version,
+            minimum_runtime_protocol_epoch=source.minimum_runtime_protocol_epoch,
+        )
+        switch = PackagePosixEpochRootSwitchReceiptV1.create(
+            request,
+            fenced_root_identity=source.fenced_root_identity,
+            quiescence_receipt_id=source.quiescence_receipt_id,
+            snapshot_receipt_id=source.snapshot_receipt_id,
+        )
+        if switch.switch_receipt_id != source.root_switch_receipt_id:
+            raise cls._identity_changed()
+        try:
+            pinned = open_authority(authority_root)
+            try:
+                epochs_fd = pinned.open_authority_child(epochs_root_name)
+                try:
+                    epoch_identity = native_identity(epochs_fd)
+                    selected_fd = cls._open_child(epochs_fd, source.namespace_id)
+                    try:
+                        if (
+                            cls._directory_identity(selected_fd)
+                            != source.fenced_root_identity
+                        ):
+                            raise cls._identity_changed()
+                    finally:
+                        os.close(selected_fd)
+                finally:
+                    os.close(epochs_fd)
+                pinned.assert_visible()
+                epochs_fd = pinned.open_authority_child(
+                    epochs_root_name, expected_identity=epoch_identity
+                )
+                try:
+                    selected_fd = cls._open_child(epochs_fd, source.namespace_id)
+                    try:
+                        if (
+                            cls._directory_identity(selected_fd)
+                            != source.fenced_root_identity
+                        ):
+                            raise cls._identity_changed()
+                    finally:
+                        os.close(selected_fd)
+                finally:
+                    os.close(epochs_fd)
+            finally:
+                pinned.close()
+        except Exception as exc:
+            raise cls._native_error(exc) from exc
+        if epoch_journal.current(store_id) != current:
+            raise error_type(
+                "Package epoch changed during reopen",
+                code="package_epoch_fence_stale",
+            )
+        return PackagePosixEpochCutoverResultV1.fenced(
+            request, fence=current, switch_receipt=switch
+        )
 
     _platform_name = "POSIX"
     _error_type: type[RuntimeError] = PackagePosixEpochCutoverError
@@ -1616,85 +1677,14 @@ class PackagePosixEpochCutoverOwner(_PackageEpochCutoverWorkflow):
                 "POSIX Package epoch reopen is unavailable",
                 code="package_epoch_cutover_unavailable",
             )
-        if (
-            not isinstance(authority_root, Path)
-            or not authority_root.is_absolute()
-            or ".." in authority_root.parts
-            or authority_root == Path(authority_root.anchor)
-            or not isinstance(epoch_journal, PackageEpochFenceJournal)
-        ):
-            raise ValueError("Package epoch reopen authority is invalid")
-        _require_safe_id(store_id, name="Package store identity")
-        _require_component(epochs_root_name, name="Package epochs root name")
-        records = epoch_journal.records()
-        if not records or records[-1].receipt.store_id != store_id:
-            raise PackagePosixEpochCutoverError(
-                "Package epoch fence is unavailable",
-                code="package_epoch_fence_stale",
-            )
-        current = records[-1].receipt
-        prior = records[-2].receipt if len(records) > 1 else None
-        source = current.request
-        request = PackagePosixEpochCutoverRequestV1.create(
+
+        return PackagePosixEpochCutoverOwner._reopen_fenced(
+            authority_root,
             store_id=store_id,
-            prior_fence=prior,
-            expected_legacy_root_identity=source.legacy_root_identity,
-            namespace_id=source.namespace_id,
-            minimum_runtime_version=source.minimum_runtime_version,
-            minimum_runtime_protocol_epoch=source.minimum_runtime_protocol_epoch,
-        )
-        switch = PackagePosixEpochRootSwitchReceiptV1.create(
-            request,
-            fenced_root_identity=source.fenced_root_identity,
-            quiescence_receipt_id=source.quiescence_receipt_id,
-            snapshot_receipt_id=source.snapshot_receipt_id,
-        )
-        if switch.switch_receipt_id != source.root_switch_receipt_id:
-            raise _identity_changed()
-        try:
-            pinned = _PinnedPosixAuthority.open(authority_root)
-            try:
-                epochs_fd = pinned.open_authority_child(epochs_root_name)
-                try:
-                    epoch_identity = _directory_native_identity(epochs_fd)
-                    selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
-                    try:
-                        if (
-                            _directory_identity(selected_fd)
-                            != source.fenced_root_identity
-                        ):
-                            raise _identity_changed()
-                    finally:
-                        os.close(selected_fd)
-                finally:
-                    os.close(epochs_fd)
-                pinned.assert_visible()
-                epochs_fd = pinned.open_authority_child(
-                    epochs_root_name, expected_identity=epoch_identity
-                )
-                try:
-                    selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
-                    try:
-                        if (
-                            _directory_identity(selected_fd)
-                            != source.fenced_root_identity
-                        ):
-                            raise _identity_changed()
-                    finally:
-                        os.close(selected_fd)
-                finally:
-                    os.close(epochs_fd)
-            finally:
-                pinned.close()
-        except Exception as exc:
-            raise _native_error(exc) from exc
-        if epoch_journal.current(store_id) != current:
-            raise PackagePosixEpochCutoverError(
-                "Package epoch changed during reopen",
-                code="package_epoch_fence_stale",
-            )
-        return PackagePosixEpochCutoverResultV1.fenced(
-            request, fence=current, switch_receipt=switch
+            epoch_journal=epoch_journal,
+            epochs_root_name=epochs_root_name,
+            open_authority=lambda root: _PinnedPosixAuthority.open(root),
+            native_identity=lambda descriptor: _directory_native_identity(descriptor),
         )
 
     def __init__(

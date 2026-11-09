@@ -7,6 +7,7 @@ from contextlib import AbstractContextManager
 from dataclasses import replace
 from pathlib import Path
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
@@ -1380,15 +1381,9 @@ def _assert_no_duplicate_json_keys(path: Path) -> None:
         json.loads(line, object_pairs_hook=_unique_json_object)
 
 
-def _unique_json_object(
-    pairs: list[tuple[str, object]],
-) -> dict[str, object]:
-    document: dict[str, object] = {}
-    for key, value in pairs:
-        if key in document:
-            raise ValueError("Package lifecycle journal contains duplicate JSON keys")
-        document[key] = value
-    return document
+_unique_json_object = _unique_json_object_hook(
+    lambda: 'Package lifecycle journal contains duplicate JSON keys',
+)
 
 
 def _project_state(

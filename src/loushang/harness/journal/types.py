@@ -46,10 +46,15 @@ class JournalLoadPolicy:
     invalid_record: InvalidValueBehavior = "raise"
     partial_tail: PartialTailBehavior = "raise"
     create_lock: bool = True
+    collect_duplicate_keys: bool = False
 
     def __post_init__(self) -> None:
         if type(self.create_lock) is not bool:
             raise TypeError("Journal lock creation policy must be a built-in bool")
+        if type(self.collect_duplicate_keys) is not bool:
+            raise TypeError(
+                "Journal duplicate-key collection policy must be a built-in bool"
+            )
 
 
 @dataclass(frozen=True)
@@ -57,6 +62,12 @@ class JsonlSnapshot(Generic[H, R]):
     header: H | None
     records: tuple[R, ...]
     diagnostics: tuple[JournalDiagnostic, ...] = ()
+    duplicate_key_line: int | None = None
+
+    def require_unique_keys(self, message: str) -> None:
+        """Reject after whole-load/repair success, before the owner's projection."""
+        if self.duplicate_key_line is not None:
+            raise ValueError(message)
 
 
 DEFAULT_JSONL_FORMAT = JournalFormatProfile()

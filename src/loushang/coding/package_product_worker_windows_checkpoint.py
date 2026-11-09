@@ -6,7 +6,6 @@ Publication and an eventual owner switch must provide separate authority.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from dataclasses import dataclass
@@ -18,12 +17,17 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationSnapshotV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
     PackageWindowsRuntimeQuiescenceV1,
 )
+from loushang.harness.worker.history._base_codec import _BaseWireMethods, _unchanged
 
 from .package_legacy_windows_receipt import (
     read_windows_private_receipt,
@@ -66,8 +70,17 @@ _BASE_NAMES = (
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerHistoryCheckpointV1:
+class CodingWindowsWorkerHistoryCheckpointV1(_BaseWireMethods):
     """An exact pre-cutover commitment to six source-bound semantic bases."""
+
+    _wire_label = "Windows Worker history checkpoint"
+    _wire_lists = ()
+    _wire_invalid_bytes = _wire_invalid_fields = _wire_invalid_encoding = "is invalid"
+    _wire_errors = (TypeError, UnicodeError, ValueError)
+
+    @classmethod
+    def _wire_maximum(cls) -> int:
+        return _MAX_BYTES
 
     source_snapshot: CodingWindowsWorkerHistorySourceSnapshotV1
     preparation_digest: str
@@ -187,60 +200,7 @@ class CodingWindowsWorkerHistoryCheckpointV1:
 
     @classmethod
     def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerHistoryCheckpointV1:
-        if type(raw) is not bytes or not raw or len(raw) > _MAX_BYTES:
-            raise ValueError("Windows Worker history checkpoint is invalid")
-        try:
-            value = json.loads(raw)
-            if type(value) is not dict or set(value) != {
-                "attemptIds",
-                "backupTopologyRevision",
-                "baseDigests",
-                "desiredHistoryDigest",
-                "gcReservationRevision",
-                "nativeProvisioningAttemptIds",
-                "nativeApprovalGeneration",
-                "nativeApprovalOperationIds",
-                "nativeApprovalRecordDigests",
-                "optInOperationIds",
-                "packageReferenceDigest",
-                "preparationDigest",
-                "receiptFingerprints",
-                "recordVersion",
-                "sourceSnapshot",
-                "recordDigest",
-            }:
-                raise ValueError("Windows Worker history checkpoint is invalid")
-            record = cls(
-                source_snapshot=CodingWindowsWorkerHistorySourceSnapshotV1.from_dict(
-                    value["sourceSnapshot"]
-                ),
-                preparation_digest=value["preparationDigest"],
-                package_reference_digest=value["packageReferenceDigest"],
-                desired_history_digest=value["desiredHistoryDigest"],
-                backup_topology_revision=value["backupTopologyRevision"],
-                gc_reservation_revision=value["gcReservationRevision"],
-                base_digests=tuple(tuple(item) for item in value["baseDigests"]),
-                native_approval_record_digests=tuple(
-                    value["nativeApprovalRecordDigests"]
-                ),
-                native_approval_operation_ids=tuple(
-                    value["nativeApprovalOperationIds"]
-                ),
-                native_approval_generation=value["nativeApprovalGeneration"],
-                opt_in_operation_ids=tuple(value["optInOperationIds"]),
-                receipt_fingerprints=tuple(value["receiptFingerprints"]),
-                attempt_ids=tuple(value["attemptIds"]),
-                native_provisioning_attempt_ids=tuple(
-                    value["nativeProvisioningAttemptIds"]
-                ),
-                record_digest=value["recordDigest"],
-                record_version=value["recordVersion"],
-            )
-            if record.to_bytes() != raw:
-                raise ValueError("Windows Worker history checkpoint is invalid")
-            return record
-        except (TypeError, UnicodeError, ValueError) as exc:
-            raise ValueError("Windows Worker history checkpoint is invalid") from exc
+        return cls._from_wire_bytes(raw)
 
     @classmethod
     def from_guarded_read(
@@ -350,6 +310,27 @@ class CodingWindowsWorkerHistoryCheckpointV1:
             native_provisioning_attempt_ids=joined.native_provisioning.attempt_ids,
             record_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
         )
+
+
+CodingWindowsWorkerHistoryCheckpointV1._wire_schema = RecordSchema.for_dataclass(
+    CodingWindowsWorkerHistoryCheckpointV1,
+    _unchanged,
+    RecordField(
+        "source_snapshot",
+        decoder=lambda value: CodingWindowsWorkerHistorySourceSnapshotV1.from_dict(
+            value
+        ),
+    ),
+    RecordField(
+        "base_digests", decoder=lambda value: tuple(tuple(item) for item in value)
+    ),
+    RecordField("native_approval_record_digests", decoder=tuple),
+    RecordField("native_approval_operation_ids", decoder=tuple),
+    RecordField("opt_in_operation_ids", decoder=tuple),
+    RecordField("receipt_fingerprints", decoder=tuple),
+    RecordField("attempt_ids", decoder=tuple),
+    RecordField("native_provisioning_attempt_ids", decoder=tuple),
+)
 
 
 def _current_checkpoint_under_guard(

@@ -566,6 +566,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "loushang.apphost",
         "loushang.coding.apphost_product",
         "loushang.coding.product_plan",
+        "loushang.harness.runtime",
         "re",
         "typing",
     }

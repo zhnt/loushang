@@ -16,7 +16,6 @@ from loushang.coding._capability_plugin_specs import (
     CodingCapabilityToolOwner,
     ordered_coding_capability_plugin_specs,
 )
-from loushang.coding._cleanup import run_cleanup_steps
 from loushang.coding._plugin_lifecycle import (
     CodingPluginLifecycle,
     CodingPluginManagementChange,
@@ -31,6 +30,7 @@ from loushang.coding.plugin_dependency_grants import (
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.coding.resource_runtime import CodingPackageMaterializer
+from loushang.harness.approval._plugin_resume_parents import _PluginResumeParentMethods
 from loushang.harness.approval.plugin_activation import (
     ContributionActivationApprovalSubject,
     PluginActivationDecisionJournal,
@@ -95,10 +95,17 @@ from loushang.harness.resources.plugins.selection import (
 from loushang.harness.resources.plugins.types import PluginSource
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
+from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
     SessionCapabilityOwnerAuthorityGate,
 )
+from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
+    _PreparationFailureCleanup,
+    _PreparedCompositionCleanup,
+    _PublishedCompositionCleanup,
+)
+from loushang.harness.session.plugin_lifecycle._publication import _OwnerLeaseSet
 from loushang.harness.session.product_composition_assembly import (
     ProductCapabilityProviderOwnerBinding,
     ProductCompositionAssemblyRequest,
@@ -172,7 +179,7 @@ class CodingCapabilityPluginCompositionError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingResumePluginParents:
+class CodingResumePluginParents(_PluginResumeParentMethods):
     """Two inert native lookups from one frozen Resume intent, without grants."""
 
     definition: ResumeEffectParentContextV1
@@ -229,88 +236,18 @@ class CodingResumePluginParents:
         )
         return definition, activation
 
-    def require_open(
-        self, *, session_id: str, state_root: Path, clock: Callable[[], int]
-    ) -> None:
-        """Read original enrollment before Definition evaluation; never enroll."""
-
-        definition, activation = self._journals(
-            session_id=session_id, state_root=state_root, clock=clock
-        )
-        # Both obligations must already be enrolled in their original journals.
-        # A missing Component enrollment cannot be discovered after Definition
-        # code has started. Original owners validate scope and contract digests.
-        if definition.resume_parent_snapshot(self.definition).sealed:
-            raise CodingCapabilityPluginCompositionError(
+    def _sealed_parent_error(
+        self, *, definition: bool
+    ) -> CodingCapabilityPluginCompositionError:
+        if definition:
+            return CodingCapabilityPluginCompositionError(
                 "Resume Definition enumeration is sealed.",
                 code="coding_resume_definition_parent_sealed",
             )
-        if activation.resume_parent_snapshot(self.activation).sealed:
-            raise CodingCapabilityPluginCompositionError(
-                "Resume Component enumeration is sealed.",
-                code="coding_resume_activation_parent_sealed",
-            )
-
-    def enroll(
-        self, *, session_id: str, state_root: Path, clock: Callable[[], int]
-    ) -> None:
-        """Idempotently enroll both original owners after intent commit."""
-
-        definition, activation = self._journals(
-            session_id=session_id, state_root=state_root, clock=clock
+        return CodingCapabilityPluginCompositionError(
+            "Resume Component enumeration is sealed.",
+            code="coding_resume_activation_parent_sealed",
         )
-        try:
-            existing_definition = definition.resume_parent_snapshot(self.definition)
-        except PluginExecutionJournalError as error:
-            if error.code != "plugin_execution_resume_parent_unknown":
-                raise
-            definition.enroll_resume_parent(
-                self.definition,
-                expected_journal_revision=definition.snapshot().journal_revision,
-            )
-        else:
-            if existing_definition.sealed:
-                raise CodingCapabilityPluginCompositionError(
-                    "Resume Definition enumeration is sealed.",
-                    code="coding_resume_definition_parent_sealed",
-                )
-        try:
-            existing_activation = activation.resume_parent_snapshot(self.activation)
-        except PluginActivationJournalError as error:
-            if error.code != "plugin_activation_resume_parent_unknown":
-                raise
-            activation.enroll_resume_parent(
-                self.activation,
-                expected_journal_revision=activation.snapshot().journal_revision,
-            )
-        else:
-            if existing_activation.sealed:
-                raise CodingCapabilityPluginCompositionError(
-                    "Resume Component enumeration is sealed.",
-                    code="coding_resume_activation_parent_sealed",
-                )
-
-    def seal(
-        self, *, session_id: str, state_root: Path, clock: Callable[[], int]
-    ) -> tuple[object, object]:
-        """Fence exact Definition and Component membership after graph preparation."""
-
-        definition, activation = self._journals(
-            session_id=session_id, state_root=state_root, clock=clock
-        )
-        definition_snapshot = definition.resume_parent_snapshot(self.definition)
-        if not definition_snapshot.sealed:
-            definition_snapshot = definition.seal_resume_parent(
-                self.definition,
-                expected_journal_revision=definition_snapshot.journal_revision,
-            )
-        activation_snapshot = activation.resume_parent_snapshot(self.activation)
-        if not activation_snapshot.sealed:
-            activation_snapshot = activation.seal_resume_parent(
-                self.activation,
-                expected_journal_revision=activation_snapshot.journal_revision,
-            )
-        return definition_snapshot, activation_snapshot
 
 
 def prepare_coding_resume_plugin_effect_owners(
@@ -404,14 +341,8 @@ def require_coding_resume_plugin_effect_settlement(
         or activation_snapshot.unfenced_recovered_use_ids
         or not definition_snapshot.execution_uses
         or not activation_snapshot.activation_uses
-        or any(
-            use.state != "EVALUATED"
-            for use in definition_snapshot.execution_uses
-        )
-        or any(
-            use.state != "COMMITTED"
-            for use in activation_snapshot.activation_uses
-        )
+        or any(use.state != "EVALUATED" for use in definition_snapshot.execution_uses)
+        or any(use.state != "COMMITTED" for use in activation_snapshot.activation_uses)
     ):
         raise CodingResumeRecoveryRequired("input.effect_settlement_unknown")
 
@@ -435,9 +366,7 @@ def require_coding_resume_plugin_effect_settlement(
                 raise ValueError("invalid current revision identity")
             if plugin_id not in CODING_CAPABILITY_PLUGIN_IDS:
                 continue
-            revision = PluginInstanceRevisionRef.from_dict(
-                raw["instanceRevisionRef"]
-            )
+            revision = PluginInstanceRevisionRef.from_dict(raw["instanceRevisionRef"])
             if revision.plugin_id != plugin_id or plugin_id in selected:
                 raise ValueError("current revision receipt changed")
             selected[plugin_id] = revision
@@ -462,13 +391,19 @@ def require_coding_resume_plugin_effect_settlement(
             key=lambda ref: (ref.plugin_id, ref.instance_id, ref.revision),
         )
     )
-    if not selected_refs or definition_refs != selected_refs or activation_refs != selected_refs:
+    if (
+        not selected_refs
+        or definition_refs != selected_refs
+        or activation_refs != selected_refs
+    ):
         raise CodingResumeRecoveryRequired("input.effect_settlement_unknown")
 
 
 @dataclass(slots=True)
-class CodingCapabilityPluginCleanupCustodian:
+class CodingCapabilityPluginCleanupCustodian(_PreparationFailureCleanup):
     """Retryable owner for a preparation that failed after acquiring evidence."""
+
+    _cleanup_label = "Coding Capability"
 
     runtime: PluginRuntimeResolution = field(repr=False)
     management_leases: Mapping[str, CodingPluginSessionLease] = field(repr=False)
@@ -490,105 +425,6 @@ class CodingCapabilityPluginCleanupCustodian:
     _management_released: bool = field(default=False, init=False, repr=False)
     _state_cleaned: bool = field(default=False, init=False, repr=False)
     _private_state_cleaned: bool = field(default=False, init=False, repr=False)
-
-    def adopt_cleanup_callbacks(
-        self,
-        *,
-        management_state_cleanup: Callable[[], None] | None,
-        state_cleanup: Callable[[], None] | None,
-        private_state_cleanup: Callable[[], None] | None,
-    ) -> None:
-        for name, callback in (
-            ("management_state_cleanup", management_state_cleanup),
-            ("state_cleanup", state_cleanup),
-            ("private_state_cleanup", private_state_cleanup),
-        ):
-            current = getattr(self, name)
-            if current is not None and callback is not None and current is not callback:
-                raise RuntimeError(
-                    "Coding Capability cleanup callback ownership changed"
-                )
-            if current is None:
-                setattr(self, name, callback)
-
-    def close(self) -> None:
-        """Retry cleanup without deleting management/private roots too early."""
-
-        primary_error: BaseException | None = None
-        if not self._runtime_closed:
-            try:
-                self.runtime.close()
-            except BaseException as error:
-                primary_error = error
-            else:
-                self._runtime_closed = True
-        if self._runtime_closed:
-            for plugin_id, lease in reversed(tuple(self.management_leases.items())):
-                if plugin_id in self._released_plugin_ids:
-                    continue
-                try:
-                    lease.close()
-                except BaseException as cleanup_error:
-                    if primary_error is None:
-                        primary_error = cleanup_error
-                    else:
-                        primary_error.add_note(
-                            f"{plugin_id} Session lifecycle release also failed: "
-                            f"{cleanup_error}"
-                        )
-                else:
-                    self._released_plugin_ids.add(plugin_id)
-        all_leases_released = len(self._released_plugin_ids) == len(
-            self.management_leases
-        )
-        if (
-            self._runtime_closed
-            and all_leases_released
-            and not self._management_released
-        ):
-            try:
-                if self.management_state_cleanup is not None:
-                    self.management_state_cleanup()
-            except BaseException as cleanup_error:
-                if primary_error is None:
-                    primary_error = cleanup_error
-                else:
-                    primary_error.add_note(
-                        "Coding Capability management-state cleanup also failed: "
-                        f"{cleanup_error}"
-                    )
-            else:
-                self._management_released = True
-        if self._management_released and not self._state_cleaned:
-            try:
-                if self.state_cleanup is not None:
-                    self.state_cleanup()
-            except BaseException as cleanup_error:
-                if primary_error is None:
-                    primary_error = cleanup_error
-                else:
-                    primary_error.add_note(
-                        "Coding Capability composition-state cleanup also failed: "
-                        f"{cleanup_error}"
-                    )
-            else:
-                self._state_cleaned = True
-        if self._state_cleaned and not self._private_state_cleaned:
-            try:
-                if self.private_state_cleanup is not None:
-                    self.private_state_cleanup()
-            except BaseException as cleanup_error:
-                if primary_error is None:
-                    primary_error = cleanup_error
-                else:
-                    primary_error.add_note(
-                        "Coding Capability private-state cleanup also failed: "
-                        f"{cleanup_error}"
-                    )
-            else:
-                self._private_state_cleaned = True
-        if primary_error is not None:
-            raise primary_error
 
 
 def coding_capability_plugin_failure_custodian(
@@ -790,8 +626,10 @@ def _bind_default_approval_request_to_plan(
 
 
 @dataclass(slots=True)
-class CodingCapabilityPluginCompositionAssembly:
+class CodingCapabilityPluginCompositionAssembly(_PublishedCompositionCleanup):
     """Approved Product closure awaiting bootstrap and Graph ownership transfer."""
+
+    _cleanup_label = "Coding Capability"
 
     runtime: PluginRuntimeResolution = field(repr=False)
     selection: PluginSelection
@@ -836,24 +674,6 @@ class CodingCapabilityPluginCompositionAssembly:
 
         return self.tool_owners.get(plugin_id)
 
-    def close(self) -> None:
-        """Release verified revision handles before ownership transfers to Session."""
-
-        if self._closed:
-            return
-        if not self._runtime_closed:
-            self.runtime.close()
-            self._runtime_closed = True
-        # Composition state is evidence for graph publication, not lifecycle
-        # management state.  Once runtime evidence closes after publication it
-        # can retire independently; management/private roots remain gated on
-        # graph and owner retirement.
-        if not self._state_cleaned:
-            if self.state_cleanup is not None:
-                self.state_cleanup()
-            self._state_cleaned = True
-        self._closed = self._runtime_closed and self._state_cleaned
-
     def evaluate_management_changes(
         self,
     ) -> Mapping[str, CodingPluginManagementChange]:
@@ -870,109 +690,26 @@ class CodingCapabilityPluginCompositionAssembly:
         self,
         receipts: Mapping[str, tuple[OwnerGenerationRetirementReceipt, ...]],
     ) -> None:
-        for plugin_id, lease in self.management_leases.items():
-            lease.prepare_owner_generations(receipts.get(plugin_id, ()))
+        _OwnerLeaseSet(self.management_leases).prepare_owner_generations(receipts)
 
     def publish_owner_generations(
         self,
         receipts: Mapping[str, tuple[OwnerGenerationRetirementReceipt, ...]],
     ) -> None:
-        for plugin_id, lease in self.management_leases.items():
-            lease.publish_owner_generations(receipts.get(plugin_id, ()))
+        _OwnerLeaseSet(self.management_leases).publish_owner_generations(receipts)
 
     def retire_owner_generations(
         self,
         receipts: Mapping[str, tuple[OwnerGenerationRetirementReceipt, ...]],
     ) -> None:
-        for plugin_id, lease in self.management_leases.items():
-            lease.retire_owner_generations(receipts.get(plugin_id, ()))
-
-    def confirm_runtime_retirement(
-        self,
-        *,
-        graph_closed: bool,
-        runtime_was_published: bool,
-        graph_has_pending_retirements: bool,
-        owner_generations_remaining: bool,
-        component_generations_remaining: bool,
-    ) -> None:
-        """Accept cleanup eligibility only from a completely retired Session."""
-
-        if (
-            (runtime_was_published and not graph_closed)
-            or graph_has_pending_retirements
-            or owner_generations_remaining
-            or component_generations_remaining
-        ):
-            raise RuntimeError(
-                "Coding Capability Plugin runtime retirement remains incomplete"
-            )
-        self._runtime_retired = True
-
-    def release_management(self) -> None:
-        if self._management_released:
-            return
-        if not self._runtime_retired:
-            raise RuntimeError(
-                "Coding Capability Plugin management cannot release before retirement"
-            )
-        if not self._runtime_closed:
-            raise RuntimeError(
-                "Coding Capability Plugin management cannot release before "
-                "runtime evidence closes"
-            )
-        primary_error = run_cleanup_steps(
-            None,
-            tuple(
-                (
-                    f"{plugin_id} Session lifecycle release",
-                    lease.close,
-                )
-                for plugin_id, lease in reversed(tuple(self.management_leases.items()))
-            ),
-        )
-        if primary_error is not None:
-            raise primary_error
-        if self.management_state_cleanup is not None:
-            self.management_state_cleanup()
-        self._management_released = True
-
-    def abort_unpublished(self) -> None:
-        """Release an assembly that never published a Session graph."""
-
-        self._runtime_retired = True
-        if not self._runtime_closed:
-            self.runtime.close()
-            self._runtime_closed = True
-        self.release_management()
-        if not self._state_cleaned:
-            if self.state_cleanup is not None:
-                self.state_cleanup()
-            self._state_cleaned = True
-        self.cleanup_private_state()
-        self._closed = True
-
-    def cleanup_private_state(self) -> None:
-        """Delete disposable private data only after Provider retirement."""
-
-        if self._private_state_cleaned:
-            return
-        if (
-            not self._runtime_retired
-            or not self._management_released
-            or not self._state_cleaned
-        ):
-            raise RuntimeError(
-                "Coding Capability Plugin private state requires retirement evidence"
-            )
-        if self.private_state_cleanup is not None:
-            self.private_state_cleanup()
-        self._private_state_cleaned = True
+        _OwnerLeaseSet(self.management_leases).retire_owner_generations(receipts)
 
 
 @dataclass(slots=True)
-class CodingCapabilityPluginCompositionPreparation:
+class CodingCapabilityPluginCompositionPreparation(_PreparedCompositionCleanup):
     """Definition-approved closure compiled before host Provider construction."""
+
+    _cleanup_label = "Coding Capability"
 
     request: CodingCapabilityPluginCompositionRequest = field(repr=False)
     runtime: PluginRuntimeResolution = field(repr=False)
@@ -1086,45 +823,6 @@ class CodingCapabilityPluginCompositionPreparation:
             management_state_cleanup=self.management_state_cleanup,
             state_cleanup=self.state_cleanup,
             private_state_cleanup=self.private_state_cleanup,
-        )
-
-    def close(self) -> None:
-        if self._closed or self._transferred:
-            return
-        if not self._runtime_closed:
-            self.runtime.close()
-            self._runtime_closed = True
-        if not self._management_released:
-            primary_error = run_cleanup_steps(
-                None,
-                tuple(
-                    (
-                        f"{plugin_id} Session lifecycle release",
-                        lease.close,
-                    )
-                    for plugin_id, lease in reversed(
-                        tuple(self.management_leases.items())
-                    )
-                ),
-            )
-            if primary_error is not None:
-                raise primary_error
-            if self.management_state_cleanup is not None:
-                self.management_state_cleanup()
-            self._management_released = True
-        if not self._state_cleaned:
-            if self.state_cleanup is not None:
-                self.state_cleanup()
-            self._state_cleaned = True
-        if not self._private_state_cleaned:
-            if self.private_state_cleanup is not None:
-                self.private_state_cleanup()
-            self._private_state_cleaned = True
-        self._closed = (
-            self._runtime_closed
-            and self._management_released
-            and self._state_cleaned
-            and self._private_state_cleaned
         )
 
 

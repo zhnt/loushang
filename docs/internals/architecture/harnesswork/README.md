@@ -60,6 +60,12 @@ Coding Goal 对该机制的接入见 [GMW-KD-SESSION-01](../goal-method-work/ses
 HarnessWork。Goal 共享代码不 import Coding/Method 或 Harness 私有 I/O；物理
 存储适配复用原机制并由 Product 注入。它不新增 Work 引擎、消息队列或默认调度器。
 
+[可选Goal记录后端](key-designs/goal-record-store-convergence.md)已将Coding原单份
+物理backend接入`integrations.goal_store`，通过Journal明确支持的`owned`接缝复用
+原writer/Rooted IO/JSONL。Code保原路径、owner标签和薄构造，Product仍持有/关闭
+同一store；Goal core及包根不自动导入backend，不反向依赖Product或私有Harness IO。
+此职责迁移不改变原记录、锁、版本及清理合同，也不表示整个Coding重构完成。
+
 HarnessWork 是 Harness 的可选持久履约扩展。它负责把一个已接受业务意图推进到可判定、
 可查询、可回放的终局，同时复用 Harness 的执行 scope、工具、审批、取消和 presentation
 机制。它不是每个 turn、tool call、agent invocation 或进程内 task 的别名。

@@ -14,13 +14,11 @@ from loushang.coding.package_private_data_deletion_journal import (
 from loushang.coding.package_private_data_deletion_preview import (
     CodingArchPrivateDataTargetSnapshotV1,
 )
-from loushang.coding.package_private_data_windows_restore_preview import (
-    _matching_latest_deletion,
-)
 from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionConfirmationV1,
     PluginPrivateDataDeletionPlanV1,
     PluginPrivateDataDeletionReceiptV1,
+    latest_deleted_target_receipt,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
@@ -82,13 +80,24 @@ def test_windows_restore_requires_latest_matching_completed_deletion() -> None:
         receipt_id="arch-backup:" + backup_identifier,
     )
     completed = _deletion_event(key, target, revision=3, completed=True)
-    assert _matching_latest_deletion((completed,), key, backup) == completed.receipt
+    assert (
+        latest_deleted_target_receipt((completed,), key, backup.source_target_id)
+        == completed.receipt
+    )
 
     pending = _deletion_event(key, target, revision=4, completed=False)
-    assert _matching_latest_deletion((completed, pending), key, backup) is None
+    assert (
+        latest_deleted_target_receipt(
+            (completed, pending), key, backup.source_target_id
+        )
+        is None
+    )
 
     later_target = CodingArchPrivateDataTargetSnapshotV1(
         "b" * 64, (1, 99, stat.S_IFDIR | 0o700, 0, 4), ()
     )
     later = _deletion_event(key, later_target, revision=6, completed=True)
-    assert _matching_latest_deletion((completed, later), key, backup) is None
+    assert (
+        latest_deleted_target_receipt((completed, later), key, backup.source_target_id)
+        is None
+    )

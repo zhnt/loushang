@@ -6,17 +6,26 @@ import os
 import re
 import stat
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
-from typing import BinaryIO, Literal, Protocol, cast
+from typing import BinaryIO, Literal, Protocol
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
     RecordSchema,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _exact_dict as _exact_dict,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_int as _wire_int,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_string as _wire_string,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -2272,36 +2281,10 @@ def _identity(metadata: os.stat_result) -> tuple[int, int]:
     return int(metadata.st_dev), int(metadata.st_ino)
 
 
-def _exact_dict(
-    value: object,
-    *,
-    fields: set[str],
-    name: str,
-) -> dict[str, object]:
-    if not isinstance(value, Mapping):
-        raise TypeError(f"{name} must be an object")
-    document = dict(value)
-    if set(document) != fields:
-        raise ValueError(f"{name} fields do not match the versioned schema")
-    return cast(dict[str, object], document)
-
-
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{name} must be a non-empty string")
-    return value
-
-
 def _wire_optional_string(value: object, *, name: str) -> str | None:
     if value is None:
         return None
     return _wire_string(value, name=name)
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an integer")
-    return value
 
 
 def _wire_positive(value: object, *, name: str) -> int:
@@ -2370,26 +2353,22 @@ __all__ = [
 ]
 
 
-_AUTHENTICATED_SOURCE_ENVELOPE_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("operation_id", "operation id"),
-        RecordField("node_id", "node id"),
-        RecordField("canonical_source_identity", "canonical Source identity"),
-        RecordField("origin_kind", "Source origin kind"),
-        RecordField("authentication_decision", "Source authentication decision"),
-        RecordField("authority_id", "Source authority id"),
-        RecordField("requested_locator_digest", "requested locator digest"),
-        RecordField(
-            "expected_artifact_digest",
-            "expected artifact digest",
-            _wire_optional_string,
-        ),
-        RecordField("redirect_policy_revision", "redirect policy revision"),
-        RecordField("policy_revision", "Source policy revision"),
-        RecordField("capture_epoch", "Source capture epoch", _wire_positive),
-        RecordField("envelope_version", "Source envelope version", _wire_int),
+_AUTHENTICATED_SOURCE_ENVELOPE_V1_SCHEMA = RecordSchema.for_dataclass(
+    AuthenticatedSourceEnvelopeV1,
+    _wire_string,
+    RecordField("canonical_source_identity", "canonical Source identity"),
+    RecordField("origin_kind", "Source origin kind"),
+    RecordField("authentication_decision", "Source authentication decision"),
+    RecordField("authority_id", "Source authority id"),
+    RecordField(
+        "expected_artifact_digest",
+        "expected artifact digest",
+        _wire_optional_string,
     ),
+    RecordField("policy_revision", "Source policy revision"),
+    RecordField("capture_epoch", "Source capture epoch", _wire_positive),
+    RecordField("envelope_version", "Source envelope version", _wire_int),
+    derive_labels=True,
 )
 
 
@@ -2415,36 +2394,26 @@ _ACQUISITION_BUDGET_V1_SCHEMA = RecordSchema(
 )
 
 
-_BOUNDED_ACQUISITION_RECEIPT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("operation_id", "operation id"),
-        RecordField("attempt_epoch", "attempt epoch", _wire_positive),
-        RecordField("node_id", "node id"),
-        RecordField("envelope_fingerprint", "envelope fingerprint"),
-        RecordField("actual_byte_digest", "actual byte digest"),
-        RecordField("actual_byte_count", "actual byte count", _wire_nonnegative),
-        RecordField("request_count", "request count", _wire_positive),
-        RecordField("redirect_count", "redirect count", _wire_nonnegative),
-        RecordField("budgets", decoder=PackageAcquisitionBudgetV1.from_dict),
-        RecordField("sink_identity", "sink identity"),
-        RecordField("adapter_result", decoder=SourceAdapterResultV1.from_dict),
-        RecordField("disposition", "disposition"),
-        RecordField("receipt_version", "receipt version", _wire_int),
-    ),
+_BOUNDED_ACQUISITION_RECEIPT_V1_SCHEMA = RecordSchema.for_dataclass(
+    BoundedAcquisitionReceiptV1,
+    _wire_string,
+    RecordField("attempt_epoch", "attempt epoch", _wire_positive),
+    RecordField("actual_byte_count", "actual byte count", _wire_nonnegative),
+    RecordField("request_count", "request count", _wire_positive),
+    RecordField("redirect_count", "redirect count", _wire_nonnegative),
+    RecordField("budgets", decoder=PackageAcquisitionBudgetV1.from_dict),
+    RecordField("adapter_result", decoder=SourceAdapterResultV1.from_dict),
+    RecordField("receipt_version", "receipt version", _wire_int),
+    derive_labels=True,
 )
 
 
-_QUARANTINE_CLEANUP_TARGET_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("operation_id", "operation id"),
-        RecordField("attempt_epoch", "attempt epoch", _wire_positive),
-        RecordField("node_id", "node id"),
-        RecordField("store_identity", "store identity", _wire_identity),
-        RecordField("attempt_identity", "attempt identity", _wire_identity),
-        RecordField("attempt_name", "attempt name"),
-        RecordField("cleanup_id", "cleanup id"),
-        RecordField("target_version", "target version", _wire_int),
-    ),
+_QUARANTINE_CLEANUP_TARGET_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageQuarantineCleanupTargetV1,
+    _wire_string,
+    RecordField("attempt_epoch", "attempt epoch", _wire_positive),
+    RecordField("store_identity", "store identity", _wire_identity),
+    RecordField("attempt_identity", "attempt identity", _wire_identity),
+    RecordField("target_version", "target version", _wire_int),
+    derive_labels=True,
 )

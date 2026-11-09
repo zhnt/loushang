@@ -1,0 +1,965 @@
+{
+  "success": {
+    "outcomes": [
+      "receipt",
+      "receipt",
+      "receipt"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "rename",
+      [
+        "append",
+        "renamed"
+      ],
+      "remove",
+      "members",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "write_started_before": {
+    "outcomes": [
+      {
+        "error": "OSError",
+        "message": "write_started_before interrupted"
+      },
+      "receipt",
+      "receipt"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "rename",
+      [
+        "append",
+        "renamed"
+      ],
+      "remove",
+      "members",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "write_started_after": {
+    "outcomes": [
+      {
+        "error": "OSError",
+        "message": "write_started_after interrupted"
+      },
+      "receipt",
+      "receipt"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "pre-effect",
+      "recovery",
+      "rename",
+      [
+        "append",
+        "renamed"
+      ],
+      "remove",
+      "members",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "write_renamed_before": {
+    "outcomes": [
+      {
+        "error": "OSError",
+        "message": "write_renamed_before interrupted"
+      },
+      "receipt",
+      "receipt"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "rename",
+      [
+        "append",
+        "renamed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "recovery",
+      [
+        "append",
+        "renamed"
+      ],
+      "remove",
+      "members",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "write_renamed_after": {
+    "outcomes": [
+      {
+        "error": "OSError",
+        "message": "write_renamed_after interrupted"
+      },
+      "receipt",
+      "receipt"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "rename",
+      [
+        "append",
+        "renamed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "recovery",
+      "remove",
+      "members",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "write_completed_before": {
+    "outcomes": [
+      {
+        "error": "OSError",
+        "message": "write_completed_before interrupted"
+      },
+      "receipt",
+      "receipt"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "rename",
+      [
+        "append",
+        "renamed"
+      ],
+      "remove",
+      "members",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "recovery",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "write_completed_after": {
+    "outcomes": [
+      {
+        "error": "OSError",
+        "message": "write_completed_after interrupted"
+      },
+      "receipt",
+      "receipt"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "rename",
+      [
+        "append",
+        "renamed"
+      ],
+      "remove",
+      "members",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "rename_before": {
+    "outcomes": [
+      {
+        "error": "OSError",
+        "message": "rename_before interrupted"
+      },
+      "receipt",
+      "receipt"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "rename",
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "pre-effect",
+      "recovery",
+      "rename",
+      [
+        "append",
+        "renamed"
+      ],
+      "remove",
+      "members",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "rename_after": {
+    "outcomes": [
+      {
+        "error": "OSError",
+        "message": "rename_after interrupted"
+      },
+      "receipt",
+      "receipt"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "rename",
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "recovery",
+      [
+        "append",
+        "renamed"
+      ],
+      "remove",
+      "members",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "remove_before": {
+    "outcomes": [
+      {
+        "error": "OSError",
+        "message": "remove_before interrupted"
+      },
+      "receipt",
+      "receipt"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "rename",
+      [
+        "append",
+        "renamed"
+      ],
+      "remove",
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "recovery",
+      "remove",
+      "members",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "remove_after": {
+    "outcomes": [
+      {
+        "error": "OSError",
+        "message": "remove_after interrupted"
+      },
+      "receipt",
+      "receipt"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "rename",
+      [
+        "append",
+        "renamed"
+      ],
+      "remove",
+      "members",
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "recovery",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "members_after": {
+    "outcomes": [
+      {
+        "error": "OSError",
+        "message": "members_after interrupted"
+      },
+      "receipt",
+      "receipt"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "rename",
+      [
+        "append",
+        "renamed"
+      ],
+      "remove",
+      "members",
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "recovery",
+      "remove",
+      "members",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "recovery_failure": {
+    "outcomes": [
+      {
+        "error": "OSError",
+        "message": "recovery_failure interrupted"
+      },
+      "receipt",
+      "receipt"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "pre-effect",
+      "recovery",
+      "rename",
+      [
+        "append",
+        "renamed"
+      ],
+      "remove",
+      "members",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "extra_tombstone_member": {
+    "outcomes": [
+      {
+        "error": "ValueError",
+        "message": "Coding Arch private-data tombstone member changed"
+      },
+      {
+        "error": "ValueError",
+        "message": "Coding Arch private-data tombstone member changed"
+      },
+      {
+        "error": "ValueError",
+        "message": "Coding Arch private-data tombstone member changed"
+      }
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "rename",
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "recovery",
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "recovery",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started"
+    ],
+    "remaining": [
+      "<TOMB>",
+      "<TOMB>/files",
+      "<TOMB>/files/report.txt",
+      "<TOMB>/intruder",
+      "<TOMB>/manifest.json"
+    ],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  },
+  "reappeared_after_completion": {
+    "outcomes": [
+      "receipt",
+      {
+        "error": "ValueError",
+        "message": "Coding Arch expired backup reappeared"
+      },
+      {
+        "error": "ValueError",
+        "message": "Coding Arch expired backup reappeared"
+      }
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      "offline-enter",
+      "pre-effect",
+      [
+        "append",
+        "started"
+      ],
+      "recovery",
+      "rename",
+      [
+        "append",
+        "renamed"
+      ],
+      "remove",
+      "members",
+      [
+        "append",
+        "completed"
+      ],
+      "offline-exit",
+      [
+        "attempt",
+        1
+      ],
+      "offline-enter",
+      "offline-exit",
+      [
+        "attempt",
+        2
+      ],
+      "offline-enter",
+      "offline-exit"
+    ],
+    "phases": [
+      "confirmed",
+      "started",
+      "renamed",
+      "completed"
+    ],
+    "remaining": [
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ],
+    "owner_fields": [
+      "layout",
+      "product"
+    ],
+    "owner_slots": [
+      "layout",
+      "product"
+    ]
+  }
+}

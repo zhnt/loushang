@@ -1,0 +1,355 @@
+{
+  "origin": "unchanged Goal-002 baseline; before first production migration",
+  "values": {
+    "snapshot": {
+      "module": "loushang.coding.package_product_worker_history_stream_snapshot",
+      "name": "CodingWorkerHistoryStreamSnapshotV1",
+      "signature": "(stem: 'str', active_generation: 'int', last_sealed_revision: 'int', total_revision: 'int', segment_byte_counts: 'tuple[int, ...]', segment_digests: 'tuple[str, ...]', fingerprint: 'str') -> None",
+      "annotations": {
+        "stem": "str",
+        "active_generation": "int",
+        "last_sealed_revision": "int",
+        "total_revision": "int",
+        "segment_byte_counts": "tuple[int, ...]",
+        "segment_digests": "tuple[str, ...]",
+        "fingerprint": "str"
+      },
+      "fields": [
+        {
+          "name": "stem",
+          "type": "str",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "active_generation",
+          "type": "int",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "last_sealed_revision",
+          "type": "int",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "total_revision",
+          "type": "int",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "segment_byte_counts",
+          "type": "tuple[int, ...]",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "segment_digests",
+          "type": "tuple[str, ...]",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "fingerprint",
+          "type": "str",
+          "default": null,
+          "has_default": false
+        }
+      ],
+      "repr": "CodingWorkerHistoryStreamSnapshotV1(stem='worker-supervisor', active_generation=0, last_sealed_revision=0, total_revision=1, segment_byte_counts=(3,), segment_digests=('ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356',), fingerprint='b461e0fe8d2954a13496614e2355d77d4364cdb3f6685bc5992c78891e45fbef')",
+      "dict": {
+        "activeGeneration": 0,
+        "fingerprint": "b461e0fe8d2954a13496614e2355d77d4364cdb3f6685bc5992c78891e45fbef",
+        "lastSealedRevision": 0,
+        "segmentByteCounts": [
+          3
+        ],
+        "segmentDigests": [
+          "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        ],
+        "stem": "worker-supervisor",
+        "totalRevision": 1,
+        "version": 1
+      },
+      "bytes": null,
+      "pickle": {
+        "4": "80049518010000000000008c3e6c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f686973746f72795f73747265616d5f736e617073686f74948c23436f64696e67576f726b6572486973746f727953747265616d536e617073686f7456319493942981945d94288c11776f726b65722d73757065727669736f72944b004b004b014b0385948c40636133643136336261623035353338313832373232363134303536386633626566376561616331383763656264373638373865306236336539653434323335369485948c40623436316530666538643239353461313334393636313465323335356437376434333634636462336636363835626335393932633738383931653435666265669465622e",
+        "5": "80059518010000000000008c3e6c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f686973746f72795f73747265616d5f736e617073686f74948c23436f64696e67576f726b6572486973746f727953747265616d536e617073686f7456319493942981945d94288c11776f726b65722d73757065727669736f72944b004b004b014b0385948c40636133643136336261623035353338313832373232363134303536386633626566376561616331383763656264373638373865306236336539653434323335369485948c40623436316530666538643239353461313334393636313465323335356437376434333634636462336636363835626335393932633738383931653435666265669465622e"
+      }
+    },
+    "key": {
+      "module": "loushang.coding.package_product_worker_supervisor_base_v2",
+      "name": "CodingWorkerSupervisorKeyBaseV2",
+      "signature": "(supervisor_key: 'str', last_record: 'WorkerAttemptRecordV1', last_clean_stop_revision: 'int', claims_since_stop: 'int') -> None",
+      "annotations": {
+        "supervisor_key": "str",
+        "last_record": "WorkerAttemptRecordV1",
+        "last_clean_stop_revision": "int",
+        "claims_since_stop": "int"
+      },
+      "fields": [
+        {
+          "name": "supervisor_key",
+          "type": "str",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "last_record",
+          "type": "WorkerAttemptRecordV1",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "last_clean_stop_revision",
+          "type": "int",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "claims_since_stop",
+          "type": "int",
+          "default": null,
+          "has_default": false
+        }
+      ],
+      "repr": "CodingWorkerSupervisorKeyBaseV2(supervisor_key='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', last_record=WorkerAttemptRecordV1(supervisor_key='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', identity_fingerprint='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', attempt_id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', supervisor_epoch=1, phase='process_settled', record_revision=3, prior_attempt_revision=2, restart_ordinal=1, failure_code='test_failure', record_version=1), last_clean_stop_revision=0, claims_since_stop=1)",
+      "dict": {
+        "claimsSinceStop": 1,
+        "lastCleanStopRevision": 0,
+        "lastRecord": {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "failureCode": "test_failure",
+          "identityFingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "phase": "process_settled",
+          "priorAttemptRevision": 2,
+          "recordRevision": 3,
+          "recordVersion": 1,
+          "restartOrdinal": 1,
+          "supervisorEpoch": 1,
+          "supervisorKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "supervisorKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "bytes": null,
+      "pickle": {
+        "4": "800495c8010000000000008c396c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f73757065727669736f725f626173655f7632948c1f436f64696e67576f726b657253757065727669736f724b65794261736556329493942981945d94288c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c1f6c6f757368616e672e6861726e6573732e776f726b65722e6a6f75726e616c948c15576f726b6572417474656d70745265636f726456319493942981945d94288c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c4064646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464948c206161616161616161616161616161616161616161616161616161616161616161944b018c0f70726f636573735f736574746c6564944b034b024b018c0c746573745f6661696c757265944b0165624b004b0165622e",
+        "5": "800595c8010000000000008c396c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f73757065727669736f725f626173655f7632948c1f436f64696e67576f726b657253757065727669736f724b65794261736556329493942981945d94288c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c1f6c6f757368616e672e6861726e6573732e776f726b65722e6a6f75726e616c948c15576f726b6572417474656d70745265636f726456319493942981945d94288c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c4064646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464948c206161616161616161616161616161616161616161616161616161616161616161944b018c0f70726f636573735f736574746c6564944b034b024b018c0c746573745f6661696c757265944b0165624b004b0165622e"
+      }
+    },
+    "base": {
+      "module": "loushang.coding.package_product_worker_supervisor_base_v2",
+      "name": "CodingWorkerSupervisorSemanticBaseV2",
+      "signature": "(scope_id: 'str', first_retained_generation: 'int', cutoff_revision: 'int', retired_sealed_digest: 'str', current_attempts: 'tuple[WorkerAttemptRecordV1, ...]', key_states: 'tuple[CodingWorkerSupervisorKeyBaseV2, ...]', retired_attempt_ids: 'tuple[str, ...]', version: 'int' = 2) -> None",
+      "annotations": {
+        "scope_id": "str",
+        "first_retained_generation": "int",
+        "cutoff_revision": "int",
+        "retired_sealed_digest": "str",
+        "current_attempts": "tuple[WorkerAttemptRecordV1, ...]",
+        "key_states": "tuple[CodingWorkerSupervisorKeyBaseV2, ...]",
+        "retired_attempt_ids": "tuple[str, ...]",
+        "version": "int"
+      },
+      "fields": [
+        {
+          "name": "scope_id",
+          "type": "str",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "first_retained_generation",
+          "type": "int",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "cutoff_revision",
+          "type": "int",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "retired_sealed_digest",
+          "type": "str",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "current_attempts",
+          "type": "tuple[WorkerAttemptRecordV1, ...]",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "key_states",
+          "type": "tuple[CodingWorkerSupervisorKeyBaseV2, ...]",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "retired_attempt_ids",
+          "type": "tuple[str, ...]",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "version",
+          "type": "int",
+          "default": 2,
+          "has_default": true
+        }
+      ],
+      "repr": "CodingWorkerSupervisorSemanticBaseV2(scope_id='scope', first_retained_generation=1, cutoff_revision=3, retired_sealed_digest='0a7b43cb992da2e4d5fbe78cbc414d537b758fe1cfc957c3202800fad74ead9b', current_attempts=(), key_states=(CodingWorkerSupervisorKeyBaseV2(supervisor_key='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', last_record=WorkerAttemptRecordV1(supervisor_key='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', identity_fingerprint='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', attempt_id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', supervisor_epoch=1, phase='process_settled', record_revision=3, prior_attempt_revision=2, restart_ordinal=1, failure_code='test_failure', record_version=1), last_clean_stop_revision=0, claims_since_stop=1),), retired_attempt_ids=('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',), version=2)",
+      "dict": null,
+      "bytes": "7b2263757272656e74417474656d707473223a5b5d2c226375746f66665265766973696f6e223a332c22666972737452657461696e656447656e65726174696f6e223a312c226b6579537461746573223a5b7b22636c61696d7353696e636553746f70223a312c226c617374436c65616e53746f705265766973696f6e223a302c226c6173745265636f7264223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226661696c757265436f6465223a22746573745f6661696c757265222c226964656e7469747946696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c227068617365223a2270726f636573735f736574746c6564222c227072696f72417474656d70745265766973696f6e223a322c227265636f72645265766973696f6e223a332c227265636f726456657273696f6e223a312c22726573746172744f7264696e616c223a312c2273757065727669736f7245706f6368223a312c2273757065727669736f724b6579223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2273757065727669736f724b6579223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d5d2c2272657469726564417474656d7074496473223a5b226161616161616161616161616161616161616161616161616161616161616161225d2c22726574697265645365616c6564446967657374223a2230613762343363623939326461326534643566626537386362633431346435333762373538666531636663393537633332303238303066616437346561643962222c2273636f70654964223a2273636f7065222c2276657273696f6e223a327d",
+      "pickle": {
+        "4": "80049574020000000000008c396c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f73757065727669736f725f626173655f7632948c24436f64696e67576f726b657253757065727669736f7253656d616e7469634261736556329493942981945d94288c0573636f7065944b014b038c4030613762343363623939326461326534643566626537386362633431346435333762373538666531636663393537633332303238303066616437346561643962942968008c1f436f64696e67576f726b657253757065727669736f724b65794261736556329493942981945d94288c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c1f6c6f757368616e672e6861726e6573732e776f726b65722e6a6f75726e616c948c15576f726b6572417474656d70745265636f726456319493942981945d94288c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c4064646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464948c206161616161616161616161616161616161616161616161616161616161616161944b018c0f70726f636573735f736574746c6564944b034b024b018c0c746573745f6661696c757265944b0165624b004b01656285948c2061616161616161616161616161616161616161616161616161616161616161619485944b0265622e",
+        "5": "80059574020000000000008c396c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f73757065727669736f725f626173655f7632948c24436f64696e67576f726b657253757065727669736f7253656d616e7469634261736556329493942981945d94288c0573636f7065944b014b038c4030613762343363623939326461326534643566626537386362633431346435333762373538666531636663393537633332303238303066616437346561643962942968008c1f436f64696e67576f726b657253757065727669736f724b65794261736556329493942981945d94288c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c1f6c6f757368616e672e6861726e6573732e776f726b65722e6a6f75726e616c948c15576f726b6572417474656d70745265636f726456319493942981945d94288c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c4064646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464948c206161616161616161616161616161616161616161616161616161616161616161944b018c0f70726f636573735f736574746c6564944b034b024b018c0c746573745f6661696c757265944b0165624b004b01656285948c2061616161616161616161616161616161616161616161616161616161616161619485944b0265622e"
+      }
+    },
+    "replay": {
+      "module": "loushang.coding.package_product_worker_supervisor_base_v2",
+      "name": "CodingWorkerSupervisorReplayV2",
+      "signature": "(last_revision: 'int', current_attempts: 'tuple[WorkerAttemptRecordV1, ...]', key_states: 'tuple[CodingWorkerSupervisorKeyBaseV2, ...]', retired_attempt_ids: 'frozenset[str]') -> None",
+      "annotations": {
+        "last_revision": "int",
+        "current_attempts": "tuple[WorkerAttemptRecordV1, ...]",
+        "key_states": "tuple[CodingWorkerSupervisorKeyBaseV2, ...]",
+        "retired_attempt_ids": "frozenset[str]"
+      },
+      "fields": [
+        {
+          "name": "last_revision",
+          "type": "int",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "current_attempts",
+          "type": "tuple[WorkerAttemptRecordV1, ...]",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "key_states",
+          "type": "tuple[CodingWorkerSupervisorKeyBaseV2, ...]",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "retired_attempt_ids",
+          "type": "frozenset[str]",
+          "default": null,
+          "has_default": false
+        }
+      ],
+      "repr": "CodingWorkerSupervisorReplayV2(last_revision=5, current_attempts=(WorkerAttemptRecordV1(supervisor_key='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', identity_fingerprint='ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', attempt_id='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', supervisor_epoch=2, phase='launching', record_revision=5, prior_attempt_revision=4, restart_ordinal=2, failure_code=None, record_version=1),), key_states=(CodingWorkerSupervisorKeyBaseV2(supervisor_key='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', last_record=WorkerAttemptRecordV1(supervisor_key='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', identity_fingerprint='ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', attempt_id='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', supervisor_epoch=2, phase='launching', record_revision=5, prior_attempt_revision=4, restart_ordinal=2, failure_code=None, record_version=1), last_clean_stop_revision=0, claims_since_stop=2),), retired_attempt_ids=frozenset({'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}))",
+      "dict": null,
+      "bytes": null,
+      "pickle": {
+        "4": "800495ce010000000000008c396c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f73757065727669736f725f626173655f7632948c1e436f64696e67576f726b657253757065727669736f725265706c617956329493942981945d94284b058c1f6c6f757368616e672e6861726e6573732e776f726b65722e6a6f75726e616c948c15576f726b6572417474656d70745265636f726456319493942981945d94288c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c4066666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666948c206565656565656565656565656565656565656565656565656565656565656565944b028c096c61756e6368696e67944b054b044b024e4b016562859468008c1f436f64696e67576f726b657253757065727669736f724b65794261736556329493942981945d9428680a68084b004b0265628594288c20616161616161616161616161616161616161616161616161616161616161616194919465622e",
+        "5": "800595ce010000000000008c396c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f73757065727669736f725f626173655f7632948c1e436f64696e67576f726b657253757065727669736f725265706c617956329493942981945d94284b058c1f6c6f757368616e672e6861726e6573732e776f726b65722e6a6f75726e616c948c15576f726b6572417474656d70745265636f726456319493942981945d94288c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c4066666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666948c206565656565656565656565656565656565656565656565656565656565656565944b028c096c61756e6368696e67944b054b044b024e4b016562859468008c1f436f64696e67576f726b657253757065727669736f724b65794261736556329493942981945d9428680a68084b004b0265628594288c20616161616161616161616161616161616161616161616161616161616161616194919465622e"
+      }
+    },
+    "retained": {
+      "module": "loushang.coding.package_product_worker_activation_history",
+      "name": "CodingProductWorkerRetainedAttemptV1",
+      "signature": "(attempt_id: 'str', receipt_fingerprint: 'str', policy_fingerprint: 'str', owner_generation: 'int', cleanup_contract_version: 'int', host_identity: 'str', boot_identity: 'str', phase: 'str', last_seen_revision: 'int', current: 'bool', no_effect: 'bool' = False) -> None",
+      "annotations": {
+        "attempt_id": "str",
+        "receipt_fingerprint": "str",
+        "policy_fingerprint": "str",
+        "owner_generation": "int",
+        "cleanup_contract_version": "int",
+        "host_identity": "str",
+        "boot_identity": "str",
+        "phase": "str",
+        "last_seen_revision": "int",
+        "current": "bool",
+        "no_effect": "bool"
+      },
+      "fields": [
+        {
+          "name": "attempt_id",
+          "type": "str",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "receipt_fingerprint",
+          "type": "str",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "policy_fingerprint",
+          "type": "str",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "owner_generation",
+          "type": "int",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "cleanup_contract_version",
+          "type": "int",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "host_identity",
+          "type": "str",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "boot_identity",
+          "type": "str",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "phase",
+          "type": "str",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "last_seen_revision",
+          "type": "int",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "current",
+          "type": "bool",
+          "default": null,
+          "has_default": false
+        },
+        {
+          "name": "no_effect",
+          "type": "bool",
+          "default": false,
+          "has_default": true
+        }
+      ],
+      "repr": "CodingProductWorkerRetainedAttemptV1(attempt_id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', receipt_fingerprint='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', policy_fingerprint='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', owner_generation=1, cleanup_contract_version=1, host_identity='host', boot_identity='boot', phase='settled', last_seen_revision=2, current=False, no_effect=False)",
+      "dict": null,
+      "bytes": null,
+      "pickle": {
+        "4": "80049537010000000000008c396c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f61637469766174696f6e5f686973746f7279948c24436f64696e6750726f64756374576f726b657252657461696e6564417474656d707456319493942981945d94288c206161616161616161616161616161616161616161616161616161616161616161948c4062626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262948c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363944b014b018c04686f7374948c04626f6f74948c07736574746c6564944b02898965622e",
+        "5": "80059537010000000000008c396c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f61637469766174696f6e5f686973746f7279948c24436f64696e6750726f64756374576f726b657252657461696e6564417474656d707456319493942981945d94288c206161616161616161616161616161616161616161616161616161616161616161948c4062626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262948c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363944b014b018c04686f7374948c04626f6f74948c07736574746c6564944b02898965622e"
+      }
+    }
+  },
+  "replay_segments": [
+    "7b22617474656d70744964223a20226565656565656565656565656565656565656565656565656565656565656565222c20226661696c757265436f6465223a206e756c6c2c20226964656e7469747946696e6765727072696e74223a202266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c20227068617365223a2022636c61696d6564222c20227072696f72417474656d70745265766973696f6e223a20302c20227265636f72645265766973696f6e223a20342c20227265636f726456657273696f6e223a20312c2022726573746172744f7264696e616c223a20322c202273757065727669736f7245706f6368223a20322c202273757065727669736f724b6579223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d0a7b22617474656d70744964223a20226565656565656565656565656565656565656565656565656565656565656565222c20226661696c757265436f6465223a206e756c6c2c20226964656e7469747946696e6765727072696e74223a202266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c20227068617365223a20226c61756e6368696e67222c20227072696f72417474656d70745265766973696f6e223a20342c20227265636f72645265766973696f6e223a20352c20227265636f726456657273696f6e223a20312c2022726573746172744f7264696e616c223a20322c202273757065727669736f7245706f6368223a20322c202273757065727669736f724b6579223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d0a"
+  ]
+}

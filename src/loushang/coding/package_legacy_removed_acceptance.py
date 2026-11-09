@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import os
-import stat
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -16,10 +13,11 @@ from loushang.harness.journal import (
     JournalCodecError,
     JournalLoadPolicy,
     decode_jsonl,
+    encode_jsonl_record,
     journal_file_lock,
     journal_file_read_lock,
 )
-from loushang.harness.journal._rooted_io import RootedFileIO
+from loushang.harness.journal._rooted_io import publish_private_bytes
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -183,52 +181,15 @@ def _decode(
 def _write_private_acceptance(
     path: Path, record: CodingLegacyRemovedAcceptanceV1
 ) -> None:
-    payload = (
-        json.dumps(
-            _CODEC.encode_record(record),
-            ensure_ascii=SORTED_UNICODE_JSONL_FORMAT.ensure_ascii,
-            sort_keys=SORTED_UNICODE_JSONL_FORMAT.sort_keys,
-            separators=SORTED_UNICODE_JSONL_FORMAT.separators,
-            allow_nan=False,
-        )
-        + SORTED_UNICODE_JSONL_FORMAT.newline
-    ).encode(SORTED_UNICODE_JSONL_FORMAT.encoding)
-    parent_fd = os.open(
-        path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    payload = encode_jsonl_record(
+        record, record_codec=_CODEC, format_profile=SORTED_UNICODE_JSONL_FORMAT
     )
-    try:
-        parent = os.fstat(parent_fd)
-        visible = path.parent.lstat()
-        if (
-            not stat.S_ISDIR(parent.st_mode)
-            or parent.st_uid != os.geteuid()
-            or stat.S_IMODE(parent.st_mode) & 0o077
-            or (parent.st_dev, parent.st_ino) != (visible.st_dev, visible.st_ino)
-        ):
-            raise CodingLegacyRemovedAcceptanceError(
-                "Old removal Product state directory is unsafe"
-            )
-        file_io = RootedFileIO(path.parent, parent_fd)
-        try:
-            with file_io.bind(path) as rooted:
-                rooted.atomic_write(payload, exclusive=True)
-        finally:
-            file_io.cleanup()
-        after = os.fstat(parent_fd)
-        visible_after = path.parent.lstat()
-        if (
-            (parent.st_dev, parent.st_ino) != (after.st_dev, after.st_ino)
-            or not stat.S_ISDIR(after.st_mode)
-            or after.st_uid != os.geteuid()
-            or stat.S_IMODE(after.st_mode) & 0o077
-            or (after.st_dev, after.st_ino)
-            != (visible_after.st_dev, visible_after.st_ino)
-        ):
-            raise CodingLegacyRemovedAcceptanceError(
-                "Old removal Product state directory changed during write"
-            )
-    finally:
-        os.close(parent_fd)
+    publish_private_bytes(
+        path, payload,
+        error_type=CodingLegacyRemovedAcceptanceError,
+        directory_label="Old removal Product state directory",
+        postcheck="combined",
+    )
 
 
 __all__ = [

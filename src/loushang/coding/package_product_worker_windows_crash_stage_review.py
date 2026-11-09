@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from dataclasses import dataclass
@@ -24,6 +23,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry
 from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
 from loushang.harness.worker._native_profile_bridge import (
     _rebuild_windows_lpac_cleanup_spec,
+)
+from loushang.harness.worker.history._windows_stage_review_wire import (
+    _WindowsStageReviewWireMethods,
 )
 from loushang.hosting.windows_backend_material import WINDOWS_LPAC_PLATFORM_IMPORTS
 
@@ -47,7 +49,15 @@ _MAX_REVIEW_BYTES = 32768
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerCrashStageReviewV1:
+class CodingWindowsWorkerCrashStageReviewV1(_WindowsStageReviewWireMethods):
+    _record_kind = "crash"
+    _record_error = ValueError
+    _record_error_code = "Windows Worker crash stage review bytes are invalid"
+
+    @classmethod
+    def _record_maximum(cls) -> int:
+        return _MAX_REVIEW_BYTES
+
     attempt_id: str
     intent_fingerprint: str
     lease_owner_revision: int
@@ -139,67 +149,7 @@ class CodingWindowsWorkerCrashStageReviewV1:
 
     @classmethod
     def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerCrashStageReviewV1:
-        if type(raw) is not bytes or not raw or len(raw) > _MAX_REVIEW_BYTES:
-            raise ValueError("Windows Worker crash stage review bytes are invalid")
-        try:
-            value = json.loads(raw)
-            if (
-                type(value) is not dict
-                or set(value)
-                != {
-                    "attemptId",
-                    "directoryIdentities",
-                    "entrypoint",
-                    "executableDigest",
-                    "executableIdentity",
-                    "intentFingerprint",
-                    "leaseOwnerRevision",
-                    "leaseRepairRevision",
-                    "markerIdentity",
-                    "nativeRevision",
-                    "nativeSpecFingerprint",
-                    "repairedLeaseId",
-                    "stageIdentity",
-                    "supervisorRevision",
-                    "version",
-                }
-                or value["version"] != 1
-            ):
-                raise ValueError("Windows Worker crash stage review shape changed")
-            directories = value["directoryIdentities"]
-            if type(directories) is not list or any(
-                type(item) is not list or len(item) != 2 or type(item[1]) is not list
-                for item in directories
-            ):
-                raise ValueError("Windows Worker crash stage directories changed")
-            for name in ("stageIdentity", "markerIdentity", "executableIdentity"):
-                if type(value[name]) is not list:
-                    raise ValueError("Windows Worker crash stage identity changed")
-            review = cls(
-                attempt_id=value["attemptId"],
-                intent_fingerprint=value["intentFingerprint"],
-                lease_owner_revision=value["leaseOwnerRevision"],
-                repaired_lease_id=value["repairedLeaseId"],
-                lease_repair_revision=value["leaseRepairRevision"],
-                native_revision=value["nativeRevision"],
-                supervisor_revision=value["supervisorRevision"],
-                native_spec_fingerprint=value["nativeSpecFingerprint"],
-                entrypoint=value["entrypoint"],
-                stage_identity=tuple(value["stageIdentity"]),
-                directory_identities=tuple(
-                    (item[0], tuple(item[1])) for item in directories
-                ),
-                marker_identity=tuple(value["markerIdentity"]),
-                executable_identity=tuple(value["executableIdentity"]),
-                executable_digest=value["executableDigest"],
-            )
-            if review.to_bytes() != raw:
-                raise ValueError("Windows Worker crash stage encoding changed")
-            return review
-        except (KeyError, TypeError, ValueError, UnicodeError) as exc:
-            raise ValueError(
-                "Windows Worker crash stage review bytes are invalid"
-            ) from exc
+        return cls._from_record_bytes(raw)
 
     @property
     def fingerprint(self) -> str:
@@ -340,3 +290,6 @@ __all__ = [
     "CodingWindowsWorkerCrashStageReviewV1",
     "review_coding_windows_product_worker_crash_stage",
 ]
+
+
+CodingWindowsWorkerCrashStageReviewV1._bind_record_schema()

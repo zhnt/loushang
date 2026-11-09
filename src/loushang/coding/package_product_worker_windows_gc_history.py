@@ -18,6 +18,7 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     windows_listdir_at,
 )
+from loushang.harness.worker.history._windows_sources import WindowsHistoryNames
 
 from .package_product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
@@ -72,17 +73,7 @@ _EXACT = (
 
 
 def _require_known_windows_worker_state_names(names: tuple[str, ...]) -> None:
-    for name in names:
-        if not name.casefold().startswith(("worker-", ".worker-")):
-            continue
-        if (
-            name not in _EXACT
-            and _INTENT.fullmatch(name) is None
-            and _NATIVE.fullmatch(name) is None
-            and _C5_HEAD.fullmatch(name) is None
-            and _RETIREMENT_NAME.fullmatch(name) is None
-        ):
-            raise ValueError("Windows Worker GC state owner is unrecognized")
+    _history_names().require_known(names)
 
 
 def _require_c5_gc_history(
@@ -242,3 +233,7 @@ class CodingWindowsWorkerGcHistoryAuthority:
 
 
 __all__ = ["CodingWindowsWorkerGcHistoryAuthority"]
+
+
+def _history_names() -> WindowsHistoryNames:
+    return WindowsHistoryNames(_EXACT, (_INTENT, _NATIVE, _C5_HEAD, _RETIREMENT_NAME))

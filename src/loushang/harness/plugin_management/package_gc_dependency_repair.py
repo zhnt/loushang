@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from hashlib import sha256
@@ -502,13 +501,10 @@ class PackageDependencyGcRepairJournal:
             record_codec=_CODEC,
             format_profile=SORTED_UNICODE_JSONL_FORMAT,
             durability=self._durability,
-            load_policy=self._load_policy,
+            load_policy=replace(self._load_policy, collect_duplicate_keys=True),
         )
         events = snapshot.records
-        with self._path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                if line.strip():
-                    json.loads(line, object_pairs_hook=_unique_json_object)
+        snapshot.require_unique_keys('Dependency GC repair has a duplicate JSON key')
         starts: dict[str, PackageDependencyGcRepairStartV1] = {}
         starts_by_id: dict[str, PackageDependencyGcRepairStartV1] = {}
         starts_by_review: set[str] = set()
@@ -587,15 +583,6 @@ class PackageDependencyGcRepairJournal:
                 "Dependency GC repair start is unavailable",
                 code="plugin_package_gc_dependency_repair_start_unavailable",
             )
-
-
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Dependency GC repair has a duplicate JSON key")
-        result[key] = value
-    return result
 
 
 __all__ = [

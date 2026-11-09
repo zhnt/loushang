@@ -2,11 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from hashlib import sha256
-from typing import Literal, TypeVar, cast
+from typing import Literal, cast
 
 from loushang.foundation.json import JsonValueError, require_json_mapping
 from loushang.harness.journal import FunctionalJournalRecordCodec, JournalCodecError
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+    decode_nullable,
+)
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.declarations import PluginDeclarationCodecError
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
@@ -35,7 +41,6 @@ PluginDesiredTransitionKind = Literal[
 _INSTALLATION_SCOPES = frozenset({"process", "tenant", "workspace"})
 _DESIRED_STATES = frozenset({"absent", "installed_disabled", "installed_enabled"})
 _TRANSITION_KINDS = frozenset({"install", "enable", "disable", "remove", "unchanged"})
-_NestedT = TypeVar("_NestedT")
 
 
 class PluginLifecycleCodecError(JournalCodecError):
@@ -78,44 +83,14 @@ class PluginPackageRevisionRefV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginPackageRevisionRefV1:
-        document = _wire_object(value, name="Plugin package revision ref")
-        _wire_exact_fields(
-            document,
-            keys={
-                "dependencyLockDigest",
-                "packageContentDigest",
-                "packageSourceIdentity",
-                "pluginId",
-                "pluginVersion",
-                "schemaVersion",
-            },
+        document = _decode_document(
+            value,
             name="Plugin package revision ref",
-        )
-        _wire_version(
-            document.get("schemaVersion"),
-            expected=PLUGIN_PACKAGE_REVISION_REF_VERSION,
+            schema=_PLUGINPACKAGEREVISIONREF_SCHEMA,
+            version=PLUGIN_PACKAGE_REVISION_REF_VERSION,
         )
         try:
-            return cls(
-                plugin_id=_wire_string(document["pluginId"], name="Plugin id"),
-                plugin_version=_wire_optional_string(
-                    document["pluginVersion"],
-                    name="Plugin version",
-                ),
-                package_content_digest=_wire_string(
-                    document["packageContentDigest"],
-                    name="package content digest",
-                ),
-                dependency_lock_digest=_wire_string(
-                    document["dependencyLockDigest"],
-                    name="dependency lock digest",
-                ),
-                package_source_identity=_wire_string(
-                    document["packageSourceIdentity"],
-                    name="package source identity",
-                ),
-                schema_version=PLUGIN_PACKAGE_REVISION_REF_VERSION,
-            )
+            return _PLUGINPACKAGEREVISIONREF_SCHEMA.decode(cls, document)
         except PluginLifecycleCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -152,21 +127,11 @@ class PluginInstallationKeyV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginInstallationKeyV1:
-        document = _wire_object(value, name="Plugin installation key")
-        _wire_exact_fields(
-            document,
-            keys={
-                "installationScope",
-                "pluginId",
-                "productId",
-                "schemaVersion",
-                "scopeId",
-            },
+        document = _decode_document(
+            value,
             name="Plugin installation key",
-        )
-        _wire_version(
-            document.get("schemaVersion"),
-            expected=PLUGIN_INSTALLATION_KEY_VERSION,
+            schema=_PLUGININSTALLATIONKEY_SCHEMA,
+            version=PLUGIN_INSTALLATION_KEY_VERSION,
         )
         try:
             scope = _wire_string(
@@ -175,13 +140,8 @@ class PluginInstallationKeyV1:
             )
             if scope not in _INSTALLATION_SCOPES:
                 raise ValueError("Unsupported Plugin installation scope")
-            return cls(
-                product_id=_wire_string(document["productId"], name="Product id"),
-                installation_scope=cast(PluginInstallationScope, scope),
-                scope_id=_wire_string(document["scopeId"], name="scope id"),
-                plugin_id=_wire_string(document["pluginId"], name="Plugin id"),
-                schema_version=PLUGIN_INSTALLATION_KEY_VERSION,
-            )
+            document["installationScope"] = scope
+            return _PLUGININSTALLATIONKEY_SCHEMA.decode(cls, document)
         except PluginLifecycleCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -248,20 +208,11 @@ class PluginDesiredSelectionV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginDesiredSelectionV1:
-        document = _wire_object(value, name="Plugin desired selection")
-        _wire_exact_fields(
-            document,
-            keys={
-                "desiredState",
-                "instanceRevisionRef",
-                "packageRevision",
-                "schemaVersion",
-            },
+        document = _decode_document(
+            value,
             name="Plugin desired selection",
-        )
-        _wire_version(
-            document.get("schemaVersion"),
-            expected=PLUGIN_DESIRED_SELECTION_VERSION,
+            schema=_PLUGINDESIREDSELECTION_SCHEMA,
+            version=PLUGIN_DESIRED_SELECTION_VERSION,
         )
         try:
             desired_state = _wire_string(
@@ -270,17 +221,15 @@ class PluginDesiredSelectionV1:
             )
             if desired_state not in _DESIRED_STATES:
                 raise ValueError("Unsupported Plugin desired state")
-            package = _wire_optional_nested(
+            package = decode_nullable(
                 document["packageRevision"],
-                PluginPackageRevisionRefV1.from_dict,
+                decoder=PluginPackageRevisionRefV1.from_dict,
             )
             instance = _wire_optional_instance_ref(document["instanceRevisionRef"])
-            return cls(
-                desired_state=cast(PluginDesiredState, desired_state),
-                package_revision=package,
-                instance_revision_ref=instance,
-                schema_version=PLUGIN_DESIRED_SELECTION_VERSION,
-            )
+            document["desiredState"] = desired_state
+            document["packageRevision"] = package
+            document["instanceRevisionRef"] = instance
+            return _PLUGINDESIREDSELECTION_SCHEMA.decode(cls, document)
         except PluginLifecycleCodecError:
             raise
         except (PluginDeclarationCodecError, TypeError, ValueError) as exc:
@@ -341,32 +290,14 @@ class PluginInstallationStateV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginInstallationStateV1:
-        document = _wire_object(value, name="Plugin installation state")
-        _wire_exact_fields(
-            document,
-            keys={
-                "installationKey",
-                "latestInstanceRevisionRef",
-                "schemaVersion",
-                "selection",
-            },
+        document = _decode_document(
+            value,
             name="Plugin installation state",
-        )
-        _wire_version(
-            document.get("schemaVersion"),
-            expected=PLUGIN_INSTALLATION_STATE_VERSION,
+            schema=_PLUGININSTALLATIONSTATE_SCHEMA,
+            version=PLUGIN_INSTALLATION_STATE_VERSION,
         )
         try:
-            return cls(
-                installation_key=PluginInstallationKeyV1.from_dict(
-                    document["installationKey"]
-                ),
-                selection=PluginDesiredSelectionV1.from_dict(document["selection"]),
-                latest_instance_revision_ref=_wire_optional_instance_ref(
-                    document["latestInstanceRevisionRef"]
-                ),
-                schema_version=PLUGIN_INSTALLATION_STATE_VERSION,
-            )
+            return _PLUGININSTALLATIONSTATE_SCHEMA.decode(cls, document)
         except PluginLifecycleCodecError:
             raise
         except (PluginDeclarationCodecError, TypeError, ValueError) as exc:
@@ -435,26 +366,11 @@ class PluginDesiredStateMutationV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginDesiredStateMutationV1:
-        document = _wire_object(value, name="Plugin desired-state mutation")
-        _wire_exact_fields(
-            document,
-            keys={
-                "actorId",
-                "approvalReference",
-                "desiredState",
-                "expectedInventoryRevision",
-                "idempotencyKey",
-                "installationKey",
-                "operationId",
-                "packageRevision",
-                "policyRevision",
-                "schemaVersion",
-            },
+        document = _decode_document(
+            value,
             name="Plugin desired-state mutation",
-        )
-        _wire_version(
-            document.get("schemaVersion"),
-            expected=PLUGIN_DESIRED_STATE_MUTATION_VERSION,
+            schema=_PLUGINDESIREDSTATEMUTATION_SCHEMA,
+            version=PLUGIN_DESIRED_STATE_MUTATION_VERSION,
         )
         try:
             desired_state = _wire_string(
@@ -463,38 +379,8 @@ class PluginDesiredStateMutationV1:
             )
             if desired_state not in _DESIRED_STATES:
                 raise ValueError("Unsupported Plugin desired state")
-            return cls(
-                operation_id=_wire_string(
-                    document["operationId"],
-                    name="operation id",
-                ),
-                idempotency_key=_wire_string(
-                    document["idempotencyKey"],
-                    name="idempotency key",
-                ),
-                expected_inventory_revision=_wire_integer(
-                    document["expectedInventoryRevision"],
-                    name="expected inventory revision",
-                ),
-                installation_key=PluginInstallationKeyV1.from_dict(
-                    document["installationKey"]
-                ),
-                desired_state=cast(PluginDesiredState, desired_state),
-                package_revision=_wire_optional_nested(
-                    document["packageRevision"],
-                    PluginPackageRevisionRefV1.from_dict,
-                ),
-                actor_id=_wire_string(document["actorId"], name="actor id"),
-                policy_revision=_wire_string(
-                    document["policyRevision"],
-                    name="policy revision",
-                ),
-                approval_reference=_wire_optional_string(
-                    document["approvalReference"],
-                    name="approval reference",
-                ),
-                schema_version=PLUGIN_DESIRED_STATE_MUTATION_VERSION,
-            )
+            document["desiredState"] = desired_state
+            return _PLUGINDESIREDSTATEMUTATION_SCHEMA.decode(cls, document)
         except PluginLifecycleCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -541,22 +427,12 @@ class PluginDesiredStateTransitionV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginDesiredStateTransitionV1:
-        document = _wire_object(value, name="Plugin desired-state transition")
-        _wire_exact_fields(
-            document,
-            keys={
-                "committedState",
-                "inventoryRevision",
-                "mutation",
-                "previousState",
-                "recordVersion",
-                "transitionKind",
-            },
+        document = _decode_document(
+            value,
             name="Plugin desired-state transition",
-        )
-        _wire_version(
-            document.get("recordVersion"),
-            expected=PLUGIN_DESIRED_STATE_TRANSITION_VERSION,
+            schema=_PLUGINDESIREDSTATETRANSITION_SCHEMA,
+            version=PLUGIN_DESIRED_STATE_TRANSITION_VERSION,
+            version_field="recordVersion",
         )
         try:
             kind = _wire_string(
@@ -565,21 +441,8 @@ class PluginDesiredStateTransitionV1:
             )
             if kind not in _TRANSITION_KINDS:
                 raise ValueError("Unsupported Plugin desired-state transition kind")
-            return cls(
-                inventory_revision=_wire_integer(
-                    document["inventoryRevision"],
-                    name="inventory revision",
-                ),
-                transition_kind=cast(PluginDesiredTransitionKind, kind),
-                mutation=PluginDesiredStateMutationV1.from_dict(document["mutation"]),
-                previous_state=PluginInstallationStateV1.from_dict(
-                    document["previousState"]
-                ),
-                committed_state=PluginInstallationStateV1.from_dict(
-                    document["committedState"]
-                ),
-                record_version=PLUGIN_DESIRED_STATE_TRANSITION_VERSION,
-            )
+            document["transitionKind"] = kind
+            return _PLUGINDESIREDSTATETRANSITION_SCHEMA.decode(cls, document)
         except PluginLifecycleCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -590,36 +453,6 @@ PLUGIN_DESIRED_STATE_TRANSITION_CODEC = FunctionalJournalRecordCodec(
     encoder=PluginDesiredStateTransitionV1.to_dict,
     decoder=PluginDesiredStateTransitionV1.from_dict,
 )
-
-
-def _wire_object(value: object, *, name: str) -> dict[str, object]:
-    try:
-        return cast(dict[str, object], require_json_mapping(value, name=name))
-    except JsonValueError as exc:
-        raise _invalid_record(str(exc)) from exc
-
-
-def _wire_exact_fields(
-    value: dict[str, object],
-    *,
-    keys: set[str],
-    name: str,
-) -> None:
-    actual = set(value)
-    if actual != keys:
-        missing = sorted(keys - actual)
-        unknown = sorted(actual - keys)
-        raise _invalid_record(
-            f"{name} fields do not match; missing={missing!r}, unknown={unknown!r}"
-        )
-
-
-def _wire_version(value: object, *, expected: int) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value != expected:
-        raise PluginLifecycleCodecError(
-            "Unsupported Plugin lifecycle record version",
-            code="unsupported_plugin_lifecycle_record_version",
-        )
 
 
 def _wire_string(value: object, *, name: str) -> str:
@@ -640,15 +473,6 @@ def _wire_integer(value: object, *, name: str) -> int:
     return value
 
 
-def _wire_optional_nested(
-    value: object,
-    decoder: Callable[[object], _NestedT],
-) -> _NestedT | None:
-    if value is None:
-        return None
-    return decoder(value)
-
-
 def _wire_optional_instance_ref(value: object) -> PluginInstanceRevisionRef | None:
     if value is None:
         return None
@@ -667,6 +491,15 @@ def _require_sha256(value: str, *, name: str) -> None:
     _require_nonempty(value, name=name)
     if len(value) != 64 or any(
         character not in "0123456789abcdef" for character in value
+    ):
+        raise ValueError(f"{name} must be a lowercase SHA-256 digest")
+
+
+def _require_digest(value: object, *, name: str) -> None:
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any((character not in "0123456789abcdef" for character in value))
     ):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
 
@@ -712,3 +545,122 @@ __all__ = [
     "PluginLifecycleCodecError",
     "PluginPackageRevisionRefV1",
 ]
+
+
+_PLUGINPACKAGEREVISIONREF_SCHEMA = RecordSchema.for_dataclass(
+    PluginPackageRevisionRefV1,
+    _wire_string,
+    RecordField("plugin_id", "Plugin id"),
+    RecordField("plugin_version", "Plugin version", _wire_optional_string),
+    RecordField("schema_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGININSTALLATIONKEY_SCHEMA = RecordSchema.for_dataclass(
+    PluginInstallationKeyV1,
+    _wire_string,
+    RecordField("product_id", "Product id"),
+    RecordField("installation_scope", decoder=lambda value: value),
+    RecordField("plugin_id", "Plugin id"),
+    RecordField("schema_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINDESIREDSELECTION_SCHEMA = RecordSchema.for_dataclass(
+    PluginDesiredSelectionV1,
+    _wire_string,
+    RecordField("desired_state", decoder=lambda value: value),
+    RecordField("package_revision", decoder=lambda value: value),
+    RecordField("instance_revision_ref", decoder=lambda value: value),
+    RecordField("schema_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGININSTALLATIONSTATE_SCHEMA = RecordSchema.for_dataclass(
+    PluginInstallationStateV1,
+    _wire_string,
+    RecordField("installation_key", decoder=PluginInstallationKeyV1.from_dict),
+    RecordField("selection", decoder=PluginDesiredSelectionV1.from_dict),
+    RecordField("latest_instance_revision_ref", decoder=_wire_optional_instance_ref),
+    RecordField("schema_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINDESIREDSTATEMUTATION_SCHEMA = RecordSchema.for_dataclass(
+    PluginDesiredStateMutationV1,
+    _wire_string,
+    RecordField(
+        "expected_inventory_revision", "expected inventory revision", _wire_integer
+    ),
+    RecordField("installation_key", decoder=PluginInstallationKeyV1.from_dict),
+    RecordField("desired_state", decoder=lambda value: value),
+    RecordField(
+        "package_revision",
+        decoder=lambda value: decode_nullable(
+            value, decoder=PluginPackageRevisionRefV1.from_dict
+        ),
+    ),
+    RecordField("approval_reference", "approval reference", _wire_optional_string),
+    RecordField("schema_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINDESIREDSTATETRANSITION_SCHEMA = RecordSchema.for_dataclass(
+    PluginDesiredStateTransitionV1,
+    _wire_string,
+    RecordField("inventory_revision", "inventory revision", _wire_integer),
+    RecordField("transition_kind", decoder=lambda value: value),
+    RecordField("mutation", decoder=PluginDesiredStateMutationV1.from_dict),
+    RecordField("previous_state", decoder=PluginInstallationStateV1.from_dict),
+    RecordField("committed_state", decoder=PluginInstallationStateV1.from_dict),
+    RecordField("record_version", decoder=int),
+    derive_labels=True,
+)
+
+
+def _record_document(
+    value: object,
+    *,
+    name: str,
+    schema: RecordSchema,
+    version: int,
+    version_field: str = "schemaVersion",
+    invalid_record: Callable[[str], Exception],
+    unsupported_version: Callable[[], Exception],
+) -> dict[str, object]:
+    """Admit one owned JSON document; each record owner keeps its diagnostics."""
+    try:
+        document = cast(dict[str, object], require_json_mapping(value, name=name))
+    except JsonValueError as exc:
+        raise invalid_record(str(exc)) from exc
+    keys = schema.keys
+    actual = set(document)
+    if actual != keys:
+        missing = sorted(keys - actual)
+        unknown = sorted(actual - keys)
+        raise invalid_record(
+            f"{name} fields do not match; missing={missing!r}, unknown={unknown!r}"
+        )
+    selected_version = document.get(version_field)
+    if (
+        not isinstance(selected_version, int)
+        or isinstance(selected_version, bool)
+        or selected_version != version
+    ):
+        raise unsupported_version()
+    return document
+
+
+_decode_document = partial(
+    _record_document,
+    invalid_record=_invalid_record,
+    unsupported_version=lambda: PluginLifecycleCodecError(
+        "Unsupported Plugin lifecycle record version",
+        code="unsupported_plugin_lifecycle_record_version",
+    ),
+)

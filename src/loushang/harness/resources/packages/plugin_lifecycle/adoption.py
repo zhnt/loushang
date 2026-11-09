@@ -32,6 +32,15 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleStatusV1,
     canonical_json_bytes,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _bool_checked_integer as _wire_int,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_bool as _wire_bool,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_string as _wire_string,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.snapshot_records import (
     PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
 )
@@ -1165,24 +1174,6 @@ def _wire_object(
     return cast(dict[str, object], value)
 
 
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{name} must be a non-empty string")
-    return value
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise TypeError(f"{name} must be an integer")
-    return value
-
-
-def _wire_bool(value: object, *, name: str) -> bool:
-    if type(value) is not bool:
-        raise TypeError(f"{name} must be boolean")
-    return value
-
-
 def _wire_string_tuple(value: object, *, name: str) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
         raise TypeError(f"{name} must be an array of strings")
@@ -1212,28 +1203,21 @@ def _require_non_negative(value: int, *, name: str) -> None:
 __all__ = ()
 
 
-_LEGACY_STATE_EVIDENCE_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("evidence_id", "evidence id"),
-        RecordField("store_id", "store id"),
-        RecordField("legacy_root_identity", "legacy root identity"),
-        RecordField("state_digest", "state digest"),
-        RecordField("entry_count", "entry count", _wire_int),
-        RecordField("byte_count", "byte count", _wire_int),
-        RecordField("covered_domains", "covered domains", _wire_string_tuple),
-        RecordField("evidence_version", "evidence version", _wire_int),
-    ),
+_LEGACY_STATE_EVIDENCE_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageLegacyStateEvidenceV1,
+    _wire_string,
+    RecordField("entry_count", "entry count", _wire_int),
+    RecordField("byte_count", "byte count", _wire_int),
+    RecordField("covered_domains", "covered domains", _wire_string_tuple),
+    RecordField("evidence_version", "evidence version", _wire_int),
+    derive_labels=True,
 )
 
 
-_LEGACY_ADOPTION_RECEIPT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("receipt_id", "receipt id"),
-        RecordField("request_id", "request id"),
-        RecordField("legacy_state_evidence_id", "legacy state evidence id"),
-        RecordField("publication", decoder=PackagePublicationReceiptV1.from_dict),
-        RecordField("receipt_version", "receipt version", _wire_int),
-    ),
+_LEGACY_ADOPTION_RECEIPT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageLegacyAdoptionReceiptV1,
+    _wire_string,
+    RecordField("publication", decoder=PackagePublicationReceiptV1.from_dict),
+    RecordField("receipt_version", "receipt version", _wire_int),
+    derive_labels=True,
 )

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import stat
 from dataclasses import dataclass
@@ -16,10 +15,11 @@ from loushang.harness.journal import (
     JournalCodecError,
     JournalLoadPolicy,
     decode_jsonl,
+    encode_jsonl_record,
     journal_file_lock,
     journal_file_read_lock,
 )
-from loushang.harness.journal._rooted_io import RootedFileIO
+from loushang.harness.journal._rooted_io import publish_private_bytes, read_private_text
 from loushang.harness.plugin_management.ledger import (
     decode_plugin_desired_state_snapshot,
 )
@@ -199,137 +199,27 @@ def read_coding_first_b_disabled_only_acceptance(
 
 
 def _read_private_acceptance(path: Path) -> str | None:
-    """Read a bounded receipt through pinned private directory and file FDs."""
-
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-    try:
-        parent_fd = os.open(path.parent, flags)
-    except FileNotFoundError:
-        return None
-    try:
-        parent = os.fstat(parent_fd)
-        visible_parent = path.parent.lstat()
-        if (
-            not stat.S_ISDIR(parent.st_mode)
-            or parent.st_uid != os.geteuid()
-            or stat.S_IMODE(parent.st_mode) & 0o077
-            or (parent.st_dev, parent.st_ino)
-            != (visible_parent.st_dev, visible_parent.st_ino)
-        ):
-            raise CodingLegacyDisabledOnlyAcceptanceError(
-                "Disabled-only Product state directory is unsafe"
-            )
-        try:
-            file_fd = os.open(
-                path.name,
-                os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
-                dir_fd=parent_fd,
-            )
-        except FileNotFoundError:
-            return None
-        try:
-            opened = os.fstat(file_fd)
-            visible = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
-            if (
-                not stat.S_ISREG(opened.st_mode)
-                or opened.st_nlink != 1
-                or opened.st_uid != os.geteuid()
-                or stat.S_IMODE(opened.st_mode) & 0o077
-                or opened.st_size > _MAX_ACCEPTANCE_BYTES
-                or _file_version(opened) != _file_version(visible)
-            ):
-                raise CodingLegacyDisabledOnlyAcceptanceError(
-                    "Disabled-only Product acceptance file is unsafe"
-                )
-            with os.fdopen(file_fd, "rb", closefd=False) as handle:
-                raw = handle.read(_MAX_ACCEPTANCE_BYTES + 1)
-            after = os.fstat(file_fd)
-            visible_after = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
-            if (
-                len(raw) > _MAX_ACCEPTANCE_BYTES
-                or _file_version(opened) != _file_version(after)
-                or _file_version(after) != _file_version(visible_after)
-            ):
-                raise CodingLegacyDisabledOnlyAcceptanceError(
-                    "Disabled-only Product acceptance changed during read"
-                )
-        finally:
-            os.close(file_fd)
-        parent_after = os.fstat(parent_fd)
-        if (parent.st_dev, parent.st_ino) != (
-            parent_after.st_dev,
-            parent_after.st_ino,
-        ):
-            raise CodingLegacyDisabledOnlyAcceptanceError(
-                "Disabled-only Product state directory changed during read"
-            )
-        _require_private_parent(path.parent, parent_after)
-        return raw.decode("utf-8")
-    finally:
-        os.close(parent_fd)
-
-
-def _file_version(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
-    return (
-        metadata.st_dev,
-        metadata.st_ino,
-        metadata.st_size,
-        metadata.st_mtime_ns,
-        metadata.st_ctime_ns,
+    return read_private_text(
+        path,
+        max_bytes=_MAX_ACCEPTANCE_BYTES,
+        error_type=CodingLegacyDisabledOnlyAcceptanceError,
+        directory_label="Disabled-only Product state directory",
+        file_label="Disabled-only Product acceptance",
     )
 
 
 def _write_private_acceptance(
     path: Path, record: CodingLegacyDisabledOnlyAcceptanceV1
 ) -> None:
-    """Publish one complete receipt without reopening or replacing its name."""
-
-    payload = (
-        json.dumps(
-            _CODEC.encode_record(record),
-            ensure_ascii=SORTED_UNICODE_JSONL_FORMAT.ensure_ascii,
-            sort_keys=SORTED_UNICODE_JSONL_FORMAT.sort_keys,
-            separators=SORTED_UNICODE_JSONL_FORMAT.separators,
-            allow_nan=False,
-        )
-        + SORTED_UNICODE_JSONL_FORMAT.newline
-    ).encode(SORTED_UNICODE_JSONL_FORMAT.encoding)
-    parent_fd = os.open(
-        path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    payload = encode_jsonl_record(
+        record, record_codec=_CODEC, format_profile=SORTED_UNICODE_JSONL_FORMAT
     )
-    try:
-        parent = os.fstat(parent_fd)
-        _require_private_parent(path.parent, parent)
-        file_io = RootedFileIO(path.parent, parent_fd)
-        try:
-            with file_io.bind(path) as rooted:
-                rooted.atomic_write(payload, exclusive=True)
-        finally:
-            file_io.cleanup()
-        parent_after = os.fstat(parent_fd)
-        if (parent.st_dev, parent.st_ino) != (
-            parent_after.st_dev,
-            parent_after.st_ino,
-        ):
-            raise CodingLegacyDisabledOnlyAcceptanceError(
-                "Disabled-only Product state directory changed during write"
-            )
-        _require_private_parent(path.parent, parent_after)
-    finally:
-        os.close(parent_fd)
-
-
-def _require_private_parent(path: Path, opened: os.stat_result) -> None:
-    visible = path.lstat()
-    if (
-        not stat.S_ISDIR(opened.st_mode)
-        or opened.st_uid != os.geteuid()
-        or stat.S_IMODE(opened.st_mode) & 0o077
-        or (opened.st_dev, opened.st_ino) != (visible.st_dev, visible.st_ino)
-    ):
-        raise CodingLegacyDisabledOnlyAcceptanceError(
-            "Disabled-only Product state directory is unsafe"
-        )
+    publish_private_bytes(
+        path,
+        payload,
+        error_type=CodingLegacyDisabledOnlyAcceptanceError,
+        directory_label="Disabled-only Product state directory",
+    )
 
 
 def _require_empty_product_desired(path: Path) -> None:

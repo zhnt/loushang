@@ -8,7 +8,6 @@ it never imports Hosting or manufactures native material.
 
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,8 +17,6 @@ from typing import TYPE_CHECKING, Literal, NoReturn, Protocol, cast
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
 from loushang.harness.worker import (
-    CapabilityQueryWorkerAdapter,
-    CapabilityWorkerAdmissionV1,
     CapabilityWorkerAuthorityV1,
     CapabilityWorkerBindingV1,
     HostingManagedWorkerSessionAdapter,
@@ -33,12 +30,18 @@ from loushang.harness.worker import (
     WorkerHostingActivationV1,
     WorkerSessionOwnerRouter,
     WorkerSupervisor,
-    bind_capability_query_worker_adapter,
 )
 from loushang.harness.worker._native_profile_bridge import (
     _bind_posix_static_contained_product_worker_profile,
     _bind_windows_lpac_contained_product_worker_profile,
     _WindowsLpacProductWorkerProfilePlan,
+)
+from loushang.harness.worker._product_attempt_lifecycle import (
+    _ProductWorkerAttemptLifecycle,
+    _WorkerCleanupPort,
+    _WorkerDomainPort,
+    _WorkerReadiness,
+    _WorkerRecoveryPort,
 )
 from loushang.harness.worker.gated_start import bind_worker_gated_start_release
 from loushang.harness.worker.product_activation import (
@@ -48,7 +51,6 @@ from loushang.harness.worker.product_activation import (
 if TYPE_CHECKING:
     from .package_product_worker_start_gate import (
         CodingProductWorkerStartGate,
-        CodingWorkerStartGateError,
     )
 
 CODING_PRODUCT_WORKER_CANARY_VERSION = 1
@@ -60,15 +62,7 @@ CODING_PRODUCT_WORKER_NATIVE_PROFILE_IDS = (
     CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
 )
 
-CodingWorkerCanaryReadiness = Literal[
-    "current",
-    "selected",
-    "starting",
-    "ready",
-    "degraded",
-    "unavailable",
-    "rolled_back",
-]
+CodingWorkerCanaryReadiness = _WorkerReadiness
 
 _ROLLBACK_STEPS = (
     "R1-LATCH-FUTURE",
@@ -151,80 +145,21 @@ class CodingProductWorkerCanaryStatusV1:
         }
 
 
-class CodingProductWorkerCanaryDomainPort(Protocol):
-    """Capability-owner operations needed by the Product composition."""
-
-    async def publish(
-        self,
-        *,
-        adapter: CapabilityQueryWorkerAdapter,
-        admission: CapabilityWorkerAdmissionV1,
-        receipt_fingerprint: str,
-        attempt_id: str,
-        owner_generation: int,
-    ) -> None: ...
-
-    async def fence_attempt(
-        self,
-        *,
-        receipt_fingerprint: str,
-        attempt_id: str,
-        owner_generation: int,
-    ) -> None: ...
-
-    async def revoke_and_drain(
-        self,
-        *,
-        receipt_fingerprint: str,
-        attempt_id: str,
-        owner_generation: int,
-    ) -> None: ...
-
-    async def settle_readiness(
-        self,
-        *,
-        required: bool,
-        ready: bool,
-        code: str,
-    ) -> None: ...
-
-    async def issue_current(self, *, prior_receipt_fingerprint: str) -> object: ...
+class CodingProductWorkerCanaryDomainPort(_WorkerDomainPort, Protocol):
+    "Capability-owner operations needed by the Product composition."
 
 
-class CodingProductWorkerCleanupPort(Protocol):
-    """Platform owner that records settlement or durable cleanup debt."""
-
-    async def settle(
-        self,
-        *,
-        receipt: ProductWorkerActivationReceiptV1,
-        request: ManagedWorkerLaunchRequestV1,
-        protocol_terminal: bool,
-        domain_retired: bool,
-        native_containment_witness: object | None = None,
-    ) -> None: ...
+class CodingProductWorkerCleanupPort(_WorkerCleanupPort, Protocol):
+    "Platform owner that records settlement or durable cleanup debt."
 
 
-class CodingProductWorkerRecoveryPort(Protocol):
-    """Durable recovery drill owned by the injected lifecycle authorities."""
-
-    async def recover(
-        self,
-        *,
-        receipt: ProductWorkerActivationReceiptV1,
-        request: ManagedWorkerLaunchRequestV1,
-    ) -> tuple[str, ...]: ...
+class CodingProductWorkerRecoveryPort(_WorkerRecoveryPort, Protocol):
+    "Durable recovery drill owned by the injected lifecycle authorities."
 
 
-class _ActivationAdmissionLease(Protocol):
-    def __enter__(self) -> _ActivationAdmissionLease: ...
-
-    def __exit__(self, *error: object) -> object: ...
-
-    def begin_effect(self) -> None: ...
-
-
-class CodingProductWorkerCanary:
+class CodingProductWorkerCanary(
+    _ProductWorkerAttemptLifecycle[CodingProductWorkerCanaryStatusV1]
+):
     """One selected attempt shared by every canary-capable Coding entrypoint."""
 
     def __init__(
@@ -247,25 +182,24 @@ class CodingProductWorkerCanary:
         status: CodingProductWorkerCanaryStatusV1,
         start_gate: CodingProductWorkerStartGate | None = None,
     ) -> None:
-        self._policy = policy
-        self._receipt = receipt
-        self._coordinator = coordinator
-        self._supervisor = supervisor
-        self._request = request
-        self._session_port = session_port
-        self._native_profile = native_profile
-        self._capability_binding = capability_binding
-        self._capability_authority_reader = capability_authority_reader
-        self._domain = domain
-        self._cleanup = cleanup
-        self._recovery = recovery
-        self._host_identity = host_identity
-        self._boot_identity = boot_identity
-        self._status = status
-        self._start_gate = start_gate
-        self._adapter: CapabilityQueryWorkerAdapter | None = None
-        self._operation_lock = asyncio.Lock()
-        self._closed = False
+        super().__init__(
+            policy=policy,
+            receipt=receipt,
+            coordinator=coordinator,
+            supervisor=supervisor,
+            request=request,
+            session_port=session_port,
+            native_profile=native_profile,
+            capability_binding=capability_binding,
+            capability_authority_reader=capability_authority_reader,
+            domain=domain,
+            cleanup=cleanup,
+            recovery=recovery,
+            host_identity=host_identity,
+            boot_identity=boot_identity,
+            status=status,
+            start_gate=start_gate,
+        )
 
     @property
     def status(self) -> CodingProductWorkerCanaryStatusV1:
@@ -280,11 +214,9 @@ class CodingProductWorkerCanary:
         return _RECOVERY_STEPS
 
     def receipt_for_entrypoint(
-        self,
-        entrypoint: str,
+        self, entrypoint: str
     ) -> ProductWorkerActivationReceiptV1 | None:
         """Return the one immutable receipt; early-dispatch routes stay dark."""
-
         if entrypoint not in CODING_PRODUCT_WORKER_CANARY_ENTRYPOINTS:
             raise CodingProductWorkerCanaryError(
                 "Coding entrypoint cannot activate the Worker canary",
@@ -294,417 +226,19 @@ class CodingProductWorkerCanary:
 
     async def start(self, *, correlation_id: str) -> CodingProductWorkerCanaryStatusV1:
         """Start, handshake, admit, and publish exactly one Hosting attempt."""
-
-        async with self._operation_lock:
-            if self._closed:
-                raise CodingProductWorkerCanaryError(
-                    "Coding Worker canary is closed",
-                    code="coding_worker_closed",
-                )
-            if self._status.readiness == "ready":
-                return self._status
-            if self._status.effective_owner != "hosting":
-                return self._status
-            if self._start_gate is not None:
-                try:
-                    self._start_gate.start_gate_read_fd
-                except RuntimeError as exc:
-                    raise CodingProductWorkerCanaryError(
-                        "Coding Worker gated attempt is no longer available",
-                        code="coding_worker_start_gate_consumed",
-                    ) from exc
-            self._require_selected_components()
-            policy = cast(ProductWorkerActivationPolicyV1, self._policy)
-            receipt = cast(ProductWorkerActivationReceiptV1, self._receipt)
-            coordinator = cast(ProductWorkerActivationCoordinator, self._coordinator)
-            supervisor = cast(WorkerSupervisor, self._supervisor)
-            request = cast(ManagedWorkerLaunchRequestV1, self._request)
-            session_port = cast(WorkerSessionOwnerRouter, self._session_port)
-            domain = cast(CodingProductWorkerCanaryDomainPort, self._domain)
-            decision = coordinator.evaluate(policy, receipt)
-            if decision.get("reason") != "admitted":
-                if self._start_gate is not None:
-                    self._start_gate.close()
-                return await self._settle_closed_decision(
-                    code=_stable_reason(decision.get("reason")),
-                )
-            self._status = self._attempt_status(
-                code="coding_worker_starting",
-                readiness="starting",
-            )
-            effect_started = False
-            domain_publish_started = False
-            try:
-                lease = cast(
-                    _ActivationAdmissionLease,
-                    coordinator.admission(
-                        policy=policy,
-                        receipt=receipt,
-                        attempt_id=request.identity.attempt_id,
-                        owner_generation=request.identity.owner_generation,
-                        host_identity=cast(str, self._host_identity),
-                        boot_identity=cast(str, self._boot_identity),
-                        cleanup_contract_version=cast(
-                            ProductWorkerNativeProfilePort,
-                            self._native_profile,
-                        ).cleanup_contract_version,
-                    ),
-                )
-                with lease:
-                    lease.begin_effect()
-                    effect_started = True
-                await supervisor.start_session(
-                    session_port=session_port,
-                    launch_request=request,
-                    correlation_id=correlation_id,
-                )
-                adapter = bind_capability_query_worker_adapter(
-                    supervisor=supervisor,
-                    binding=cast(CapabilityWorkerBindingV1, self._capability_binding),
-                    authority_reader=cast(
-                        Callable[[], CapabilityWorkerAuthorityV1],
-                        self._capability_authority_reader,
-                    ),
-                    enabled=True,
-                )
-                admission = adapter.admit()
-                coordinator.publish(
-                    receipt=receipt,
-                    attempt_id=request.identity.attempt_id,
-                    owner_generation=request.identity.owner_generation,
-                    realized_native_policy_closure_fingerprint=(
-                        cast(
-                            ProductWorkerNativeProfilePort,
-                            self._native_profile,
-                        ).realized_native_policy_closure_fingerprint
-                    ),
-                    native_profile_catalog_revision=policy.native_profile_catalog_revision,
-                    native_profile_id=policy.native_profile_id,
-                )
-                domain_publish_started = True
-                await domain.publish(
-                    adapter=adapter,
-                    admission=admission,
-                    receipt_fingerprint=receipt.fingerprint,
-                    attempt_id=request.identity.attempt_id,
-                    owner_generation=request.identity.owner_generation,
-                )
-                self._adapter = adapter
-                await domain.settle_readiness(
-                    required=policy.effective_required,
-                    ready=True,
-                    code="coding_worker_ready",
-                )
-                self._status = self._attempt_status(
-                    code="coding_worker_ready",
-                    readiness="ready",
-                )
-                return self._status
-            except asyncio.CancelledError:
-                if self._start_gate is not None:
-                    self._start_gate.close()
-                if effect_started:
-                    await self._reclaim_failed_attempt(
-                        domain_publish_started=domain_publish_started,
-                    )
-                raise
-            except BaseException as exc:
-                if self._start_gate is not None:
-                    self._start_gate.close()
-                if effect_started:
-                    await self._reclaim_failed_attempt(
-                        domain_publish_started=domain_publish_started,
-                    )
-                readiness: CodingWorkerCanaryReadiness = (
-                    "unavailable" if policy.effective_required else "degraded"
-                )
-                code = (
-                    "coding_worker_required_unavailable"
-                    if policy.effective_required
-                    else "coding_worker_optional_degraded"
-                )
-                self._status = self._attempt_status(code=code, readiness=readiness)
-                await domain.settle_readiness(
-                    required=policy.effective_required,
-                    ready=False,
-                    code=code,
-                )
-                if policy.effective_required:
-                    raise CodingProductWorkerCanaryError(
-                        "Required Coding Worker canary is unavailable",
-                        code=code,
-                    ) from exc
-                return self._status
+        return await super().start(correlation_id=correlation_id)
 
     async def rollback(self) -> CodingProductWorkerCanaryStatusV1:
         """Run the fixed latch-first rollback sequence without same-attempt fallback."""
-
-        async with self._operation_lock:
-            if self._closed:
-                raise CodingProductWorkerCanaryError(
-                    "Coding Worker canary is closed",
-                    code="coding_worker_closed",
-                )
-            if self._start_gate is not None:
-                self._start_gate.close()
-            self._require_selected_components()
-            policy = cast(ProductWorkerActivationPolicyV1, self._policy)
-            receipt = cast(ProductWorkerActivationReceiptV1, self._receipt)
-            coordinator = cast(ProductWorkerActivationCoordinator, self._coordinator)
-            supervisor = cast(WorkerSupervisor, self._supervisor)
-            request = cast(ManagedWorkerLaunchRequestV1, self._request)
-            domain = cast(CodingProductWorkerCanaryDomainPort, self._domain)
-            cleanup = cast(CodingProductWorkerCleanupPort, self._cleanup)
-            session_port = cast(WorkerSessionOwnerRouter, self._session_port)
-
-            coordinator.latch_kill_switch(
-                expected_generation=policy.kill_switch_generation
-            )
-            session_port.rollback_to_current()
-            await domain.fence_attempt(
-                receipt_fingerprint=receipt.fingerprint,
-                attempt_id=request.identity.attempt_id,
-                owner_generation=request.identity.owner_generation,
-            )
-            await domain.revoke_and_drain(
-                receipt_fingerprint=receipt.fingerprint,
-                attempt_id=request.identity.attempt_id,
-                owner_generation=request.identity.owner_generation,
-            )
-            coordinator.retire_exact(
-                receipt=receipt,
-                attempt_id=request.identity.attempt_id,
-                owner_generation=request.identity.owner_generation,
-            )
-            await supervisor.fence(code="coding_worker_rollback")
-            coordinator.record_protocol_terminal(
-                receipt=receipt,
-                attempt_id=request.identity.attempt_id,
-                owner_generation=request.identity.owner_generation,
-            )
-            await cleanup.settle(
-                receipt=receipt,
-                request=request,
-                protocol_terminal=True,
-                domain_retired=True,
-                **self._native_cleanup_witness_arguments(),
-            )
-            await domain.settle_readiness(
-                required=policy.effective_required,
-                ready=False,
-                code="coding_worker_rollback_latched",
-            )
-            await domain.issue_current(prior_receipt_fingerprint=receipt.fingerprint)
-            self._status = self._attempt_status(
-                code="coding_worker_rollback_latched",
-                readiness="rolled_back",
-                effective_owner="current",
-            )
-            return self._status
+        return await super().rollback()
 
     async def recover(self) -> tuple[str, ...]:
         """Require the complete ordered durable recovery matrix."""
-
-        async with self._operation_lock:
-            if self._closed:
-                raise CodingProductWorkerCanaryError(
-                    "Coding Worker canary is closed",
-                    code="coding_worker_closed",
-                )
-            if self._start_gate is not None:
-                self._start_gate.close()
-            self._require_selected_components()
-            recovery = cast(CodingProductWorkerRecoveryPort, self._recovery)
-            steps = await recovery.recover(
-                receipt=cast(ProductWorkerActivationReceiptV1, self._receipt),
-                request=cast(ManagedWorkerLaunchRequestV1, self._request),
-            )
-            if steps != _RECOVERY_STEPS:
-                raise CodingProductWorkerCanaryError(
-                    "Coding Worker recovery evidence is incomplete",
-                    code="coding_worker_recovery_incomplete",
-                )
-            return steps
+        return await super().recover()
 
     async def close(self) -> None:
         """Settle this exact Product attempt without changing Product policy."""
-
-        async with self._operation_lock:
-            if self._closed:
-                return
-            if self._start_gate is not None:
-                self._start_gate.close()
-            if self._status.effective_owner != "hosting" or self._receipt is None:
-                self._closed = True
-                return
-            self._require_selected_components()
-            policy = cast(ProductWorkerActivationPolicyV1, self._policy)
-            native_profile = cast(ProductWorkerNativeProfilePort, self._native_profile)
-            if self._status.readiness == "ready":
-                await self._close_ready_attempt()
-            else:
-                # No live domain publication remains.  This covers recovery
-                # failure, a rejected pre-effect decision, and a start path
-                # that already reclaimed its partial effect.
-                await native_profile.close()
-            domain = cast(CodingProductWorkerCanaryDomainPort, self._domain)
-            code = "coding_worker_session_closed"
-            await domain.settle_readiness(
-                required=policy.effective_required,
-                ready=False,
-                code=code,
-            )
-            self._status = self._attempt_status(
-                code=code,
-                readiness=(
-                    "unavailable" if policy.effective_required else "degraded"
-                ),
-            )
-            self._closed = True
-
-    async def _close_ready_attempt(self) -> None:
-        receipt = cast(ProductWorkerActivationReceiptV1, self._receipt)
-        request = cast(ManagedWorkerLaunchRequestV1, self._request)
-        domain = cast(CodingProductWorkerCanaryDomainPort, self._domain)
-        coordinator = cast(ProductWorkerActivationCoordinator, self._coordinator)
-        supervisor = cast(WorkerSupervisor, self._supervisor)
-        native_profile = cast(ProductWorkerNativeProfilePort, self._native_profile)
-        cleanup = cast(CodingProductWorkerCleanupPort, self._cleanup)
-
-        await domain.fence_attempt(
-            receipt_fingerprint=receipt.fingerprint,
-            attempt_id=request.identity.attempt_id,
-            owner_generation=request.identity.owner_generation,
-        )
-        await domain.revoke_and_drain(
-            receipt_fingerprint=receipt.fingerprint,
-            attempt_id=request.identity.attempt_id,
-            owner_generation=request.identity.owner_generation,
-        )
-        coordinator.retire_exact(
-            receipt=receipt,
-            attempt_id=request.identity.attempt_id,
-            owner_generation=request.identity.owner_generation,
-        )
-        try:
-            await supervisor.shutdown(reason="coding_product_session_close")
-        except asyncio.CancelledError:
-            raise
-        except BaseException:
-            # WorkerSupervisor.shutdown fences on every protocol/transport
-            # failure.  Reassert the exact terminal state so settlement can
-            # proceed without turning normal Session close into rollback.
-            await supervisor.fence(code="coding_worker_session_close_fenced")
-        coordinator.record_protocol_terminal(
-            receipt=receipt,
-            attempt_id=request.identity.attempt_id,
-            owner_generation=request.identity.owner_generation,
-        )
-        await native_profile.close()
-        await cleanup.settle(
-            receipt=receipt,
-            request=request,
-            protocol_terminal=True,
-            domain_retired=True,
-            **self._native_cleanup_witness_arguments(),
-        )
-
-    async def _reclaim_failed_attempt(
-        self,
-        *,
-        domain_publish_started: bool,
-    ) -> None:
-        receipt = cast(ProductWorkerActivationReceiptV1, self._receipt)
-        request = cast(ManagedWorkerLaunchRequestV1, self._request)
-        domain = cast(CodingProductWorkerCanaryDomainPort, self._domain)
-        coordinator = cast(ProductWorkerActivationCoordinator, self._coordinator)
-        supervisor = cast(WorkerSupervisor, self._supervisor)
-        cleanup = cast(CodingProductWorkerCleanupPort, self._cleanup)
-        with _suppress_failures():
-            await domain.fence_attempt(
-                receipt_fingerprint=receipt.fingerprint,
-                attempt_id=request.identity.attempt_id,
-                owner_generation=request.identity.owner_generation,
-            )
-        if domain_publish_started:
-            with _suppress_failures():
-                await domain.revoke_and_drain(
-                    receipt_fingerprint=receipt.fingerprint,
-                    attempt_id=request.identity.attempt_id,
-                    owner_generation=request.identity.owner_generation,
-                )
-        with _suppress_failures():
-            coordinator.retire_exact(
-                receipt=receipt,
-                attempt_id=request.identity.attempt_id,
-                owner_generation=request.identity.owner_generation,
-            )
-        with _suppress_failures():
-            await supervisor.fence(code="coding_worker_start_failed")
-        with _suppress_failures():
-            coordinator.record_protocol_terminal(
-                receipt=receipt,
-                attempt_id=request.identity.attempt_id,
-                owner_generation=request.identity.owner_generation,
-            )
-        with _suppress_failures():
-            await cleanup.settle(
-                receipt=receipt,
-                request=request,
-                protocol_terminal=True,
-                domain_retired=True,
-                **self._native_cleanup_witness_arguments(),
-            )
-
-    def _native_cleanup_witness_arguments(self) -> dict[str, object]:
-        native_profile = cast(ProductWorkerNativeProfilePort, self._native_profile)
-        if native_profile.cleanup_contract_version == 1:
-            return {}
-        if native_profile.cleanup_contract_version != 2:
-            raise CodingProductWorkerCanaryError(
-                "Coding Worker cleanup contract is unsupported",
-                code="coding_worker_cleanup_contract_unsupported",
-            )
-        native_witness = native_profile.native_containment_settlement_witness()
-        if native_witness is None:
-            raise CodingProductWorkerCanaryError(
-                "Coding Worker native containment is unsettled",
-                code="coding_worker_native_containment_unsettled",
-            )
-        return {"native_containment_witness": native_witness}
-
-    async def _settle_closed_decision(
-        self,
-        *,
-        code: str,
-    ) -> CodingProductWorkerCanaryStatusV1:
-        policy = cast(ProductWorkerActivationPolicyV1, self._policy)
-        native_profile = cast(ProductWorkerNativeProfilePort, self._native_profile)
-        readiness: CodingWorkerCanaryReadiness = (
-            "unavailable" if policy.effective_required else "degraded"
-        )
-        stable_code = (
-            "coding_worker_required_unavailable"
-            if policy.effective_required
-            else "coding_worker_optional_degraded"
-        )
-        domain = cast(CodingProductWorkerCanaryDomainPort, self._domain)
-        await native_profile.close()
-        await domain.settle_readiness(
-            required=policy.effective_required,
-            ready=False,
-            code=code,
-        )
-        self._status = self._attempt_status(
-            code=stable_code,
-            readiness=readiness,
-        )
-        if policy.effective_required:
-            raise CodingProductWorkerCanaryError(
-                "Required Coding Worker canary was rejected",
-                code=stable_code,
-            )
-        return self._status
+        return await super().close()
 
     def _attempt_status(
         self,
@@ -727,28 +261,31 @@ class CodingProductWorkerCanary:
             owner_generation=request.identity.owner_generation,
         )
 
-    def _require_selected_components(self) -> None:
-        components = (
-            self._policy,
-            self._receipt,
-            self._coordinator,
-            self._supervisor,
-            self._request,
-            self._session_port,
-            self._native_profile,
-            self._capability_binding,
-            self._capability_authority_reader,
-            self._domain,
-            self._cleanup,
-            self._recovery,
-            self._host_identity,
-            self._boot_identity,
-        )
-        if any(item is None for item in components):
-            raise CodingProductWorkerCanaryError(
-                "Coding Worker canary composition is incomplete",
-                code="coding_worker_composition_incomplete",
-            )
+    @staticmethod
+    def _lifecycle_code(reason: str) -> str:
+        return "coding_" + reason
+
+    @staticmethod
+    def _lifecycle_reason(value: object) -> str:
+        return _stable_reason(value)
+
+    @staticmethod
+    def _lifecycle_error(message: str, *, code: str) -> CodingProductWorkerCanaryError:
+        messages = {
+            "closed": "Coding Worker canary is closed",
+            "gate_consumed": "Coding Worker gated attempt is no longer available",
+            "required_start": "Required Coding Worker canary is unavailable",
+            "cleanup_contract": "Coding Worker cleanup contract is unsupported",
+            "native_settlement": "Coding Worker native containment is unsettled",
+            "required_rejected": "Required Coding Worker canary was rejected",
+            "composition": "Coding Worker canary composition is incomplete",
+            "recovery_incomplete": "Coding Worker recovery evidence is incomplete",
+        }
+        return CodingProductWorkerCanaryError(messages[message], code=code)
+
+    @staticmethod
+    def _expected_recovery_steps() -> tuple[str, ...]:
+        return _RECOVERY_STEPS
 
 
 def bind_coding_product_worker_canary(
@@ -878,7 +415,10 @@ def bind_coding_product_worker_canary(
     assert activation_state_store is not None
     assert containment_launcher_sha256 is not None
     assert containment_profile_sha256 is not None
-    from .package_product_worker_start_gate import CodingProductWorkerStartGate
+    from .package_product_worker_start_gate import (
+        CodingProductWorkerStartGate,
+        CodingWorkerStartGateError,
+    )
 
     if start_gate is not None and (
         type(start_gate) is not CodingProductWorkerStartGate
@@ -886,8 +426,7 @@ def bind_coding_product_worker_canary(
         or start_gate.receipt_owner is not authority
         or start_gate.receipt_fingerprint != receipt.fingerprint
         or start_gate.attempt_id != worker_request.identity.attempt_id
-        or start_gate.worker_identity_fingerprint
-        != worker_request.identity.fingerprint
+        or start_gate.worker_identity_fingerprint != worker_request.identity.fingerprint
     ):
         _raise("coding_worker_start_gate_binding_mismatch")
     try:
@@ -1289,14 +828,6 @@ def _require_sha256(value: object, *, name: str) -> None:
             f"Coding Worker {name} is invalid",
             code="coding_worker_composition_digest_invalid",
         )
-
-
-class _suppress_failures:
-    def __enter__(self) -> None:
-        return None
-
-    def __exit__(self, *_error: object) -> bool:
-        return True
 
 
 def _raise(code: str) -> NoReturn:

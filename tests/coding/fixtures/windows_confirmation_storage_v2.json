@@ -1,0 +1,749 @@
+{
+  "new": {
+    "attempts": [
+      {
+        "accept": {
+          "record": {
+            "actorId": "operator",
+            "confirmation": {
+              "confirmationId": "arch-delete:storage",
+              "confirmationVersion": 1,
+              "planFingerprint": "7de47e499d991b6f8112e2c31bffafc205abb0bcd80560dff9ed5473f6a26285"
+            },
+            "plan": {
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "ownerId": "coding.arch.private-data:windows-v1",
+              "planVersion": 1,
+              "targetId": "absent:5eaf8ef37ba321323a0545f767d5dd6b9fd73a8b95c67ad41c087bd04607bfbe"
+            },
+            "policyRevision": "policy:1",
+            "recordRevision": 1,
+            "recordVersion": 1
+          }
+        },
+        "query": {
+          "confirmed": true
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "generation",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        true
+      ],
+      [
+        "write",
+        4194304,
+        622,
+        "a21d7804b5bc013e62ff65510b06dbd7757ec222402b9008dee2d0b3f5533753"
+      ],
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "read_authority"
+    ],
+    "files": {
+      "private-data-confirmation-8043c1bfcf3a018ed5831be8bda658800d96951f2035f0d1bdaae5564c4c4958.json": "7b226163746f724964223a226f70657261746f72222c22636f6e6669726d6174696f6e223a7b22636f6e6669726d6174696f6e4964223a22617263682d64656c6574653a73746f72616765222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2237646534376534393964393931623666383131326532633331626666616663323035616262306263643830353630646666396564353437336636613236323835227d2c22706c616e223a7b22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c226f776e65724964223a22636f64696e672e617263682e707269766174652d646174613a77696e646f77732d7631222c22706c616e56657273696f6e223a312c227461726765744964223a22616273656e743a35656166386566333762613332313332336130353435663736376435646436623966643733613862393563363761643431633038376264303436303762666265227d2c22706f6c6963795265766973696f6e223a22706f6c6963793a31222c227265636f72645265766973696f6e223a312c227265636f726456657273696f6e223a317d0a"
+    }
+  },
+  "existing": {
+    "attempts": [
+      {
+        "accept": {
+          "record": {
+            "actorId": "operator",
+            "confirmation": {
+              "confirmationId": "arch-delete:storage",
+              "confirmationVersion": 1,
+              "planFingerprint": "7de47e499d991b6f8112e2c31bffafc205abb0bcd80560dff9ed5473f6a26285"
+            },
+            "plan": {
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "ownerId": "coding.arch.private-data:windows-v1",
+              "planVersion": 1,
+              "targetId": "absent:5eaf8ef37ba321323a0545f767d5dd6b9fd73a8b95c67ad41c087bd04607bfbe"
+            },
+            "policyRevision": "policy:1",
+            "recordRevision": 1,
+            "recordVersion": 1
+          }
+        },
+        "query": {
+          "confirmed": true
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "generation",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        true
+      ],
+      "borrow_exit",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "read_authority"
+    ],
+    "files": {
+      "private-data-confirmation-8043c1bfcf3a018ed5831be8bda658800d96951f2035f0d1bdaae5564c4c4958.json": "7b226163746f724964223a226f70657261746f72222c22636f6e6669726d6174696f6e223a7b22636f6e6669726d6174696f6e4964223a22617263682d64656c6574653a73746f72616765222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2237646534376534393964393931623666383131326532633331626666616663323035616262306263643830353630646666396564353437336636613236323835227d2c22706c616e223a7b22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c226f776e65724964223a22636f64696e672e617263682e707269766174652d646174613a77696e646f77732d7631222c22706c616e56657273696f6e223a312c227461726765744964223a22616273656e743a35656166386566333762613332313332336130353435663736376435646436623966643733613862393563363761643431633038376264303436303762666265227d2c22706f6c6963795265766973696f6e223a22706f6c6963793a31222c227265636f72645265766973696f6e223a312c227265636f726456657273696f6e223a317d0a"
+    }
+  },
+  "collision": {
+    "attempts": [
+      {
+        "accept": {
+          "error": "ValueError",
+          "message": "Windows Coding Arch confirmation ID was reused",
+          "cause": null
+        },
+        "query": {
+          "confirmed": true
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "generation",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        true
+      ],
+      "borrow_exit",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "read_authority"
+    ],
+    "files": {
+      "private-data-confirmation-8043c1bfcf3a018ed5831be8bda658800d96951f2035f0d1bdaae5564c4c4958.json": "7b226163746f724964223a226f74686572222c22636f6e6669726d6174696f6e223a7b22636f6e6669726d6174696f6e4964223a22617263682d64656c6574653a73746f72616765222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2237646534376534393964393931623666383131326532633331626666616663323035616262306263643830353630646666396564353437336636613236323835227d2c22706c616e223a7b22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c226f776e65724964223a22636f64696e672e617263682e707269766174652d646174613a77696e646f77732d7631222c22706c616e56657273696f6e223a312c227461726765744964223a22616273656e743a35656166386566333762613332313332336130353435663736376435646436623966643733613862393563363761643431633038376264303436303762666265227d2c22706f6c6963795265766973696f6e223a22706f6c6963793a31222c227265636f72645265766973696f6e223a312c227265636f726456657273696f6e223a317d0a"
+    }
+  },
+  "invalid_existing": {
+    "attempts": [
+      {
+        "accept": {
+          "error": "ValueError",
+          "message": "Windows Coding Arch confirmation is invalid",
+          "cause": "JSONDecodeError"
+        },
+        "query": {
+          "error": "ValueError",
+          "message": "Windows Coding Arch confirmation is invalid",
+          "cause": "JSONDecodeError"
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "generation",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        true
+      ],
+      "borrow_exit",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit"
+    ],
+    "files": {
+      "private-data-confirmation-8043c1bfcf3a018ed5831be8bda658800d96951f2035f0d1bdaae5564c4c4958.json": "7b696e76616c69647d0a"
+    }
+  },
+  "staged_retry": {
+    "attempts": [
+      {
+        "accept": {
+          "record": {
+            "actorId": "operator",
+            "confirmation": {
+              "confirmationId": "arch-delete:storage",
+              "confirmationVersion": 1,
+              "planFingerprint": "7de47e499d991b6f8112e2c31bffafc205abb0bcd80560dff9ed5473f6a26285"
+            },
+            "plan": {
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "ownerId": "coding.arch.private-data:windows-v1",
+              "planVersion": 1,
+              "targetId": "absent:5eaf8ef37ba321323a0545f767d5dd6b9fd73a8b95c67ad41c087bd04607bfbe"
+            },
+            "policyRevision": "policy:1",
+            "recordRevision": 1,
+            "recordVersion": 1
+          }
+        },
+        "query": {
+          "confirmed": true
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "generation",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        true
+      ],
+      [
+        "write",
+        4194304,
+        622,
+        "a21d7804b5bc013e62ff65510b06dbd7757ec222402b9008dee2d0b3f5533753"
+      ],
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "read_authority"
+    ],
+    "files": {
+      "private-data-confirmation-8043c1bfcf3a018ed5831be8bda658800d96951f2035f0d1bdaae5564c4c4958.json": "7b226163746f724964223a226f70657261746f72222c22636f6e6669726d6174696f6e223a7b22636f6e6669726d6174696f6e4964223a22617263682d64656c6574653a73746f72616765222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2237646534376534393964393931623666383131326532633331626666616663323035616262306263643830353630646666396564353437336636613236323835227d2c22706c616e223a7b22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c226f776e65724964223a22636f64696e672e617263682e707269766174652d646174613a77696e646f77732d7631222c22706c616e56657273696f6e223a312c227461726765744964223a22616273656e743a35656166386566333762613332313332336130353435663736376435646436623966643733613862393563363761643431633038376264303436303762666265227d2c22706f6c6963795265766973696f6e223a22706f6c6963793a31222c227265636f72645265766973696f6e223a312c227265636f726456657273696f6e223a317d0a"
+    }
+  },
+  "read_failure": {
+    "attempts": [
+      {
+        "accept": {
+          "error": "OSError",
+          "message": "injected:read",
+          "cause": null
+        },
+        "query": {
+          "error": "OSError",
+          "message": "injected:read",
+          "cause": null
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "generation",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        true
+      ],
+      "borrow_exit",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit"
+    ],
+    "files": {}
+  },
+  "write_failure": {
+    "attempts": [
+      {
+        "accept": {
+          "error": "OSError",
+          "message": "injected:write",
+          "cause": null
+        },
+        "query": {
+          "confirmed": false
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "generation",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        true
+      ],
+      [
+        "write",
+        4194304,
+        622,
+        "a21d7804b5bc013e62ff65510b06dbd7757ec222402b9008dee2d0b3f5533753"
+      ],
+      "borrow_exit",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "read_authority"
+    ],
+    "files": {}
+  },
+  "write_after": {
+    "attempts": [
+      {
+        "accept": {
+          "error": "OSError",
+          "message": "injected:written_then_failed",
+          "cause": null
+        },
+        "query": {
+          "confirmed": true
+        }
+      },
+      {
+        "accept": {
+          "record": {
+            "actorId": "operator",
+            "confirmation": {
+              "confirmationId": "arch-delete:storage",
+              "confirmationVersion": 1,
+              "planFingerprint": "7de47e499d991b6f8112e2c31bffafc205abb0bcd80560dff9ed5473f6a26285"
+            },
+            "plan": {
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "ownerId": "coding.arch.private-data:windows-v1",
+              "planVersion": 1,
+              "targetId": "absent:5eaf8ef37ba321323a0545f767d5dd6b9fd73a8b95c67ad41c087bd04607bfbe"
+            },
+            "policyRevision": "policy:1",
+            "recordRevision": 1,
+            "recordVersion": 1
+          }
+        },
+        "query": {
+          "confirmed": true
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "generation",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        true
+      ],
+      [
+        "write",
+        4194304,
+        622,
+        "a21d7804b5bc013e62ff65510b06dbd7757ec222402b9008dee2d0b3f5533753"
+      ],
+      "borrow_exit",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "read_authority",
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "generation",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        true
+      ],
+      "borrow_exit",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "read_authority"
+    ],
+    "files": {
+      "private-data-confirmation-8043c1bfcf3a018ed5831be8bda658800d96951f2035f0d1bdaae5564c4c4958.json": "7b226163746f724964223a226f70657261746f72222c22636f6e6669726d6174696f6e223a7b22636f6e6669726d6174696f6e4964223a22617263682d64656c6574653a73746f72616765222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2237646534376534393964393931623666383131326532633331626666616663323035616262306263643830353630646666396564353437336636613236323835227d2c22706c616e223a7b22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c226f776e65724964223a22636f64696e672e617263682e707269766174652d646174613a77696e646f77732d7631222c22706c616e56657273696f6e223a312c227461726765744964223a22616273656e743a35656166386566333762613332313332336130353435663736376435646436623966643733613862393563363761643431633038376264303436303762666265227d2c22706f6c6963795265766973696f6e223a22706f6c6963793a31222c227265636f72645265766973696f6e223a312c227265636f726456657273696f6e223a317d0a"
+    }
+  },
+  "no_publication": {
+    "attempts": [
+      {
+        "accept": {
+          "error": "ValueError",
+          "message": "Windows Coding Arch confirmation changed",
+          "cause": null
+        },
+        "query": {
+          "confirmed": false
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "generation",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        true
+      ],
+      [
+        "write",
+        4194304,
+        622,
+        "a21d7804b5bc013e62ff65510b06dbd7757ec222402b9008dee2d0b3f5533753"
+      ],
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "read_authority"
+    ],
+    "files": {}
+  },
+  "corrupt_publication": {
+    "attempts": [
+      {
+        "accept": {
+          "error": "ValueError",
+          "message": "Windows Coding Arch confirmation changed",
+          "cause": null
+        },
+        "query": {
+          "error": "ValueError",
+          "message": "Windows Coding Arch confirmation is invalid",
+          "cause": "JSONDecodeError"
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "generation",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        true
+      ],
+      [
+        "write",
+        4194304,
+        622,
+        "a21d7804b5bc013e62ff65510b06dbd7757ec222402b9008dee2d0b3f5533753"
+      ],
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit"
+    ],
+    "files": {
+      "private-data-confirmation-8043c1bfcf3a018ed5831be8bda658800d96951f2035f0d1bdaae5564c4c4958.json": "636f7272757074"
+    }
+  },
+  "oversized": {
+    "attempts": [
+      {
+        "accept": {
+          "error": "ValueError",
+          "message": "Windows Coding Arch confirmation is too large",
+          "cause": null
+        },
+        "query": {
+          "confirmed": false
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "generation",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "read_authority"
+    ],
+    "files": {}
+  },
+  "no_history": {
+    "attempts": [
+      {
+        "accept": {
+          "error": "ValueError",
+          "message": "Windows Coding Arch Installation has no Product history",
+          "cause": null
+        },
+        "query": {
+          "confirmed": false
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "read_authority"
+    ],
+    "files": {}
+  },
+  "stale_plan": {
+    "attempts": [
+      {
+        "accept": {
+          "error": "ValueError",
+          "message": "Windows Coding Arch confirmation plan is stale",
+          "cause": null
+        },
+        "query": {
+          "confirmed": false
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "read_authority"
+    ],
+    "files": {}
+  },
+  "stale_generation": {
+    "attempts": [
+      {
+        "accept": {
+          "error": "ValueError",
+          "message": "Windows Coding Arch confirmation plan is stale",
+          "cause": null
+        },
+        "query": {
+          "confirmed": false
+        }
+      }
+    ],
+    "trace": [
+      "preview",
+      "offline_enter",
+      "desired_snapshot",
+      "installation",
+      "root",
+      "generation",
+      "generation",
+      "offline_exit",
+      "read_authority",
+      "borrow_enter",
+      [
+        "read",
+        16384,
+        false
+      ],
+      "borrow_exit",
+      "read_authority"
+    ],
+    "files": {}
+  },
+  "invalid_confirmation": {
+    "attempts": [
+      {
+        "accept": {
+          "error": "ValueError",
+          "message": "Windows Coding Arch confirmation plan is invalid",
+          "cause": null
+        },
+        "query": {
+          "error": "ValueError",
+          "message": "Windows Coding Arch confirmation plan is invalid",
+          "cause": null
+        }
+      }
+    ],
+    "trace": [],
+    "files": {}
+  }
+}

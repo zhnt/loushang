@@ -1,0 +1,909 @@
+{
+  "stage-retry": {
+    "trace": [
+      [
+        "create",
+        "worker-history-v2-preparation.json",
+        "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e"
+      ],
+      [
+        "create",
+        "worker-history-v2-index.candidate.json",
+        "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-opt-in.base.json",
+        "6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-opt-in.cutover.json",
+        "b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-activation-receipts.base.json",
+        "1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-activation-receipts.cutover.json",
+        "7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-activation-state.base.json",
+        "c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-activation-state.cutover.json",
+        "628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-start-gates.base.json",
+        "91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-start-gates.cutover.json",
+        "5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-supervisor.base.json",
+        "1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-supervisor.cutover.json",
+        "567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08"
+      ]
+    ],
+    "outcomes": [
+      {
+        "value": {
+          "type": "loushang.coding.package_product_worker_history_stage_v2.CodingWorkerV2PreparationIntent",
+          "digest": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e"
+        },
+        "error": null,
+        "files": {
+          "worker-history-v2-index.candidate.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-preparation.json": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e",
+          "worker-history-v2-worker-activation-receipts.base.json": "1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465",
+          "worker-history-v2-worker-activation-receipts.cutover.json": "7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e",
+          "worker-history-v2-worker-activation-state.base.json": "c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b",
+          "worker-history-v2-worker-activation-state.cutover.json": "628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c",
+          "worker-history-v2-worker-opt-in.base.json": "6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337",
+          "worker-history-v2-worker-opt-in.cutover.json": "b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234",
+          "worker-history-v2-worker-start-gates.base.json": "91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034",
+          "worker-history-v2-worker-start-gates.cutover.json": "5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97",
+          "worker-history-v2-worker-supervisor.base.json": "1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b",
+          "worker-history-v2-worker-supervisor.cutover.json": "567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08"
+        }
+      },
+      {
+        "value": {
+          "type": "loushang.coding.package_product_worker_history_stage_v2.CodingWorkerV2PreparationIntent",
+          "digest": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e"
+        },
+        "error": null,
+        "files": {
+          "worker-history-v2-index.candidate.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-preparation.json": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e",
+          "worker-history-v2-worker-activation-receipts.base.json": "1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465",
+          "worker-history-v2-worker-activation-receipts.cutover.json": "7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e",
+          "worker-history-v2-worker-activation-state.base.json": "c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b",
+          "worker-history-v2-worker-activation-state.cutover.json": "628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c",
+          "worker-history-v2-worker-opt-in.base.json": "6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337",
+          "worker-history-v2-worker-opt-in.cutover.json": "b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234",
+          "worker-history-v2-worker-start-gates.base.json": "91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034",
+          "worker-history-v2-worker-start-gates.cutover.json": "5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97",
+          "worker-history-v2-worker-supervisor.base.json": "1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b",
+          "worker-history-v2-worker-supervisor.cutover.json": "567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08"
+        }
+      }
+    ]
+  },
+  "stage-paused": {
+    "trace": [
+      [
+        "create",
+        "worker-history-v2-preparation.json",
+        "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e"
+      ],
+      [
+        "create",
+        "worker-history-v2-index.candidate.json",
+        "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76"
+      ],
+      [
+        "create",
+        "worker-history-v2-index.candidate.json",
+        "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-opt-in.base.json",
+        "6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-opt-in.cutover.json",
+        "b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-activation-receipts.base.json",
+        "1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-activation-receipts.cutover.json",
+        "7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-activation-state.base.json",
+        "c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-activation-state.cutover.json",
+        "628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-start-gates.base.json",
+        "91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-start-gates.cutover.json",
+        "5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-supervisor.base.json",
+        "1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b"
+      ],
+      [
+        "create",
+        "worker-history-v2-worker-supervisor.cutover.json",
+        "567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08"
+      ]
+    ],
+    "outcomes": [
+      {
+        "value": null,
+        "error": [
+          [
+            "OSError",
+            "pause before artifact",
+            null,
+            false
+          ]
+        ],
+        "files": {
+          "worker-history-v2-preparation.json": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e"
+        }
+      },
+      {
+        "value": {
+          "type": "loushang.coding.package_product_worker_history_stage_v2.CodingWorkerV2PreparationIntent",
+          "digest": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e"
+        },
+        "error": null,
+        "files": {
+          "worker-history-v2-index.candidate.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-preparation.json": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e",
+          "worker-history-v2-worker-activation-receipts.base.json": "1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465",
+          "worker-history-v2-worker-activation-receipts.cutover.json": "7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e",
+          "worker-history-v2-worker-activation-state.base.json": "c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b",
+          "worker-history-v2-worker-activation-state.cutover.json": "628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c",
+          "worker-history-v2-worker-opt-in.base.json": "6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337",
+          "worker-history-v2-worker-opt-in.cutover.json": "b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234",
+          "worker-history-v2-worker-start-gates.base.json": "91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034",
+          "worker-history-v2-worker-start-gates.cutover.json": "5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97",
+          "worker-history-v2-worker-supervisor.base.json": "1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b",
+          "worker-history-v2-worker-supervisor.cutover.json": "567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08"
+        }
+      }
+    ]
+  },
+  "rollback-empty": {
+    "trace": [],
+    "outcomes": [
+      {
+        "value": false,
+        "error": null,
+        "files": {}
+      }
+    ]
+  },
+  "rollback-changed": {
+    "trace": [],
+    "outcomes": [
+      {
+        "value": null,
+        "error": [
+          [
+            "CodingWorkerV2PreparationError",
+            "coding_worker_v2_preparation_changed",
+            "coding_worker_v2_preparation_changed",
+            false
+          ]
+        ],
+        "files": {
+          "worker-history-v2-index.candidate.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-preparation.json": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e",
+          "worker-history-v2-worker-activation-receipts.base.json": "1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465",
+          "worker-history-v2-worker-activation-receipts.cutover.json": "7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e",
+          "worker-history-v2-worker-activation-state.base.json": "c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b",
+          "worker-history-v2-worker-activation-state.cutover.json": "628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c",
+          "worker-history-v2-worker-opt-in.base.json": "d67e2e944994496c8d8ec76eed0cf9f09679448d584b532bebf941852a37f5ed",
+          "worker-history-v2-worker-opt-in.cutover.json": "b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234",
+          "worker-history-v2-worker-start-gates.base.json": "91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034",
+          "worker-history-v2-worker-start-gates.cutover.json": "5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97",
+          "worker-history-v2-worker-supervisor.base.json": "1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b",
+          "worker-history-v2-worker-supervisor.cutover.json": "567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08"
+        }
+      }
+    ]
+  },
+  "commit-missing-lock": {
+    "trace": [
+      [
+        "lock",
+        "worker-opt-in.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ]
+    ],
+    "outcomes": [
+      {
+        "value": null,
+        "error": [
+          [
+            "CodingWorkerV2OwnerCommitError",
+            "coding_worker_v2_stream_lock_missing",
+            "coding_worker_v2_stream_lock_missing",
+            true
+          ],
+          [
+            "FileNotFoundError",
+            "[Errno 2] No such file or directory: 'worker-opt-in.jsonl.lock'",
+            null,
+            false
+          ]
+        ],
+        "files": {
+          "worker-activation-receipts.g00000001.head.json": "9f0b2439678c3de7afc7f68c8393249e16dcba2eb3588f1f30fb08e0b7f1c1b4",
+          "worker-activation-receipts.g00000001.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-receipts.head.json": "293b81a97514883d151aa37eb93dd90017474cd16a3a5ddaf25d32fbf335ccda",
+          "worker-activation-receipts.jsonl": "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+          "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8",
+          "worker-activation-state.g00000001.head.json": "0ae6a438b3e428bff036f3fb60bef083855409b671dedfcfddf7bd25b003c1f6",
+          "worker-activation-state.g00000001.jsonl": "e22ccc54734915c0e29d6942af5b4602a20fe26910cb03c336e32442391c0ffd",
+          "worker-activation-state.head.json": "77f31a9548f8dc8b55c4633a29e0d58ffdc3005c6ade47939b8eafd88d6d75b2",
+          "worker-activation-state.jsonl": "0bfdfb7539279ac6cf1ada731d753fff5b81fb3fc867b24f326c50c4134322a6",
+          "worker-activation-state.segments.json": "ebbb7de2d8fc922cdbfa01a627970e8adf514e0cacb58d21d0701c6267bff740",
+          "worker-history-checkpoint-owner.json": "49bbefa1bdf7b08b0ae9ff47ee270ac87b33a8d6e921df71f72581cf1d393546",
+          "worker-history-checkpoints.head.json": "db46cc3094e5716ac998d250e42406f597195c76ab04e2aad2a2c878714aa303",
+          "worker-history-checkpoints.jsonl": "3e47cfb37630bb81424ac2af6c02850deca160fe9494228e4c2495c8a044ca64",
+          "worker-history-v2-index.candidate.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-preparation.json": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e",
+          "worker-history-v2-worker-activation-receipts.base.json": "1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465",
+          "worker-history-v2-worker-activation-receipts.cutover.json": "7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e",
+          "worker-history-v2-worker-activation-state.base.json": "c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b",
+          "worker-history-v2-worker-activation-state.cutover.json": "628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c",
+          "worker-history-v2-worker-opt-in.base.json": "6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337",
+          "worker-history-v2-worker-opt-in.cutover.json": "b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234",
+          "worker-history-v2-worker-start-gates.base.json": "91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034",
+          "worker-history-v2-worker-start-gates.cutover.json": "5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97",
+          "worker-history-v2-worker-supervisor.base.json": "1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b",
+          "worker-history-v2-worker-supervisor.cutover.json": "567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08",
+          "worker-opt-in.g00000001.head.json": "ea5ecc5d2599a9f8fe16874ffa6af9cb366e0f1bab6fb7045c5229ad0772e2c5",
+          "worker-opt-in.g00000001.jsonl": "03bbac388e215ba241db31974c45b7860da95984611a3b1a3e178cc11a3c24f1",
+          "worker-opt-in.head.json": "b996644cde75cb13aa8e38f194fceca806f49cbaa744c86e4326ee1202e5b2a4",
+          "worker-opt-in.jsonl": "c4b41e8fd26c30b3d1fd4d4b5f206a41bbd989aa1db5b482ee814be5063b6e66",
+          "worker-opt-in.segments.json": "12f9f0872723b5d2ac58fc3518644db4b0032e3cf8adbe01aeabce924b86372c",
+          "worker-start-gates.g00000001.head.json": "01655456b6c76a90606ace4be6c0ef5148a1b9f1291781a5615a0369e6f3da57",
+          "worker-start-gates.g00000001.jsonl": "96aee0afcc8f8665c7a406302a12889f8d86a43b022166b40a22d42ea57c6b84",
+          "worker-start-gates.head.json": "9dffb19cd733d40596c491bf1d71c4e32ff5ec170bf0826645ea24b8c3598db7",
+          "worker-start-gates.jsonl": "5c8994674bdc74d627b88a494a71f75c77b7f5a1ad329d8e4a38cc97939914be",
+          "worker-start-gates.segments.json": "bd5fbe71a21d8ecfe3a0c3e8cd2cfaf6f872169a21db13d994c08673ed9ddb21",
+          "worker-supervisor.g00000001.head.json": "25d93c58df626e2d1636ae54cd4390abebfa24847c9206f7d7bfd024a0b81672",
+          "worker-supervisor.g00000001.jsonl": "df8f6f88c232132726e0693c2bd94afad4af4cbd02e2d06f594279634d5f1db1",
+          "worker-supervisor.head.json": "c12e514c488455c9b81c9560000469d2381ca29d4fa986a5aa94537240276a4e",
+          "worker-supervisor.jsonl": "3c12fc9766c436ab5a15677d97339710991c2b57f13ff6cced0df9c3d99c37f4",
+          "worker-supervisor.segments.json": "e8a02880deed1341e4a702222ac320001b810062e96593f2ff2e3553bba6b631"
+        }
+      }
+    ]
+  },
+  "commit-lost-ack": {
+    "trace": [
+      [
+        "lock",
+        "worker-opt-in.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-activation-receipts.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-activation-state.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-start-gates.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-supervisor.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "create",
+        "worker-history-v2-owner.json",
+        "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76"
+      ],
+      [
+        "lock",
+        "worker-opt-in.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-activation-receipts.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-activation-state.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-start-gates.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-supervisor.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ]
+    ],
+    "outcomes": [
+      {
+        "value": null,
+        "error": [
+          [
+            "OSError",
+            "owner persisted but acknowledgement lost",
+            null,
+            false
+          ]
+        ],
+        "files": {
+          "worker-activation-receipts.g00000001.head.json": "9f0b2439678c3de7afc7f68c8393249e16dcba2eb3588f1f30fb08e0b7f1c1b4",
+          "worker-activation-receipts.g00000001.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-receipts.head.json": "293b81a97514883d151aa37eb93dd90017474cd16a3a5ddaf25d32fbf335ccda",
+          "worker-activation-receipts.jsonl": "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+          "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8",
+          "worker-activation-state.g00000001.head.json": "0ae6a438b3e428bff036f3fb60bef083855409b671dedfcfddf7bd25b003c1f6",
+          "worker-activation-state.g00000001.jsonl": "e22ccc54734915c0e29d6942af5b4602a20fe26910cb03c336e32442391c0ffd",
+          "worker-activation-state.head.json": "77f31a9548f8dc8b55c4633a29e0d58ffdc3005c6ade47939b8eafd88d6d75b2",
+          "worker-activation-state.jsonl": "0bfdfb7539279ac6cf1ada731d753fff5b81fb3fc867b24f326c50c4134322a6",
+          "worker-activation-state.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-state.segments.json": "ebbb7de2d8fc922cdbfa01a627970e8adf514e0cacb58d21d0701c6267bff740",
+          "worker-history-checkpoint-owner.json": "49bbefa1bdf7b08b0ae9ff47ee270ac87b33a8d6e921df71f72581cf1d393546",
+          "worker-history-checkpoints.head.json": "db46cc3094e5716ac998d250e42406f597195c76ab04e2aad2a2c878714aa303",
+          "worker-history-checkpoints.jsonl": "3e47cfb37630bb81424ac2af6c02850deca160fe9494228e4c2495c8a044ca64",
+          "worker-history-v2-index.candidate.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-owner.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-preparation.json": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e",
+          "worker-history-v2-worker-activation-receipts.base.json": "1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465",
+          "worker-history-v2-worker-activation-receipts.cutover.json": "7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e",
+          "worker-history-v2-worker-activation-state.base.json": "c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b",
+          "worker-history-v2-worker-activation-state.cutover.json": "628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c",
+          "worker-history-v2-worker-opt-in.base.json": "6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337",
+          "worker-history-v2-worker-opt-in.cutover.json": "b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234",
+          "worker-history-v2-worker-start-gates.base.json": "91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034",
+          "worker-history-v2-worker-start-gates.cutover.json": "5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97",
+          "worker-history-v2-worker-supervisor.base.json": "1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b",
+          "worker-history-v2-worker-supervisor.cutover.json": "567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08",
+          "worker-opt-in.g00000001.head.json": "ea5ecc5d2599a9f8fe16874ffa6af9cb366e0f1bab6fb7045c5229ad0772e2c5",
+          "worker-opt-in.g00000001.jsonl": "03bbac388e215ba241db31974c45b7860da95984611a3b1a3e178cc11a3c24f1",
+          "worker-opt-in.head.json": "b996644cde75cb13aa8e38f194fceca806f49cbaa744c86e4326ee1202e5b2a4",
+          "worker-opt-in.jsonl": "c4b41e8fd26c30b3d1fd4d4b5f206a41bbd989aa1db5b482ee814be5063b6e66",
+          "worker-opt-in.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-opt-in.segments.json": "12f9f0872723b5d2ac58fc3518644db4b0032e3cf8adbe01aeabce924b86372c",
+          "worker-start-gates.g00000001.head.json": "01655456b6c76a90606ace4be6c0ef5148a1b9f1291781a5615a0369e6f3da57",
+          "worker-start-gates.g00000001.jsonl": "96aee0afcc8f8665c7a406302a12889f8d86a43b022166b40a22d42ea57c6b84",
+          "worker-start-gates.head.json": "9dffb19cd733d40596c491bf1d71c4e32ff5ec170bf0826645ea24b8c3598db7",
+          "worker-start-gates.jsonl": "5c8994674bdc74d627b88a494a71f75c77b7f5a1ad329d8e4a38cc97939914be",
+          "worker-start-gates.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-start-gates.segments.json": "bd5fbe71a21d8ecfe3a0c3e8cd2cfaf6f872169a21db13d994c08673ed9ddb21",
+          "worker-supervisor.g00000001.head.json": "25d93c58df626e2d1636ae54cd4390abebfa24847c9206f7d7bfd024a0b81672",
+          "worker-supervisor.g00000001.jsonl": "df8f6f88c232132726e0693c2bd94afad4af4cbd02e2d06f594279634d5f1db1",
+          "worker-supervisor.head.json": "c12e514c488455c9b81c9560000469d2381ca29d4fa986a5aa94537240276a4e",
+          "worker-supervisor.jsonl": "3c12fc9766c436ab5a15677d97339710991c2b57f13ff6cced0df9c3d99c37f4",
+          "worker-supervisor.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-supervisor.segments.json": "e8a02880deed1341e4a702222ac320001b810062e96593f2ff2e3553bba6b631"
+        }
+      },
+      {
+        "value": {
+          "type": "loushang.coding.package_product_worker_history_cutover_v2.CodingWorkerProductCutoverIndexV2",
+          "digest": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76"
+        },
+        "error": null,
+        "files": {
+          "worker-activation-receipts.g00000001.head.json": "9f0b2439678c3de7afc7f68c8393249e16dcba2eb3588f1f30fb08e0b7f1c1b4",
+          "worker-activation-receipts.g00000001.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-receipts.head.json": "293b81a97514883d151aa37eb93dd90017474cd16a3a5ddaf25d32fbf335ccda",
+          "worker-activation-receipts.jsonl": "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+          "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8",
+          "worker-activation-state.g00000001.head.json": "0ae6a438b3e428bff036f3fb60bef083855409b671dedfcfddf7bd25b003c1f6",
+          "worker-activation-state.g00000001.jsonl": "e22ccc54734915c0e29d6942af5b4602a20fe26910cb03c336e32442391c0ffd",
+          "worker-activation-state.head.json": "77f31a9548f8dc8b55c4633a29e0d58ffdc3005c6ade47939b8eafd88d6d75b2",
+          "worker-activation-state.jsonl": "0bfdfb7539279ac6cf1ada731d753fff5b81fb3fc867b24f326c50c4134322a6",
+          "worker-activation-state.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-state.segments.json": "ebbb7de2d8fc922cdbfa01a627970e8adf514e0cacb58d21d0701c6267bff740",
+          "worker-history-checkpoint-owner.json": "49bbefa1bdf7b08b0ae9ff47ee270ac87b33a8d6e921df71f72581cf1d393546",
+          "worker-history-checkpoints.head.json": "db46cc3094e5716ac998d250e42406f597195c76ab04e2aad2a2c878714aa303",
+          "worker-history-checkpoints.jsonl": "3e47cfb37630bb81424ac2af6c02850deca160fe9494228e4c2495c8a044ca64",
+          "worker-history-v2-index.candidate.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-owner.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-preparation.json": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e",
+          "worker-history-v2-worker-activation-receipts.base.json": "1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465",
+          "worker-history-v2-worker-activation-receipts.cutover.json": "7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e",
+          "worker-history-v2-worker-activation-state.base.json": "c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b",
+          "worker-history-v2-worker-activation-state.cutover.json": "628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c",
+          "worker-history-v2-worker-opt-in.base.json": "6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337",
+          "worker-history-v2-worker-opt-in.cutover.json": "b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234",
+          "worker-history-v2-worker-start-gates.base.json": "91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034",
+          "worker-history-v2-worker-start-gates.cutover.json": "5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97",
+          "worker-history-v2-worker-supervisor.base.json": "1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b",
+          "worker-history-v2-worker-supervisor.cutover.json": "567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08",
+          "worker-opt-in.g00000001.head.json": "ea5ecc5d2599a9f8fe16874ffa6af9cb366e0f1bab6fb7045c5229ad0772e2c5",
+          "worker-opt-in.g00000001.jsonl": "03bbac388e215ba241db31974c45b7860da95984611a3b1a3e178cc11a3c24f1",
+          "worker-opt-in.head.json": "b996644cde75cb13aa8e38f194fceca806f49cbaa744c86e4326ee1202e5b2a4",
+          "worker-opt-in.jsonl": "c4b41e8fd26c30b3d1fd4d4b5f206a41bbd989aa1db5b482ee814be5063b6e66",
+          "worker-opt-in.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-opt-in.segments.json": "12f9f0872723b5d2ac58fc3518644db4b0032e3cf8adbe01aeabce924b86372c",
+          "worker-start-gates.g00000001.head.json": "01655456b6c76a90606ace4be6c0ef5148a1b9f1291781a5615a0369e6f3da57",
+          "worker-start-gates.g00000001.jsonl": "96aee0afcc8f8665c7a406302a12889f8d86a43b022166b40a22d42ea57c6b84",
+          "worker-start-gates.head.json": "9dffb19cd733d40596c491bf1d71c4e32ff5ec170bf0826645ea24b8c3598db7",
+          "worker-start-gates.jsonl": "5c8994674bdc74d627b88a494a71f75c77b7f5a1ad329d8e4a38cc97939914be",
+          "worker-start-gates.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-start-gates.segments.json": "bd5fbe71a21d8ecfe3a0c3e8cd2cfaf6f872169a21db13d994c08673ed9ddb21",
+          "worker-supervisor.g00000001.head.json": "25d93c58df626e2d1636ae54cd4390abebfa24847c9206f7d7bfd024a0b81672",
+          "worker-supervisor.g00000001.jsonl": "df8f6f88c232132726e0693c2bd94afad4af4cbd02e2d06f594279634d5f1db1",
+          "worker-supervisor.head.json": "c12e514c488455c9b81c9560000469d2381ca29d4fa986a5aa94537240276a4e",
+          "worker-supervisor.jsonl": "3c12fc9766c436ab5a15677d97339710991c2b57f13ff6cced0df9c3d99c37f4",
+          "worker-supervisor.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-supervisor.segments.json": "e8a02880deed1341e4a702222ac320001b810062e96593f2ff2e3553bba6b631"
+        }
+      }
+    ]
+  },
+  "retire-paused": {
+    "trace": [
+      [
+        "lock",
+        "worker-opt-in.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-activation-receipts.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-activation-state.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-start-gates.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-supervisor.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "create",
+        "worker-history-v2-deletion.json",
+        "7d28b2ee34909d6a7de931546df03d886dbbb141b1349d6c29f324ae1daea2a8"
+      ],
+      [
+        "unlink",
+        "worker-opt-in.jsonl"
+      ],
+      [
+        "unlink",
+        "worker-opt-in.head.json"
+      ],
+      [
+        "lock",
+        "worker-opt-in.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-activation-receipts.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-activation-state.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-start-gates.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-supervisor.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "unlink",
+        "worker-opt-in.head.json"
+      ],
+      [
+        "unlink",
+        "worker-activation-receipts.jsonl"
+      ],
+      [
+        "unlink",
+        "worker-activation-receipts.head.json"
+      ],
+      [
+        "unlink",
+        "worker-activation-state.jsonl"
+      ],
+      [
+        "unlink",
+        "worker-activation-state.head.json"
+      ],
+      [
+        "unlink",
+        "worker-start-gates.jsonl"
+      ],
+      [
+        "unlink",
+        "worker-start-gates.head.json"
+      ],
+      [
+        "unlink",
+        "worker-supervisor.jsonl"
+      ],
+      [
+        "unlink",
+        "worker-supervisor.head.json"
+      ]
+    ],
+    "outcomes": [
+      {
+        "value": null,
+        "error": [
+          [
+            "OSError",
+            "pause after first retired segment",
+            null,
+            false
+          ]
+        ],
+        "files": {
+          "worker-activation-receipts.g00000001.head.json": "9f0b2439678c3de7afc7f68c8393249e16dcba2eb3588f1f30fb08e0b7f1c1b4",
+          "worker-activation-receipts.g00000001.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-receipts.head.json": "293b81a97514883d151aa37eb93dd90017474cd16a3a5ddaf25d32fbf335ccda",
+          "worker-activation-receipts.jsonl": "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+          "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8",
+          "worker-activation-state.g00000001.head.json": "0ae6a438b3e428bff036f3fb60bef083855409b671dedfcfddf7bd25b003c1f6",
+          "worker-activation-state.g00000001.jsonl": "e22ccc54734915c0e29d6942af5b4602a20fe26910cb03c336e32442391c0ffd",
+          "worker-activation-state.head.json": "77f31a9548f8dc8b55c4633a29e0d58ffdc3005c6ade47939b8eafd88d6d75b2",
+          "worker-activation-state.jsonl": "0bfdfb7539279ac6cf1ada731d753fff5b81fb3fc867b24f326c50c4134322a6",
+          "worker-activation-state.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-state.segments.json": "ebbb7de2d8fc922cdbfa01a627970e8adf514e0cacb58d21d0701c6267bff740",
+          "worker-history-checkpoint-owner.json": "49bbefa1bdf7b08b0ae9ff47ee270ac87b33a8d6e921df71f72581cf1d393546",
+          "worker-history-checkpoints.head.json": "db46cc3094e5716ac998d250e42406f597195c76ab04e2aad2a2c878714aa303",
+          "worker-history-checkpoints.jsonl": "3e47cfb37630bb81424ac2af6c02850deca160fe9494228e4c2495c8a044ca64",
+          "worker-history-v2-deletion.json": "7d28b2ee34909d6a7de931546df03d886dbbb141b1349d6c29f324ae1daea2a8",
+          "worker-history-v2-index.candidate.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-owner.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-preparation.json": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e",
+          "worker-history-v2-worker-activation-receipts.base.json": "1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465",
+          "worker-history-v2-worker-activation-receipts.cutover.json": "7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e",
+          "worker-history-v2-worker-activation-state.base.json": "c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b",
+          "worker-history-v2-worker-activation-state.cutover.json": "628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c",
+          "worker-history-v2-worker-opt-in.base.json": "6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337",
+          "worker-history-v2-worker-opt-in.cutover.json": "b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234",
+          "worker-history-v2-worker-start-gates.base.json": "91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034",
+          "worker-history-v2-worker-start-gates.cutover.json": "5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97",
+          "worker-history-v2-worker-supervisor.base.json": "1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b",
+          "worker-history-v2-worker-supervisor.cutover.json": "567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08",
+          "worker-opt-in.g00000001.head.json": "ea5ecc5d2599a9f8fe16874ffa6af9cb366e0f1bab6fb7045c5229ad0772e2c5",
+          "worker-opt-in.g00000001.jsonl": "03bbac388e215ba241db31974c45b7860da95984611a3b1a3e178cc11a3c24f1",
+          "worker-opt-in.head.json": "b996644cde75cb13aa8e38f194fceca806f49cbaa744c86e4326ee1202e5b2a4",
+          "worker-opt-in.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-opt-in.segments.json": "12f9f0872723b5d2ac58fc3518644db4b0032e3cf8adbe01aeabce924b86372c",
+          "worker-start-gates.g00000001.head.json": "01655456b6c76a90606ace4be6c0ef5148a1b9f1291781a5615a0369e6f3da57",
+          "worker-start-gates.g00000001.jsonl": "96aee0afcc8f8665c7a406302a12889f8d86a43b022166b40a22d42ea57c6b84",
+          "worker-start-gates.head.json": "9dffb19cd733d40596c491bf1d71c4e32ff5ec170bf0826645ea24b8c3598db7",
+          "worker-start-gates.jsonl": "5c8994674bdc74d627b88a494a71f75c77b7f5a1ad329d8e4a38cc97939914be",
+          "worker-start-gates.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-start-gates.segments.json": "bd5fbe71a21d8ecfe3a0c3e8cd2cfaf6f872169a21db13d994c08673ed9ddb21",
+          "worker-supervisor.g00000001.head.json": "25d93c58df626e2d1636ae54cd4390abebfa24847c9206f7d7bfd024a0b81672",
+          "worker-supervisor.g00000001.jsonl": "df8f6f88c232132726e0693c2bd94afad4af4cbd02e2d06f594279634d5f1db1",
+          "worker-supervisor.head.json": "c12e514c488455c9b81c9560000469d2381ca29d4fa986a5aa94537240276a4e",
+          "worker-supervisor.jsonl": "3c12fc9766c436ab5a15677d97339710991c2b57f13ff6cced0df9c3d99c37f4",
+          "worker-supervisor.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-supervisor.segments.json": "e8a02880deed1341e4a702222ac320001b810062e96593f2ff2e3553bba6b631"
+        }
+      },
+      {
+        "value": true,
+        "error": null,
+        "files": {
+          "worker-activation-receipts.g00000001.head.json": "9f0b2439678c3de7afc7f68c8393249e16dcba2eb3588f1f30fb08e0b7f1c1b4",
+          "worker-activation-receipts.g00000001.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8",
+          "worker-activation-state.g00000001.head.json": "0ae6a438b3e428bff036f3fb60bef083855409b671dedfcfddf7bd25b003c1f6",
+          "worker-activation-state.g00000001.jsonl": "e22ccc54734915c0e29d6942af5b4602a20fe26910cb03c336e32442391c0ffd",
+          "worker-activation-state.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-state.segments.json": "ebbb7de2d8fc922cdbfa01a627970e8adf514e0cacb58d21d0701c6267bff740",
+          "worker-history-checkpoint-owner.json": "49bbefa1bdf7b08b0ae9ff47ee270ac87b33a8d6e921df71f72581cf1d393546",
+          "worker-history-checkpoints.head.json": "db46cc3094e5716ac998d250e42406f597195c76ab04e2aad2a2c878714aa303",
+          "worker-history-checkpoints.jsonl": "3e47cfb37630bb81424ac2af6c02850deca160fe9494228e4c2495c8a044ca64",
+          "worker-history-v2-deletion.json": "7d28b2ee34909d6a7de931546df03d886dbbb141b1349d6c29f324ae1daea2a8",
+          "worker-history-v2-index.candidate.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-owner.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-preparation.json": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e",
+          "worker-history-v2-worker-activation-receipts.base.json": "1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465",
+          "worker-history-v2-worker-activation-receipts.cutover.json": "7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e",
+          "worker-history-v2-worker-activation-state.base.json": "c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b",
+          "worker-history-v2-worker-activation-state.cutover.json": "628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c",
+          "worker-history-v2-worker-opt-in.base.json": "6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337",
+          "worker-history-v2-worker-opt-in.cutover.json": "b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234",
+          "worker-history-v2-worker-start-gates.base.json": "91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034",
+          "worker-history-v2-worker-start-gates.cutover.json": "5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97",
+          "worker-history-v2-worker-supervisor.base.json": "1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b",
+          "worker-history-v2-worker-supervisor.cutover.json": "567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08",
+          "worker-opt-in.g00000001.head.json": "ea5ecc5d2599a9f8fe16874ffa6af9cb366e0f1bab6fb7045c5229ad0772e2c5",
+          "worker-opt-in.g00000001.jsonl": "03bbac388e215ba241db31974c45b7860da95984611a3b1a3e178cc11a3c24f1",
+          "worker-opt-in.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-opt-in.segments.json": "12f9f0872723b5d2ac58fc3518644db4b0032e3cf8adbe01aeabce924b86372c",
+          "worker-start-gates.g00000001.head.json": "01655456b6c76a90606ace4be6c0ef5148a1b9f1291781a5615a0369e6f3da57",
+          "worker-start-gates.g00000001.jsonl": "96aee0afcc8f8665c7a406302a12889f8d86a43b022166b40a22d42ea57c6b84",
+          "worker-start-gates.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-start-gates.segments.json": "bd5fbe71a21d8ecfe3a0c3e8cd2cfaf6f872169a21db13d994c08673ed9ddb21",
+          "worker-supervisor.g00000001.head.json": "25d93c58df626e2d1636ae54cd4390abebfa24847c9206f7d7bfd024a0b81672",
+          "worker-supervisor.g00000001.jsonl": "df8f6f88c232132726e0693c2bd94afad4af4cbd02e2d06f594279634d5f1db1",
+          "worker-supervisor.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-supervisor.segments.json": "e8a02880deed1341e4a702222ac320001b810062e96593f2ff2e3553bba6b631"
+        }
+      }
+    ]
+  },
+  "retire-bad-ledger": {
+    "trace": [
+      [
+        "lock",
+        "worker-opt-in.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-activation-receipts.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-activation-state.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-start-gates.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      [
+        "lock",
+        "worker-supervisor.jsonl.lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ]
+    ],
+    "outcomes": [
+      {
+        "value": null,
+        "error": [
+          [
+            "ValueError",
+            "Coding Worker V2 deletion ledger bytes are invalid",
+            null,
+            true
+          ],
+          [
+            "ValueError",
+            "Coding Worker V2 deletion ledger fields changed",
+            null,
+            false
+          ]
+        ],
+        "files": {
+          "worker-activation-receipts.g00000001.head.json": "9f0b2439678c3de7afc7f68c8393249e16dcba2eb3588f1f30fb08e0b7f1c1b4",
+          "worker-activation-receipts.g00000001.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-receipts.head.json": "293b81a97514883d151aa37eb93dd90017474cd16a3a5ddaf25d32fbf335ccda",
+          "worker-activation-receipts.jsonl": "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+          "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8",
+          "worker-activation-state.g00000001.head.json": "0ae6a438b3e428bff036f3fb60bef083855409b671dedfcfddf7bd25b003c1f6",
+          "worker-activation-state.g00000001.jsonl": "e22ccc54734915c0e29d6942af5b4602a20fe26910cb03c336e32442391c0ffd",
+          "worker-activation-state.head.json": "77f31a9548f8dc8b55c4633a29e0d58ffdc3005c6ade47939b8eafd88d6d75b2",
+          "worker-activation-state.jsonl": "0bfdfb7539279ac6cf1ada731d753fff5b81fb3fc867b24f326c50c4134322a6",
+          "worker-activation-state.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-activation-state.segments.json": "ebbb7de2d8fc922cdbfa01a627970e8adf514e0cacb58d21d0701c6267bff740",
+          "worker-history-checkpoint-owner.json": "49bbefa1bdf7b08b0ae9ff47ee270ac87b33a8d6e921df71f72581cf1d393546",
+          "worker-history-checkpoints.head.json": "db46cc3094e5716ac998d250e42406f597195c76ab04e2aad2a2c878714aa303",
+          "worker-history-checkpoints.jsonl": "3e47cfb37630bb81424ac2af6c02850deca160fe9494228e4c2495c8a044ca64",
+          "worker-history-v2-deletion.json": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "worker-history-v2-index.candidate.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-owner.json": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+          "worker-history-v2-preparation.json": "e374949e3bc10bf087a8103c9ee0a1370dc3bb419dc102f22e78f541c68d356e",
+          "worker-history-v2-worker-activation-receipts.base.json": "1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465",
+          "worker-history-v2-worker-activation-receipts.cutover.json": "7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e",
+          "worker-history-v2-worker-activation-state.base.json": "c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b",
+          "worker-history-v2-worker-activation-state.cutover.json": "628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c",
+          "worker-history-v2-worker-opt-in.base.json": "6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337",
+          "worker-history-v2-worker-opt-in.cutover.json": "b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234",
+          "worker-history-v2-worker-start-gates.base.json": "91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034",
+          "worker-history-v2-worker-start-gates.cutover.json": "5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97",
+          "worker-history-v2-worker-supervisor.base.json": "1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b",
+          "worker-history-v2-worker-supervisor.cutover.json": "567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08",
+          "worker-opt-in.g00000001.head.json": "ea5ecc5d2599a9f8fe16874ffa6af9cb366e0f1bab6fb7045c5229ad0772e2c5",
+          "worker-opt-in.g00000001.jsonl": "03bbac388e215ba241db31974c45b7860da95984611a3b1a3e178cc11a3c24f1",
+          "worker-opt-in.head.json": "b996644cde75cb13aa8e38f194fceca806f49cbaa744c86e4326ee1202e5b2a4",
+          "worker-opt-in.jsonl": "c4b41e8fd26c30b3d1fd4d4b5f206a41bbd989aa1db5b482ee814be5063b6e66",
+          "worker-opt-in.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-opt-in.segments.json": "12f9f0872723b5d2ac58fc3518644db4b0032e3cf8adbe01aeabce924b86372c",
+          "worker-start-gates.g00000001.head.json": "01655456b6c76a90606ace4be6c0ef5148a1b9f1291781a5615a0369e6f3da57",
+          "worker-start-gates.g00000001.jsonl": "96aee0afcc8f8665c7a406302a12889f8d86a43b022166b40a22d42ea57c6b84",
+          "worker-start-gates.head.json": "9dffb19cd733d40596c491bf1d71c4e32ff5ec170bf0826645ea24b8c3598db7",
+          "worker-start-gates.jsonl": "5c8994674bdc74d627b88a494a71f75c77b7f5a1ad329d8e4a38cc97939914be",
+          "worker-start-gates.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-start-gates.segments.json": "bd5fbe71a21d8ecfe3a0c3e8cd2cfaf6f872169a21db13d994c08673ed9ddb21",
+          "worker-supervisor.g00000001.head.json": "25d93c58df626e2d1636ae54cd4390abebfa24847c9206f7d7bfd024a0b81672",
+          "worker-supervisor.g00000001.jsonl": "df8f6f88c232132726e0693c2bd94afad4af4cbd02e2d06f594279634d5f1db1",
+          "worker-supervisor.head.json": "c12e514c488455c9b81c9560000469d2381ca29d4fa986a5aa94537240276a4e",
+          "worker-supervisor.jsonl": "3c12fc9766c436ab5a15677d97339710991c2b57f13ff6cced0df9c3d99c37f4",
+          "worker-supervisor.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "worker-supervisor.segments.json": "e8a02880deed1341e4a702222ac320001b810062e96593f2ff2e3553bba6b631"
+        }
+      }
+    ]
+  }
+}

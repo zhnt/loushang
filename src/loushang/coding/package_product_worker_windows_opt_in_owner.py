@@ -7,9 +7,8 @@ import os
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
-from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
-    PackageCommittedSetJournal,
+from loushang.harness.package_product.product_worker_candidate import (
+    _capture_worker_opt_in_selection,
 )
 
 from .package_product_worker_opt_in import CodingWorkerOptInDecisionV1
@@ -67,88 +66,13 @@ class CodingWindowsWorkerProductOptInOwner:
         if type(require_worker) is not bool:
             raise TypeError("Coding Worker requiredness must be boolean")
         with self._product.gc_gate.guard(require_write=True):
-            self._product.assert_root_gc_authority_current()
-            candidates = tuple(
-                binding
-                for binding in self._product.policy.bindings
-                if binding.plugin_id == plugin_id
-                and binding.source_trust_class == "local-worker-candidate"
-                and binding.worker_admission is not None
-            )
-            if not candidates:
-                raise CodingWorkerProductOptInError(
-                    "coding_worker_opt_in_candidate_unavailable"
-                )
-            key = PluginInstallationKeyV1(
+            binding, admission = _capture_worker_opt_in_selection(
+                self._product,
+                plugin_id,
                 product_id="coding",
-                installation_scope="workspace",
-                scope_id=self._product.policy.project_scope_id,
-                plugin_id=plugin_id,
+                error_type=CodingWorkerProductOptInError,
+                error_prefix="coding_worker",
             )
-            snapshot = self._product.desired_state.snapshot()
-            selected = snapshot.installation(key).selection
-            revision = selected.package_revision
-            if selected.desired_state != "installed_enabled" or revision is None:
-                raise CodingWorkerProductOptInError(
-                    "coding_worker_opt_in_selection_unavailable"
-                )
-            bindings = tuple(
-                binding
-                for binding in candidates
-                if binding.source_identity == revision.package_source_identity
-                and binding.artifact_digest == revision.package_content_digest
-            )
-            if len(bindings) != 1:
-                raise CodingWorkerProductOptInError(
-                    "coding_worker_opt_in_candidate_unavailable"
-                )
-            binding = bindings[0]
-            admission = binding.worker_admission
-            assert admission is not None
-            crosswalks = (
-                tuple(
-                    item
-                    for item in self._product.gc_bindings.for_revision(revision)
-                    if item.request.product_id == "coding"
-                    and item.request.scope_id == key.scope_id
-                    and item.request.plugin_id == plugin_id
-                    and item.desired_transition_revision <= snapshot.inventory_revision
-                )
-                if revision is not None
-                else ()
-            )
-            if (
-                selected.desired_state != "installed_enabled"
-                or revision is None
-                or revision.package_source_identity != binding.source_identity
-                or revision.package_content_digest != binding.artifact_digest
-                or not crosswalks
-            ):
-                raise CodingWorkerProductOptInError(
-                    "coding_worker_opt_in_selection_unavailable"
-                )
-            committed_ids = {item.request.committed_set_id for item in crosswalks}
-            committed = tuple(
-                record
-                for record in PackageCommittedSetJournal(
-                    self._product.state_root / "committed-sets.jsonl"
-                ).records()
-                if record.committed_set.set_id in committed_ids
-                and record.committed_set.product_id == "coding"
-                and record.committed_set.scope_id == key.scope_id
-                and record.committed_set.plugin_id == plugin_id
-                and record.committed_set.root_ref.artifact_digest
-                == revision.package_content_digest
-                and record.closure_lock.lock_digest == revision.dependency_lock_digest
-            )
-            if len(committed) != 1:
-                raise CodingWorkerProductOptInError(
-                    "coding_worker_opt_in_selection_unavailable"
-                )
-            if committed[0].closure_lock.node_count != 1:
-                raise CodingWorkerProductOptInError(
-                    "coding_worker_dependency_activation_unsupported"
-                )
             closure = read_coding_windows_worker_installed_backend_release(
                 self._product
             ).native_closure()

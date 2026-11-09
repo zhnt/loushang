@@ -6,6 +6,8 @@ from collections.abc import Callable
 from hashlib import sha256
 from typing import Protocol
 
+from loushang.harness.journal._io_loops import write_all
+
 from ._materialization_shared import _root_untrusted
 from .tree_transfer import PackagePhysicalStagingError, PackageVerifiedTreeEntryV1
 
@@ -57,12 +59,11 @@ class VerifiedFileSink:
                 code="package_artifact_identity_changed",
             )
         try:
-            view = memoryview(chunk)
-            while view:
-                written = self._writer.write(view)
-                if written < 1:
-                    raise OSError("Package Store write made no progress")
-                view = view[written:]
+            write_all(
+                self._writer.write,
+                chunk,
+                message="Package Store write made no progress",
+            )
         except OSError:
             raise _root_untrusted() from None
         self._digest.update(chunk)

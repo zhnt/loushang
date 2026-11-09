@@ -9,8 +9,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import stat
-from contextlib import suppress
 from dataclasses import dataclass
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -20,6 +18,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
+from loushang.harness.worker.payload._repair import RepairJournal
 
 from .package_product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
@@ -36,10 +35,9 @@ from .package_product_worker_no_effect_closure import (
 )
 from .package_product_worker_payload import (
     _DIR_FLAGS,
-    _FILE_FLAGS,
     CodingWorkerPayloadDebtPlanV1,
+    CodingWorkerPayloadMaterializationError,
     _plan_fields,
-    _read_repair_file,
     _remove_partial_stage,
     _remove_verified_stage,
     _require_private_visible_root,
@@ -187,113 +185,19 @@ def _names(attempt_id: str) -> tuple[str, str]:
 def _read_intent(
     root_fd: int, attempt_id: str
 ) -> CodingWorkerRegisteredPayloadRepairIntentV1 | None:
-    name, staging = _names(attempt_id)
-    try:
-        body, opened = _read_repair_file(
-            root_fd,
-            name,
-            maximum_bytes=_MAX_BYTES,
-            error_code="coding_worker_registered_payload_repair_unverified",
-        )
-    except FileNotFoundError:
-        return None
-    except OSError as exc:
-        raise CodingWorkerRegisteredPayloadRepairError(
-            "coding_worker_registered_payload_repair_unverified"
-        ) from exc
-    try:
-        intent = CodingWorkerRegisteredPayloadRepairIntentV1.from_dict(json.loads(body))
-        if (
-            intent.attempt_id != attempt_id
-            or body != canonical_json_bytes(intent.to_dict()) + b"\n"
-        ):
-            raise ValueError("Registered Worker payload repair changed")
-        if opened.st_nlink == 2:
-            sibling = os.stat(staging, dir_fd=root_fd, follow_symlinks=False)
-            if not stat.S_ISREG(sibling.st_mode) or (
-                sibling.st_dev,
-                sibling.st_ino,
-            ) != (opened.st_dev, opened.st_ino):
-                raise ValueError("Registered Worker payload publication changed")
-        else:
-            try:
-                os.stat(staging, dir_fd=root_fd, follow_symlinks=False)
-            except FileNotFoundError:
-                pass
-            else:
-                raise ValueError("Registered Worker payload staging is unexpected")
-        return intent
-    except (OSError, TypeError, ValueError, UnicodeError) as exc:
-        raise CodingWorkerRegisteredPayloadRepairError(
-            "coding_worker_registered_payload_repair_unverified"
-        ) from exc
+    return _repair_journal().read(root_fd, attempt_id)
 
 
 def _publish_intent(
     root_fd: int, intent: CodingWorkerRegisteredPayloadRepairIntentV1
 ) -> None:
-    name, staging = _names(intent.attempt_id)
-    existing = _read_intent(root_fd, intent.attempt_id)
-    if existing is not None:
-        if existing != intent:
-            raise CodingWorkerRegisteredPayloadRepairError(
-                "coding_worker_registered_payload_repair_stale"
-            )
-        _settle_intent_stage(root_fd, intent)
-        return
-    body = canonical_json_bytes(intent.to_dict()) + b"\n"
-    try:
-        staged, metadata = _read_repair_file(
-            root_fd,
-            staging,
-            maximum_bytes=_MAX_BYTES,
-            error_code="coding_worker_registered_payload_repair_unverified",
-        )
-    except FileNotFoundError:
-        descriptor = os.open(staging, _FILE_FLAGS, 0o600, dir_fd=root_fd)
-        try:
-            remaining = memoryview(body)
-            while remaining:
-                written = os.write(descriptor, remaining)
-                if written < 1:
-                    raise OSError("Registered Worker repair write made no progress")
-                remaining = remaining[written:]
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-    else:
-        if staged != body or metadata.st_nlink != 1:
-            raise CodingWorkerRegisteredPayloadRepairError(
-                "coding_worker_registered_payload_repair_unverified"
-            )
-    with suppress(FileExistsError):
-        os.link(
-            staging,
-            name,
-            src_dir_fd=root_fd,
-            dst_dir_fd=root_fd,
-            follow_symlinks=False,
-        )
-    os.fsync(root_fd)
-    if _read_intent(root_fd, intent.attempt_id) != intent:
-        raise CodingWorkerRegisteredPayloadRepairError(
-            "coding_worker_registered_payload_repair_unverified"
-        )
-    _settle_intent_stage(root_fd, intent)
+    return _repair_journal().publish(root_fd, intent.attempt_id, intent)
 
 
 def _settle_intent_stage(
     root_fd: int, intent: CodingWorkerRegisteredPayloadRepairIntentV1
 ) -> None:
-    name, staging = _names(intent.attempt_id)
-    if _read_intent(root_fd, intent.attempt_id) != intent:
-        raise CodingWorkerRegisteredPayloadRepairError(
-            "coding_worker_registered_payload_repair_unverified"
-        )
-    metadata = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
-    if metadata.st_nlink == 2:
-        os.unlink(staging, dir_fd=root_fd)
-        os.fsync(root_fd)
+    return _repair_journal().settle(root_fd, intent.attempt_id, intent)
 
 
 def _expected_intent(
@@ -488,3 +392,31 @@ __all__ = [
     "registered_payload_repair_matches_no_effect_closure",
     "repair_coding_product_worker_registered_payload_debt",
 ]
+
+
+def _decode_repair_record(
+    body: bytes, attempt_id: str
+) -> CodingWorkerRegisteredPayloadRepairIntentV1:
+    intent = CodingWorkerRegisteredPayloadRepairIntentV1.from_dict(json.loads(body))
+    if (
+        intent.attempt_id != attempt_id
+        or body != canonical_json_bytes(intent.to_dict()) + b"\n"
+    ):
+        raise ValueError("Registered Worker payload repair changed")
+    return intent
+
+
+def _repair_journal() -> RepairJournal[CodingWorkerRegisteredPayloadRepairIntentV1]:
+    return RepairJournal(
+        names=_names,
+        decode=_decode_repair_record,
+        encode=CodingWorkerRegisteredPayloadRepairIntentV1.to_dict,
+        maximum_bytes=_MAX_BYTES,
+        error_type=CodingWorkerRegisteredPayloadRepairError,
+        raw_error_type=CodingWorkerPayloadMaterializationError,
+        error_code="coding_worker_registered_payload_repair_unverified",
+        stale_code="coding_worker_registered_payload_repair_stale",
+        publication_changed="Registered Worker payload publication changed",
+        write_message="Registered Worker repair write made no progress",
+        single_link_staging_error="Registered Worker payload staging is unexpected",
+    )

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
     PackagePosixEpochCutoverError,
@@ -132,13 +136,7 @@ class CodingLegacyBuiltinOnlyReviewV1:
 
     def _identity(self) -> dict[str, object]:
         return {
-            "storeId": self.store_id,
-            "namespaceId": self.namespace_id,
-            "scopeId": self.scope_id,
-            "firstFenceId": self.first_fence_id,
-            "snapshotReceiptId": self.snapshot_receipt_id,
-            "sourceProjectionDigest": self.source_projection_digest,
-            "desiredJournalDigest": self.desired_journal_digest,
+            **_REVIEW_SCHEMA.encode(self),
             "disabledPlugins": [
                 {"scope": item.scope, "pluginId": item.plugin_id}
                 for item in self.disabled_plugins
@@ -156,19 +154,12 @@ class CodingLegacyBuiltinOnlyReviewV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingLegacyBuiltinOnlyReviewV1:
-        expected = {
-            "storeId",
-            "namespaceId",
-            "scopeId",
-            "firstFenceId",
-            "snapshotReceiptId",
-            "sourceProjectionDigest",
-            "desiredJournalDigest",
-            "disabledPlugins",
-            "builtinIntent",
-            "removedBuiltinIds",
-            "reviewVersion",
+        expected = _REVIEW_SCHEMA.keys | {
             "reviewId",
+            "reviewVersion",
+            "removedBuiltinIds",
+            "builtinIntent",
+            "disabledPlugins",
         }
         if type(value) is not dict or set(value) != expected:
             raise CodingLegacyBuiltinOnlyReviewError(
@@ -203,13 +194,7 @@ class CodingLegacyBuiltinOnlyReviewV1:
             )
         try:
             review = cls(
-                store_id=value["storeId"],
-                namespace_id=value["namespaceId"],
-                scope_id=value["scopeId"],
-                first_fence_id=value["firstFenceId"],
-                snapshot_receipt_id=value["snapshotReceiptId"],
-                source_projection_digest=value["sourceProjectionDigest"],
-                desired_journal_digest=value["desiredJournalDigest"],
+                **_REVIEW_SCHEMA.decode(dict, value),
                 disabled_plugins=tuple(
                     CodingScopedLegacyDisableV1(item["scope"], item["pluginId"])
                     for item in disabled
@@ -240,6 +225,23 @@ class CodingLegacyBuiltinOnlyReviewV1:
                 f"{self.store_id}\0{self.review_id}\0{plugin_id}".encode()
             ).hexdigest()
         )
+
+
+_REVIEW_SCHEMA = RecordSchema(
+    lambda value: value,
+    tuple(
+        RecordField(item.name)
+        for item in fields(CodingLegacyBuiltinOnlyReviewV1)
+        if item.name
+        not in {
+            "disabled_plugins",
+            "builtin_intent",
+            "removed_builtin_ids",
+            "review_version",
+            "review_id",
+        }
+    ),
+)
 
 
 def _require_builtin_only_inventory(

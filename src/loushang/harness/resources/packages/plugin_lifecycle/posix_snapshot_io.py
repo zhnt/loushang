@@ -14,6 +14,8 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from loushang.harness.journal._io_loops import write_all as _complete_write
+from loushang.harness.resources.packages._file_consumption import closing_descriptor
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -317,8 +319,9 @@ def _inspect_tree(
             if len(entries) >= maximum_entries:
                 raise OSError("Snapshot entry count exceeds receipt")
             if stat.S_ISDIR(metadata.st_mode):
-                child = _open_directory_at(directory_fd, name)
-                try:
+                with closing_descriptor(
+                    _open_directory_at(directory_fd, name)
+                ) as child:
                     identity = _native_identity(os.fstat(child))
                     if identity != _native_identity(metadata):
                         raise OSError("Snapshot directory identity changed")
@@ -331,11 +334,10 @@ def _inspect_tree(
                     )
                     identities[parts] = identity
                     visit(child, parts)
-                finally:
-                    os.close(child)
             elif stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1:
-                descriptor = _open_regular_file(directory_fd, name, write=False)
-                try:
+                with closing_descriptor(
+                    _open_regular_file(directory_fd, name, write=False)
+                ) as descriptor:
                     opened_before = os.fstat(descriptor)
                     if (
                         _native_identity(opened_before) != _native_identity(metadata)
@@ -365,8 +367,6 @@ def _inspect_tree(
                         )
                     )
                     identities[parts] = _native_identity(opened_after)
-                finally:
-                    os.close(descriptor)
             else:
                 raise OSError("Snapshot contains an aliased or special member")
 
@@ -392,28 +392,29 @@ def _copy_tree(
 ) -> None:
     for entry in inspection.entries:
         parts = tuple(entry.logical_path.split("/"))
-        target_parent = _open_relative_directory(target_fd, parts[:-1])
-        try:
+        with closing_descriptor(
+            _open_relative_directory(target_fd, parts[:-1])
+        ) as target_parent:
             if entry.kind == "directory":
                 os.mkdir(parts[-1], mode=0o700, dir_fd=target_parent)
                 continue
-            source_parent = _open_relative_directory(source_fd, parts[:-1])
-            try:
+            with closing_descriptor(
+                _open_relative_directory(source_fd, parts[:-1])
+            ) as source_parent:
                 source_file = _open_regular_file(
                     source_parent,
                     parts[-1],
                     write=False,
                 )
-            finally:
-                os.close(source_parent)
             try:
-                target_file = _open_regular_file(
-                    target_parent,
-                    parts[-1],
-                    create_new=True,
-                    write=True,
-                )
-                try:
+                with closing_descriptor(
+                    _open_regular_file(
+                        target_parent,
+                        parts[-1],
+                        create_new=True,
+                        write=True,
+                    )
+                ) as target_file:
                     source_before = os.fstat(source_file)
                     if (
                         _native_identity(source_before) != inspection.identities[parts]
@@ -443,23 +444,18 @@ def _copy_tree(
                         raise OSError("Snapshot file content changed during copy")
                     os.fchmod(target_file, entry.mode)
                     os.fsync(target_file)
-                finally:
-                    os.close(target_file)
             finally:
                 os.close(source_file)
-        finally:
-            os.close(target_parent)
     for entry in reversed(inspection.entries):
         if entry.kind != "directory":
             continue
-        descriptor = _open_relative_directory(
-            target_fd,
-            tuple(entry.logical_path.split("/")),
-        )
-        try:
+        with closing_descriptor(
+            _open_relative_directory(
+                target_fd,
+                tuple(entry.logical_path.split("/")),
+            )
+        ) as descriptor:
             os.fchmod(descriptor, entry.mode)
-        finally:
-            os.close(descriptor)
 
 
 def _fsync_tree(root_fd: int, entries: tuple[_TreeEntry, ...]) -> None:
@@ -471,11 +467,8 @@ def _fsync_tree(root_fd: int, entries: tuple[_TreeEntry, ...]) -> None:
     for parts in sorted(
         directories, key=lambda value: (len(value), value), reverse=True
     ):
-        descriptor = _open_relative_directory(root_fd, parts)
-        try:
+        with closing_descriptor(_open_relative_directory(root_fd, parts)) as descriptor:
             os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
 
 
 def _remove_owned_namespace(
@@ -484,15 +477,12 @@ def _remove_owned_namespace(
     *,
     expected_identity: _NativeIdentity,
 ) -> None:
-    namespace = _open_directory_at(root_fd, name)
-    try:
+    with closing_descriptor(_open_directory_at(root_fd, name)) as namespace:
         if _native_identity(os.fstat(namespace)) != expected_identity:
             raise OSError("Owned staging namespace identity changed")
         _remove_directory_contents(namespace)
         if os.listdir(namespace):
             raise OSError("Owned staging namespace is not empty")
-    finally:
-        os.close(namespace)
     _assert_entry_identity(
         root_fd,
         name,
@@ -508,13 +498,10 @@ def _remove_directory_contents(directory_fd: int) -> None:
         metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
         identity = _native_identity(metadata)
         if stat.S_ISDIR(metadata.st_mode):
-            child = _open_directory_at(directory_fd, name)
-            try:
+            with closing_descriptor(_open_directory_at(directory_fd, name)) as child:
                 if _native_identity(os.fstat(child)) != identity:
                     raise OSError("Owned staging directory identity changed")
                 _remove_directory_contents(child)
-            finally:
-                os.close(child)
             _assert_entry_identity(
                 directory_fd,
                 name,
@@ -558,8 +545,9 @@ def _read_regular_file(
     *,
     maximum_bytes: int,
 ) -> tuple[bytes, _NativeIdentity]:
-    descriptor = _open_regular_file(directory_fd, name, write=False)
-    try:
+    with closing_descriptor(
+        _open_regular_file(directory_fd, name, write=False)
+    ) as descriptor:
         before = os.fstat(descriptor)
         if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
             raise OSError("Expected one regular file")
@@ -572,32 +560,28 @@ def _read_regular_file(
         if _stable_file_metadata(before) != _stable_file_metadata(after):
             raise OSError("Metadata file changed while reading")
         return bytes(contents), _native_identity(after)
-    finally:
-        os.close(descriptor)
 
 
 def _write_new_file(directory_fd: int, name: str, contents: bytes) -> None:
-    descriptor = _open_regular_file(
-        directory_fd,
-        name,
-        create_new=True,
-        write=True,
-    )
-    try:
+    with closing_descriptor(
+        _open_regular_file(
+            directory_fd,
+            name,
+            create_new=True,
+            write=True,
+        )
+    ) as descriptor:
         _write_all(descriptor, contents)
         os.fchmod(descriptor, 0o600)
         os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 def _write_all(descriptor: int, contents: bytes) -> None:
-    view = memoryview(contents)
-    while view:
-        written = os.write(descriptor, view)
-        if written <= 0:
-            raise OSError("Restore write made no progress")
-        view = view[written:]
+    _complete_write(
+        lambda view: os.write(descriptor, view),
+        contents,
+        message="Restore write made no progress",
+    )
 
 
 def _strict_json_object(payload: bytes, *, name: str) -> dict[str, object]:

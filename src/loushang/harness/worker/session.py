@@ -6,6 +6,9 @@ import asyncio
 import inspect
 from typing import Protocol, TypeVar, cast, runtime_checkable
 
+from loushang.foundation._owned_tasks import (
+    _join_cancellation_first,
+)
 from loushang.harness.workspace.process import ProcessExit, ProcessStderrTail
 
 from .contracts import ManagedWorkerLaunchRequestV1, WorkerLaunchEvidenceV1
@@ -270,24 +273,7 @@ async def _close_unpublished_worker_session(
     await _await_owned(asyncio.create_task(settle(), name=task_name))
 
 
-async def _await_owned(task: asyncio.Task[_T]) -> _T:
-    cancellation: asyncio.CancelledError | None = None
-    while True:
-        try:
-            result = await asyncio.shield(task)
-            break
-        except asyncio.CancelledError as exc:
-            if task.cancelled():
-                raise
-            if cancellation is None:
-                cancellation = exc
-        except BaseException as exc:
-            if cancellation is not None:
-                raise cancellation from exc
-            raise
-    if cancellation is not None:
-        raise cancellation
-    return cast(_T, result)
+_await_owned = _join_cancellation_first
 
 
 __all__ = [

@@ -119,6 +119,21 @@ checks exact Session identity and returns an owned hosted attachment, but never
 invokes Session/Work/projection/interaction ports or constructs AppService,
 protocol, listener, connection, or transport state.
 
+The private optional [Session control bridge](session-control-bridge-convergence.md)
+keeps the former Product adapter's wire conversion in AppHost integration.
+It directly reuses Harness Session operations and model selection, while each
+original Product facade retains its actual class, binding and observation hooks.
+It creates no Session, input queue, listener or journal. AppService retains scope
+authorization; the separate discovery/canonical Harness adapter remains dark.
+This internal relocation does not add a default route or core-facade export.
+
+The private [foreground Product ownership adapter](foreground-product-ownership-convergence.md)
+adopts returned Sessions, validates the original binding contract, and retains
+unpublished cleanup debt. Its Session owner is also the scoped runtime and
+reuses the existing non-owning Product view. Coding keeps its public factory,
+Product identity and Session/catalog selection; delivered Session ownership
+continues to transfer to the original AppHost runtime.
+
 G14's separate optional `apphost.foreground.HostedForegroundRuntimeV1` adopts
 an already recovered G13 application and injected byte IO. It serves one
 connection, treats EOF as terminal, and settles connection work before invoking

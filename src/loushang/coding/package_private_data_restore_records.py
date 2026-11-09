@@ -7,6 +7,10 @@ from hashlib import sha256
 from typing import Literal
 
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -48,39 +52,13 @@ class CodingArchPrivateDataRestorePlanV1:
         ).hexdigest()
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "backupId": self.backup_id,
-            "deletionReceiptId": self.deletion_receipt_id,
-            "desiredInventoryRevision": self.desired_inventory_revision,
-            "installationKey": self.installation_key.to_dict(),
-            "planVersion": self.plan_version,
-            "sourceTargetId": self.source_target_id,
-            "targetState": self.target_state,
-        }
+        return _SCHEMA_RESTORE_PLAN_V1.encode(self, sort_keys=True)
 
     @classmethod
     def from_dict(cls, value: object) -> CodingArchPrivateDataRestorePlanV1:
-        if type(value) is not dict or set(value) != {
-            "backupId",
-            "deletionReceiptId",
-            "desiredInventoryRevision",
-            "installationKey",
-            "planVersion",
-            "sourceTargetId",
-            "targetState",
-        }:
+        if type(value) is not dict or set(value) != _SCHEMA_RESTORE_PLAN_V1.keys:
             raise ValueError("Coding Arch restore plan fields are invalid")
-        return cls(
-            installation_key=PluginInstallationKeyV1.from_dict(
-                value["installationKey"]
-            ),
-            backup_id=value["backupId"],
-            deletion_receipt_id=value["deletionReceiptId"],
-            source_target_id=value["sourceTargetId"],
-            desired_inventory_revision=value["desiredInventoryRevision"],
-            target_state=value["targetState"],
-            plan_version=value["planVersion"],
-        )
+        return _SCHEMA_RESTORE_PLAN_V1.decode(cls, value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,5 +67,15 @@ class CodingArchPrivateDataRestoreResultV1:
     disposition: str
     restore_id: str
 
+
+_SCHEMA_RESTORE_PLAN_V1 = RecordSchema.for_dataclass(
+    CodingArchPrivateDataRestorePlanV1,
+    lambda value: value,
+    RecordField(
+        "installation_key",
+        decoder=PluginInstallationKeyV1.from_dict,
+        encoder=PluginInstallationKeyV1.to_dict,
+    ),
+)
 
 __all__ = ["CodingArchPrivateDataRestorePlanV1", "CodingArchPrivateDataRestoreResultV1"]

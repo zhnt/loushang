@@ -25,6 +25,7 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
+from loushang.harness.resources.packages._file_consumption import closing_descriptor
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -68,8 +69,7 @@ def ensure_coding_product_backup_types(
     state_root: Path,
     scope_id: str,
     epoch_runtime: (
-        PackageProductPosixFencedRuntimeOwner
-        | PackageProductWindowsFencedRuntimeOwner
+        PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner
     ),
     gc_gate: PluginPackageGcReservationJournal,
     before_load: Callable[[], None] | None = None,
@@ -97,8 +97,7 @@ def _read_topology(
     state_root: Path,
     scope_id: str,
     epoch_runtime: (
-        PackageProductPosixFencedRuntimeOwner
-        | PackageProductWindowsFencedRuntimeOwner
+        PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner
     ),
     create_if_new: bool,
 ) -> str:
@@ -121,27 +120,24 @@ def _read_topology(
                     name.casefold().startswith("worker-")
                     for name in windows_listdir_at(root)
                 ):
-                    raise ValueError("Coding backup topology is absent after Worker history")
-                write_windows_private_receipt(
-                    path, expected, maximum_bytes=_MAX_BYTES
-                )
+                    raise ValueError(
+                        "Coding backup topology is absent after Worker history"
+                    )
+                write_windows_private_receipt(path, expected, maximum_bytes=_MAX_BYTES)
                 raw = read_windows_private_receipt(path, maximum_bytes=_MAX_BYTES)
     elif isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
         metadata = state_root.lstat()
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-        root_fd = os.open(state_root, flags)
-        try:
+        with closing_descriptor(os.open(state_root, flags)) as root_fd:
             opened = os.fstat(root_fd)
             if (
                 not stat.S_ISDIR(opened.st_mode)
-                or (opened.st_dev, opened.st_ino)
-                != (metadata.st_dev, metadata.st_ino)
+                or (opened.st_dev, opened.st_ino) != (metadata.st_dev, metadata.st_ino)
                 or opened.st_uid != os.geteuid()
                 or stat.S_IMODE(opened.st_mode) & 0o077
             ):
                 raise ValueError("Coding backup topology state root changed")
-            io = RootedFileIO(state_root, root_fd)
-            try:
+            with RootedFileIO(state_root, root_fd) as io:
                 with io.bind(path, durable=True) as rooted:
                     try:
                         raw = rooted.read_bytes(max_bytes=_MAX_BYTES)
@@ -149,26 +145,25 @@ def _read_topology(
                         names, complete = rooted.scan_sibling_names(
                             limit=_MAX_INVENTORY
                         )
-                        if not create_if_new or not complete or any(
-                            name.startswith("worker-") for name in names
+                        if (
+                            not create_if_new
+                            or not complete
+                            or any(name.startswith("worker-") for name in names)
                         ):
                             raise ValueError(
                                 "Coding backup topology is absent after Worker history"
                             ) from None
                         rooted.create_new(expected)
                         raw = rooted.read_bytes(max_bytes=_MAX_BYTES)
-            finally:
-                io.cleanup()
-        finally:
-            os.close(root_fd)
     else:
         raise TypeError("Coding backup topology requires a Product epoch")
     epoch_runtime.assert_current()
     if raw != expected:
         raise ValueError("Coding backup topology changed")
-    return "coding-product-backup-types:" + sha256(
-        b"loushang.coding-product-backup-types/v1\0" + raw
-    ).hexdigest()
+    return (
+        "coding-product-backup-types:"
+        + sha256(b"loushang.coding-product-backup-types/v1\0" + raw).hexdigest()
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,10 +239,13 @@ def observe_coding_worker_backup_references_under_gc_guard(
 def _require_coding_product(
     product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
 ) -> None:
-    if not isinstance(
-        product,
-        (PosixLocalWheelProductSessionOwner, WindowsLocalWheelProductSessionOwner),
-    ) or product.policy.product_id != "coding":
+    if (
+        not isinstance(
+            product,
+            (PosixLocalWheelProductSessionOwner, WindowsLocalWheelProductSessionOwner),
+        )
+        or product.policy.product_id != "coding"
+    ):
         raise ValueError("Coding backup requires a Product owner")
 
 

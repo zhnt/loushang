@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import os
 from multiprocessing import get_context
 from pathlib import Path
@@ -110,7 +111,10 @@ def test_activation_state_reopens_multiple_sealed_generations_and_refuses_change
     manifest = journal.path.parent / "worker-activation-state.segments.json"
     assert manifest.is_file()
     assert (journal.path.parent / "worker-activation-state.g00000001.jsonl").is_file()
-    assert CodingProductWorkerActivationStateJournal(journal.path).load_read_only() == third
+    assert (
+        CodingProductWorkerActivationStateJournal(journal.path).load_read_only()
+        == third
+    )
     assert not journal.compare_and_swap(expected_revision=1, document=second)
 
     original = journal.path.read_bytes()
@@ -129,18 +133,22 @@ def test_activation_state_reopens_after_manifest_publication_interruption(
     second = _next_state(initial)
     assert journal.compare_and_swap(expected_revision=0, document=initial)
 
-    append = activation_module.append_jsonl_record
+    storage_module = inspect.getmodule(journal.compare_and_swap)
+    assert storage_module is not None
+    append = storage_module.append_jsonl_record
 
     def interrupted(*args: object, **kwargs: object) -> None:
         raise OSError("interrupted after manifest publication")
 
-    monkeypatch.setattr(activation_module, "append_jsonl_record", interrupted)
+    monkeypatch.setattr(storage_module, "append_jsonl_record", interrupted)
     with pytest.raises(OSError, match="interrupted after manifest publication"):
         journal.compare_and_swap(expected_revision=1, document=second)
-    monkeypatch.setattr(activation_module, "append_jsonl_record", append)
+    monkeypatch.setattr(storage_module, "append_jsonl_record", append)
 
     assert (journal.path.parent / "worker-activation-state.segments.json").is_file()
-    assert (journal.path.parent / "worker-activation-state.g00000001.jsonl").read_bytes() == b""
+    assert (
+        journal.path.parent / "worker-activation-state.g00000001.jsonl"
+    ).read_bytes() == b""
     reopened = CodingProductWorkerActivationStateJournal(journal.path)
     assert reopened.load_read_only() == initial
     assert reopened.compare_and_swap(expected_revision=1, document=second)
@@ -198,9 +206,7 @@ def test_activation_state_cross_process_rollover_cas_has_one_winner(
     barrier = context.Barrier(2)
     results = context.Queue()
     processes = tuple(
-        context.Process(
-            target=_race_segment_cas, args=(journal.path, barrier, results)
-        )
+        context.Process(target=_race_segment_cas, args=(journal.path, barrier, results))
         for _ in range(2)
     )
     try:
@@ -210,9 +216,9 @@ def test_activation_state_cross_process_rollover_cas_has_one_winner(
             process.join(timeout=20)
         assert all(process.exitcode == 0 for process in processes)
         assert sorted(results.get(timeout=2) for _ in processes) == [False, True]
-        assert CodingProductWorkerActivationStateJournal(journal.path).load_read_only() == (
-            _next_state(initial)
-        )
+        assert CodingProductWorkerActivationStateJournal(
+            journal.path
+        ).load_read_only() == (_next_state(initial))
         assert (journal.path.parent / "worker-activation-state.segments.json").is_file()
     finally:
         for process in processes:
@@ -372,9 +378,12 @@ def test_activation_state_product_journal_runs_real_c5_lifecycle_across_seals(
     assert _publish(coordinator, receipt)["reason"] == "published"
     _retire_and_terminal(coordinator, receipt)
     evidence = authority.evidence_authority
-    assert coordinator.record_cleanup_settlement(
-        _settlement(receipt), witness=evidence.tree_witness
-    )["reason"] == "cleanup_settled"
+    assert (
+        coordinator.record_cleanup_settlement(
+            _settlement(receipt), witness=evidence.tree_witness
+        )["reason"]
+        == "cleanup_settled"
+    )
     state = coordinator.snapshot()
     assert CodingProductWorkerActivationStateJournal(journal.path).load_read_only() == (
         state

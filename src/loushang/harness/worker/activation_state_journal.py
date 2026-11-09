@@ -238,8 +238,7 @@ class WorkerActivationStateJournal:
                     raise WorkerActivationStateJournalError(
                         "worker_activation_state_root_unsafe"
                     )
-                file_io = RootedFileIO(self._path.parent, parent_fd)
-                try:
+                with RootedFileIO(self._path.parent, parent_fd) as file_io:
                     with file_io.bind(self._path, durable=True) as rooted:
                         try:
                             self._acquire_journal_lock(rooted)
@@ -248,8 +247,6 @@ class WorkerActivationStateJournal:
                         else:
                             acquired = True
                             yield rooted
-                finally:
-                    file_io.cleanup()
                 after = self._path.parent.lstat()
                 if (opened.st_dev, opened.st_ino) != (after.st_dev, after.st_ino):
                     raise WorkerActivationStateJournalError(
@@ -290,8 +287,7 @@ class WorkerActivationStateJournal:
                 raise WorkerActivationStateJournalError(
                     "worker_activation_state_root_unsafe"
                 )
-            file_io = RootedFileIO(self._path.parent, parent_fd)
-            try:
+            with RootedFileIO(self._path.parent, parent_fd) as file_io:
                 with file_io.bind(self._path, durable=True) as rooted:
                     try:
                         rooted.stat()
@@ -332,8 +328,6 @@ class WorkerActivationStateJournal:
                                 "worker_activation_state_busy"
                             ) from exc
                     yield rooted
-            finally:
-                file_io.cleanup()
             after = self._path.parent.lstat()
             if (opened.st_dev, opened.st_ino) != (after.st_dev, after.st_ino):
                 raise WorkerActivationStateJournalError(

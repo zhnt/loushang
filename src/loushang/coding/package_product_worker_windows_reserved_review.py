@@ -7,7 +7,6 @@ cleanup authority by itself.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from dataclasses import dataclass
@@ -27,6 +26,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
 )
 from loushang.harness.resources.plugins.locators import (
     canonical_plugin_relative_path,
+)
+from loushang.harness.worker.history._windows_stage_review_wire import (
+    _WindowsStageReviewWireMethods,
 )
 
 from .package_product_worker_windows_launch_intent import (
@@ -68,7 +70,15 @@ class CodingWindowsWorkerReservedReviewError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerReservedNoEffectReviewV1:
+class CodingWindowsWorkerReservedNoEffectReviewV1(_WindowsStageReviewWireMethods):
+    _record_kind = "reserved"
+    _record_error = CodingWindowsWorkerReservedReviewError
+    _record_error_code = "coding_worker_reserved_review_invalid"
+
+    @classmethod
+    def _record_maximum(cls) -> int:
+        return _MAX_REVIEW_BYTES
+
     attempt_id: str
     intent_fingerprint: str
     lease_owner_revision: int
@@ -135,71 +145,7 @@ class CodingWindowsWorkerReservedNoEffectReviewV1:
 
     @classmethod
     def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerReservedNoEffectReviewV1:
-        if type(raw) is not bytes or not raw or len(raw) > _MAX_REVIEW_BYTES:
-            raise CodingWindowsWorkerReservedReviewError(
-                "coding_worker_reserved_review_invalid"
-            )
-        try:
-            value = json.loads(raw)
-            if (
-                type(value) is not dict
-                or set(value)
-                != {
-                    "attemptId",
-                    "directoryIdentities",
-                    "entrypoint",
-                    "executableDigest",
-                    "executableIdentity",
-                    "intentFingerprint",
-                    "leaseOwnerRevision",
-                    "markerIdentity",
-                    "nativeRevision",
-                    "stageIdentity",
-                    "version",
-                }
-                or value["version"] != 1
-            ):
-                raise ValueError("Windows Worker reserved review fields changed")
-            directories = value["directoryIdentities"]
-            if (
-                type(directories) is not list
-                or any(
-                    type(item) is not list
-                    or len(item) != 2
-                    or type(item[1]) is not list
-                    for item in directories
-                )
-                or any(
-                    type(value[name]) is not list
-                    for name in (
-                        "stageIdentity",
-                        "markerIdentity",
-                        "executableIdentity",
-                    )
-                )
-            ):
-                raise ValueError("Windows Worker reserved review identities changed")
-            review = cls(
-                attempt_id=value["attemptId"],
-                intent_fingerprint=value["intentFingerprint"],
-                lease_owner_revision=value["leaseOwnerRevision"],
-                native_revision=value["nativeRevision"],
-                stage_identity=tuple(value["stageIdentity"]),
-                directory_identities=tuple(
-                    (item[0], tuple(item[1])) for item in directories
-                ),
-                marker_identity=tuple(value["markerIdentity"]),
-                executable_identity=tuple(value["executableIdentity"]),
-                executable_digest=value["executableDigest"],
-                entrypoint=value["entrypoint"],
-            )
-            if review.to_bytes() != raw:
-                raise ValueError("Windows Worker reserved review encoding changed")
-            return review
-        except (KeyError, TypeError, ValueError, UnicodeError) as exc:
-            raise CodingWindowsWorkerReservedReviewError(
-                "coding_worker_reserved_review_invalid"
-            ) from exc
+        return cls._from_record_bytes(raw)
 
     @property
     def fingerprint(self) -> str:
@@ -496,3 +442,6 @@ __all__ = [
     "review_coding_windows_product_worker_reserved_no_effect",
     "review_coding_windows_product_worker_settled_unlaunched",
 ]
+
+
+CodingWindowsWorkerReservedNoEffectReviewV1._bind_record_schema()

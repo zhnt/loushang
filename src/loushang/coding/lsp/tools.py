@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Literal
 from urllib.parse import unquote, urlparse
 
 from loushang.coding.lsp.documents import DocumentSnapshot, LspDocumentManager
@@ -19,6 +19,7 @@ from loushang.coding.lsp.model import (
     LspInvalidInputError,
     LspProtocolError,
 )
+from loushang.coding.lsp.ports import InspectSymbolRuntime as InspectSymbolRuntime
 from loushang.coding.lsp.positions import (
     fallback_public_range as _fallback_public_range,
 )
@@ -80,31 +81,6 @@ _SYMBOL_KIND_NAMES = (
     "operator",
     "type_parameter",
 )
-
-
-class InspectSymbolRuntime(Protocol):
-    async def inspect_symbol(
-        self,
-        *,
-        path: str,
-        line: int,
-        character: int,
-        query: str = "definition",
-        include_declaration: bool = True,
-        limit: int = 50,
-        correlation_id: str,
-        signal: object | None = None,
-    ) -> CodeQueryResult: ...
-
-    async def document_outline(
-        self,
-        *,
-        path: str,
-        depth: int = 4,
-        limit: int = 200,
-        correlation_id: str,
-        signal: object | None = None,
-    ) -> DocumentOutlineResult: ...
 
 
 @dataclass(slots=True)

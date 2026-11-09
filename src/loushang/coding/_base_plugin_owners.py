@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Protocol, cast
+from typing import ClassVar, Protocol, cast
 
 from loushang.coding.tool_pack import create_coding_builtin_tool_definitions
 from loushang.harness.capabilities.contracts import (
@@ -23,7 +23,6 @@ from loushang.harness.capabilities.workspace_contracts import (
 )
 from loushang.harness.runtime.registration import (
     OwnerGenerationRetirementReceipt,
-    RegistrationLease,
     RegistrationOwner,
     RegistrationScope,
     registration_scope_retirement_receipt,
@@ -38,6 +37,10 @@ from loushang.harness.session.command_controller import (
 )
 from loushang.harness.session.commands.catalog import (
     list_standard_session_command_descriptors,
+)
+from loushang.harness.session.tool_owner_binding import (
+    DeferredToolRegistrationSlot,
+    SessionToolRegistrationPort,
 )
 from loushang.harness.tools.workspace.bash import BashOperations
 from loushang.harness.tools.workspace.factory import ToolsOptions
@@ -106,48 +109,13 @@ _WORKSPACE_REQUIREMENT = CapabilityRequirement(
 )
 
 
-class CodingBaseToolRegistrationPort(Protocol):
-    def stage_runtime_tool(
-        self,
-        tool: object,
-        *,
-        owner: RegistrationOwner,
-        enabled: bool = True,
-        source_info: object | None = None,
-    ) -> RegistrationLease: ...
+class CodingBaseToolRegistrationPort(SessionToolRegistrationPort, Protocol):
+    """Product-compatible name for the shared narrow registration port."""
 
 
 @dataclass(slots=True)
-class CodingBaseToolRegistrationSlot:
-    _port: CodingBaseToolRegistrationPort | None = field(
-        default=None,
-        init=False,
-        repr=False,
-    )
-
-    def bind(self, port: CodingBaseToolRegistrationPort) -> None:
-        if self._port is not None:
-            raise RuntimeError("Coding base Tool registration is already bound")
-        if not callable(getattr(port, "stage_runtime_tool", None)):
-            raise TypeError("Coding base Tool registration port is invalid")
-        self._port = port
-
-    def stage_runtime_tool(
-        self,
-        tool: object,
-        *,
-        owner: RegistrationOwner,
-        enabled: bool = True,
-        source_info: object | None = None,
-    ) -> RegistrationLease:
-        if self._port is None:
-            raise RuntimeError("Coding base Tool registration is not yet bound")
-        return self._port.stage_runtime_tool(
-            tool,
-            owner=owner,
-            enabled=enabled,
-            source_info=source_info,
-        )
+class CodingBaseToolRegistrationSlot(DeferredToolRegistrationSlot):
+    label: ClassVar[str] = "Coding base Tool"
 
 
 class CodingBaseOwnerError(RuntimeError):

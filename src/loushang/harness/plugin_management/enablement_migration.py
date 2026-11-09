@@ -45,6 +45,9 @@ from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1,
     PluginPackageRevisionRefV1,
 )
+from loushang.harness.plugin_management.records import (
+    _require_digest as _require_sha256,
+)
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 
 PLUGIN_ENABLEMENT_MIGRATION_EPOCH = 1
@@ -1389,15 +1392,6 @@ def _require_positive(value: object, *, name: str) -> None:
 def _require_nonnegative(value: object, *, name: str) -> None:
     if type(value) is not int or value < 0:
         raise ValueError(f"{name} must be non-negative")
-
-
-def _require_sha256(value: object, *, name: str) -> None:
-    if (
-        not isinstance(value, str)
-        or len(value) != 64
-        or any(character not in "0123456789abcdef" for character in value)
-    ):
-        raise ValueError(f"{name} must be a lowercase SHA-256 digest")
 
 
 def _invalid_record(message: str) -> JournalCodecError:

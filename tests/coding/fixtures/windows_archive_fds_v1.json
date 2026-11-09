@@ -1,0 +1,51 @@
+{
+  "valid": {
+    "source_matches": true,
+    "parent_alive": true,
+    "open_children": 0,
+    "closed": [
+      "file",
+      "directory"
+    ]
+  },
+  "before_attributes": {
+    "error": "ValueError",
+    "message": "Windows Coding Arch private-data attributes are unsupported",
+    "parent_alive": true,
+    "open_children": 0,
+    "closed": [
+      "file",
+      "directory"
+    ]
+  },
+  "after_attributes": {
+    "error": "ValueError",
+    "message": "Windows Coding Arch private-data attributes are unsupported",
+    "parent_alive": true,
+    "open_children": 0,
+    "closed": [
+      "file",
+      "directory"
+    ]
+  },
+  "read_failure": {
+    "error": "OSError",
+    "message": "injected manifest read failure",
+    "parent_alive": true,
+    "open_children": 0,
+    "closed": [
+      "file",
+      "directory"
+    ]
+  },
+  "bad_utf8": {
+    "error": "ValueError",
+    "message": "Coding Arch backup manifest is invalid",
+    "parent_alive": true,
+    "open_children": 0,
+    "closed": [
+      "file",
+      "directory"
+    ]
+  }
+}

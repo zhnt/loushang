@@ -14,16 +14,17 @@ from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.resources.packages._private_tree_windows import (
+    private_windows_directory,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_directory,
     windows_listdir_at,
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
@@ -44,9 +45,7 @@ from .package_legacy_windows_receipt import (
 
 _ARCH_PLUGIN_ID = "coding.arch.default"
 _WINDOWS_ROOT_RECEIPT_MAX_BYTES = 4096
-_WINDOWS_GENERATION_SUFFIX = re.compile(
-    r"([0-9]{8})\.(?:intent\.)?json(?:\.stage)?\Z"
-)
+_WINDOWS_GENERATION_SUFFIX = re.compile(r"([0-9]{8})\.(?:intent\.)?json(?:\.stage)?\Z")
 
 if TYPE_CHECKING:
     from .package_private_data_deletion_journal import (
@@ -291,7 +290,10 @@ def _prepare_windows_arch_restore_generation_intent(
     """
 
     root = coding_arch_installation_private_data_root(layout, key)
-    if state_root != resolve_coding_package_epoch_layout(layout).control_root / "product-state":
+    if (
+        state_root
+        != resolve_coding_package_epoch_layout(layout).control_root / "product-state"
+    ):
         raise ValueError("Coding Arch restore Product state root changed")
     package_identity = inspect_windows_product_private_directory_identity(
         layout.package_root
@@ -330,7 +332,10 @@ def _publish_windows_arch_restored_root_receipt(
     """Bind a separately verified restored tree to the retired generation."""
 
     root = coding_arch_installation_private_data_root(layout, key)
-    if state_root != resolve_coding_package_epoch_layout(layout).control_root / "product-state":
+    if (
+        state_root
+        != resolve_coding_package_epoch_layout(layout).control_root / "product-state"
+    ):
         raise ValueError("Coding Arch restore Product state root changed")
     package_identity = inspect_windows_product_private_directory_identity(
         layout.package_root
@@ -342,7 +347,9 @@ def _publish_windows_arch_restored_root_receipt(
         generation.number != generation_number
         or generation.predecessor_receipt_id != deletion_receipt_id
         or generation.intent is None
-        or (generation.identity is not None and generation.identity != expected_identity)
+        or (
+            generation.identity is not None and generation.identity != expected_identity
+        )
     ):
         raise ValueError("Coding Arch restore root generation changed")
     parent_identity = inspect_windows_product_private_directory_identity(root.parent)
@@ -444,36 +451,27 @@ def _windows_arch_root_deletion_events(
         CodingWindowsArchPrivateDataDeletionTransaction,
     )
 
-    with WindowsPrivateDirectoryAcl() as acl:
-        descriptor = open_windows_directory(state_root, read_control=True)
+    with private_windows_directory(
+        state_root, revalidate_on_success=True
+    ) as descriptor:
+        transaction = CodingWindowsArchPrivateDataDeletionTransaction(
+            state_root, descriptor
+        )
         try:
-            acl.validate(descriptor)
-            transaction = CodingWindowsArchPrivateDataDeletionTransaction(
-                state_root, descriptor
-            )
-            try:
-                events = transaction.events()
-            finally:
-                transaction._close()
-            acl.validate(descriptor)
-            return events
+            return transaction.events()
         finally:
-            os.close(descriptor)
+            transaction._close()
 
 
 def _require_no_future_windows_root_generations(
     state_root: Path, installation_root: Path, current_number: int
 ) -> None:
-    with WindowsPrivateDirectoryAcl() as acl:
-        descriptor = open_windows_directory(state_root, read_control=True)
-        try:
-            acl.validate(descriptor)
-            _validate_windows_root_generation_names(
-                windows_listdir_at(descriptor), installation_root, current_number
-            )
-            acl.validate(descriptor)
-        finally:
-            os.close(descriptor)
+    with private_windows_directory(
+        state_root, revalidate_on_success=True
+    ) as descriptor:
+        _validate_windows_root_generation_names(
+            windows_listdir_at(descriptor), installation_root, current_number
+        )
 
 
 def _validate_windows_root_generation_names(
@@ -527,7 +525,9 @@ def _read_windows_arch_root_generation(
             document = json.loads(receipt.decode("utf-8"))
             raw_identity = document["rootIdentity"]
         except (KeyError, TypeError, UnicodeError, ValueError) as exc:
-            raise ValueError("Coding Arch private-data root receipt is invalid") from exc
+            raise ValueError(
+                "Coding Arch private-data root receipt is invalid"
+            ) from exc
         if (
             type(raw_identity) is not list
             or len(raw_identity) != 2

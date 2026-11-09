@@ -7,7 +7,6 @@ history and captures every direct member through Product-pinned handles.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import stat
@@ -28,6 +27,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
 )
 from loushang.harness.resources.plugins.locators import (
     canonical_plugin_relative_path,
+)
+from loushang.harness.worker.history._windows_stage_review_wire import (
+    _WindowsStageReviewWireMethods,
 )
 
 from .package_product_worker_windows_recovery_inventory import (
@@ -64,7 +66,15 @@ class CodingWindowsWorkerPartialStageReviewError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerPartialStageReviewV1:
+class CodingWindowsWorkerPartialStageReviewV1(_WindowsStageReviewWireMethods):
+    _record_kind = "partial"
+    _record_error = CodingWindowsWorkerPartialStageReviewError
+    _record_error_code = "coding_worker_partial_stage_review_invalid"
+
+    @classmethod
+    def _record_maximum(cls) -> int:
+        return _MAX_REVIEW_BYTES
+
     attempt_id: str
     lease_owner_revision: int
     stage_identity: FileIdentity
@@ -134,66 +144,7 @@ class CodingWindowsWorkerPartialStageReviewV1:
 
     @classmethod
     def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerPartialStageReviewV1:
-        if type(raw) is not bytes or not raw or len(raw) > _MAX_REVIEW_BYTES:
-            raise CodingWindowsWorkerPartialStageReviewError(
-                "coding_worker_partial_stage_review_invalid"
-            )
-        try:
-            value = json.loads(raw)
-            if (
-                type(value) is not dict
-                or set(value)
-                != {
-                    "attemptId",
-                    "directoryIdentities",
-                    "entrypoint",
-                    "executableDigest",
-                    "executableIdentity",
-                    "leaseOwnerRevision",
-                    "stageIdentity",
-                    "version",
-                }
-                or value["version"] != 1
-            ):
-                raise ValueError("Windows Worker partial-stage review fields changed")
-            directories = value["directoryIdentities"]
-            if (
-                type(directories) is not list
-                or any(
-                    type(item) is not list
-                    or len(item) != 2
-                    or type(item[1]) is not list
-                    for item in directories
-                )
-                or type(value["stageIdentity"]) is not list
-            ):
-                raise ValueError("Windows Worker partial-stage identities changed")
-            executable_identity = value["executableIdentity"]
-            if (
-                executable_identity is not None
-                and type(executable_identity) is not list
-            ):
-                raise ValueError("Windows Worker partial-stage file identity changed")
-            review = cls(
-                attempt_id=value["attemptId"],
-                lease_owner_revision=value["leaseOwnerRevision"],
-                stage_identity=tuple(value["stageIdentity"]),
-                directory_identities=tuple(
-                    (item[0], tuple(item[1])) for item in directories
-                ),
-                entrypoint=value["entrypoint"],
-                executable_identity=(
-                    None if executable_identity is None else tuple(executable_identity)
-                ),
-                executable_digest=value["executableDigest"],
-            )
-            if review.to_bytes() != raw:
-                raise ValueError("Windows Worker partial-stage review bytes changed")
-            return review
-        except (KeyError, TypeError, ValueError, UnicodeError) as exc:
-            raise CodingWindowsWorkerPartialStageReviewError(
-                "coding_worker_partial_stage_review_invalid"
-            ) from exc
+        return cls._from_record_bytes(raw)
 
     @property
     def fingerprint(self) -> str:
@@ -401,3 +352,6 @@ __all__ = [
     "CodingWindowsWorkerPartialStageReviewV1",
     "review_coding_windows_product_worker_partial_stage",
 ]
+
+
+CodingWindowsWorkerPartialStageReviewV1._bind_record_schema()

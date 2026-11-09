@@ -17,6 +17,7 @@ from pathlib import Path
 from secrets import token_hex
 from threading import Event
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.journal._directory_lease import DirectoryWriterLease
 from loushang.harness.journal._rooted_io import RootedFileIO
 
@@ -457,13 +458,9 @@ def _missing(path: Path) -> bool:
     return False  # Permission/IO failures never become evidence of absence.
 
 
-def _unique(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    record: dict[str, object] = {}
-    for key, value in pairs:
-        if key in record:
-            raise ValueError("duplicate field")
-        record[key] = value
-    return record
+_unique = _unique_json_object_hook(
+    lambda: 'duplicate field',
+)
 
 
 def _read_record(port: RootedFileIO, path: Path, *, max_bytes: int = 4096,

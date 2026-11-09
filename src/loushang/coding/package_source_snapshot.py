@@ -7,11 +7,12 @@ import os
 import secrets
 import stat
 from collections.abc import Iterator, Mapping
-from contextlib import ExitStack, contextmanager, nullcontext
+from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
@@ -162,7 +163,7 @@ def read_coding_settings_patch_without_writes(
     """Read a settings patch before a Product owner creates its first lock."""
 
     _require_path(path, name="settings")
-    adapter = (
+    adapter: AbstractContextManager[_WindowsSettingsFile | _PosixSettingsFile] = (
         _windows_settings_file(path)
         if os.name == "nt"
         else nullcontext(_PosixSettingsFile(path))
@@ -296,13 +297,9 @@ def _looks_like_source_key(key: str) -> bool:
     return key in _SOURCE_KEYS or any(marker in key for marker in _SOURCE_KEY_MARKERS)
 
 
-def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate settings key")
-        result[key] = value
-    return result
+_reject_duplicate_keys = _unique_json_object_hook(
+    lambda: "duplicate settings key",
+)
 
 
 def _reject_non_json_constant(value: str) -> object:

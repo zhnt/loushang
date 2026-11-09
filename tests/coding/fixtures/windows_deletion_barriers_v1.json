@@ -1,0 +1,143 @@
+{
+  "empty": {
+    "latest": null,
+    "trace": [
+      "restore:active",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close"
+    ],
+    "error": [
+      "ValueError",
+      "Windows Coding Arch backup expiry deletion changed"
+    ],
+    "unclosed": []
+  },
+  "foreign_only": {
+    "latest": null,
+    "trace": [
+      "restore:active",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close"
+    ],
+    "error": [
+      "ValueError",
+      "Windows Coding Arch backup expiry deletion changed"
+    ],
+    "unclosed": []
+  },
+  "deleted": {
+    "latest": "deletion:current",
+    "trace": [
+      "restore:active",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "restore:confirmations",
+      "restore:events",
+      "restore:publication",
+      "acl:enter",
+      "open",
+      "acl:validate",
+      "listdir",
+      "listdir",
+      "close",
+      "acl:exit"
+    ],
+    "error": null,
+    "unclosed": []
+  },
+  "latest_started": {
+    "latest": null,
+    "trace": [
+      "restore:active",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close"
+    ],
+    "error": [
+      "ValueError",
+      "Windows Coding Arch backup expiry deletion changed"
+    ],
+    "unclosed": []
+  },
+  "latest_wrong_target": {
+    "latest": null,
+    "trace": [
+      "restore:active",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close"
+    ],
+    "error": [
+      "ValueError",
+      "Windows Coding Arch backup expiry deletion changed"
+    ],
+    "unclosed": []
+  },
+  "latest_no_receipt": {
+    "latest": null,
+    "trace": [
+      "restore:active",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close"
+    ],
+    "error": [
+      "ValueError",
+      "Windows Coding Arch backup expiry deletion changed"
+    ],
+    "unclosed": []
+  },
+  "latest_retained": {
+    "latest": null,
+    "trace": [
+      "restore:active",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close"
+    ],
+    "error": [
+      "ValueError",
+      "Windows Coding Arch backup expiry deletion changed"
+    ],
+    "unclosed": []
+  },
+  "foreign_later": {
+    "latest": "deletion:current",
+    "trace": [
+      "restore:active",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "restore:confirmations",
+      "restore:events",
+      "restore:publication",
+      "acl:enter",
+      "open",
+      "acl:validate",
+      "listdir",
+      "listdir",
+      "close",
+      "acl:exit"
+    ],
+    "error": null,
+    "unclosed": []
+  },
+  "latest_other_id": {
+    "latest": "deletion:other",
+    "trace": [
+      "restore:active",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "restore:confirmations"
+    ],
+    "error": [
+      "ValueError",
+      "Windows Coding Arch backup expiry confirmation changed"
+    ],
+    "unclosed": []
+  }
+}

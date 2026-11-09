@@ -1,0 +1,53 @@
+{
+  "origin": "original archived source; class path guard; exclusive capture",
+  "values": {
+    "composite_opt_in_projection": {
+      "module": "loushang.coding.package_product_worker_opt_in",
+      "name": "CodingWorkerOptInRetentionProjectionV1",
+      "signature": "(reference_decisions: 'tuple[CodingWorkerOptInDecisionV1, ...]', latest_decisions: 'tuple[CodingWorkerOptInDecisionV1, ...]', operation_ids: 'tuple[str, ...]', revision: 'int') -> None",
+      "annotations": {
+        "reference_decisions": "tuple[CodingWorkerOptInDecisionV1, ...]",
+        "latest_decisions": "tuple[CodingWorkerOptInDecisionV1, ...]",
+        "operation_ids": "tuple[str, ...]",
+        "revision": "int"
+      },
+      "fields": [
+        {
+          "name": "reference_decisions",
+          "type": "tuple[CodingWorkerOptInDecisionV1, ...]",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "latest_decisions",
+          "type": "tuple[CodingWorkerOptInDecisionV1, ...]",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "operation_ids",
+          "type": "tuple[str, ...]",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "revision",
+          "type": "int",
+          "has_default": false,
+          "default": null
+        }
+      ],
+      "repr": "CodingWorkerOptInRetentionProjectionV1(reference_decisions=(CodingWorkerOptInDecisionV1(journal_revision=1, scope_id='scope', plugin_id='plugin-a', operation_id='allow-a', generation=1, kill_switch_generation=0, action='allow', opt_in=CodingWorkerOptInV1(plugin_id='plugin-a', contribution_id='query-provider', owner_id='coding', artifact_digest='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', native_platform='linux-x86_64', owner_selection_generation=1, kill_switch_generation=0, require_worker=True), decision_digest='73b8e9754243748498c665a4617f212e732d0c4b680bda170a2e9bb493d663f8', record_version=1),), latest_decisions=(CodingWorkerOptInDecisionV1(journal_revision=1, scope_id='scope', plugin_id='plugin-a', operation_id='allow-a', generation=1, kill_switch_generation=0, action='allow', opt_in=CodingWorkerOptInV1(plugin_id='plugin-a', contribution_id='query-provider', owner_id='coding', artifact_digest='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', native_platform='linux-x86_64', owner_selection_generation=1, kill_switch_generation=0, require_worker=True), decision_digest='73b8e9754243748498c665a4617f212e732d0c4b680bda170a2e9bb493d663f8', record_version=1),), operation_ids=('allow-a',), revision=1)",
+      "dict": null,
+      "bytes": null,
+      "pickle": {
+        "4": "800495cd010000000000008c2d6c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f6f70745f696e948c26436f64696e67576f726b65724f7074496e526574656e74696f6e50726f6a656374696f6e56319493942981945d942868008c1b436f64696e67576f726b65724f7074496e4465636973696f6e56319493942981945d94284b018c0573636f7065948c08706c7567696e2d61948c07616c6c6f772d61944b014b008c05616c6c6f77948c2d6c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f706f6c696379948c13436f64696e67576f726b65724f7074496e56319493942981945d9428680a8c0e71756572792d70726f7669646572948c06636f64696e67948c4064646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464948c0c6c696e75782d7838365f3634944b014b008865628c4037336238653937353432343337343834393863363635613436313766323132653733326430633462363830626461313730613265396262343933643636336638944b016562859468078594680b85944b0165622e",
+        "5": "800595cd010000000000008c2d6c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f6f70745f696e948c26436f64696e67576f726b65724f7074496e526574656e74696f6e50726f6a656374696f6e56319493942981945d942868008c1b436f64696e67576f726b65724f7074496e4465636973696f6e56319493942981945d94284b018c0573636f7065948c08706c7567696e2d61948c07616c6c6f772d61944b014b008c05616c6c6f77948c2d6c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f706f6c696379948c13436f64696e67576f726b65724f7074496e56319493942981945d9428680a8c0e71756572792d70726f7669646572948c06636f64696e67948c4064646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464948c0c6c696e75782d7838365f3634944b014b008865628c4037336238653937353432343337343834393863363635613436313766323132653733326430633462363830626461313730613265396262343933643636336638944b016562859468078594680b85944b0165622e"
+      }
+    }
+  },
+  "constructors": {
+    "loushang.coding.package_product_worker_opt_in.CodingWorkerOptInJournal": "(path: 'Path', *, scope_id: 'str', gc_gate: 'PluginPackageGcReservationJournal', store_id: 'str | None' = None) -> 'None'",
+    "loushang.coding.package_product_worker_activation_state_journal.CodingProductWorkerActivationStateJournal": "(path: 'Path', *, scope_id: 'str | None' = None, store_id: 'str | None' = None) -> 'None'"
+  }
+}

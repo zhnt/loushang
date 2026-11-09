@@ -1,0 +1,386 @@
+{
+  "source_sha256": "7314a0c57377193d6c077d3f91b5b6fb5d7bb093bc3157fc9a9e1252737d243c",
+  "signatures": {
+    "compose_coding_product_worker_with_ordinary_session": "(*, ordinary: 'SessionCapabilityCompositionInputs', worker: 'SessionCapabilityCompositionInputs', definitions: 'tuple[CapabilityDefinition, ...]', workspace_binding: 'CapabilityBundleProviderBinding') -> 'SessionCapabilityCompositionInputs'",
+    "validate_coding_product_worker_ordinary_session_inputs": "(*, ordinary: 'SessionCapabilityCompositionInputs', combined: 'SessionCapabilityCompositionInputs', workspace_binding: 'CapabilityBundleProviderBinding') -> 'None'"
+  },
+  "observations": {
+    "compose:query-linux": {
+      "fingerprint": "574fe2212e0178cf38044393fdec2cfbc41bf43eb02dafc3bbab3aeb62ab46b2",
+      "roots": [
+        "coding.worker.query",
+        "harness.model_input",
+        "harness.workspace"
+      ],
+      "provider_roots": [
+        "coding.worker.query"
+      ],
+      "provider_ids": [
+        "coding.worker.query"
+      ],
+      "request_exact_resolution": true,
+      "host_requirements": [
+        "coding.worker.query"
+      ]
+    },
+    "validate:query-linux": {
+      "result": "ok"
+    },
+    "compose:query-windows": {
+      "fingerprint": "2edaed67280eaf753944e5697f6aa63fdcf9fe053dee6f5b1c85ba5a805fc5f4",
+      "roots": [
+        "coding.worker.query",
+        "harness.model_input",
+        "harness.workspace"
+      ],
+      "provider_roots": [
+        "coding.worker.query"
+      ],
+      "provider_ids": [
+        "coding.worker.query"
+      ],
+      "request_exact_resolution": true,
+      "host_requirements": [
+        "coding.worker.query"
+      ]
+    },
+    "validate:query-windows": {
+      "result": "ok"
+    },
+    "compose:other-worker-id": {
+      "fingerprint": "5e24ca3e3a1bbb9dbb698839138c398243b975ffb68ead529099ea736c36b6d0",
+      "roots": [
+        "coding.worker.hover",
+        "harness.model_input",
+        "harness.workspace"
+      ],
+      "provider_roots": [
+        "coding.worker.hover"
+      ],
+      "provider_ids": [
+        "coding.worker.hover"
+      ],
+      "request_exact_resolution": true,
+      "host_requirements": [
+        "coding.worker.hover"
+      ]
+    },
+    "validate:other-worker-id": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_session_facts_changed",
+        "code": "coding_worker_ordinary_session_facts_changed",
+        "cause": null
+      }
+    },
+    "compose:other-product": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_authority_mismatch",
+        "code": "coding_worker_ordinary_composition_authority_mismatch",
+        "cause": null
+      }
+    },
+    "compose:bad-ordinary-type": {
+      "error": {
+        "type": "builtins.TypeError",
+        "message": "Coding Worker ordinary composition inputs are invalid",
+        "code": null,
+        "cause": null
+      }
+    },
+    "compose:bad-worker-type": {
+      "error": {
+        "type": "builtins.TypeError",
+        "message": "Coding Worker ordinary composition inputs are invalid",
+        "code": null,
+        "cause": null
+      }
+    },
+    "compose:bad-workspace-type": {
+      "error": {
+        "type": "builtins.TypeError",
+        "message": "Coding Worker ordinary composition inputs are invalid",
+        "code": null,
+        "cause": null
+      }
+    },
+    "compose:bad-definition-type": {
+      "error": {
+        "type": "builtins.TypeError",
+        "message": "Coding Worker ordinary composition inputs are invalid",
+        "code": null,
+        "cause": null
+      }
+    },
+    "compose:definitions-duplicate": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_definition_mismatch",
+        "code": "coding_worker_ordinary_composition_definition_mismatch",
+        "cause": null
+      }
+    },
+    "compose:definitions-missing-worker": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_definition_mismatch",
+        "code": "coding_worker_ordinary_composition_definition_mismatch",
+        "cause": null
+      }
+    },
+    "compose:definitions-model-changed": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_definition_mismatch",
+        "code": "coding_worker_ordinary_composition_definition_mismatch",
+        "cause": null
+      }
+    },
+    "compose:worker-no-request": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_authority_mismatch",
+        "code": "coding_worker_ordinary_composition_authority_mismatch",
+        "cause": null
+      }
+    },
+    "compose:worker-prebound": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_authority_mismatch",
+        "code": "coding_worker_ordinary_composition_authority_mismatch",
+        "cause": null
+      }
+    },
+    "compose:worker-scope": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_authority_mismatch",
+        "code": "coding_worker_ordinary_composition_authority_mismatch",
+        "cause": null
+      }
+    },
+    "compose:worker-policy": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_authority_mismatch",
+        "code": "coding_worker_ordinary_composition_authority_mismatch",
+        "cause": null
+      }
+    },
+    "compose:worker-time": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_authority_mismatch",
+        "code": "coding_worker_ordinary_composition_authority_mismatch",
+        "cause": null
+      }
+    },
+    "compose:worker-owner-snapshot": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_authority_mismatch",
+        "code": "coding_worker_ordinary_composition_authority_mismatch",
+        "cause": null
+      }
+    },
+    "compose:worker-root-overlap": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_overlap",
+        "code": "coding_worker_ordinary_composition_overlap",
+        "cause": null
+      }
+    },
+    "compose:worker-wrong-root": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_overlap",
+        "code": "coding_worker_ordinary_composition_overlap",
+        "cause": null
+      }
+    },
+    "compose:trust-conflict": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_trust_changed",
+        "code": "coding_worker_ordinary_composition_trust_changed",
+        "cause": null
+      }
+    },
+    "compose:scope-before-definitions": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_authority_mismatch",
+        "code": "coding_worker_ordinary_composition_authority_mismatch",
+        "cause": null
+      }
+    },
+    "validate:bad-type": {
+      "error": {
+        "type": "builtins.TypeError",
+        "message": "Coding Worker ordinary Session inputs are invalid",
+        "code": null,
+        "cause": null
+      }
+    },
+    "validate:scope": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_session_facts_changed",
+        "code": "coding_worker_ordinary_session_facts_changed",
+        "cause": null
+      }
+    },
+    "validate:policy": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_session_facts_changed",
+        "code": "coding_worker_ordinary_session_facts_changed",
+        "cause": null
+      }
+    },
+    "validate:time": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_session_facts_changed",
+        "code": "coding_worker_ordinary_session_facts_changed",
+        "cause": null
+      }
+    },
+    "validate:no-worker": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_session_facts_changed",
+        "code": "coding_worker_ordinary_session_facts_changed",
+        "cause": null
+      }
+    },
+    "validate:two-workers": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_session_facts_changed",
+        "code": "coding_worker_ordinary_session_facts_changed",
+        "cause": null
+      }
+    },
+    "validate:foreign-request-resolution": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_session_facts_changed",
+        "code": "coding_worker_ordinary_session_facts_changed",
+        "cause": null
+      }
+    },
+    "validate:host-consumers-missing": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_session_facts_changed",
+        "code": "coding_worker_ordinary_session_facts_changed",
+        "cause": null
+      }
+    },
+    "validate:prebound-missing": {
+      "result": "ok"
+    },
+    "validate:provider-roots-missing": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_session_facts_changed",
+        "code": "coding_worker_ordinary_session_facts_changed",
+        "cause": null
+      }
+    },
+    "validate:trust-missing": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_session_facts_changed",
+        "code": "coding_worker_ordinary_session_facts_changed",
+        "cause": null
+      }
+    },
+    "validate:duplicate-trust": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_session_facts_changed",
+        "code": "coding_worker_ordinary_session_facts_changed",
+        "cause": null
+      }
+    },
+    "validate:resource-admission-added": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_session_facts_changed",
+        "code": "coding_worker_ordinary_session_facts_changed",
+        "cause": null
+      }
+    },
+    "compose:compiler-error": {
+      "error": {
+        "type": "builtins.LookupError",
+        "message": "compiler probe",
+        "code": null,
+        "cause": null
+      }
+    },
+    "compose:resolver-error": {
+      "error": {
+        "type": "builtins.LookupError",
+        "message": "resolver probe",
+        "code": null,
+        "cause": null
+      }
+    },
+    "compose:resolver-changed-selection": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_composition_selection_changed",
+        "code": "coding_worker_ordinary_composition_selection_changed",
+        "cause": null
+      }
+    },
+    "compose:ordinary-component": {
+      "fingerprint": "2670bdb8794eed3e3c6f2b315ca7a1ddbd954e1ba1c9d9376db41c46b56e8c66",
+      "roots": [
+        "coding.base.fixture",
+        "coding.worker.query",
+        "harness.model_input",
+        "harness.workspace"
+      ],
+      "provider_roots": [
+        "coding.base.fixture",
+        "coding.worker.query"
+      ],
+      "provider_ids": [
+        "coding.base.fixture",
+        "coding.worker.query"
+      ],
+      "request_exact_resolution": true,
+      "host_requirements": [
+        "coding.worker.query"
+      ]
+    },
+    "validate:ordinary-component": {
+      "result": "ok"
+    },
+    "identity:ordinary-package-retained": {
+      "package_is_original": true,
+      "resolved_is_new_entry": true
+    },
+    "validate:equal-request-same-package": {
+      "result": "ok"
+    },
+    "validate:equal-request-different-package": {
+      "error": {
+        "type": "loushang.coding.package_product_worker_session_composition.CodingWorkerSessionCompositionError",
+        "message": "coding_worker_ordinary_session_facts_changed",
+        "code": "coding_worker_ordinary_session_facts_changed",
+        "cause": null
+      }
+    },
+    "invariants:no-effects": {
+      "calls": 0
+    }
+  }
+}

@@ -27,7 +27,7 @@ _MODULES = (
     "loushang/harness/worker/_native_profile_bridge.py",
     "loushang/harness/worker/product_activation.py",
     "loushang/coding/package_product_worker_windows_provisioning.py",
-    "loushang/coding/package_product_worker_windows_provisioning_journal.py",
+    "loushang/harness/worker/_windows_provisioning_journal.py",
 )
 
 

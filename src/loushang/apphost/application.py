@@ -22,6 +22,9 @@ from loushang.appservice.discovery_ports import (
 )
 from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
+from loushang.foundation._owned_tasks import (
+    _join_failure_first,
+)
 
 from .contracts import AppHostShutdownBudgetV1, AppHostShutdownReportV1
 
@@ -503,22 +506,7 @@ def _shutdown_report(
     )
 
 
-async def _join_owned(
-    task: asyncio.Task[HostedApplicationShutdownReportV1],
-) -> HostedApplicationShutdownReportV1:
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as error:
-            if caller is None or caller.cancelling() == 0:
-                return task.result()
-            cancellation = error
-    result = task.result()
-    if cancellation is not None:
-        raise cancellation
-    return result
+_join_owned = _join_failure_first
 
 
 def _method_descriptor(value: object, name: str) -> object:

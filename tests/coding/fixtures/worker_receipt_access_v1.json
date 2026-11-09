@@ -1,0 +1,681 @@
+{
+  "no-opt-in": {
+    "construction": [
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "scope",
+        "scope"
+      ]
+    ],
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      "opt-in",
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": null,
+    "error": null,
+    "before": {},
+    "after": {},
+    "nonce_calls": 0
+  },
+  "revoked": {
+    "construction": [
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "scope",
+        "scope"
+      ]
+    ],
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      "opt-in",
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": null,
+    "error": null,
+    "before": {},
+    "after": {},
+    "nonce_calls": 0
+  },
+  "derive-none": {
+    "construction": [
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "scope",
+        "scope"
+      ]
+    ],
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      "opt-in",
+      "derive",
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": null,
+    "error": null,
+    "before": {},
+    "after": {},
+    "nonce_calls": 0
+  },
+  "first": {
+    "construction": [
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "scope",
+        "scope"
+      ]
+    ],
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      "opt-in",
+      "derive",
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "store",
+        "store"
+      ],
+      [
+        "scope",
+        "scope"
+      ],
+      "nonce",
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": {
+      "issueNonce": "00000000000000000000000000000001",
+      "issueSequence": 1,
+      "policy": {
+        "allowedContributionIds": [
+          "capability.query"
+        ],
+        "allowedNativeProfileIds": [
+          "posix-static-contained-elf-v1"
+        ],
+        "allowedProductIds": [
+          "coding"
+        ],
+        "contributionId": "capability.query",
+        "declarationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "declaredRequired": true,
+        "effectiveRequired": true,
+        "enabled": true,
+        "expectedNativePolicyClosureFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "killSwitchGeneration": 7,
+        "nativeProfileCatalogRevision": "native-catalog-1",
+        "nativeProfileId": "posix-static-contained-elf-v1",
+        "noFallback": true,
+        "ownerSelectionGeneration": 4,
+        "pluginId": "plugin.one",
+        "pluginRevisionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "policyVersion": 1,
+        "productId": "coding",
+        "productPolicyRevision": "policy-1",
+        "productRuntimeId": "runtime-1",
+        "productScopeId": "scope",
+        "requestedOwner": "hosting",
+        "reservationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectedLocatorFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectedLocatorRevision": "locator-1",
+        "sessionId": "session-1",
+        "sessionRoute": "selected",
+        "workerConfigurationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "receiptVersion": 1,
+      "receiptFingerprint": "bd8a42368709943b33bef24a73723b117ea437089b970550c513b1e678c50bca"
+    },
+    "error": null,
+    "before": {},
+    "after": {
+      "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.jsonl": "f0a8a23ccbc814b60b54aa5ebaa17e717b56a910e22266d0f6b8e1a84842d079",
+      "worker-activation-receipts.head.json": "11d985f3c34970be969a27b77f485a47c25ca2d2f0ce89dbd15b6812edcec77f"
+    },
+    "nonce_calls": 1
+  },
+  "reuse": {
+    "construction": [
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "scope",
+        "scope"
+      ]
+    ],
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      "opt-in",
+      "derive",
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "store",
+        "store"
+      ],
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": {
+      "issueNonce": "00000000000000000000000000000001",
+      "issueSequence": 1,
+      "policy": {
+        "allowedContributionIds": [
+          "capability.query"
+        ],
+        "allowedNativeProfileIds": [
+          "posix-static-contained-elf-v1"
+        ],
+        "allowedProductIds": [
+          "coding"
+        ],
+        "contributionId": "capability.query",
+        "declarationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "declaredRequired": true,
+        "effectiveRequired": true,
+        "enabled": true,
+        "expectedNativePolicyClosureFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "killSwitchGeneration": 7,
+        "nativeProfileCatalogRevision": "native-catalog-1",
+        "nativeProfileId": "posix-static-contained-elf-v1",
+        "noFallback": true,
+        "ownerSelectionGeneration": 4,
+        "pluginId": "plugin.one",
+        "pluginRevisionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "policyVersion": 1,
+        "productId": "coding",
+        "productPolicyRevision": "policy-1",
+        "productRuntimeId": "runtime-1",
+        "productScopeId": "scope",
+        "requestedOwner": "hosting",
+        "reservationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectedLocatorFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectedLocatorRevision": "locator-1",
+        "sessionId": "session-1",
+        "sessionRoute": "selected",
+        "workerConfigurationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "receiptVersion": 1,
+      "receiptFingerprint": "bd8a42368709943b33bef24a73723b117ea437089b970550c513b1e678c50bca"
+    },
+    "error": null,
+    "before": {
+      "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.jsonl": "f0a8a23ccbc814b60b54aa5ebaa17e717b56a910e22266d0f6b8e1a84842d079",
+      "worker-activation-receipts.head.json": "11d985f3c34970be969a27b77f485a47c25ca2d2f0ce89dbd15b6812edcec77f"
+    },
+    "after": {
+      "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.jsonl": "f0a8a23ccbc814b60b54aa5ebaa17e717b56a910e22266d0f6b8e1a84842d079",
+      "worker-activation-receipts.head.json": "11d985f3c34970be969a27b77f485a47c25ca2d2f0ce89dbd15b6812edcec77f"
+    },
+    "nonce_calls": 0
+  },
+  "nonce-error": {
+    "construction": [
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "scope",
+        "scope"
+      ]
+    ],
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      "opt-in",
+      "derive",
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "store",
+        "store"
+      ],
+      [
+        "scope",
+        "scope"
+      ],
+      "nonce",
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "nonce unavailable",
+        null,
+        false
+      ]
+    ],
+    "before": {},
+    "after": {
+      "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.head.json": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+    },
+    "nonce_calls": 1
+  },
+  "late-current": {
+    "construction": [
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "scope",
+        "scope"
+      ]
+    ],
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      "opt-in",
+      "derive",
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "store",
+        "store"
+      ],
+      [
+        "scope",
+        "scope"
+      ],
+      "nonce",
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": {
+      "issueNonce": "00000000000000000000000000000001",
+      "issueSequence": 1,
+      "policy": {
+        "allowedContributionIds": [
+          "capability.query"
+        ],
+        "allowedNativeProfileIds": [
+          "posix-static-contained-elf-v1"
+        ],
+        "allowedProductIds": [
+          "coding"
+        ],
+        "contributionId": "capability.query",
+        "declarationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "declaredRequired": true,
+        "effectiveRequired": true,
+        "enabled": true,
+        "expectedNativePolicyClosureFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "killSwitchGeneration": 7,
+        "nativeProfileCatalogRevision": "native-catalog-1",
+        "nativeProfileId": "posix-static-contained-elf-v1",
+        "noFallback": true,
+        "ownerSelectionGeneration": 4,
+        "pluginId": "plugin.one",
+        "pluginRevisionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "policyVersion": 1,
+        "productId": "coding",
+        "productPolicyRevision": "policy-1",
+        "productRuntimeId": "runtime-1",
+        "productScopeId": "scope",
+        "requestedOwner": "hosting",
+        "reservationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectedLocatorFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectedLocatorRevision": "locator-1",
+        "sessionId": "session-1",
+        "sessionRoute": "selected",
+        "workerConfigurationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "receiptVersion": 1,
+      "receiptFingerprint": "bd8a42368709943b33bef24a73723b117ea437089b970550c513b1e678c50bca"
+    },
+    "error": null,
+    "before": {},
+    "after": {
+      "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.jsonl": "f0a8a23ccbc814b60b54aa5ebaa17e717b56a910e22266d0f6b8e1a84842d079",
+      "worker-activation-receipts.head.json": "11d985f3c34970be969a27b77f485a47c25ca2d2f0ce89dbd15b6812edcec77f"
+    },
+    "nonce_calls": 1
+  },
+  "v2-full": {
+    "construction": [
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "scope",
+        "scope"
+      ]
+    ],
+    "trace": [
+      [
+        "guard-enter",
+        false
+      ],
+      "current",
+      [
+        "guard-exit",
+        false
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerReceiptError",
+        "coding_worker_receipt_v2_full_history_unavailable",
+        "coding_worker_receipt_v2_full_history_unavailable",
+        false
+      ]
+    ],
+    "before": {
+      "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.g00000001.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.jsonl": "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+      "worker-activation-receipts.g00000001.head.json": "9f0b2439678c3de7afc7f68c8393249e16dcba2eb3588f1f30fb08e0b7f1c1b4",
+      "worker-activation-receipts.head.json": "293b81a97514883d151aa37eb93dd90017474cd16a3a5ddaf25d32fbf335ccda",
+      "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8"
+    },
+    "after": {
+      "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.g00000001.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.jsonl": "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+      "worker-activation-receipts.g00000001.head.json": "9f0b2439678c3de7afc7f68c8393249e16dcba2eb3588f1f30fb08e0b7f1c1b4",
+      "worker-activation-receipts.head.json": "293b81a97514883d151aa37eb93dd90017474cd16a3a5ddaf25d32fbf335ccda",
+      "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8"
+    },
+    "nonce_calls": 0
+  },
+  "v2-retained": {
+    "construction": [
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "scope",
+        "scope"
+      ]
+    ],
+    "trace": [
+      [
+        "guard-enter",
+        false
+      ],
+      "current",
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "store",
+        "store"
+      ],
+      [
+        "guard-exit",
+        false
+      ]
+    ],
+    "result": [],
+    "error": null,
+    "before": {
+      "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.g00000001.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.jsonl": "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+      "worker-activation-receipts.g00000001.head.json": "9f0b2439678c3de7afc7f68c8393249e16dcba2eb3588f1f30fb08e0b7f1c1b4",
+      "worker-activation-receipts.head.json": "293b81a97514883d151aa37eb93dd90017474cd16a3a5ddaf25d32fbf335ccda",
+      "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8"
+    },
+    "after": {
+      "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.g00000001.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.jsonl": "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+      "worker-activation-receipts.g00000001.head.json": "9f0b2439678c3de7afc7f68c8393249e16dcba2eb3588f1f30fb08e0b7f1c1b4",
+      "worker-activation-receipts.head.json": "293b81a97514883d151aa37eb93dd90017474cd16a3a5ddaf25d32fbf335ccda",
+      "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8"
+    },
+    "nonce_calls": 0
+  },
+  "v2-issue": {
+    "construction": [
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "scope",
+        "scope"
+      ]
+    ],
+    "trace": [
+      [
+        "guard-enter",
+        true
+      ],
+      "current",
+      "opt-in",
+      "derive",
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "store",
+        "store"
+      ],
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "store",
+        "store"
+      ],
+      "nonce",
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "guard-exit",
+        true
+      ]
+    ],
+    "result": {
+      "issueNonce": "00000000000000000000000000000001",
+      "issueSequence": 2,
+      "policy": {
+        "allowedContributionIds": [
+          "capability.query"
+        ],
+        "allowedNativeProfileIds": [
+          "posix-static-contained-elf-v1"
+        ],
+        "allowedProductIds": [
+          "coding"
+        ],
+        "contributionId": "capability.query",
+        "declarationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "declaredRequired": true,
+        "effectiveRequired": true,
+        "enabled": true,
+        "expectedNativePolicyClosureFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "killSwitchGeneration": 7,
+        "nativeProfileCatalogRevision": "native-catalog-1",
+        "nativeProfileId": "posix-static-contained-elf-v1",
+        "noFallback": true,
+        "ownerSelectionGeneration": 4,
+        "pluginId": "plugin.one",
+        "pluginRevisionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "policyVersion": 1,
+        "productId": "coding",
+        "productPolicyRevision": "policy-1",
+        "productRuntimeId": "runtime-1",
+        "productScopeId": "scope",
+        "requestedOwner": "hosting",
+        "reservationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectedLocatorFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectedLocatorRevision": "locator-1",
+        "sessionId": "session-1",
+        "sessionRoute": "selected",
+        "workerConfigurationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "receiptVersion": 1,
+      "receiptFingerprint": "59b7a0d1f6f9592ee9b20fc37d875923ad52a4e2673158e52f5166b996c617fd"
+    },
+    "error": null,
+    "before": {
+      "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.g00000001.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.jsonl": "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+      "worker-activation-receipts.g00000001.head.json": "9f0b2439678c3de7afc7f68c8393249e16dcba2eb3588f1f30fb08e0b7f1c1b4",
+      "worker-activation-receipts.head.json": "293b81a97514883d151aa37eb93dd90017474cd16a3a5ddaf25d32fbf335ccda",
+      "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8"
+    },
+    "after": {
+      "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.g00000001.jsonl": "e6ed07447fb92f65e6c6bdb576d7b86f3403f54eb7011343f250cd83e0be0a64",
+      "worker-activation-receipts.jsonl": "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+      "worker-activation-receipts.g00000001.head.json": "731152fd419cb9d56b5b3098ad66ad860cf16becb8d15290a7cab60c3c036151",
+      "worker-activation-receipts.head.json": "293b81a97514883d151aa37eb93dd90017474cd16a3a5ddaf25d32fbf335ccda",
+      "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8"
+    },
+    "nonce_calls": 1
+  },
+  "changed-scope": {
+    "construction": [
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "scope",
+        "scope"
+      ]
+    ],
+    "trace": [
+      [
+        "guard-enter",
+        false
+      ],
+      "current",
+      [
+        "scope",
+        "changed-after-construction"
+      ],
+      [
+        "store",
+        "store"
+      ],
+      [
+        "guard-exit",
+        false
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerReceiptError",
+        "coding_worker_receipt_v2_owner_changed",
+        "coding_worker_receipt_v2_owner_changed",
+        false
+      ]
+    ],
+    "before": {
+      "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.g00000001.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.jsonl": "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+      "worker-activation-receipts.g00000001.head.json": "9f0b2439678c3de7afc7f68c8393249e16dcba2eb3588f1f30fb08e0b7f1c1b4",
+      "worker-activation-receipts.head.json": "293b81a97514883d151aa37eb93dd90017474cd16a3a5ddaf25d32fbf335ccda",
+      "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8"
+    },
+    "after": {
+      "worker-activation-receipts.jsonl.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.g00000001.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worker-activation-receipts.jsonl": "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+      "worker-activation-receipts.g00000001.head.json": "9f0b2439678c3de7afc7f68c8393249e16dcba2eb3588f1f30fb08e0b7f1c1b4",
+      "worker-activation-receipts.head.json": "293b81a97514883d151aa37eb93dd90017474cd16a3a5ddaf25d32fbf335ccda",
+      "worker-activation-receipts.segments.json": "883d95a65059ad6636ab189e5750cfd51a87e941579031db912eb3aa1c2165b8"
+    },
+    "nonce_calls": 0
+  }
+}

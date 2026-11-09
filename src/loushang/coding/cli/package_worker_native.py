@@ -75,8 +75,8 @@ from loushang.coding.package_product_worker_start_gate_recovery import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
-from loushang.harness.package_product.product_runtime import (
-    PackageProductRuntimeRequestV1,
+from loushang.harness.package_product.product_worker_candidate import (
+    _run_worker_candidate_lifecycle,
 )
 from loushang.harness.plugin_management.operations import (
     PluginManagementCommandV1,
@@ -93,9 +93,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.journal import (
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleRequestV2,
     canonical_json_bytes,
-)
-from loushang.harness.resources.packages.product_contract import (
-    PackageProductLifecycleIntentV1,
 )
 from loushang.harness.resources.packages.product_handoff import (
     package_product_command_identity,
@@ -446,8 +443,7 @@ def _execute(
                 and selected_revision is not None
                 and prior_update.status == "terminal"
                 and prior_update.result is not None
-                and prior_update.result.disposition
-                in {"succeeded", "restart_required"}
+                and prior_update.result.disposition in {"succeeded", "restart_required"}
                 and prior_update.result.transition is not None
                 and prior_update.command.installation_key == selected.installation_key
                 and prior_update.command.expected_inventory_revision
@@ -505,72 +501,33 @@ def _execute(
                     "Coding Worker candidate opt-in must be revoked",
                 )
             session_id = f"worker-candidate-update-{secrets.token_hex(16)}"
-            factory = product.factory_for_session(
+            lifecycle, inventory_revision = _run_worker_candidate_lifecycle(
+                product,
+                binding,
+                product_id="coding",
+                plugin_id=args.plugin_id,
+                operation_id=args.operation_id,
                 session_id=session_id,
-                cwd=product.workspace,
-                runtime_id=session_id,
+                action="update",
+                label="Coding Worker",
+                entrypoint="cli",
+                selected_key=selected.installation_key,
+                update_error_type=CodingWorkerNativeCandidateCommandError,
+                update_error_code="coding_worker_candidate_update_selection_stale",
             )
-            try:
-                runtime = factory.create(
-                    PackageProductRuntimeRequestV1(
-                        product_id="coding",
-                        session_id=session_id,
-                        cwd=str(product.workspace),
-                    )
-                )
-            except BaseException:
-                factory.dispose_unbound_runtime()
-                raise
-            try:
-                runtime.activate()
-                routed = runtime.lifecycle.route(
-                    PackageProductLifecycleIntentV1(
-                        operation_id=args.operation_id,
-                        action="update",
-                        source=binding.source_identity,
-                        scope="project",
-                    ),
-                    entrypoint="cli",
-                )
-                if (
-                    not routed.handled
-                    or routed.record is None
-                    or routed.record.lifecycle != "installed"
-                ):
-                    raise ValueError("Coding Worker candidate update did not settle")
-                updated_snapshot = product.desired_state.snapshot()
-                updated = tuple(
-                    item
-                    for item in updated_snapshot.installations
-                    if item.installation_key == selected.installation_key
-                )
-                if (
-                    len(updated) != 1
-                    or updated[0].selection.package_revision is None
-                    or updated[0].selection.package_revision.package_source_identity
-                    != binding.source_identity
-                    or updated[0].selection.package_revision.package_content_digest
-                    != binding.artifact_digest
-                ):
-                    raise CodingWorkerNativeCandidateCommandError(
-                        "coding_worker_candidate_update_selection_stale",
-                        "Coding Worker candidate update selection changed",
-                    )
-                return {
-                    "candidateUpdate": {
-                        "pluginId": args.plugin_id,
-                        "fromArtifactDigest": args.from_artifact_digest,
-                        "artifactDigest": args.artifact_digest,
-                        "lifecycle": routed.record.lifecycle,
-                        "inventoryRevision": updated_snapshot.inventory_revision,
-                        "alreadyUpdated": False,
-                    },
-                    "productAdmission": "installed",
-                    "productSelection": "not_checked",
-                    "productUse": "not_checked",
-                }
-            finally:
-                runtime.dispose_runtime()
+            return {
+                "candidateUpdate": {
+                    "pluginId": args.plugin_id,
+                    "fromArtifactDigest": args.from_artifact_digest,
+                    "artifactDigest": args.artifact_digest,
+                    "lifecycle": lifecycle,
+                    "inventoryRevision": inventory_revision,
+                    "alreadyUpdated": False,
+                },
+                "productAdmission": "installed",
+                "productSelection": "not_checked",
+                "productUse": "not_checked",
+            }
         if selected_revision is not None and (
             selected_revision.package_source_identity != binding.source_identity
             or selected_revision.package_content_digest != binding.artifact_digest
@@ -591,72 +548,29 @@ def _execute(
                     "productUse": "not_checked",
                 }
             session_id = f"worker-candidate-install-{secrets.token_hex(16)}"
-            factory = product.factory_for_session(
+            lifecycle, inventory_revision = _run_worker_candidate_lifecycle(
+                product,
+                binding,
+                product_id="coding",
+                plugin_id=args.plugin_id,
+                operation_id=args.operation_id,
                 session_id=session_id,
-                cwd=product.workspace,
-                runtime_id=session_id,
+                action="install",
+                label="Coding Worker",
+                entrypoint="cli",
             )
-            try:
-                runtime = factory.create(
-                    PackageProductRuntimeRequestV1(
-                        product_id="coding",
-                        session_id=session_id,
-                        cwd=str(product.workspace),
-                    )
-                )
-            except BaseException:
-                factory.dispose_unbound_runtime()
-                raise
-            try:
-                runtime.activate()
-                routed = runtime.lifecycle.route(
-                    PackageProductLifecycleIntentV1(
-                        operation_id=args.operation_id,
-                        action="install",
-                        source=binding.source_identity,
-                        scope="project",
-                    ),
-                    entrypoint="cli",
-                )
-                if (
-                    not routed.handled
-                    or routed.record is None
-                    or routed.record.lifecycle != "installed"
-                ):
-                    raise ValueError("Coding Worker candidate install did not settle")
-                snapshot = product.desired_state.snapshot()
-                committed = tuple(
-                    item
-                    for item in snapshot.installations
-                    if item.installation_key.plugin_id == args.plugin_id
-                    and item.installation_key.product_id == "coding"
-                    and item.installation_key.installation_scope == "workspace"
-                )
-                if (
-                    len(committed) != 1
-                    or committed[0].selection.package_revision is None
-                    or committed[0].selection.package_revision.package_source_identity
-                    != binding.source_identity
-                    or committed[0].selection.package_revision.package_content_digest
-                    != binding.artifact_digest
-                ):
-                    raise ValueError(
-                        "Coding Worker candidate install selection changed"
-                    )
-                return {
-                    "candidateInstall": {
-                        "pluginId": args.plugin_id,
-                        "artifactDigest": args.artifact_digest,
-                        "lifecycle": routed.record.lifecycle,
-                        "inventoryRevision": snapshot.inventory_revision,
-                        "alreadyInstalled": False,
-                    },
-                    "productAdmission": "installed",
-                    "productSelection": "not_checked",
-                    "productUse": "not_checked",
-                }
-            finally:
-                runtime.dispose_runtime()
+            return {
+                "candidateInstall": {
+                    "pluginId": args.plugin_id,
+                    "artifactDigest": args.artifact_digest,
+                    "lifecycle": lifecycle,
+                    "inventoryRevision": inventory_revision,
+                    "alreadyInstalled": False,
+                },
+                "productAdmission": "installed",
+                "productSelection": "not_checked",
+                "productUse": "not_checked",
+            }
         if args.action == "candidate-remove":
             current_opt_in = CodingWorkerProductOptInOwner(product).current(
                 args.plugin_id

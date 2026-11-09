@@ -372,12 +372,15 @@ def test_head_anchored_rollback_discards_partial_tail_only(tmp_path: Path) -> No
                 expected=committed + b'{"journalRevision":9',
                 keep_bytes=len(committed),
             )
-        assert rollback_coding_worker_uncommitted_active_tail(
-            rooted,
-            stem="worker-start-gates",
-            stream_id="worker-start-gates",
-            max_segment_bytes=1024,
-        ) == history
+        assert (
+            rollback_coding_worker_uncommitted_active_tail(
+                rooted,
+                stem="worker-start-gates",
+                stream_id="worker-start-gates",
+                max_segment_bytes=1024,
+            )
+            == history
+        )
         assert _read(rooted) == history
         with pytest.raises(CodingWorkerHistorySegmentError) as absent:
             rollback_coding_worker_uncommitted_active_tail(
@@ -422,10 +425,136 @@ def test_rollback_interruption_reopens_without_publishing_tail(
             with pytest.raises(CodingWorkerHistorySegmentError) as pending:
                 _read(rooted)
             assert pending.value.code == "coding_worker_segment_head_changed"
-            assert rollback_coding_worker_uncommitted_active_tail(
+            assert (
+                rollback_coding_worker_uncommitted_active_tail(
+                    rooted,
+                    stem="worker-start-gates",
+                    stream_id="worker-start-gates",
+                    max_segment_bytes=1024,
+                ).active_raw
+                == committed
+            )
+        assert _read(rooted).active_raw == committed
+
+
+def test_shared_append_reopens_sealed_generations(tmp_path: Path) -> None:
+    import json
+    from dataclasses import replace
+
+    from loushang.coding.package_product_worker_history_segments import (
+        append_coding_worker_active_record,
+    )
+    from loushang.harness.journal import (
+        DURABLE_LOCKED_JOURNAL,
+        SORTED_UNICODE_JSONL_FORMAT,
+        FunctionalJournalRecordCodec,
+        append_jsonl_record,
+    )
+
+    codec = FunctionalJournalRecordCodec(lambda value: value, lambda value: dict(value))
+    root = tmp_path / "shared"
+    for revision in range(1, 4):
+        with _bound(root) as rooted:
+            history = _read(rooted)
+            record = {"journalRevision": revision}
+            line = (
+                json.dumps(record, ensure_ascii=False, sort_keys=True).encode() + b"\n"
+            )
+
+            def append(name: str, current_record=record) -> None:
+                append_jsonl_record(
+                    root / name,
+                    current_record,
+                    record_codec=codec,
+                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                    durability=replace(DURABLE_LOCKED_JOURNAL, locking=False),
+                    bound_file=rooted.sibling(name),
+                )
+
+            append_coding_worker_active_record(
                 rooted,
                 stem="worker-start-gates",
                 stream_id="worker-start-gates",
-                max_segment_bytes=1024,
-            ).active_raw == committed
-        assert _read(rooted).active_raw == committed
+                history=history,
+                last_revision=revision - 1,
+                line=line,
+                seal_required=bool(history.active_raw),
+                seal_error=lambda exc: RuntimeError(exc.code),
+                append=append,
+            )
+    with _bound(root) as rooted:
+        history = _read(rooted)
+        assert history.active_generation == 2
+        assert history.last_sealed_revision == 2
+        assert history.segments == tuple(
+            f'{{"journalRevision": {revision}}}\n'.encode() for revision in range(1, 4)
+        )
+
+
+@pytest.mark.parametrize("failure", ("after_write", "encoding_drift"))
+def test_shared_append_keeps_unknown_write_head_debt(
+    tmp_path: Path, failure: str
+) -> None:
+    from dataclasses import replace
+
+    from loushang.coding.package_product_worker_history_segments import (
+        append_coding_worker_active_record,
+    )
+    from loushang.harness.journal import (
+        DURABLE_LOCKED_JOURNAL,
+        SORTED_UNICODE_JSONL_FORMAT,
+        FunctionalJournalRecordCodec,
+        append_jsonl_record,
+    )
+
+    root = tmp_path / "debt"
+    with _bound(root) as rooted:
+        history = _read(rooted)
+        old_head = rooted.sibling("worker-start-gates.head.json").read_bytes(
+            max_bytes=512
+        )
+        record = {"journalRevision": 1}
+        expected_line = b'{"journalRevision": 1}\n'
+        actual_record = (
+            {"journalRevision": 2} if failure == "encoding_drift" else record
+        )
+        codec = FunctionalJournalRecordCodec(
+            lambda value: actual_record, lambda value: dict(value)
+        )
+
+        def append(name: str) -> None:
+            append_jsonl_record(
+                root / name,
+                record,
+                record_codec=codec,
+                format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                durability=replace(DURABLE_LOCKED_JOURNAL, locking=False),
+                bound_file=rooted.sibling(name),
+            )
+            if failure == "after_write":
+                raise OSError("completed write; caller result unavailable")
+
+        error = OSError if failure == "after_write" else CodingWorkerHistorySegmentError
+        with pytest.raises(error):
+            append_coding_worker_active_record(
+                rooted,
+                stem="worker-start-gates",
+                stream_id="worker-start-gates",
+                history=history,
+                last_revision=0,
+                line=expected_line,
+                seal_required=False,
+                seal_error=lambda exc: RuntimeError(exc.code),
+                append=append,
+            )
+        assert rooted.read_bytes(max_bytes=1024) == (
+            b'{"journalRevision": 2}\n'
+            if failure == "encoding_drift"
+            else expected_line
+        )
+        assert (
+            rooted.sibling("worker-start-gates.head.json").read_bytes(max_bytes=512)
+            == old_head
+        )
+        with pytest.raises(CodingWorkerHistorySegmentError):
+            _read(rooted)

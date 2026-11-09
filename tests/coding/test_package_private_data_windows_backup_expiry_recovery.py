@@ -11,6 +11,7 @@ from typing import cast
 import pytest
 
 import loushang.coding.package_private_data_windows_backup_expiry_recovery as recovery
+import loushang.harness.resources.packages._private_tree_windows as native_tree
 from loushang.coding._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from loushang.coding.package_private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryPlanV1,
@@ -113,7 +114,7 @@ def test_windows_expiry_recovery_checks_restored_bytes_without_archive(
     monkeypatch.setattr(
         recovery, "coding_arch_installation_private_data_root", lambda layout, key: root
     )
-    monkeypatch.setattr(recovery, "WindowsPrivateDirectoryAcl", FakeAcl)
+    monkeypatch.setattr(native_tree, "WindowsPrivateDirectoryAcl", FakeAcl)
     monkeypatch.setattr(
         recovery,
         "CodingWindowsArchPrivateDataDeletionTransaction",
@@ -126,9 +127,9 @@ def test_windows_expiry_recovery_checks_restored_bytes_without_archive(
         "inspect_windows_product_private_directory_identity",
         lambda path: (1, 4),
     )
-    native_open_directory = recovery.open_windows_directory
+    native_open_directory = native_tree.open_windows_directory
     monkeypatch.setattr(
-        recovery,
+        native_tree,
         "open_windows_directory",
         lambda path, **kwargs: (
             native_open_directory(path, **kwargs)
@@ -136,9 +137,9 @@ def test_windows_expiry_recovery_checks_restored_bytes_without_archive(
             else os.open(path, os.O_RDONLY)
         ),
     )
-    monkeypatch.setattr(recovery, "_directory_identity", lambda descriptor: (1, 4))
+    monkeypatch.setattr(native_tree.PrivateWindowsTreeIO, "directory_identity", lambda self, descriptor: (1, 4))
     monkeypatch.setattr(
-        recovery, "windows_listdir_at", lambda descriptor: ("restored",)
+        native_tree, "windows_listdir_at", lambda descriptor: ("restored",)
     )
     monkeypatch.setattr(
         recovery,

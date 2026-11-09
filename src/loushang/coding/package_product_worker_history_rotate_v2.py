@@ -196,8 +196,7 @@ def seal_coding_product_worker_v1_history_for_v2(
                 and supervisor_snapshot.segment_digests == (sha256(b"").hexdigest(),)
             )
             with product.pinned_state_root_gc_read() as root_fd:
-                file_io = RootedFileIO(product.state_root, root_fd)
-                try:
+                with RootedFileIO(product.state_root, root_fd) as file_io:
                     with file_io.bind(
                         product.state_root / PRODUCT_OWNER_INDEX_NAME, durable=True
                     ) as rooted:
@@ -205,8 +204,6 @@ def seal_coding_product_worker_v1_history_for_v2(
                             rooted,
                             empty_supervisor_checkpointed=empty_supervisor_checkpointed,
                         )
-                finally:
-                    file_io.cleanup()
             product.assert_root_gc_authority_current()
             return result
 

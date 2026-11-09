@@ -1,0 +1,1259 @@
+{
+  "cases": {
+    "complete_replays": {
+      "result": [
+        {
+          "actorId": "operator:test",
+          "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+          "confirmationVersion": 1,
+          "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+          "policyRevision": "test:1"
+        },
+        {
+          "actorId": "operator:test",
+          "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+          "confirmationVersion": 1,
+          "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+          "policyRevision": "test:1"
+        },
+        {
+          "archive": {
+            "files": {
+              "members": [],
+              "rootIdentity": [
+                1,
+                2,
+                16832,
+                0,
+                1
+              ],
+              "rootPathDigest": "71abb76468108d52e7b39422c650bbcc3f8c0d62f2abf783dede875f8e41c1e8"
+            },
+            "manifest": {
+              "contentSha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+              "identity": [
+                1,
+                4,
+                33152,
+                1,
+                1
+              ],
+              "kind": "file",
+              "relativePath": "manifest.json"
+            },
+            "rootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "rootPathDigest": "0eb3e36bfb24dcd9bb1d1bece1531216b59539a8fde17ee80224af0653c92aa3"
+          },
+          "confirmation": {
+            "actorId": "operator:test",
+            "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+            "confirmationVersion": 1,
+            "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+            "policyRevision": "test:1"
+          },
+          "phase": "started",
+          "plan": {
+            "archiveRootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "archiveTargetId": "present:5bcd67d79453a7d1f3b69b6642d06b26f4e8aa603a337b87ea048be6557db66f",
+            "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "backupReceiptId": "arch-backup:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "confirmationId": "arch-restore-confirm:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "desiredInventoryRevision": 3,
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "planVersion": 1,
+            "restoreCompletionDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "restoredTargetId": "present:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "sourceTargetId": "present:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "receipt": null,
+          "recordVersion": 1,
+          "revision": 2
+        },
+        {
+          "archive": {
+            "files": {
+              "members": [],
+              "rootIdentity": [
+                1,
+                2,
+                16832,
+                0,
+                1
+              ],
+              "rootPathDigest": "71abb76468108d52e7b39422c650bbcc3f8c0d62f2abf783dede875f8e41c1e8"
+            },
+            "manifest": {
+              "contentSha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+              "identity": [
+                1,
+                4,
+                33152,
+                1,
+                1
+              ],
+              "kind": "file",
+              "relativePath": "manifest.json"
+            },
+            "rootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "rootPathDigest": "0eb3e36bfb24dcd9bb1d1bece1531216b59539a8fde17ee80224af0653c92aa3"
+          },
+          "confirmation": {
+            "actorId": "operator:test",
+            "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+            "confirmationVersion": 1,
+            "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+            "policyRevision": "test:1"
+          },
+          "phase": "started",
+          "plan": {
+            "archiveRootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "archiveTargetId": "present:5bcd67d79453a7d1f3b69b6642d06b26f4e8aa603a337b87ea048be6557db66f",
+            "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "backupReceiptId": "arch-backup:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "confirmationId": "arch-restore-confirm:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "desiredInventoryRevision": 3,
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "planVersion": 1,
+            "restoreCompletionDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "restoredTargetId": "present:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "sourceTargetId": "present:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "receipt": null,
+          "recordVersion": 1,
+          "revision": 2
+        },
+        {
+          "archive": {
+            "files": {
+              "members": [],
+              "rootIdentity": [
+                1,
+                2,
+                16832,
+                0,
+                1
+              ],
+              "rootPathDigest": "71abb76468108d52e7b39422c650bbcc3f8c0d62f2abf783dede875f8e41c1e8"
+            },
+            "manifest": {
+              "contentSha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+              "identity": [
+                1,
+                4,
+                33152,
+                1,
+                1
+              ],
+              "kind": "file",
+              "relativePath": "manifest.json"
+            },
+            "rootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "rootPathDigest": "0eb3e36bfb24dcd9bb1d1bece1531216b59539a8fde17ee80224af0653c92aa3"
+          },
+          "confirmation": {
+            "actorId": "operator:test",
+            "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+            "confirmationVersion": 1,
+            "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+            "policyRevision": "test:1"
+          },
+          "phase": "renamed",
+          "plan": {
+            "archiveRootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "archiveTargetId": "present:5bcd67d79453a7d1f3b69b6642d06b26f4e8aa603a337b87ea048be6557db66f",
+            "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "backupReceiptId": "arch-backup:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "confirmationId": "arch-restore-confirm:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "desiredInventoryRevision": 3,
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "planVersion": 1,
+            "restoreCompletionDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "restoredTargetId": "present:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "sourceTargetId": "present:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "receipt": null,
+          "recordVersion": 1,
+          "revision": 3
+        },
+        {
+          "archive": {
+            "files": {
+              "members": [],
+              "rootIdentity": [
+                1,
+                2,
+                16832,
+                0,
+                1
+              ],
+              "rootPathDigest": "71abb76468108d52e7b39422c650bbcc3f8c0d62f2abf783dede875f8e41c1e8"
+            },
+            "manifest": {
+              "contentSha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+              "identity": [
+                1,
+                4,
+                33152,
+                1,
+                1
+              ],
+              "kind": "file",
+              "relativePath": "manifest.json"
+            },
+            "rootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "rootPathDigest": "0eb3e36bfb24dcd9bb1d1bece1531216b59539a8fde17ee80224af0653c92aa3"
+          },
+          "confirmation": {
+            "actorId": "operator:test",
+            "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+            "confirmationVersion": 1,
+            "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+            "policyRevision": "test:1"
+          },
+          "phase": "renamed",
+          "plan": {
+            "archiveRootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "archiveTargetId": "present:5bcd67d79453a7d1f3b69b6642d06b26f4e8aa603a337b87ea048be6557db66f",
+            "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "backupReceiptId": "arch-backup:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "confirmationId": "arch-restore-confirm:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "desiredInventoryRevision": 3,
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "planVersion": 1,
+            "restoreCompletionDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "restoredTargetId": "present:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "sourceTargetId": "present:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "receipt": null,
+          "recordVersion": 1,
+          "revision": 3
+        },
+        {
+          "archive": {
+            "files": {
+              "members": [],
+              "rootIdentity": [
+                1,
+                2,
+                16832,
+                0,
+                1
+              ],
+              "rootPathDigest": "71abb76468108d52e7b39422c650bbcc3f8c0d62f2abf783dede875f8e41c1e8"
+            },
+            "manifest": {
+              "contentSha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+              "identity": [
+                1,
+                4,
+                33152,
+                1,
+                1
+              ],
+              "kind": "file",
+              "relativePath": "manifest.json"
+            },
+            "rootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "rootPathDigest": "0eb3e36bfb24dcd9bb1d1bece1531216b59539a8fde17ee80224af0653c92aa3"
+          },
+          "confirmation": {
+            "actorId": "operator:test",
+            "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+            "confirmationVersion": 1,
+            "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+            "policyRevision": "test:1"
+          },
+          "phase": "completed",
+          "plan": {
+            "archiveRootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "archiveTargetId": "present:5bcd67d79453a7d1f3b69b6642d06b26f4e8aa603a337b87ea048be6557db66f",
+            "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "backupReceiptId": "arch-backup:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "confirmationId": "arch-restore-confirm:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "desiredInventoryRevision": 3,
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "planVersion": 1,
+            "restoreCompletionDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "restoredTargetId": "present:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "sourceTargetId": "present:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "receipt": {
+            "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+            "receiptId": "arch-backup-expiry:a7a23e1deaa8ea1cafe23ec3875635938a09ec30effb73234342cad78df84765",
+            "receiptVersion": 1
+          },
+          "recordVersion": 1,
+          "revision": 4
+        },
+        {
+          "archive": {
+            "files": {
+              "members": [],
+              "rootIdentity": [
+                1,
+                2,
+                16832,
+                0,
+                1
+              ],
+              "rootPathDigest": "71abb76468108d52e7b39422c650bbcc3f8c0d62f2abf783dede875f8e41c1e8"
+            },
+            "manifest": {
+              "contentSha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+              "identity": [
+                1,
+                4,
+                33152,
+                1,
+                1
+              ],
+              "kind": "file",
+              "relativePath": "manifest.json"
+            },
+            "rootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "rootPathDigest": "0eb3e36bfb24dcd9bb1d1bece1531216b59539a8fde17ee80224af0653c92aa3"
+          },
+          "confirmation": {
+            "actorId": "operator:test",
+            "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+            "confirmationVersion": 1,
+            "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+            "policyRevision": "test:1"
+          },
+          "phase": "completed",
+          "plan": {
+            "archiveRootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "archiveTargetId": "present:5bcd67d79453a7d1f3b69b6642d06b26f4e8aa603a337b87ea048be6557db66f",
+            "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "backupReceiptId": "arch-backup:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "confirmationId": "arch-restore-confirm:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "desiredInventoryRevision": 3,
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "planVersion": 1,
+            "restoreCompletionDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "restoredTargetId": "present:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "sourceTargetId": "present:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "receipt": {
+            "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+            "receiptId": "arch-backup-expiry:a7a23e1deaa8ea1cafe23ec3875635938a09ec30effb73234342cad78df84765",
+            "receiptVersion": 1
+          },
+          "recordVersion": 1,
+          "revision": 4
+        },
+        {
+          "actorId": "operator:test",
+          "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+          "confirmationVersion": 1,
+          "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+          "policyRevision": "test:1"
+        }
+      ],
+      "trace": [
+        "preview",
+        "active",
+        [
+          "list",
+          7
+        ],
+        "active",
+        [
+          "write",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216,
+          "7b2261726368697665223a6e756c6c2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6e6669726d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a317d0a"
+        ],
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        "preview",
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        "preview",
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        "active",
+        [
+          "write",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216,
+          "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a2273746172746564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a327d0a"
+        ],
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ],
+        "preview",
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ],
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ],
+        "active",
+        [
+          "write",
+          "/unused-product/arch-backup-expiry-00000003.json",
+          16777216,
+          "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a2272656e616d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a337d0a"
+        ],
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000003.json",
+          16777216
+        ],
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000003.json",
+          16777216
+        ],
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000003.json",
+          16777216
+        ],
+        "active",
+        [
+          "write",
+          "/unused-product/arch-backup-expiry-00000004.json",
+          16777216,
+          "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6d706c65746564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a7b226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22726563656970744964223a22617263682d6261636b75702d6578706972793a61376132336531646561613865613163616665323365633338373536333539333861303965633330656666623733323334333432636164373864663834373635222c227265636569707456657273696f6e223a317d2c227265636f726456657273696f6e223a312c227265766973696f6e223a347d0a"
+        ],
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000003.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000004.json",
+          16777216
+        ],
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000003.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000004.json",
+          16777216
+        ],
+        "preview",
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000003.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000004.json",
+          16777216
+        ]
+      ],
+      "saved": {
+        "arch-backup-expiry-00000001.json": "7b2261726368697665223a6e756c6c2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6e6669726d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a317d0a",
+        "arch-backup-expiry-00000002.json": "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a2273746172746564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a327d0a",
+        "arch-backup-expiry-00000003.json": "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a2272656e616d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a337d0a",
+        "arch-backup-expiry-00000004.json": "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6d706c65746564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a7b226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22726563656970744964223a22617263682d6261636b75702d6578706972793a61376132336531646561613865613163616665323365633338373536333539333861303965633330656666623733323334333432636164373864663834373635222c227265636569707456657273696f6e223a317d2c227265636f726456657273696f6e223a312c227265766973696f6e223a347d0a"
+      }
+    },
+    "other_actor": {
+      "result": [
+        {
+          "type": "ValueError",
+          "message": "Another Windows Coding Arch backup expiry is unfinished"
+        }
+      ],
+      "trace": [
+        "preview",
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ]
+      ],
+      "saved": {
+        "arch-backup-expiry-00000001.json": "7b2261726368697665223a6e756c6c2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6e6669726d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a317d0a"
+      }
+    },
+    "confirmed_stage": {
+      "result": [
+        {
+          "type": "ValueError",
+          "message": "Windows Coding Arch backup expiry event needs recovery"
+        }
+      ],
+      "trace": [
+        "preview",
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ]
+      ],
+      "saved": {
+        "arch-backup-expiry-00000001.json": "7b2261726368697665223a6e756c6c2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6e6669726d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a317d0a",
+        "arch-backup-expiry-00000002.json.stage": "70656e64696e67"
+      }
+    },
+    "completed_stage": {
+      "result": [
+        {
+          "type": "ValueError",
+          "message": "Windows Coding Arch backup expiry already completed"
+        }
+      ],
+      "trace": [
+        "preview",
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000003.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000004.json",
+          16777216
+        ]
+      ],
+      "saved": {
+        "arch-backup-expiry-00000001.json": "7b2261726368697665223a6e756c6c2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6e6669726d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a317d0a",
+        "arch-backup-expiry-00000002.json": "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a2273746172746564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a327d0a",
+        "arch-backup-expiry-00000003.json": "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a2272656e616d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a337d0a",
+        "arch-backup-expiry-00000004.json": "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6d706c65746564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a7b226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22726563656970744964223a22617263682d6261636b75702d6578706972793a61376132336531646561613865613163616665323365633338373536333539333861303965633330656666623733323334333432636164373864663834373635222c227265636569707456657273696f6e223a317d2c227265636f726456657273696f6e223a312c227265766973696f6e223a347d0a",
+        "arch-backup-expiry-00000005.json.stage": "70656e64696e67"
+      }
+    },
+    "begin_stage": {
+      "result": [
+        {
+          "type": "ValueError",
+          "message": "Windows Coding Arch backup expiry archive changed"
+        }
+      ],
+      "trace": [
+        "preview",
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ]
+      ],
+      "saved": {
+        "arch-backup-expiry-00000001.json": "7b2261726368697665223a6e756c6c2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6e6669726d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a317d0a",
+        "arch-backup-expiry-00000002.json": "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a2273746172746564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a327d0a",
+        "arch-backup-expiry-00000003.json.stage": "70656e64696e67"
+      }
+    },
+    "renamed_stage": {
+      "result": [
+        {
+          "type": "ValueError",
+          "message": "Windows Coding Arch backup expiry event needs recovery"
+        }
+      ],
+      "trace": [
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000003.json",
+          16777216
+        ]
+      ],
+      "saved": {
+        "arch-backup-expiry-00000001.json": "7b2261726368697665223a6e756c6c2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6e6669726d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a317d0a",
+        "arch-backup-expiry-00000002.json": "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a2273746172746564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a327d0a",
+        "arch-backup-expiry-00000003.json": "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a2272656e616d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a337d0a",
+        "arch-backup-expiry-00000004.json.stage": "70656e64696e67"
+      }
+    },
+    "confirm_write_before": {
+      "result": [
+        {
+          "type": "OSError",
+          "message": "publication interrupted before"
+        }
+      ],
+      "trace": [
+        "preview",
+        "active",
+        [
+          "list",
+          7
+        ],
+        "active",
+        [
+          "write",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216,
+          "7b2261726368697665223a6e756c6c2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6e6669726d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a317d0a"
+        ]
+      ],
+      "saved": {}
+    },
+    "confirm_write_after": {
+      "result": [
+        {
+          "type": "OSError",
+          "message": "publication interrupted after"
+        }
+      ],
+      "trace": [
+        "preview",
+        "active",
+        [
+          "list",
+          7
+        ],
+        "active",
+        [
+          "write",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216,
+          "7b2261726368697665223a6e756c6c2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6e6669726d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a317d0a"
+        ]
+      ],
+      "saved": {
+        "arch-backup-expiry-00000001.json": "7b2261726368697665223a6e756c6c2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6e6669726d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a317d0a"
+      }
+    },
+    "begin_bool_version": {
+      "result": [
+        {
+          "archive": {
+            "files": {
+              "members": [],
+              "rootIdentity": [
+                1,
+                2,
+                16832,
+                0,
+                1
+              ],
+              "rootPathDigest": "71abb76468108d52e7b39422c650bbcc3f8c0d62f2abf783dede875f8e41c1e8"
+            },
+            "manifest": {
+              "contentSha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+              "identity": [
+                1,
+                4,
+                33152,
+                1,
+                1
+              ],
+              "kind": "file",
+              "relativePath": "manifest.json"
+            },
+            "rootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "rootPathDigest": "0eb3e36bfb24dcd9bb1d1bece1531216b59539a8fde17ee80224af0653c92aa3"
+          },
+          "confirmation": {
+            "actorId": "operator:test",
+            "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+            "confirmationVersion": 1,
+            "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+            "policyRevision": "test:1"
+          },
+          "phase": "started",
+          "plan": {
+            "archiveRootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "archiveTargetId": "present:5bcd67d79453a7d1f3b69b6642d06b26f4e8aa603a337b87ea048be6557db66f",
+            "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "backupReceiptId": "arch-backup:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "confirmationId": "arch-restore-confirm:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "desiredInventoryRevision": 3,
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "planVersion": 1,
+            "restoreCompletionDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "restoredTargetId": "present:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "sourceTargetId": "present:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "receipt": null,
+          "recordVersion": 1,
+          "revision": 2
+        }
+      ],
+      "trace": [
+        "preview",
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        "active",
+        [
+          "write",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216,
+          "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a2273746172746564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a327d0a"
+        ],
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ]
+      ],
+      "saved": {
+        "arch-backup-expiry-00000001.json": "7b2261726368697665223a6e756c6c2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6e6669726d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a747275652c227265766973696f6e223a317d0a",
+        "arch-backup-expiry-00000002.json": "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a2273746172746564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a327d0a"
+      }
+    },
+    "advance_float_version": {
+      "result": [
+        {
+          "archive": {
+            "files": {
+              "members": [],
+              "rootIdentity": [
+                1,
+                2,
+                16832,
+                0,
+                1
+              ],
+              "rootPathDigest": "71abb76468108d52e7b39422c650bbcc3f8c0d62f2abf783dede875f8e41c1e8"
+            },
+            "manifest": {
+              "contentSha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+              "identity": [
+                1,
+                4,
+                33152,
+                1,
+                1
+              ],
+              "kind": "file",
+              "relativePath": "manifest.json"
+            },
+            "rootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "rootPathDigest": "0eb3e36bfb24dcd9bb1d1bece1531216b59539a8fde17ee80224af0653c92aa3"
+          },
+          "confirmation": {
+            "actorId": "operator:test",
+            "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+            "confirmationVersion": 1,
+            "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+            "policyRevision": "test:1"
+          },
+          "phase": "completed",
+          "plan": {
+            "archiveRootIdentity": [
+              1,
+              3,
+              16832,
+              0,
+              1
+            ],
+            "archiveTargetId": "present:5bcd67d79453a7d1f3b69b6642d06b26f4e8aa603a337b87ea048be6557db66f",
+            "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "backupReceiptId": "arch-backup:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "confirmationId": "arch-restore-confirm:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "desiredInventoryRevision": 3,
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "planVersion": 1,
+            "restoreCompletionDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "restoredTargetId": "present:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "sourceTargetId": "present:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "receipt": {
+            "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "confirmationId": "arch-backup-expiry-confirm:5d3ea6855160c510eb0970196bb2076360780b5959a2b3dc178cf2bd3e5b62ba",
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "planFingerprint": "c333e0b4c63d4e8e2269fdc34d2d8c005afed6f9586d40225e046017c1d1a946",
+            "receiptId": "arch-backup-expiry:a7a23e1deaa8ea1cafe23ec3875635938a09ec30effb73234342cad78df84765",
+            "receiptVersion": 1
+          },
+          "recordVersion": 1,
+          "revision": 4
+        }
+      ],
+      "trace": [
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000003.json",
+          16777216
+        ],
+        "active",
+        [
+          "write",
+          "/unused-product/arch-backup-expiry-00000004.json",
+          16777216,
+          "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6d706c65746564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a7b226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22726563656970744964223a22617263682d6261636b75702d6578706972793a61376132336531646561613865613163616665323365633338373536333539333861303965633330656666623733323334333432636164373864663834373635222c227265636569707456657273696f6e223a317d2c227265636f726456657273696f6e223a312c227265766973696f6e223a347d0a"
+        ],
+        "active",
+        [
+          "list",
+          7
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000001.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000002.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000003.json",
+          16777216
+        ],
+        [
+          "read",
+          "/unused-product/arch-backup-expiry-00000004.json",
+          16777216
+        ]
+      ],
+      "saved": {
+        "arch-backup-expiry-00000001.json": "7b2261726368697665223a6e756c6c2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6e6669726d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a317d0a",
+        "arch-backup-expiry-00000002.json": "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a2273746172746564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a327d0a",
+        "arch-backup-expiry-00000003.json": "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a2272656e616d6564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a6e756c6c2c227265636f726456657273696f6e223a312c227265766973696f6e223a337d0a",
+        "arch-backup-expiry-00000004.json": "7b2261726368697665223a7b2266696c6573223a7b226d656d62657273223a5b5d2c22726f6f744964656e74697479223a5b312c322c31363833322c302c315d2c22726f6f7450617468446967657374223a2237316162623736343638313038643532653762333934323263363530626263633366386330643632663261626637383364656465383735663865343163316538227d2c226d616e6966657374223a7b22636f6e74656e74536861323536223a2232643731313634326237323662303434303136323763613966626163333266356338353330666231393033636334646230323235383731373932316134383831222c226964656e74697479223a5b312c342c33333135322c312c315d2c226b696e64223a2266696c65222c2272656c617469766550617468223a226d616e69666573742e6a736f6e227d2c22726f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22726f6f7450617468446967657374223a2230656233653336626662323464636439626231643162656365313533313231366235393533396138666465313765653830323234616630363533633932616133227d2c22636f6e6669726d6174696f6e223a7b226163746f724964223a226f70657261746f723a74657374222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22636f6e6669726d6174696f6e56657273696f6e223a312c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22706f6c6963795265766973696f6e223a22746573743a31227d2c227068617365223a22636f6d706c65746564222c22706c616e223a7b2261726368697665526f6f744964656e74697479223a5b312c332c31363833322c302c315d2c22617263686976655461726765744964223a2270726573656e743a35626364363764373934353361376431663362363962363634326430366232366634653861613630336133333762383765613034386265363535376462363666222c226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226261636b7570526563656970744964223a22617263682d6261636b75703a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d726573746f72652d636f6e6669726d3a64646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2264657369726564496e76656e746f72795265766973696f6e223a332c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e56657273696f6e223a312c22726573746f7265436f6d706c6574696f6e446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c22726573746f7265645461726765744964223a2270726573656e743a66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22736f757263655461726765744964223a2270726573656e743a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2272656365697074223a7b226261636b75704964223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22636f6e6669726d6174696f6e4964223a22617263682d6261636b75702d6578706972792d636f6e6669726d3a35643365613638353531363063353130656230393730313936626232303736333630373830623539353961326233646331373863663262643365356236326261222c22696e7374616c6c6174696f6e4b6579223a7b22696e7374616c6c6174696f6e53636f7065223a22776f726b7370616365222c22706c7567696e4964223a22636f64696e672e617263682e64656661756c74222c2270726f647563744964223a22636f64696e67222c22736368656d6156657273696f6e223a312c2273636f70654964223a22776f726b73706163653a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d2c22706c616e46696e6765727072696e74223a2263333333653062346336336434653865323236396664633334643264386330303561666564366639353836643430323235653034363031376331643161393436222c22726563656970744964223a22617263682d6261636b75702d6578706972793a61376132336531646561613865613163616665323365633338373536333539333861303965633330656666623733323334333432636164373864663834373635222c227265636569707456657273696f6e223a317d2c227265636f726456657273696f6e223a312c227265766973696f6e223a347d0a"
+      }
+    },
+    "closed_before_bad_names": {
+      "result": [
+        {
+          "type": "RuntimeError",
+          "message": "closed original scope"
+        }
+      ],
+      "trace": [
+        "active"
+      ],
+      "saved": {
+        "arch-backup-expiry-invalid": "626164"
+      }
+    },
+    "invalid_before_preview": {
+      "result": [
+        {
+          "type": "ValueError",
+          "message": "Windows Coding Arch backup expiry plan is invalid"
+        }
+      ],
+      "trace": [],
+      "saved": {}
+    },
+    "preview_before_history": {
+      "result": [
+        {
+          "type": "ValueError",
+          "message": "Windows Coding Arch backup expiry plan changed"
+        }
+      ],
+      "trace": [
+        "preview"
+      ],
+      "saved": {
+        "arch-backup-expiry-invalid": "626164"
+      }
+    }
+  },
+  "api": {
+    "fields": [
+      "layout",
+      "product",
+      "restore"
+    ],
+    "slots": [
+      "layout",
+      "product",
+      "restore"
+    ],
+    "signature": "(layout: 'CodingPluginLifecycleStateLayout', product: 'WindowsLocalWheelProductSessionOwner', restore: 'CodingWindowsArchPrivateDataRestoreTransaction') -> None"
+  }
+}

@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -61,54 +65,16 @@ class CodingArchPrivateDataBackupExpiryPlanV1:
         ).hexdigest()
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "archiveRootIdentity": list(self.archive_root_identity),
-            "archiveTargetId": self.archive_target_id,
-            "backupId": self.backup_id,
-            "backupReceiptId": self.backup_receipt_id,
-            "confirmationId": self.confirmation_id,
-            "desiredInventoryRevision": self.desired_inventory_revision,
-            "installationKey": self.installation_key.to_dict(),
-            "planVersion": self.plan_version,
-            "restoreCompletionDigest": self.restore_completion_digest,
-            "restoredTargetId": self.restored_target_id,
-            "sourceTargetId": self.source_target_id,
-        }
+        return _SCHEMA_BACKUP_EXPIRY_PLAN_V1.encode(self, sort_keys=True)
 
     @classmethod
     def from_dict(cls, value: object) -> CodingArchPrivateDataBackupExpiryPlanV1:
-        if type(value) is not dict or set(value) != {
-            "archiveRootIdentity",
-            "archiveTargetId",
-            "backupId",
-            "backupReceiptId",
-            "confirmationId",
-            "desiredInventoryRevision",
-            "installationKey",
-            "planVersion",
-            "restoreCompletionDigest",
-            "restoredTargetId",
-            "sourceTargetId",
-        }:
+        if type(value) is not dict or set(value) != _SCHEMA_BACKUP_EXPIRY_PLAN_V1.keys:
             raise ValueError("Coding Arch backup expiry plan fields are invalid")
         identity = value["archiveRootIdentity"]
         if type(identity) is not list:
             raise ValueError("Coding Arch backup expiry identity is invalid")
-        return cls(
-            installation_key=PluginInstallationKeyV1.from_dict(
-                value["installationKey"]
-            ),
-            backup_id=value["backupId"],
-            backup_receipt_id=value["backupReceiptId"],
-            source_target_id=value["sourceTargetId"],
-            confirmation_id=value["confirmationId"],
-            restore_completion_digest=value["restoreCompletionDigest"],
-            restored_target_id=value["restoredTargetId"],
-            desired_inventory_revision=value["desiredInventoryRevision"],
-            archive_root_identity=tuple(identity),
-            archive_target_id=value["archiveTargetId"],
-            plan_version=value["planVersion"],
-        )
+        return _SCHEMA_BACKUP_EXPIRY_PLAN_V1.decode(cls, value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,35 +116,20 @@ class CodingArchPrivateDataBackupExpiryConfirmationV1:
         )
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "actorId": self.actor_id,
-            "confirmationId": self.confirmation_id,
-            "confirmationVersion": self.confirmation_version,
-            "planFingerprint": self.plan_fingerprint,
-            "policyRevision": self.policy_revision,
-        }
+        return _SCHEMA_BACKUP_EXPIRY_CONFIRMATION_V1.encode(self, sort_keys=True)
 
     @classmethod
     def from_dict(
         cls, value: object
     ) -> CodingArchPrivateDataBackupExpiryConfirmationV1:
-        if type(value) is not dict or set(value) != {
-            "actorId",
-            "confirmationId",
-            "confirmationVersion",
-            "planFingerprint",
-            "policyRevision",
-        }:
+        if (
+            type(value) is not dict
+            or set(value) != _SCHEMA_BACKUP_EXPIRY_CONFIRMATION_V1.keys
+        ):
             raise ValueError(
                 "Coding Arch backup expiry confirmation fields are invalid"
             )
-        return cls(
-            plan_fingerprint=value["planFingerprint"],
-            actor_id=value["actorId"],
-            policy_revision=value["policyRevision"],
-            confirmation_id=value["confirmationId"],
-            confirmation_version=value["confirmationVersion"],
-        )
+        return _SCHEMA_BACKUP_EXPIRY_CONFIRMATION_V1.decode(cls, value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,36 +170,16 @@ class CodingArchPrivateDataBackupExpiryReceiptV1:
         )
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "backupId": self.backup_id,
-            "confirmationId": self.confirmation_id,
-            "installationKey": self.installation_key.to_dict(),
-            "planFingerprint": self.plan_fingerprint,
-            "receiptId": self.receipt_id,
-            "receiptVersion": self.receipt_version,
-        }
+        return _SCHEMA_BACKUP_EXPIRY_RECEIPT_V1.encode(self, sort_keys=True)
 
     @classmethod
     def from_dict(cls, value: object) -> CodingArchPrivateDataBackupExpiryReceiptV1:
-        if type(value) is not dict or set(value) != {
-            "backupId",
-            "confirmationId",
-            "installationKey",
-            "planFingerprint",
-            "receiptId",
-            "receiptVersion",
-        }:
+        if (
+            type(value) is not dict
+            or set(value) != _SCHEMA_BACKUP_EXPIRY_RECEIPT_V1.keys
+        ):
             raise ValueError("Coding Arch backup expiry receipt fields are invalid")
-        return cls(
-            installation_key=PluginInstallationKeyV1.from_dict(
-                value["installationKey"]
-            ),
-            backup_id=value["backupId"],
-            plan_fingerprint=value["planFingerprint"],
-            confirmation_id=value["confirmationId"],
-            receipt_id=value["receiptId"],
-            receipt_version=value["receiptVersion"],
-        )
+        return _SCHEMA_BACKUP_EXPIRY_RECEIPT_V1.decode(cls, value)
 
 
 def _confirmation_id(plan_fingerprint: str, actor_id: str, policy: str) -> str:
@@ -290,6 +221,32 @@ def _label(value: object) -> bool:
         and all(character.isprintable() for character in value)
     )
 
+
+_SCHEMA_BACKUP_EXPIRY_PLAN_V1 = RecordSchema.for_dataclass(
+    CodingArchPrivateDataBackupExpiryPlanV1,
+    lambda value: value,
+    RecordField(
+        "installation_key",
+        decoder=PluginInstallationKeyV1.from_dict,
+        encoder=PluginInstallationKeyV1.to_dict,
+    ),
+    RecordField("archive_root_identity", decoder=tuple, encoder=list),
+)
+
+_SCHEMA_BACKUP_EXPIRY_CONFIRMATION_V1 = RecordSchema.for_dataclass(
+    CodingArchPrivateDataBackupExpiryConfirmationV1,
+    lambda value: value,
+)
+
+_SCHEMA_BACKUP_EXPIRY_RECEIPT_V1 = RecordSchema.for_dataclass(
+    CodingArchPrivateDataBackupExpiryReceiptV1,
+    lambda value: value,
+    RecordField(
+        "installation_key",
+        decoder=PluginInstallationKeyV1.from_dict,
+        encoder=PluginInstallationKeyV1.to_dict,
+    ),
+)
 
 __all__ = [
     "CodingArchPrivateDataBackupExpiryPlanV1",

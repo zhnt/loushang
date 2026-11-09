@@ -144,6 +144,7 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             or consumer == FOREGROUND
             or consumer == APPHOST / "local.py"
             or consumer == APPHOST / "launcher.py"
+            or consumer == APPHOST / "integrations/session_control.py"
             or consumer == APPHOST / "managed/connection.py"
             or consumer == APPHOST / "managed/coordinator.py"
             or consumer == APPHOST / "managed/mux_creation.py"

@@ -19,7 +19,6 @@ from loushang.apphost import (
     AppHostRuntimeV1,
     AppHostSessionLeaseV1,
     AppHostShutdownBudgetV1,
-    OpenedProductCandidateV1,
     ProductCandidateValidatorV1,
     ProductDescriptorV1,
     ProductProfileBindingV1,
@@ -27,7 +26,6 @@ from loushang.apphost import (
     ProfileDescriptorV1,
     ProfileLeaseV1,
     ProfileRegistrationV1,
-    ScopedProductRuntimeV1,
     SessionBindingKeyV1,
     SessionCandidateMode,
     SessionCreateRequestV1,
@@ -36,12 +34,25 @@ from loushang.apphost import (
     SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
+from loushang.apphost import (
+    OpenedProductCandidateV1 as OpenedProductCandidateV1,
+)
+from loushang.apphost import (
+    ScopedProductRuntimeV1 as ScopedProductRuntimeV1,
+)
 from loushang.apphost.application import (
     HostedApplicationActivationV1,
     HostedApplicationRequestV1,
     HostedApplicationRuntimeV1,
+    _method_descriptor,
+    _observe_background_result,
     create_hosted_application_runtime,
 )
+from loushang.apphost.application import (
+    _phase_task_failed as _void_task_needs_retry,
+)
+from loushang.apphost.integrations.session_control import _validate_foreground_binding
+from loushang.apphost.integrations.session_product import _ForegroundProductFactory
 from loushang.appserver.protocol import (
     SessionIdentityV1,
     SessionOpenSpecV1,
@@ -202,177 +213,16 @@ class CodingForegroundHostedApplicationRequestV1:
             raise TypeError("Coding hosted application ID factory is invalid")
 
 
-class _ForegroundSessionOwner:
-    """Adopt one Product Session before inspecting its public surface."""
-
-    __slots__ = ("_binding", "_close_lock", "_close_task", "_closed")
-
-    def __init__(self, binding: object) -> None:
-        close = getattr(binding, "close", None)
-        if not inspect.iscoroutinefunction(close):
-            raise TypeError("Coding foreground Session has no close owner")
-        self._binding = binding
-        self._close_lock = asyncio.Lock()
-        self._close_task: asyncio.Task[None] | None = None
-        self._closed = False
-
-    @property
-    def binding(self) -> CodingHostedSessionBindingV1:
-        return cast(CodingHostedSessionBindingV1, self._binding)
-
-    async def close(self) -> None:
-        async with self._close_lock:
-            if self._closed:
-                return
-            task = self._close_task
-            if task is None or _void_task_needs_retry(task):
-                task = asyncio.create_task(self.binding.close())
-                task.add_done_callback(_observe_background_result)
-                self._close_task = task
-        await await_owned_task(task)
-        async with self._close_lock:
-            if self._close_task is task:
-                self._closed = True
-                self._close_task = None
-
-
-class _ForegroundProfileBinding:
-    __slots__ = ("_binding_key", "_session")
-
-    def __init__(
-        self,
-        binding_key: SessionBindingKeyV1,
-        session: _ForegroundSessionOwner,
-    ) -> None:
-        self._binding_key = binding_key
-        self._session = session
-
-    @property
-    def binding_key(self) -> SessionBindingKeyV1:
-        return self._binding_key
-
-    @property
-    def opaque_binding(self) -> object:
-        return self._session.binding
-
-
-class _ForegroundProductRuntime:
-    __slots__ = ("_binding_key", "_profile", "_session")
-
-    def __init__(
-        self,
-        binding_key: SessionBindingKeyV1,
-        session: _ForegroundSessionOwner,
-    ) -> None:
-        self._binding_key = binding_key
-        self._session = session
-        self._profile = _ForegroundProfileBinding(binding_key, session)
-
-    @property
-    def binding_key(self) -> SessionBindingKeyV1:
-        return self._binding_key
-
-    @property
-    def profile_binding(self) -> ProductProfileBindingV1:
-        return self._profile
-
-    async def close(self) -> None:
-        await self._session.close()
-
-
-class CodingForegroundProductFactoryV1:
+class CodingForegroundProductFactoryV1(_ForegroundProductFactory[CodingHostedSessionBindingV1]):
     """Create foreground Product Sessions without a Hosting/Worker owner."""
 
-    __slots__ = ("_active", "_create_session", "_debt", "_session_factory", "_session_owner")
+    __slots__ = ()
+    _product_id = CODING_PRODUCT_ID
+    _product_label = "Coding"
 
     def __init__(self, factory: CodingForegroundSessionFactoryV1, *, session_owner: CodingHostedSessionOwnerV1 | None = None) -> None:
-        _require_async_method(factory, "create_session")
-        self._create_session = factory.create_session
-        self._session_factory = factory
-        self._active: set[_ForegroundSessionOwner] = set()
-        self._debt: set[_ForegroundSessionOwner] = set()
-        self._session_owner = session_owner
+        super().__init__(factory, session_owner=session_owner)
 
-    async def create_runtime(
-        self,
-        candidate: OpenedProductCandidateV1,
-    ) -> ScopedProductRuntimeV1:
-        await self.settle_pending_cleanup()
-        try:
-            key = candidate.binding_key
-            opaque = candidate.opaque_binding
-        except BaseException:
-            raise RuntimeError("coding_foreground_candidate_invalid") from None
-        if type(key) is not SessionBindingKeyV1 or key.product_id != CODING_PRODUCT_ID:
-            raise RuntimeError("coding_foreground_candidate_invalid")
-        raw = await self._create_session(
-            binding_key=key,
-            opaque_session_binding=opaque,
-        )
-        try:
-            owner = _ForegroundSessionOwner(raw)
-        except BaseException:
-            raise RuntimeError("coding_foreground_session_unowned") from None
-        self._active.add(owner)
-        try:
-            _validate_hosted_binding(owner.binding, key)
-        except BaseException:
-            await self._settle_unpublished(owner)
-            raise RuntimeError("coding_foreground_session_invalid") from None
-        self._active.discard(owner)
-        return _ForegroundProductRuntime(key, owner)
-
-    async def settle_pending_cleanup(self) -> None:
-        debt = tuple(self._debt)
-        if debt:
-            results = await asyncio.gather(
-                *(owner.close() for owner in debt),
-                return_exceptions=True,
-            )
-            for owner, result in zip(debt, results, strict=True):
-                if result is None:
-                    self._debt.discard(owner)
-        if self._debt or self._active:
-            raise RuntimeError("coding_foreground_cleanup_incomplete")
-
-    async def close(self) -> None:
-        failures: list[Exception] = []
-        if self._session_owner is not None:
-            try:
-                self._session_owner.fence()
-            except Exception as error:
-                failures.append(error)
-        try:
-            await self.settle_pending_cleanup()
-        except Exception as error:
-            failures.append(error)
-        if self._session_owner is not None:
-            try:
-                await self._session_owner.close()
-            except Exception as error:
-                failures.append(error)
-        close_factory = getattr(self._session_factory, "close", None)
-        if inspect.iscoroutinefunction(close_factory):
-            try:
-                await close_factory()
-            except Exception as error:
-                failures.append(error)
-        if failures:
-            raise failures[0]
-
-    async def _settle_unpublished(self, owner: _ForegroundSessionOwner) -> None:
-        try:
-            await owner.close()
-        except asyncio.CancelledError:
-            self._active.discard(owner)
-            self._debt.discard(owner)
-            raise
-        except BaseException:
-            self._active.discard(owner)
-            self._debt.add(owner)
-            raise RuntimeError("coding_foreground_cleanup_incomplete") from None
-        self._active.discard(owner)
-        self._debt.discard(owner)
 
 
 class _HostedProfileLease:
@@ -827,36 +677,7 @@ def _validate_hosted_binding(
     binding: object,
     key: SessionBindingKeyV1,
 ) -> None:
-    try:
-        identity = cast(CodingHostedSessionBindingV1, binding).identity
-        control = cast(CodingHostedSessionBindingV1, binding).control
-    except BaseException:
-        raise TypeError("Coding hosted Session binding is invalid") from None
-    if (
-        type(identity) is not SessionIdentityV1
-        or identity.product_id != key.product_id
-        or identity.continuity_id != key.continuity_id
-        or identity.session_id != key.session_id
-    ):
-        raise TypeError("Coding hosted Session identity is invalid")
-    for name in ("project_snapshot", "project_event"):
-        if not callable(getattr(binding, name, None)):
-            raise TypeError("Coding hosted Session binding is invalid")
-    for name in ("respond_interaction", "close"):
-        if not inspect.iscoroutinefunction(_method_descriptor(binding, name)):
-            raise TypeError("Coding hosted Session binding is invalid")
-    if control is None:
-        return
-    for name in (
-        "subscribe_runtime_events",
-        "prompt",
-        "wait_for_idle",
-        "steer",
-        "follow_up",
-        "abort",
-    ):
-        if not callable(getattr(control, name, None)):
-            raise TypeError("Coding hosted Session control is invalid")
+    _validate_foreground_binding(binding, key, label="Coding")
 
 
 def _require_managed_selection(
@@ -908,25 +729,9 @@ def _apphost_scope(scope: SessionScopeV1) -> SessionDiscoveryScope:
     )
 
 
-def _method_descriptor(value: object, name: str) -> object:
-    descriptor = inspect.getattr_static(type(value), name, None)
-    if isinstance(descriptor, (classmethod, staticmethod)):
-        return descriptor.__func__
-    return descriptor
-
-
 def _require_async_method(value: object, name: str) -> None:
     if not inspect.iscoroutinefunction(_method_descriptor(value, name)):
         raise TypeError(f"Coding hosted application {name} port is invalid")
-
-
-def _observe_background_result(task: asyncio.Task[object]) -> None:
-    if not task.cancelled():
-        task.exception()
-
-
-def _void_task_needs_retry(task: asyncio.Task[None]) -> bool:
-    return task.done() and (task.cancelled() or task.exception() is not None)
 
 
 __all__ = [

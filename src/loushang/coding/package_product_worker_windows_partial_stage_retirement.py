@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from hashlib import sha256
 from pathlib import Path
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
@@ -11,8 +10,10 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_directory,
     windows_listdir_at,
+)
+from loushang.harness.worker.payload._windows_stage_retirement import (
+    PartialWindowsStageRetirement,
 )
 
 from .package_legacy_windows_receipt import (
@@ -30,13 +31,10 @@ from .package_product_worker_windows_recovery_inventory import (
 )
 from .package_product_worker_windows_stage_retirement import (
     CodingWindowsWorkerStageRetirementReceiptV1,
-    _close_opened,
-    _delete_directory_if_empty,
-    _delete_file_if_present,
+    _retirement,
     _stage_exists,
 )
 from .package_product_worker_windows_stage_review import (
-    _read_checked_file,
     _require_direct,
 )
 
@@ -208,171 +206,27 @@ def _remove_remaining_stage(
     review: CodingWindowsWorkerPartialStageReviewV1,
     receipt: CodingWindowsWorkerStageRetirementReceiptV1,
 ) -> None:
-    stage_name = "worker-payload-" + review.attempt_id
-    with WindowsPrivateDirectoryAcl() as acl:
-        _require_direct(root, acl, directory=True)
-        try:
-            stage = open_windows_directory(
-                stage_name, dir_fd=root, share_delete=False, read_control=True
-            )
-        except FileNotFoundError:
+    with PartialWindowsStageRetirement(
+        _retirement(),
+        CodingWindowsWorkerPartialStageRetirementError,
+        "coding_worker_partial_retirement",
+    ).partial(root, review) as stage:
+        if stage is None:
             return
-        try:
-            _require_remaining_subset(stage, review, acl)
-            if review.entrypoint is not None:
-                assert review.executable_identity is not None
-                assert review.executable_digest is not None
-                parts = review.entrypoint.split("/")
-                parent = _open_existing_parent(stage, parts[:-1], review, acl)
-                if parent is not None:
-                    descriptor, opened = parent
-                    try:
-                        _delete_file_if_present(
-                            descriptor,
-                            parts[-1],
-                            review.executable_identity,
-                            review.executable_digest,
-                            acl,
-                        )
-                    finally:
-                        _close_opened(opened)
-            for index in range(len(review.directory_identities) - 1, -1, -1):
-                path, identity = review.directory_identities[index]
-                parts = path.split("/")
-                parent = _open_existing_parent(stage, parts[:-1], review, acl)
-                if parent is None:
-                    continue
-                descriptor, opened = parent
-                try:
-                    _delete_directory_if_empty(descriptor, parts[-1], identity, acl)
-                finally:
-                    _close_opened(opened)
-            if windows_listdir_at(stage):
-                raise CodingWindowsWorkerPartialStageRetirementError(
-                    "coding_worker_partial_retirement_extra_member"
-                )
-            if _read_root_intent(product, review.attempt_id) is None:
-                write_windows_private_receipt(
-                    _root_intent_path(product, review.attempt_id),
-                    receipt.to_bytes(),
-                    maximum_bytes=_MAX_RECEIPT_BYTES,
-                )
-            if _read_root_intent(product, review.attempt_id) != receipt:
-                raise CodingWindowsWorkerPartialStageRetirementError(
-                    "coding_worker_partial_retirement_root_intent_changed"
-                )
-        finally:
-            os.close(stage)
-        _delete_directory_if_empty(root, stage_name, review.stage_identity, acl)
-
-
-def _require_remaining_subset(
-    stage: int,
-    review: CodingWindowsWorkerPartialStageReviewV1,
-    acl: WindowsPrivateDirectoryAcl,
-) -> None:
-    if _require_direct(stage, acl, directory=True)[:2] != review.stage_identity[:2]:
-        raise CodingWindowsWorkerPartialStageRetirementError(
-            "coding_worker_partial_retirement_stage_changed"
-        )
-    first_name = (
-        review.directory_identities[0][0]
-        if review.directory_identities
-        else review.entrypoint
-    )
-    names = set(windows_listdir_at(stage))
-    if (
-        any(name.casefold() == "worker-payload.json" for name in names)
-        or (first_name is None and names)
-        or (first_name is not None and not names <= {first_name.split("/")[0]})
-    ):
-        raise CodingWindowsWorkerPartialStageRetirementError(
-            "coding_worker_partial_retirement_extra_member"
-        )
-    current = stage
-    opened: list[int] = []
-    try:
-        for index, (path, identity) in enumerate(review.directory_identities):
-            name = path.split("/")[-1]
-            if name not in windows_listdir_at(current):
-                return
-            child = open_windows_directory(
-                name, dir_fd=current, share_delete=False, read_control=True
+        if windows_listdir_at(stage):
+            raise CodingWindowsWorkerPartialStageRetirementError(
+                "coding_worker_partial_retirement_extra_member"
             )
-            opened.append(child)
-            if _require_direct(child, acl, directory=True)[:2] != identity[:2]:
-                raise CodingWindowsWorkerPartialStageRetirementError(
-                    "coding_worker_partial_retirement_directory_changed"
-                )
-            next_name = (
-                review.directory_identities[index + 1][0].split("/")[-1]
-                if index + 1 < len(review.directory_identities)
-                else (
-                    review.entrypoint.split("/")[-1]
-                    if review.entrypoint is not None
-                    else None
-                )
+        if _read_root_intent(product, review.attempt_id) is None:
+            write_windows_private_receipt(
+                _root_intent_path(product, review.attempt_id),
+                receipt.to_bytes(),
+                maximum_bytes=_MAX_RECEIPT_BYTES,
             )
-            child_names = set(windows_listdir_at(child))
-            if (next_name is None and child_names) or (
-                next_name is not None and not child_names <= {next_name}
-            ):
-                raise CodingWindowsWorkerPartialStageRetirementError(
-                    "coding_worker_partial_retirement_extra_member"
-                )
-            current = child
-        if review.entrypoint is not None:
-            assert review.executable_identity is not None
-            assert review.executable_digest is not None
-            name = review.entrypoint.split("/")[-1]
-            if name in windows_listdir_at(current):
-                raw, identity = _read_checked_file(
-                    current, name, acl, maximum_bytes=16 * 1024 * 1024
-                )
-                if (
-                    identity != review.executable_identity
-                    or sha256(raw).hexdigest() != review.executable_digest
-                ):
-                    raise CodingWindowsWorkerPartialStageRetirementError(
-                        "coding_worker_partial_retirement_file_changed"
-                    )
-            elif windows_listdir_at(current):
-                raise CodingWindowsWorkerPartialStageRetirementError(
-                    "coding_worker_partial_retirement_extra_member"
-                )
-    finally:
-        _close_opened(opened)
-
-
-def _open_existing_parent(
-    stage: int,
-    parts: list[str],
-    review: CodingWindowsWorkerPartialStageReviewV1,
-    acl: WindowsPrivateDirectoryAcl,
-) -> tuple[int, list[int]] | None:
-    current = stage
-    opened: list[int] = []
-    try:
-        for index, name in enumerate(parts):
-            if name not in windows_listdir_at(current):
-                _close_opened(opened)
-                return None
-            child = open_windows_directory(
-                name, dir_fd=current, share_delete=False, read_control=True
+        if _read_root_intent(product, review.attempt_id) != receipt:
+            raise CodingWindowsWorkerPartialStageRetirementError(
+                "coding_worker_partial_retirement_root_intent_changed"
             )
-            opened.append(child)
-            if (
-                _require_direct(child, acl, directory=True)[:2]
-                != review.directory_identities[index][1][:2]
-            ):
-                raise CodingWindowsWorkerPartialStageRetirementError(
-                    "coding_worker_partial_retirement_directory_changed"
-                )
-            current = child
-        return current, opened
-    except BaseException:
-        _close_opened(opened)
-        raise
 
 
 def _full_retirement_artifact_present(

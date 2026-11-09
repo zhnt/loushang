@@ -23,6 +23,9 @@ from loushang.appservice import (
     ApplicationContinuityLeaseV1,
     ApplicationContinuityStoreV1,
 )
+from loushang.foundation._owned_tasks import (
+    _join_preserving_cancellation,
+)
 
 from .hosted_application import (
     CodingAppHostHostedSessionResolverV1,
@@ -55,7 +58,10 @@ class CodingHostedContinuityRequestV1:
             raise TypeError("invalid Coding foreground application request")
         if _STABLE_ID.fullmatch(self.application_id) is None:
             raise ValueError("invalid Coding hosted continuity application identity")
-        if self.foreground.managed_mux is not None and self.foreground.managed_mux.application_id != self.application_id:
+        if (
+            self.foreground.managed_mux is not None
+            and self.foreground.managed_mux.application_id != self.application_id
+        ):
             raise ValueError("managed Mux application identity mismatch")
         if _OPAQUE_TOKEN.fullmatch(self.owner_epoch) is None:
             raise ValueError("invalid Coding hosted continuity owner epoch")
@@ -97,7 +103,8 @@ class CodingHostedContinuityAttemptV1:
             raise TypeError("invalid Coding hosted continuity request")
         self._request = request
         self._product_factory = CodingForegroundProductFactoryV1(
-            request.foreground.session_factory, session_owner=request.foreground.session_owner,
+            request.foreground.session_factory,
+            session_owner=request.foreground.session_owner,
         )
         self._catalog: AppHostCatalogV1 | None = None
         self._runtime: AppHostRuntimeV1 | None = None
@@ -253,37 +260,11 @@ def create_coding_hosted_continuity_attempt(
     return CodingHostedContinuityAttemptV1(request)
 
 
-async def _join_runtime(
-    task: asyncio.Task[HostedApplicationContinuityRuntimeV1],
-) -> HostedApplicationContinuityRuntimeV1:
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as error:
-            if caller is None or caller.cancelling() == 0:
-                break
-            cancellation = error
-    result = task.result()
-    if cancellation is not None:
-        raise cancellation
-    return result
+_join_runtime = _join_preserving_cancellation
 
 
 async def _join_void(task: asyncio.Task[None]) -> None:
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as error:
-            if caller is None or caller.cancelling() == 0:
-                break
-            cancellation = error
-    task.result()
-    if cancellation is not None:
-        raise cancellation
+    await _join_preserving_cancellation(task)
 
 
 def _runtime_task_needs_retry(

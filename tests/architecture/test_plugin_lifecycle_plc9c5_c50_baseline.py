@@ -495,9 +495,7 @@ def _resolve_import_from(path: Path, node: ast.ImportFrom) -> set[str]:
 
 def _imports(path: Path) -> set[str]:
     return {
-        imported
-        for imported in resolved_imports(path)
-        if not imported.endswith(".*")
+        imported for imported in resolved_imports(path) if not imported.endswith(".*")
     }
 
 
@@ -914,6 +912,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package_product_worker_activation_base_v2.py",
         CODING_ROOT / "package_product_worker_history_prepared_v2.py",
         CODING_ROOT / "package_product_worker_history_retention.py",
+        CODING_ROOT / "package_product_worker_history_segments.py",
         CODING_ROOT / "package_product_worker_no_effect_closure.py",
         CODING_ROOT / "package_product_worker_posix_gc_history.py",
         CODING_ROOT / "package_product_worker_registered_c5_settlement.py",
@@ -950,12 +949,45 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package_product_worker_windows_crash_supervisor_settlement.py",
         CODING_ROOT / "package_product_worker_windows_launch_intent.py",
         CODING_ROOT / "package_product_worker_windows_payload.py",
+        CODING_ROOT / "package_product_worker_windows_history_sources.py",
+        CODING_ROOT / "package_product_worker_windows_gc_history.py",
+        CODING_ROOT / "package_product_worker_windows_history_join.py",
+        CODING_ROOT / "package_product_worker_windows_opt_in_base.py",
+        CODING_ROOT / "package_product_worker_windows_receipt_base.py",
+        CODING_ROOT / "package_product_worker_windows_launch_intent_base.py",
+        CODING_ROOT / "package_product_worker_windows_provisioning_base.py",
+        CODING_ROOT / "package_product_worker_windows_stage_retirement.py",
+        CODING_ROOT / "package_product_worker_windows_partial_stage_retirement.py",
+        CODING_ROOT / "package_product_worker_windows_stage_review.py",
         CODING_ROOT / "package_product_worker_windows_receipt.py",
         CODING_ROOT / "package_product_worker_windows_receipt_journal.py",
+        CODING_ROOT / "package_product_worker_windows_opt_in_journal.py",
+        CODING_ROOT / "package_product_worker_windows_native_approval_journal.py",
         CODING_ROOT / "package_product_worker_windows_recovery_inventory.py",
         CODING_ROOT / "package_product_worker_windows_supervisor_base.py",
         CODING_ROOT / "package_product_worker_windows_supervisor_journal.py",
         CODING_ROOT / "resume_continuation.py",
+        CODING_ROOT / "package_product_worker_history_checkpoint.py",
+        CODING_ROOT / "package_product_worker_history_checkpoint_anchor.py",
+        CODING_ROOT / "package_product_worker_history_cutover_v2.py",
+        CODING_ROOT / "package_product_worker_history_deletion_v2.py",
+        CODING_ROOT / "package_product_worker_history_read_v2.py",
+        CODING_ROOT / "package_product_worker_history_retirement_preview.py",
+        CODING_ROOT / "package_product_worker_history_stage_v2.py",
+        CODING_ROOT / "package_product_worker_history_commit_v2.py",
+        CODING_ROOT / "package_product_worker_history_retire_v2.py",
+        CODING_ROOT / "package_product_worker_history_stream_snapshot.py",
+        CODING_ROOT / "package_product_worker_history_v2_names.py",
+        CODING_ROOT / "package_product_worker_no_effect_archive_v2.py",
+        CODING_ROOT / "package_product_worker_opt_in.py",
+        CODING_ROOT / "package_product_worker_opt_in_base_v2.py",
+        CODING_ROOT / "package_product_worker_receipt_base_v2.py",
+        CODING_ROOT / "package_product_worker_start_gate_base_v2.py",
+        CODING_ROOT / "package_product_worker_windows_history_preparation.py",
+        CODING_ROOT / "package_product_worker_windows_reserved_review.py",
+        CODING_ROOT / "package_product_worker_windows_partial_stage_review.py",
+        CODING_ROOT / "package_product_worker_windows_history_cutover_record.py",
+        CODING_ROOT / "package_product_worker_windows_checkpoint.py",
     }
     hosting_consumers = {
         path

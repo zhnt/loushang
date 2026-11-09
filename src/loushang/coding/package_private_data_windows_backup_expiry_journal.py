@@ -6,40 +6,54 @@ Rename, member deletion, and terminal completion require a separate owner.
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import ClassVar, Literal
 
+from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.journal.codec import decode_json_record
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+from loushang.harness.plugin_management._private_data_backup_windows import (
+    WindowsArchiveExpiryIO,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    windows_listdir_at,
+from loushang.harness.plugin_management._private_data_expiry_windows import (
+    WindowsPrivateExpiryTransaction,
+)
+from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.resources.packages._private_receipts_windows import (
+    WindowsPrivateReceiptIO,
+)
+from loushang.harness.resources.packages._private_tree_windows import (
+    PrivateWindowsTreeIO,
 )
 
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .package_legacy_windows_receipt import (
-    read_windows_private_receipt,
-    write_windows_private_receipt,
+    _receipt_io,
 )
 from .package_private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,
     CodingArchPrivateDataBackupExpiryPlanV1,
     CodingArchPrivateDataBackupExpiryReceiptV1,
 )
+from .package_private_data_backup_records import backup_parent
 from .package_private_data_windows_archive_snapshot import (
     CodingWindowsArchBackupArchiveSnapshotV1,
+    capture_windows_arch_backup_archive,
 )
+from .package_private_data_windows_backup import _archive_io, _read_archive_manifest
 from .package_private_data_windows_backup_expiry_preview import (
     CodingWindowsArchPrivateDataBackupExpiryPreview,
 )
+from .package_private_data_windows_backup_expiry_recovery import (
+    require_windows_arch_backup_expiry_recovery_authority,
+)
+from .package_private_data_windows_preview import _native_io
 from .package_private_data_windows_restore_journal import (
     CodingWindowsArchPrivateDataRestoreJournal,
     CodingWindowsArchPrivateDataRestoreTransaction,
@@ -159,16 +173,17 @@ class CodingWindowsArchBackupExpiryJournal:
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsArchBackupExpiryTransaction:
+class CodingWindowsArchBackupExpiryTransaction(
+    WindowsPrivateExpiryTransaction[
+        CodingArchPrivateDataBackupExpiryPlanV1,
+        CodingArchPrivateDataBackupExpiryConfirmationV1,
+        CodingWindowsArchBackupArchiveSnapshotV1,
+        CodingWindowsArchBackupExpiryEventV1,
+    ]
+):
     layout: CodingPluginLifecycleStateLayout
     product: WindowsLocalWheelProductSessionOwner
     restore: CodingWindowsArchPrivateDataRestoreTransaction
-
-    def events(self) -> tuple[CodingWindowsArchBackupExpiryEventV1, ...]:
-        events, staged = self._scan()
-        if staged is not None:
-            raise ValueError("Windows Coding Arch backup expiry event needs recovery")
-        return events
 
     def confirm(
         self,
@@ -179,45 +194,10 @@ class CodingWindowsArchBackupExpiryTransaction:
     ) -> CodingArchPrivateDataBackupExpiryConfirmationV1:
         if not isinstance(plan, CodingArchPrivateDataBackupExpiryPlanV1):
             raise ValueError("Windows Coding Arch backup expiry plan is invalid")
-        current = CodingWindowsArchPrivateDataBackupExpiryPreview(
-            self.layout, self.product
-        )._preview_locked(
-            self.restore,
-            plan.installation_key,
-            plan.backup_id,
-            plan.confirmation_id,
-        )
-        if current != plan:
-            raise ValueError("Windows Coding Arch backup expiry plan changed")
-        confirmation = CodingArchPrivateDataBackupExpiryConfirmationV1.create(
+        self._require_current_plan(plan)
+        return self._confirm_current(
             plan, actor_id=actor_id, policy_revision=policy_revision
         )
-        events, staged = self._scan()
-        if events and events[-1].phase != "completed":
-            if staged is not None:
-                raise ValueError(
-                    "Windows Coding Arch backup expiry event needs recovery"
-                )
-            if events[-1].plan == plan and events[-1].confirmation == confirmation:
-                return confirmation
-            raise ValueError("Another Windows Coding Arch backup expiry is unfinished")
-        if events and events[-1].plan == plan:
-            if staged is not None or events[-1].confirmation != confirmation:
-                raise ValueError("Windows Coding Arch backup expiry already completed")
-            return confirmation
-        if any(
-            event.phase == "completed" and event.plan.backup_id == plan.backup_id
-            for event in events
-        ):
-            raise ValueError("Windows Coding Arch backup expiry already completed")
-        event = CodingWindowsArchBackupExpiryEventV1(
-            revision=len(events) + 1,
-            phase="confirmed",
-            plan=plan,
-            confirmation=confirmation,
-        )
-        self._append(events, staged, event)
-        return confirmation
 
     def begin(
         self,
@@ -236,34 +216,8 @@ class CodingWindowsArchBackupExpiryTransaction:
             or archive.target_id != plan.archive_target_id
         ):
             raise ValueError("Windows Coding Arch backup expiry start is invalid")
-        current = CodingWindowsArchPrivateDataBackupExpiryPreview(
-            self.layout, self.product
-        )._preview_locked(
-            self.restore,
-            plan.installation_key,
-            plan.backup_id,
-            plan.confirmation_id,
-        )
-        if current != plan:
-            raise ValueError("Windows Coding Arch backup expiry plan changed")
-        events, staged = self._scan()
-        if not events or (
-            events[-1].plan != plan or events[-1].confirmation != confirmation
-        ):
-            raise ValueError("Windows Coding Arch backup expiry confirmation changed")
-        prior = events[-1]
-        if prior.phase != "confirmed":
-            if staged is not None or prior.archive != archive:
-                raise ValueError("Windows Coding Arch backup expiry archive changed")
-            return prior
-        event = CodingWindowsArchBackupExpiryEventV1(
-            revision=len(events) + 1,
-            phase="started",
-            plan=plan,
-            confirmation=confirmation,
-            archive=archive,
-        )
-        return self._append(events, staged, event)
+        self._require_current_plan(plan)
+        return self._begin_current(plan, confirmation, archive)
 
     def advance(
         self,
@@ -275,149 +229,82 @@ class CodingWindowsArchBackupExpiryTransaction:
             "completed",
         }:
             raise ValueError("Windows Coding Arch backup expiry transition is invalid")
-        events, staged = self._scan()
-        if not events or events[-1] != prior:
-            raise ValueError("Windows Coding Arch backup expiry checkpoint changed")
-        if prior.phase == phase:
-            if staged is not None:
-                raise ValueError(
-                    "Windows Coding Arch backup expiry event needs recovery"
-                )
-            return prior
-        if (phase == "renamed" and prior.phase != "started") or (
-            phase == "completed" and prior.phase != "renamed"
-        ):
-            raise ValueError(
-                "Windows Coding Arch backup expiry checkpoint is out of order"
-            )
-        event = CodingWindowsArchBackupExpiryEventV1(
-            revision=len(events) + 1,
-            phase=phase,
-            plan=prior.plan,
-            confirmation=prior.confirmation,
-            archive=prior.archive,
-            receipt=(
-                CodingArchPrivateDataBackupExpiryReceiptV1.create(
-                    prior.plan, prior.confirmation
-                )
-                if phase == "completed"
-                else None
-            ),
-        )
-        return self._append(events, staged, event)
+        return self._advance_current(prior, phase)
 
-    def _append(
+    _label: ClassVar[str] = "Windows Coding Arch"
+    _tree_io: ClassVar[PrivateWindowsTreeIO] = _native_io
+    _archive_io: ClassVar[WindowsArchiveExpiryIO] = _archive_io
+
+    def _backup_parent(self, key: PluginInstallationKeyV1) -> Path:
+        return backup_parent(self.layout, key)
+
+    def _tombstone_name(
         self,
-        before: tuple[CodingWindowsArchBackupExpiryEventV1, ...],
-        staged: int | None,
-        event: CodingWindowsArchBackupExpiryEventV1,
-    ) -> CodingWindowsArchBackupExpiryEventV1:
-        self.restore._require_active()
-        if len(before) >= _MAX_EVENTS or staged not in {None, event.revision}:
-            raise ValueError("Windows Coding Arch backup expiry event needs recovery")
-        payload = canonical_json_bytes(event.to_dict()) + b"\n"
-        if len(payload) > _MAX_EVENT_BYTES:
-            raise ValueError("Windows Coding Arch backup expiry event is too large")
-        write_windows_private_receipt(
-            self._event_path(event.revision), payload, maximum_bytes=_MAX_EVENT_BYTES
-        )
-        after, debt = self._scan()
-        if after != (*before, event) or debt is not None:
-            raise ValueError("Windows Coding Arch backup expiry event changed")
-        return event
+        plan: CodingArchPrivateDataBackupExpiryPlanV1,
+        confirmation: CodingArchPrivateDataBackupExpiryConfirmationV1,
+    ) -> str:
+        from .package_private_data_windows_backup_expiry_owner import _tombstone_name
 
-    def _scan(
+        return _tombstone_name(plan, confirmation)
+
+    def _require_pre_effect_archive(
         self,
-    ) -> tuple[tuple[CodingWindowsArchBackupExpiryEventV1, ...], int | None]:
-        self.restore._require_active()
-        published: set[int] = set()
-        staged: set[int] = set()
-        for name in windows_listdir_at(self.restore.state_fd):
-            if not name.startswith(_EVENT_PREFIX):
-                continue
-            match = _EVENT_NAME.fullmatch(name)
-            if match is None:
-                raise ValueError(
-                    "Windows Coding Arch backup expiry member is unexpected"
-                )
-            revision = int(match.group(1))
-            if revision < 1:
-                raise ValueError("Windows Coding Arch backup expiry revision changed")
-            (staged if match.group(2) else published).add(revision)
-        if (
-            len(published) > _MAX_EVENTS
-            or len(staged) > 1
-            or published != set(range(1, len(published) + 1))
-            or (staged and staged != {len(published) + 1})
-        ):
-            raise ValueError("Windows Coding Arch backup expiry sequence changed")
-        events: list[CodingWindowsArchBackupExpiryEventV1] = []
-        for revision in range(1, len(published) + 1):
-            raw = read_windows_private_receipt(
-                self._event_path(revision), maximum_bytes=_MAX_EVENT_BYTES
-            )
-            if raw is None:
-                raise ValueError("Windows Coding Arch backup expiry event disappeared")
-            try:
-                document = json.loads(
-                    raw.decode("utf-8"), object_pairs_hook=_unique_object
-                )
-                event = CodingWindowsArchBackupExpiryEventV1.from_dict(document)
-            except (TypeError, UnicodeError, ValueError) as exc:
-                raise ValueError(
-                    "Windows Coding Arch backup expiry event is invalid"
-                ) from exc
-            if (
-                event.revision != revision
-                or raw != canonical_json_bytes(event.to_dict()) + b"\n"
-            ):
-                raise ValueError("Windows Coding Arch backup expiry event changed")
-            events.append(event)
-        _validate_sequence(tuple(events))
-        return tuple(events), next(iter(staged)) if staged else None
+        plan: CodingArchPrivateDataBackupExpiryPlanV1,
+        parent_fd: int,
+        acl: WindowsPrivateDirectoryAcl,
+    ) -> CodingWindowsArchBackupArchiveSnapshotV1:
+        self._require_current_plan(plan)
+        receipt, source = _read_archive_manifest(parent_fd, plan.backup_id, acl)
+        archive = capture_windows_arch_backup_archive(
+            self.layout, plan.installation_key, plan.backup_id, source, receipt
+        )
+        if archive.target_id != plan.archive_target_id:
+            raise ValueError("Windows Coding Arch backup archive changed")
+        return archive
 
-    def _event_path(self, revision: int) -> Path:
-        return self.product.state_root / f"{_EVENT_PREFIX}{revision:08d}.json"
+    def _require_recovery_authority(
+        self, plan: CodingArchPrivateDataBackupExpiryPlanV1
+    ) -> None:
+        require_windows_arch_backup_expiry_recovery_authority(
+            self.layout, self.product, self.restore, plan
+        )
 
+    _event_factory = CodingWindowsArchBackupExpiryEventV1
+    _confirmation_factory = staticmethod(
+        CodingArchPrivateDataBackupExpiryConfirmationV1.create
+    )
+    _receipt_factory = staticmethod(CodingArchPrivateDataBackupExpiryReceiptV1.create)
+    _event_prefix: ClassVar[str] = _EVENT_PREFIX
+    _event_name: ClassVar[re.Pattern[str]] = _EVENT_NAME
+    _max_events: ClassVar[int] = _MAX_EVENTS
+    _max_event_bytes: ClassVar[int] = _MAX_EVENT_BYTES
+    _receipt_io: ClassVar[WindowsPrivateReceiptIO] = _receipt_io
 
-def _validate_sequence(
-    events: tuple[CodingWindowsArchBackupExpiryEventV1, ...],
-) -> None:
-    previous: CodingWindowsArchBackupExpiryEventV1 | None = None
-    completed: set[str] = set()
-    for revision, event in enumerate(events, start=1):
-        if event.revision != revision:
-            raise ValueError("Windows Coding Arch backup expiry revision changed")
-        if event.phase == "confirmed":
-            if previous is not None and previous.phase != "completed":
-                raise ValueError("Windows Coding Arch backup expiry history overlaps")
-            if event.plan.backup_id in completed:
-                raise ValueError("Windows Coding Arch backup expiry was repeated")
-        elif (
-            previous is None
-            or previous.plan != event.plan
-            or previous.confirmation != event.confirmation
-            or (event.phase == "started" and previous.phase != "confirmed")
-            or (event.phase == "renamed" and previous.phase != "started")
-            or (event.phase == "completed" and previous.phase != "renamed")
-            or (
-                event.phase in {"renamed", "completed"}
-                and previous.archive != event.archive
-            )
-        ):
-            raise ValueError("Windows Coding Arch backup expiry history changed")
-        if event.phase == "completed":
-            completed.add(event.plan.backup_id)
-        previous = event
+    @property
+    def _state_root(self) -> Path:
+        return self.product.state_root
 
+    def _decode_event(self, raw: bytes) -> CodingWindowsArchBackupExpiryEventV1:
+        return decode_json_record(
+            raw,
+            CodingWindowsArchBackupExpiryEventV1.from_dict,
+            label="Windows Coding Arch backup expiry event",
+            duplicate_message="Windows Coding Arch backup expiry repeats a field",
+        )
 
-def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Windows Coding Arch backup expiry repeats a field")
-        result[key] = value
-    return result
+    def _require_current_plan(
+        self, plan: CodingArchPrivateDataBackupExpiryPlanV1
+    ) -> None:
+        current = CodingWindowsArchPrivateDataBackupExpiryPreview(
+            self.layout, self.product
+        )._preview_locked(
+            self.restore,
+            plan.installation_key,
+            plan.backup_id,
+            plan.confirmation_id,
+        )
+        if current != plan:
+            raise ValueError("Windows Coding Arch backup expiry plan changed")
 
 
 __all__ = [

@@ -1,0 +1,6666 @@
+{
+  "native_approval:read:missing": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        false,
+        false,
+        null,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {}
+  },
+  "native_approval:read:present": {
+    "result": {
+      "value": "7072696f72"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": "7072696f72"
+    }
+  },
+  "native_approval:read:oversize": {
+    "result": {
+      "value": "303132333435363738"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": "30313233343536373839"
+    }
+  },
+  "native_approval:read:stream": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_stream_invalid",
+      "code": "coding_worker_native_approval_stream_invalid"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": "7072696f72"
+    }
+  },
+  "native_approval:read:acl": {
+    "result": {
+      "error": "builtins.PermissionError",
+      "message": "fixture ACL denied"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": "7072696f72"
+    }
+  },
+  "native_approval:append:new": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": "6e6578740a"
+    }
+  },
+  "native_approval:append:match": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": "7072696f726e6578740a"
+    }
+  },
+  "native_approval:append:empty_expected": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_changed",
+      "code": "coding_worker_native_approval_changed"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": ""
+    }
+  },
+  "native_approval:append:conflict": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_changed",
+      "code": "coding_worker_native_approval_changed"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": "7072696f72"
+    }
+  },
+  "native_approval:append:partial": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "write",
+        "6578740a"
+      ],
+      [
+        "write",
+        "78740a"
+      ],
+      [
+        "write",
+        "740a"
+      ],
+      [
+        "write",
+        "0a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": "6e6578740a"
+    }
+  },
+  "native_approval:append:none": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker native approval append stalled"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": ""
+    }
+  },
+  "native_approval:append:zero": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker native approval append stalled"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": ""
+    }
+  },
+  "native_approval:append:write_error": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture write failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": ""
+    }
+  },
+  "native_approval:append:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": "6e6578740a"
+    }
+  },
+  "native_approval:append:dir_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture directory flush failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": "6e6578740a"
+    }
+  },
+  "native_approval:append:stream": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_stream_invalid",
+      "code": "coding_worker_native_approval_stream_invalid"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-native-release-approvals.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": ""
+    }
+  },
+  "native_approval:prepare:new": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl"
+      ],
+      [
+        "open",
+        "worker-native-release-approvals.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "00"
+    }
+  },
+  "native_approval:prepare:existing": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl.lock"
+      ],
+      [
+        "open",
+        "worker-native-release-approvals.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-native-release-approvals.jsonl.lock",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "00"
+    }
+  },
+  "native_approval:prepare:bad_size": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_lock_corrupt",
+      "code": "coding_worker_native_approval_lock_corrupt"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl.lock"
+      ],
+      [
+        "open",
+        "worker-native-release-approvals.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-native-release-approvals.jsonl.lock",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "7878"
+    }
+  },
+  "native_approval:prepare:missing_lock": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_lock_missing",
+      "code": "coding_worker_native_approval_lock_missing"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl": "7072696f72"
+    }
+  },
+  "native_approval:prepare:stream": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_stream_invalid",
+      "code": "coding_worker_native_approval_stream_invalid"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl"
+      ],
+      [
+        "open",
+        "worker-native-release-approvals.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": ""
+    }
+  },
+  "native_approval:prepare:short_marker": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker native approval lock write failed"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl"
+      ],
+      [
+        "open",
+        "worker-native-release-approvals.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": ""
+    }
+  },
+  "native_approval:prepare:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl"
+      ],
+      [
+        "open",
+        "worker-native-release-approvals.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "00"
+    }
+  },
+  "native_approval:prepare:dir_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture directory flush failure"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl"
+      ],
+      [
+        "open",
+        "worker-native-release-approvals.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "00"
+    }
+  },
+  "native_approval:validate:zero": {
+    "result": {
+      "value": false
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "00"
+    }
+  },
+  "native_approval:validate:one": {
+    "result": {
+      "value": true
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "01"
+    }
+  },
+  "native_approval:validate:bad_marker": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_lock_corrupt",
+      "code": "coding_worker_native_approval_lock_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "78"
+    }
+  },
+  "native_approval:validate:bad_size": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_lock_corrupt",
+      "code": "coding_worker_native_approval_lock_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl.lock"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "7878"
+    }
+  },
+  "native_approval:validate:identity": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_lock_corrupt",
+      "code": "coding_worker_native_approval_lock_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-native-release-approvals.jsonl.lock"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "00"
+    }
+  },
+  "native_approval:validate:stream": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_stream_invalid",
+      "code": "coding_worker_native_approval_stream_invalid"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "00"
+    }
+  },
+  "native_approval:validate:acl": {
+    "result": {
+      "error": "builtins.PermissionError",
+      "message": "fixture ACL denied"
+    },
+    "trace": [
+      [
+        "acl"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "00"
+    }
+  },
+  "native_approval:mark:zero": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker native approval lock commit failed"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "00"
+    }
+  },
+  "native_approval:mark:one": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_lock_corrupt",
+      "code": "coding_worker_native_approval_lock_corrupt"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "01"
+    }
+  },
+  "native_approval:mark:none": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker native approval lock commit failed"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "00"
+    }
+  },
+  "native_approval:mark:zero_write": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker native approval lock commit failed"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "00"
+    }
+  },
+  "native_approval:mark:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-native-release-approvals.jsonl.lock": "01"
+    }
+  },
+  "opt_in:read:missing": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        false,
+        false,
+        null,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {}
+  },
+  "opt_in:read:present": {
+    "result": {
+      "value": "7072696f72"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": "7072696f72"
+    }
+  },
+  "opt_in:read:oversize": {
+    "result": {
+      "value": "303132333435363738"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": "30313233343536373839"
+    }
+  },
+  "opt_in:read:stream": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_opt_in.CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_stream_invalid",
+      "code": "coding_worker_opt_in_stream_invalid"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": "7072696f72"
+    }
+  },
+  "opt_in:read:acl": {
+    "result": {
+      "error": "builtins.PermissionError",
+      "message": "fixture ACL denied"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": "7072696f72"
+    }
+  },
+  "opt_in:append:new": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": "6e6578740a"
+    }
+  },
+  "opt_in:append:match": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": "7072696f726e6578740a"
+    }
+  },
+  "opt_in:append:empty_expected": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_opt_in.CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_changed",
+      "code": "coding_worker_opt_in_changed"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": ""
+    }
+  },
+  "opt_in:append:conflict": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_opt_in.CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_changed",
+      "code": "coding_worker_opt_in_changed"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": "7072696f72"
+    }
+  },
+  "opt_in:append:partial": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "write",
+        "6578740a"
+      ],
+      [
+        "write",
+        "78740a"
+      ],
+      [
+        "write",
+        "740a"
+      ],
+      [
+        "write",
+        "0a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": "6e6578740a"
+    }
+  },
+  "opt_in:append:none": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker opt-in append made no progress"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": ""
+    }
+  },
+  "opt_in:append:zero": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker opt-in append made no progress"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": ""
+    }
+  },
+  "opt_in:append:write_error": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture write failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": ""
+    }
+  },
+  "opt_in:append:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": "6e6578740a"
+    }
+  },
+  "opt_in:append:dir_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture directory flush failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": "6e6578740a"
+    }
+  },
+  "opt_in:append:stream": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_opt_in.CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_stream_invalid",
+      "code": "coding_worker_opt_in_stream_invalid"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-opt-in.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": ""
+    }
+  },
+  "opt_in:prepare:new": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-opt-in.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-opt-in.jsonl"
+      ],
+      [
+        "open",
+        "worker-opt-in.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "00"
+    }
+  },
+  "opt_in:prepare:existing": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-opt-in.jsonl.lock"
+      ],
+      [
+        "open",
+        "worker-opt-in.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-opt-in.jsonl.lock",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "00"
+    }
+  },
+  "opt_in:prepare:bad_size": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_opt_in.CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_lock_corrupt",
+      "code": "coding_worker_opt_in_lock_corrupt"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-opt-in.jsonl.lock"
+      ],
+      [
+        "open",
+        "worker-opt-in.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-opt-in.jsonl.lock",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "7878"
+    }
+  },
+  "opt_in:prepare:missing_lock": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_opt_in.CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_lock_missing",
+      "code": "coding_worker_opt_in_lock_missing"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-opt-in.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-opt-in.jsonl"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl": "7072696f72"
+    }
+  },
+  "opt_in:prepare:stream": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_opt_in.CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_stream_invalid",
+      "code": "coding_worker_opt_in_stream_invalid"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-opt-in.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-opt-in.jsonl"
+      ],
+      [
+        "open",
+        "worker-opt-in.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": ""
+    }
+  },
+  "opt_in:prepare:short_marker": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker opt-in lock write failed"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-opt-in.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-opt-in.jsonl"
+      ],
+      [
+        "open",
+        "worker-opt-in.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": ""
+    }
+  },
+  "opt_in:prepare:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-opt-in.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-opt-in.jsonl"
+      ],
+      [
+        "open",
+        "worker-opt-in.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "00"
+    }
+  },
+  "opt_in:prepare:dir_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture directory flush failure"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-opt-in.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-opt-in.jsonl"
+      ],
+      [
+        "open",
+        "worker-opt-in.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "00"
+    }
+  },
+  "opt_in:validate:zero": {
+    "result": {
+      "value": false
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-opt-in.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "00"
+    }
+  },
+  "opt_in:validate:one": {
+    "result": {
+      "value": true
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-opt-in.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "01"
+    }
+  },
+  "opt_in:validate:bad_marker": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_opt_in.CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_lock_corrupt",
+      "code": "coding_worker_opt_in_lock_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-opt-in.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "78"
+    }
+  },
+  "opt_in:validate:bad_size": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_opt_in.CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_lock_corrupt",
+      "code": "coding_worker_opt_in_lock_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-opt-in.jsonl.lock"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "7878"
+    }
+  },
+  "opt_in:validate:identity": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_opt_in.CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_lock_corrupt",
+      "code": "coding_worker_opt_in_lock_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-opt-in.jsonl.lock"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "00"
+    }
+  },
+  "opt_in:validate:stream": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_opt_in.CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_stream_invalid",
+      "code": "coding_worker_opt_in_stream_invalid"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "00"
+    }
+  },
+  "opt_in:validate:acl": {
+    "result": {
+      "error": "builtins.PermissionError",
+      "message": "fixture ACL denied"
+    },
+    "trace": [
+      [
+        "acl"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "00"
+    }
+  },
+  "opt_in:mark:zero": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker opt-in lock commit failed"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "00"
+    }
+  },
+  "opt_in:mark:one": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_opt_in.CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_lock_corrupt",
+      "code": "coding_worker_opt_in_lock_corrupt"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "01"
+    }
+  },
+  "opt_in:mark:none": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker opt-in lock commit failed"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "00"
+    }
+  },
+  "opt_in:mark:zero_write": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker opt-in lock commit failed"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "00"
+    }
+  },
+  "opt_in:mark:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-opt-in.jsonl.lock": "01"
+    }
+  },
+  "receipt:read:missing": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        false,
+        false,
+        null,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {}
+  },
+  "receipt:read:present": {
+    "result": {
+      "value": "7072696f72"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": "7072696f72"
+    }
+  },
+  "receipt:read:oversize": {
+    "result": {
+      "value": "303132333435363738"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": "30313233343536373839"
+    }
+  },
+  "receipt:read:stream": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_receipt.CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_stream_invalid",
+      "code": "coding_worker_receipt_stream_invalid"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": "7072696f72"
+    }
+  },
+  "receipt:read:acl": {
+    "result": {
+      "error": "builtins.PermissionError",
+      "message": "fixture ACL denied"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": "7072696f72"
+    }
+  },
+  "receipt:append:new": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": "6e6578740a"
+    }
+  },
+  "receipt:append:match": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": "7072696f726e6578740a"
+    }
+  },
+  "receipt:append:empty_expected": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_receipt.CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_changed",
+      "code": "coding_worker_receipt_changed"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": ""
+    }
+  },
+  "receipt:append:conflict": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_receipt.CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_changed",
+      "code": "coding_worker_receipt_changed"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": "7072696f72"
+    }
+  },
+  "receipt:append:partial": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "write",
+        "6578740a"
+      ],
+      [
+        "write",
+        "78740a"
+      ],
+      [
+        "write",
+        "740a"
+      ],
+      [
+        "write",
+        "0a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": "6e6578740a"
+    }
+  },
+  "receipt:append:none": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker receipt append made no progress"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": ""
+    }
+  },
+  "receipt:append:zero": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker receipt append made no progress"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": ""
+    }
+  },
+  "receipt:append:write_error": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture write failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": ""
+    }
+  },
+  "receipt:append:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": "6e6578740a"
+    }
+  },
+  "receipt:append:dir_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture directory flush failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": "6e6578740a"
+    }
+  },
+  "receipt:append:stream": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_receipt.CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_stream_invalid",
+      "code": "coding_worker_receipt_stream_invalid"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-receipts.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": ""
+    }
+  },
+  "receipt:prepare:new": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-receipts.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-activation-receipts.jsonl"
+      ],
+      [
+        "open",
+        "worker-activation-receipts.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "00"
+    }
+  },
+  "receipt:prepare:existing": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-receipts.jsonl.lock"
+      ],
+      [
+        "open",
+        "worker-activation-receipts.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-activation-receipts.jsonl.lock",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "00"
+    }
+  },
+  "receipt:prepare:bad_size": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_receipt.CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_lock_corrupt",
+      "code": "coding_worker_receipt_lock_corrupt"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-receipts.jsonl.lock"
+      ],
+      [
+        "open",
+        "worker-activation-receipts.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-activation-receipts.jsonl.lock",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "7878"
+    }
+  },
+  "receipt:prepare:missing_lock": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_receipt.CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_lock_missing",
+      "code": "coding_worker_receipt_lock_missing"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-receipts.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-activation-receipts.jsonl"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl": "7072696f72"
+    }
+  },
+  "receipt:prepare:stream": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_receipt.CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_stream_invalid",
+      "code": "coding_worker_receipt_stream_invalid"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-receipts.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-activation-receipts.jsonl"
+      ],
+      [
+        "open",
+        "worker-activation-receipts.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": ""
+    }
+  },
+  "receipt:prepare:short_marker": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker receipt lock write failed"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-receipts.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-activation-receipts.jsonl"
+      ],
+      [
+        "open",
+        "worker-activation-receipts.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": ""
+    }
+  },
+  "receipt:prepare:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-receipts.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-activation-receipts.jsonl"
+      ],
+      [
+        "open",
+        "worker-activation-receipts.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "00"
+    }
+  },
+  "receipt:prepare:dir_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture directory flush failure"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-receipts.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-activation-receipts.jsonl"
+      ],
+      [
+        "open",
+        "worker-activation-receipts.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "00"
+    }
+  },
+  "receipt:validate:zero": {
+    "result": {
+      "value": false
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-activation-receipts.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "00"
+    }
+  },
+  "receipt:validate:one": {
+    "result": {
+      "value": true
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-activation-receipts.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "01"
+    }
+  },
+  "receipt:validate:bad_marker": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_receipt.CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_lock_corrupt",
+      "code": "coding_worker_receipt_lock_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-activation-receipts.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "78"
+    }
+  },
+  "receipt:validate:bad_size": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_receipt.CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_lock_corrupt",
+      "code": "coding_worker_receipt_lock_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-activation-receipts.jsonl.lock"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "7878"
+    }
+  },
+  "receipt:validate:identity": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_receipt.CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_lock_corrupt",
+      "code": "coding_worker_receipt_lock_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-activation-receipts.jsonl.lock"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "00"
+    }
+  },
+  "receipt:validate:stream": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_receipt.CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_stream_invalid",
+      "code": "coding_worker_receipt_stream_invalid"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "00"
+    }
+  },
+  "receipt:validate:acl": {
+    "result": {
+      "error": "builtins.PermissionError",
+      "message": "fixture ACL denied"
+    },
+    "trace": [
+      [
+        "acl"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "00"
+    }
+  },
+  "receipt:mark:zero": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker receipt lock commit failed"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "00"
+    }
+  },
+  "receipt:mark:one": {
+    "result": {
+      "error": "loushang.coding.package_product_worker_receipt.CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_lock_corrupt",
+      "code": "coding_worker_receipt_lock_corrupt"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "01"
+    }
+  },
+  "receipt:mark:none": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker receipt lock commit failed"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "00"
+    }
+  },
+  "receipt:mark:zero_write": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker receipt lock commit failed"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "00"
+    }
+  },
+  "receipt:mark:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-receipts.jsonl.lock": "01"
+    }
+  },
+  "supervisor:read:missing": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        false,
+        false,
+        null,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {}
+  },
+  "supervisor:read:present": {
+    "result": {
+      "value": "7072696f72"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": "7072696f72"
+    }
+  },
+  "supervisor:read:oversize": {
+    "result": {
+      "value": "303132333435363738"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": "30313233343536373839"
+    }
+  },
+  "supervisor:read:stream": {
+    "result": {
+      "error": "builtins.ValueError",
+      "message": "Windows Worker Supervisor named stream is invalid"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": "7072696f72"
+    }
+  },
+  "supervisor:read:acl": {
+    "result": {
+      "error": "builtins.PermissionError",
+      "message": "fixture ACL denied"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": "7072696f72"
+    }
+  },
+  "supervisor:append:new": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": "6e6578740a"
+    }
+  },
+  "supervisor:append:match": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": "7072696f726e6578740a"
+    }
+  },
+  "supervisor:append:empty_expected": {
+    "result": {
+      "error": "loushang.harness.worker.journal.WorkerSupervisorJournalError",
+      "message": "Windows Worker Supervisor history changed",
+      "code": "worker_supervisor_journal_corrupt"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": ""
+    }
+  },
+  "supervisor:append:conflict": {
+    "result": {
+      "error": "loushang.harness.worker.journal.WorkerSupervisorJournalError",
+      "message": "Windows Worker Supervisor history changed",
+      "code": "worker_supervisor_journal_corrupt"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": "7072696f72"
+    }
+  },
+  "supervisor:append:partial": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "write",
+        "6578740a"
+      ],
+      [
+        "write",
+        "78740a"
+      ],
+      [
+        "write",
+        "740a"
+      ],
+      [
+        "write",
+        "0a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": "6e6578740a"
+    }
+  },
+  "supervisor:append:none": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker Supervisor append made no progress"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": ""
+    }
+  },
+  "supervisor:append:zero": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker Supervisor append made no progress"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": ""
+    }
+  },
+  "supervisor:append:write_error": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture write failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": ""
+    }
+  },
+  "supervisor:append:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": "6e6578740a"
+    }
+  },
+  "supervisor:append:dir_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture directory flush failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": "6e6578740a"
+    }
+  },
+  "supervisor:append:stream": {
+    "result": {
+      "error": "builtins.ValueError",
+      "message": "Windows Worker Supervisor named stream is invalid"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-supervisor.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": ""
+    }
+  },
+  "supervisor:prepare:new": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-supervisor.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-supervisor.jsonl"
+      ],
+      [
+        "open",
+        "worker-supervisor.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "00"
+    }
+  },
+  "supervisor:prepare:existing": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-supervisor.jsonl.lock"
+      ],
+      [
+        "open",
+        "worker-supervisor.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-supervisor.jsonl.lock",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "00"
+    }
+  },
+  "supervisor:prepare:bad_size": {
+    "result": {
+      "error": "loushang.harness.worker.journal.WorkerSupervisorJournalError",
+      "message": "Windows Worker Supervisor lock is invalid",
+      "code": "worker_supervisor_journal_corrupt"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-supervisor.jsonl.lock"
+      ],
+      [
+        "open",
+        "worker-supervisor.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-supervisor.jsonl.lock",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "7878"
+    }
+  },
+  "supervisor:prepare:missing_lock": {
+    "result": {
+      "error": "loushang.harness.worker.journal.WorkerSupervisorJournalError",
+      "message": "Windows Worker Supervisor lock is missing",
+      "code": "worker_supervisor_journal_corrupt"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-supervisor.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-supervisor.jsonl"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl": "7072696f72"
+    }
+  },
+  "supervisor:prepare:stream": {
+    "result": {
+      "error": "builtins.ValueError",
+      "message": "Windows Worker Supervisor named stream is invalid"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-supervisor.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-supervisor.jsonl"
+      ],
+      [
+        "open",
+        "worker-supervisor.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": ""
+    }
+  },
+  "supervisor:prepare:short_marker": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker Supervisor lock write failed"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-supervisor.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-supervisor.jsonl"
+      ],
+      [
+        "open",
+        "worker-supervisor.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": ""
+    }
+  },
+  "supervisor:prepare:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-supervisor.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-supervisor.jsonl"
+      ],
+      [
+        "open",
+        "worker-supervisor.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "00"
+    }
+  },
+  "supervisor:prepare:dir_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture directory flush failure"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-supervisor.jsonl.lock"
+      ],
+      [
+        "stat",
+        "worker-supervisor.jsonl"
+      ],
+      [
+        "open",
+        "worker-supervisor.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "00"
+    }
+  },
+  "supervisor:validate:zero": {
+    "result": {
+      "value": false
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-supervisor.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "00"
+    }
+  },
+  "supervisor:validate:one": {
+    "result": {
+      "value": true
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-supervisor.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "01"
+    }
+  },
+  "supervisor:validate:bad_marker": {
+    "result": {
+      "error": "loushang.harness.worker.journal.WorkerSupervisorJournalError",
+      "message": "Windows Worker Supervisor lock is invalid",
+      "code": "worker_supervisor_journal_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-supervisor.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "78"
+    }
+  },
+  "supervisor:validate:bad_size": {
+    "result": {
+      "error": "loushang.harness.worker.journal.WorkerSupervisorJournalError",
+      "message": "Windows Worker Supervisor lock is invalid",
+      "code": "worker_supervisor_journal_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-supervisor.jsonl.lock"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "7878"
+    }
+  },
+  "supervisor:validate:identity": {
+    "result": {
+      "error": "loushang.harness.worker.journal.WorkerSupervisorJournalError",
+      "message": "Windows Worker Supervisor lock is invalid",
+      "code": "worker_supervisor_journal_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-supervisor.jsonl.lock"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "00"
+    }
+  },
+  "supervisor:validate:stream": {
+    "result": {
+      "error": "builtins.ValueError",
+      "message": "Windows Worker Supervisor named stream is invalid"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "00"
+    }
+  },
+  "supervisor:validate:acl": {
+    "result": {
+      "error": "builtins.PermissionError",
+      "message": "fixture ACL denied"
+    },
+    "trace": [
+      [
+        "acl"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "00"
+    }
+  },
+  "supervisor:mark:zero": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker Supervisor lock commit failed"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "00"
+    }
+  },
+  "supervisor:mark:one": {
+    "result": {
+      "error": "builtins.ValueError",
+      "message": "Windows Worker Supervisor lock state changed"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "01"
+    }
+  },
+  "supervisor:mark:none": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker Supervisor lock commit failed"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "00"
+    }
+  },
+  "supervisor:mark:zero_write": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows Worker Supervisor lock commit failed"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "00"
+    }
+  },
+  "supervisor:mark:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-supervisor.jsonl.lock": "01"
+    }
+  },
+  "activation_state:read:missing": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        false,
+        false,
+        null,
+        true
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {}
+  },
+  "activation_state:read:present": {
+    "result": {
+      "value": "7072696f72"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": "7072696f72"
+    }
+  },
+  "activation_state:read:oversize": {
+    "result": {
+      "value": "303132333435363738"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": "30313233343536373839"
+    }
+  },
+  "activation_state:read:stream": {
+    "result": {
+      "error": "loushang.harness.worker.activation_state_journal.WorkerActivationStateJournalError",
+      "message": "worker_activation_state_corrupt",
+      "code": "worker_activation_state_corrupt"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": "7072696f72"
+    }
+  },
+  "activation_state:read:acl": {
+    "result": {
+      "error": "builtins.PermissionError",
+      "message": "fixture ACL denied"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        false,
+        false,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": "7072696f72"
+    }
+  },
+  "activation_state:append:new": {
+    "result": {
+      "value": "6e6578740a"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": "6e6578740a"
+    }
+  },
+  "activation_state:append:match": {
+    "result": {
+      "value": "7072696f726e6578740a"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": "7072696f726e6578740a"
+    }
+  },
+  "activation_state:append:empty_expected": {
+    "result": {
+      "error": "loushang.harness.worker.activation_state_journal.WorkerActivationStateJournalError",
+      "message": "worker_activation_state_corrupt",
+      "code": "worker_activation_state_corrupt"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": ""
+    }
+  },
+  "activation_state:append:conflict": {
+    "result": {
+      "error": "loushang.harness.worker.activation_state_journal.WorkerActivationStateJournalError",
+      "message": "worker_activation_state_corrupt",
+      "code": "worker_activation_state_corrupt"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": "7072696f72"
+    }
+  },
+  "activation_state:append:partial": {
+    "result": {
+      "value": "6e6578740a"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "write",
+        "6578740a"
+      ],
+      [
+        "write",
+        "78740a"
+      ],
+      [
+        "write",
+        "740a"
+      ],
+      [
+        "write",
+        "0a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": "6e6578740a"
+    }
+  },
+  "activation_state:append:none": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows C5 append made no progress"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": ""
+    }
+  },
+  "activation_state:append:zero": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows C5 append made no progress"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": ""
+    }
+  },
+  "activation_state:append:write_error": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture write failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": ""
+    }
+  },
+  "activation_state:append:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": "6e6578740a"
+    }
+  },
+  "activation_state:append:dir_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture directory flush failure"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "read",
+        9
+      ],
+      [
+        "seek",
+        0,
+        2
+      ],
+      [
+        "write",
+        "6e6578740a"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "handle_close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": "6e6578740a"
+    }
+  },
+  "activation_state:append:stream": {
+    "result": {
+      "error": "loushang.harness.worker.activation_state_journal.WorkerActivationStateJournalError",
+      "message": "worker_activation_state_corrupt",
+      "code": "worker_activation_state_corrupt"
+    },
+    "trace": [
+      [
+        "open",
+        "worker-activation-state.jsonl",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "handle_close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": ""
+    }
+  },
+  "activation_state:prepare:new": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-state.jsonl.lock"
+      ],
+      [
+        "list"
+      ],
+      [
+        "open",
+        "worker-activation-state.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "00"
+    }
+  },
+  "activation_state:prepare:existing": {
+    "result": {
+      "value": null
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-state.jsonl.lock"
+      ],
+      [
+        "open",
+        "worker-activation-state.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-activation-state.jsonl.lock",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "00"
+    }
+  },
+  "activation_state:prepare:bad_size": {
+    "result": {
+      "error": "loushang.harness.worker.activation_state_journal.WorkerActivationStateJournalError",
+      "message": "worker_activation_state_corrupt",
+      "code": "worker_activation_state_corrupt"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-state.jsonl.lock"
+      ],
+      [
+        "open",
+        "worker-activation-state.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "open",
+        "worker-activation-state.jsonl.lock",
+        false,
+        true,
+        null,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "7878"
+    }
+  },
+  "activation_state:prepare:missing_lock": {
+    "result": {
+      "error": "loushang.harness.worker.activation_state_journal.WorkerActivationStateJournalError",
+      "message": "worker_activation_state_corrupt",
+      "code": "worker_activation_state_corrupt"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-state.jsonl.lock"
+      ],
+      [
+        "list"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl": "7072696f72"
+    }
+  },
+  "activation_state:prepare:stream": {
+    "result": {
+      "error": "loushang.harness.worker.activation_state_journal.WorkerActivationStateJournalError",
+      "message": "worker_activation_state_corrupt",
+      "code": "worker_activation_state_corrupt"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-state.jsonl.lock"
+      ],
+      [
+        "list"
+      ],
+      [
+        "open",
+        "worker-activation-state.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": ""
+    }
+  },
+  "activation_state:prepare:short_marker": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows C5 lock write made no progress"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-state.jsonl.lock"
+      ],
+      [
+        "list"
+      ],
+      [
+        "open",
+        "worker-activation-state.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": ""
+    }
+  },
+  "activation_state:prepare:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-state.jsonl.lock"
+      ],
+      [
+        "list"
+      ],
+      [
+        "open",
+        "worker-activation-state.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "00"
+    }
+  },
+  "activation_state:prepare:dir_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture directory flush failure"
+    },
+    "trace": [
+      [
+        "stat",
+        "worker-activation-state.jsonl.lock"
+      ],
+      [
+        "list"
+      ],
+      [
+        "open",
+        "worker-activation-state.jsonl.lock",
+        true,
+        true,
+        123,
+        true
+      ],
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "marker_write",
+        "00"
+      ],
+      [
+        "file_flush"
+      ],
+      [
+        "close"
+      ],
+      [
+        "dir_flush"
+      ]
+    ],
+    "borrowed_open": false,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "00"
+    }
+  },
+  "activation_state:validate:zero": {
+    "result": {
+      "value": false
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-activation-state.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "00"
+    }
+  },
+  "activation_state:validate:one": {
+    "result": {
+      "value": true
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-activation-state.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "01"
+    }
+  },
+  "activation_state:validate:bad_marker": {
+    "result": {
+      "error": "loushang.harness.worker.activation_state_journal.WorkerActivationStateJournalError",
+      "message": "worker_activation_state_corrupt",
+      "code": "worker_activation_state_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-activation-state.jsonl.lock"
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "78"
+    }
+  },
+  "activation_state:validate:bad_size": {
+    "result": {
+      "error": "loushang.harness.worker.activation_state_journal.WorkerActivationStateJournalError",
+      "message": "worker_activation_state_corrupt",
+      "code": "worker_activation_state_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-activation-state.jsonl.lock"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "7878"
+    }
+  },
+  "activation_state:validate:identity": {
+    "result": {
+      "error": "loushang.harness.worker.activation_state_journal.WorkerActivationStateJournalError",
+      "message": "worker_activation_state_corrupt",
+      "code": "worker_activation_state_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ],
+      [
+        "fstat"
+      ],
+      [
+        "stat",
+        "worker-activation-state.jsonl.lock"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "00"
+    }
+  },
+  "activation_state:validate:stream": {
+    "result": {
+      "error": "loushang.harness.worker.activation_state_journal.WorkerActivationStateJournalError",
+      "message": "worker_activation_state_corrupt",
+      "code": "worker_activation_state_corrupt"
+    },
+    "trace": [
+      [
+        "acl"
+      ],
+      [
+        "streams"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "00"
+    }
+  },
+  "activation_state:validate:acl": {
+    "result": {
+      "error": "builtins.PermissionError",
+      "message": "fixture ACL denied"
+    },
+    "trace": [
+      [
+        "acl"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "00"
+    }
+  },
+  "activation_state:mark:zero": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows C5 lock commit made no progress"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "00"
+    }
+  },
+  "activation_state:mark:one": {
+    "result": {
+      "error": "loushang.harness.worker.activation_state_journal.WorkerActivationStateJournalError",
+      "message": "worker_activation_state_corrupt",
+      "code": "worker_activation_state_corrupt"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "01"
+    }
+  },
+  "activation_state:mark:none": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows C5 lock commit made no progress"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "00"
+    }
+  },
+  "activation_state:mark:zero_write": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "Windows C5 lock commit made no progress"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "00"
+    }
+  },
+  "activation_state:mark:file_flush": {
+    "result": {
+      "error": "builtins.OSError",
+      "message": "fixture file flush failure"
+    },
+    "trace": [
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "read",
+        1
+      ],
+      [
+        "seek",
+        0,
+        0
+      ],
+      [
+        "write",
+        "01"
+      ],
+      [
+        "buffer_flush"
+      ],
+      [
+        "file_flush"
+      ]
+    ],
+    "borrowed_open": true,
+    "leaked": 0,
+    "files": {
+      "worker-activation-state.jsonl.lock": "01"
+    }
+  }
+}

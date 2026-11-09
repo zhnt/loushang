@@ -1,0 +1,3364 @@
+{
+  "cases": [
+    {
+      "name": "workflow",
+      "expected": {
+        "result": {
+          "returned": {
+            "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "deletionReceiptId": "deletion:original",
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "restoreCompletionDigest": "915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb",
+            "restoredTargetId": "present:33cf34c0229ed3691d4dff30e00d095b33998ca5d4c23a56b08b5601552876ee",
+            "restoreId": "arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4",
+            "confirmationId": "arch-restore-confirm:0bf402c8fd1328a134d46f98d3a29fbe82e715781a2d9b7c2e744872dc57683c",
+            "recordVersion": 1,
+            "revision": 1,
+            "recordDigest": "9a063e54f0b18a0008a0d7afa73e24f117d02f83c52b6392e4247bfcfa2eb920"
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          [
+            "write",
+            "arch-private-restore-00000002.json",
+            4194304,
+            556,
+            "f082e53261a79ab5c867dfb2d0fe9ffe150d550397843bc8fc7288b5fc82c18d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            null
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          "list",
+          [
+            "write",
+            "arch-restore-confirmation-00000001.json",
+            4194304,
+            828,
+            "ef2db4a52c16ac4ab3fedfefc136583ea3dad73439bc9980b4bdd81e9d039e8d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-restore-confirmation-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            null
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            null
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          "list",
+          [
+            "read",
+            "arch-restore-confirmation-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            null
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          "list",
+          [
+            "read",
+            "arch-restore-confirmation-00000001.json",
+            16384,
+            false
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-private-restore-00000002.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"completed\",\"recordDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":2}\n",
+          "arch-restore-confirmation-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"confirmationId\":\"arch-restore-confirm:0bf402c8fd1328a134d46f98d3a29fbe82e715781a2d9b7c2e744872dc57683c\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"recordDigest\":\"9a063e54f0b18a0008a0d7afa73e24f117d02f83c52b6392e4247bfcfa2eb920\",\"recordVersion\":1,\"restoreCompletionDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"restoredTargetId\":\"present:33cf34c0229ed3691d4dff30e00d095b33998ca5d4c23a56b08b5601552876ee\",\"revision\":1}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": [
+          true,
+          true,
+          true,
+          true
+        ]
+      }
+    },
+    {
+      "name": "completed_revision",
+      "expected": {
+        "result": {
+          "returned": 1
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          [
+            "write",
+            "arch-private-restore-00000002.json",
+            4194304,
+            556,
+            "f082e53261a79ab5c867dfb2d0fe9ffe150d550397843bc8fc7288b5fc82c18d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-private-restore-00000002.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"completed\",\"recordDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":2}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": []
+      }
+    },
+    {
+      "name": "closed",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore transaction is closed",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [],
+        "saved": {},
+        "parent_fds_closed": []
+      }
+    },
+    {
+      "name": "invalid_plan_state",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore plan is invalid",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [],
+        "saved": {},
+        "parent_fds_closed": []
+      }
+    },
+    {
+      "name": "publication_write_before",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "loushang.coding.package_legacy_windows_receipt.CodingWindowsPrivateReceiptError",
+            "message": "publication interrupted",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n"
+        },
+        "parent_fds_closed": []
+      }
+    },
+    {
+      "name": "publication_write_after",
+      "expected": {
+        "result": {
+          "returned": {
+            "desiredInventoryRevision": 1,
+            "generationNumber": 2,
+            "parentIdentity": [
+              7,
+              8
+            ],
+            "planFingerprint": "f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b",
+            "restoreId": "arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4",
+            "stageIdentity": [
+              9,
+              10,
+              16832,
+              0,
+              1
+            ],
+            "startedDigest": "f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4"
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": []
+      }
+    },
+    {
+      "name": "publication_unpublished",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore publication changed",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n"
+        },
+        "parent_fds_closed": []
+      }
+    },
+    {
+      "name": "publication_wrong_digest",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore publication changed: started_digest",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}\n"
+        },
+        "parent_fds_closed": []
+      }
+    },
+    {
+      "name": "publication_invalid_json",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore publication is invalid",
+            "cause": {
+              "type": "json.decoder.JSONDecodeError",
+              "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+              "cause": null,
+              "context": null
+            },
+            "context": {
+              "type": "json.decoder.JSONDecodeError",
+              "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+              "cause": null,
+              "context": null
+            }
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{invalid}\n"
+        },
+        "parent_fds_closed": []
+      }
+    },
+    {
+      "name": "publication_oversized",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore publication is too large",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            1,
+            true
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n"
+        },
+        "parent_fds_closed": []
+      }
+    },
+    {
+      "name": "completion_root_absent",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restored root is absent",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root"
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": []
+      }
+    },
+    {
+      "name": "completion_write_after",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "loushang.coding.package_legacy_windows_receipt.CodingWindowsPrivateReceiptError",
+            "message": "publication interrupted after save",
+            "cause": null,
+            "context": null
+          },
+          "queried": {
+            "returned": [
+              {
+                "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "deletionReceiptId": "deletion:original",
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "coding.arch.default",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                },
+                "phase": "started",
+                "recordVersion": 1,
+                "restoreId": "arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4",
+                "revision": 1,
+                "recordDigest": "f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4"
+              },
+              {
+                "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "deletionReceiptId": "deletion:original",
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "coding.arch.default",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                },
+                "phase": "completed",
+                "recordVersion": 1,
+                "restoreId": "arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4",
+                "revision": 2,
+                "recordDigest": "915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb"
+              }
+            ]
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          [
+            "write",
+            "arch-private-restore-00000002.json",
+            4194304,
+            556,
+            "f082e53261a79ab5c867dfb2d0fe9ffe150d550397843bc8fc7288b5fc82c18d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-private-restore-00000002.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"completed\",\"recordDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":2}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": []
+      }
+    },
+    {
+      "name": "confirmation_write_before",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "loushang.coding.package_legacy_windows_receipt.CodingWindowsPrivateReceiptError",
+            "message": "publication interrupted",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          [
+            "write",
+            "arch-private-restore-00000002.json",
+            4194304,
+            556,
+            "f082e53261a79ab5c867dfb2d0fe9ffe150d550397843bc8fc7288b5fc82c18d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            null
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          "list",
+          [
+            "write",
+            "arch-restore-confirmation-00000001.json",
+            4194304,
+            828,
+            "ef2db4a52c16ac4ab3fedfefc136583ea3dad73439bc9980b4bdd81e9d039e8d"
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-private-restore-00000002.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"completed\",\"recordDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":2}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "confirmation_write_after",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "loushang.coding.package_legacy_windows_receipt.CodingWindowsPrivateReceiptError",
+            "message": "publication interrupted after save",
+            "cause": null,
+            "context": null
+          },
+          "queried": {
+            "returned": {
+              "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "deletionReceiptId": "deletion:original",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "restoreCompletionDigest": "915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb",
+              "restoredTargetId": "present:33cf34c0229ed3691d4dff30e00d095b33998ca5d4c23a56b08b5601552876ee",
+              "restoreId": "arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4",
+              "confirmationId": "arch-restore-confirm:0bf402c8fd1328a134d46f98d3a29fbe82e715781a2d9b7c2e744872dc57683c",
+              "recordVersion": 1,
+              "revision": 1,
+              "recordDigest": "9a063e54f0b18a0008a0d7afa73e24f117d02f83c52b6392e4247bfcfa2eb920"
+            }
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          [
+            "write",
+            "arch-private-restore-00000002.json",
+            4194304,
+            556,
+            "f082e53261a79ab5c867dfb2d0fe9ffe150d550397843bc8fc7288b5fc82c18d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            null
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          "list",
+          [
+            "write",
+            "arch-restore-confirmation-00000001.json",
+            4194304,
+            828,
+            "ef2db4a52c16ac4ab3fedfefc136583ea3dad73439bc9980b4bdd81e9d039e8d"
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            null
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          "list",
+          [
+            "read",
+            "arch-restore-confirmation-00000001.json",
+            16384,
+            false
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-private-restore-00000002.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"completed\",\"recordDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":2}\n",
+          "arch-restore-confirmation-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"confirmationId\":\"arch-restore-confirm:0bf402c8fd1328a134d46f98d3a29fbe82e715781a2d9b7c2e744872dc57683c\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"recordDigest\":\"9a063e54f0b18a0008a0d7afa73e24f117d02f83c52b6392e4247bfcfa2eb920\",\"recordVersion\":1,\"restoreCompletionDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"restoredTargetId\":\"present:33cf34c0229ed3691d4dff30e00d095b33998ca5d4c23a56b08b5601552876ee\",\"revision\":1}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": [
+          true,
+          true
+        ]
+      }
+    },
+    {
+      "name": "confirmation_unpublished",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore confirmation changed",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          [
+            "write",
+            "arch-private-restore-00000002.json",
+            4194304,
+            556,
+            "f082e53261a79ab5c867dfb2d0fe9ffe150d550397843bc8fc7288b5fc82c18d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            null
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          "list",
+          [
+            "write",
+            "arch-restore-confirmation-00000001.json",
+            4194304,
+            828,
+            "ef2db4a52c16ac4ab3fedfefc136583ea3dad73439bc9980b4bdd81e9d039e8d"
+          ],
+          "list"
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-private-restore-00000002.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"completed\",\"recordDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":2}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "confirmation_stale",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore confirmation is stale",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          [
+            "write",
+            "arch-private-restore-00000002.json",
+            4194304,
+            556,
+            "f082e53261a79ab5c867dfb2d0fe9ffe150d550397843bc8fc7288b5fc82c18d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            null
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          "list",
+          [
+            "write",
+            "arch-restore-confirmation-00000001.json",
+            4194304,
+            828,
+            "ef2db4a52c16ac4ab3fedfefc136583ea3dad73439bc9980b4bdd81e9d039e8d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-restore-confirmation-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            null
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            null
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          "list",
+          [
+            "read",
+            "arch-restore-confirmation-00000001.json",
+            16384,
+            false
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-private-restore-00000002.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"completed\",\"recordDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":2}\n",
+          "arch-restore-confirmation-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"confirmationId\":\"arch-restore-confirm:0bf402c8fd1328a134d46f98d3a29fbe82e715781a2d9b7c2e744872dc57683c\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"recordDigest\":\"9a063e54f0b18a0008a0d7afa73e24f117d02f83c52b6392e4247bfcfa2eb920\",\"recordVersion\":1,\"restoreCompletionDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"restoredTargetId\":\"present:33cf34c0229ed3691d4dff30e00d095b33998ca5d4c23a56b08b5601552876ee\",\"revision\":1}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": [
+          true,
+          true,
+          true
+        ]
+      }
+    },
+    {
+      "name": "parent_changed",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore parent changed",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          [
+            "write",
+            "arch-private-restore-00000002.json",
+            4194304,
+            556,
+            "f082e53261a79ab5c867dfb2d0fe9ffe150d550397843bc8fc7288b5fc82c18d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent"
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-private-restore-00000002.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"completed\",\"recordDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":2}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": []
+      }
+    },
+    {
+      "name": "held_parent_changed",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore parent changed",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          [
+            "write",
+            "arch-private-restore-00000002.json",
+            4194304,
+            556,
+            "f082e53261a79ab5c867dfb2d0fe9ffe150d550397843bc8fc7288b5fc82c18d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          [
+            "acl-exit",
+            "ValueError"
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-private-restore-00000002.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"completed\",\"recordDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":2}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "root_missing",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore has stage debt",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          [
+            "write",
+            "arch-private-restore-00000002.json",
+            4194304,
+            556,
+            "f082e53261a79ab5c867dfb2d0fe9ffe150d550397843bc8fc7288b5fc82c18d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            "ValueError"
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-private-restore-00000002.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"completed\",\"recordDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":2}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "stage_debt",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore has stage debt",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          [
+            "write",
+            "arch-private-restore-00000002.json",
+            4194304,
+            556,
+            "f082e53261a79ab5c867dfb2d0fe9ffe150d550397843bc8fc7288b5fc82c18d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            "ValueError"
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-private-restore-00000002.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"completed\",\"recordDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":2}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "bound_root_changed",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restored root binding changed",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          [
+            "write",
+            "arch-private-restore-00000002.json",
+            4194304,
+            556,
+            "f082e53261a79ab5c867dfb2d0fe9ffe150d550397843bc8fc7288b5fc82c18d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            null
+          ],
+          "bound-root"
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-private-restore-00000002.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"completed\",\"recordDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":2}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "captured_root_changed",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restored bytes changed",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "current-plan",
+          "list",
+          [
+            "write",
+            "arch-private-restore-00000001.json",
+            4194304,
+            554,
+            "165460b552b20edc7a30daac145af15a60e0123575e898cdb2cc2ca3cb16a623"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "inspect-parent",
+          [
+            "capture",
+            "stage",
+            [
+              9,
+              10
+            ]
+          ],
+          "inspect-parent",
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            true
+          ],
+          [
+            "write",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4194304,
+            368,
+            "bb0e52e5980aba60ce1e255ad469a4905703e4d550b679add03b1c7be33f58ef"
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ],
+          [
+            "write",
+            "arch-private-restore-00000002.json",
+            4194304,
+            556,
+            "f082e53261a79ab5c867dfb2d0fe9ffe150d550397843bc8fc7288b5fc82c18d"
+          ],
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          "current-plan",
+          "list",
+          [
+            "read",
+            "arch-private-restore-00000001.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-private-restore-00000002.json",
+            16384,
+            false
+          ],
+          [
+            "read",
+            "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json",
+            4096,
+            false
+          ],
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          [
+            "acl-exit",
+            null
+          ],
+          "bound-root",
+          [
+            "capture",
+            "root",
+            [
+              9,
+              10
+            ]
+          ]
+        ],
+        "saved": {
+          "arch-private-restore-00000001.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"started\",\"recordDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":1}\n",
+          "arch-private-restore-00000002.json": "{\"backupId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deletionReceiptId\":\"deletion:original\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"phase\":\"completed\",\"recordDigest\":\"915df9b3c1063cadf8414914110c996132a5a307824240cd41e666d1eb38a0fb\",\"recordVersion\":1,\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"revision\":2}\n",
+          "arch-restore-publication-aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4.json": "{\"desiredInventoryRevision\":1,\"generationNumber\":2,\"parentIdentity\":[7,8],\"planFingerprint\":\"f21cae45afe7ef91d4cacbba0602d242610935875e28c5bb9d2d71a43290529b\",\"restoreId\":\"arch-restore:aa04e2f58d65bd9c5c2eb8b1e5de7e9138d791fc543119b697a1a15e6f30bbb4\",\"stageIdentity\":[9,10,16832,0,1],\"startedDigest\":\"f8c115c403aa27ea34ac0bfc6cf273090c9e292895aee5377336b33efd6fd1f4\"}\n"
+        },
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "archive_valid",
+      "expected": {
+        "result": {
+          "returned": {
+            "members": [],
+            "rootIdentity": [
+              1,
+              2,
+              16832,
+              0,
+              1
+            ],
+            "rootPathDigest": "41cf6794ba4200b839c53531555f0f3998df4cbb01a4d5cb0b94e3ca5e23947d"
+          }
+        },
+        "trace": [
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          "read-manifest",
+          "verify-archive",
+          "inspect-parent",
+          [
+            "acl-exit",
+            null
+          ]
+        ],
+        "saved": {},
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "archive_parent_changed",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch backup parent changed",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "inspect-parent",
+          [
+            "acl-exit",
+            "ValueError"
+          ]
+        ],
+        "saved": {},
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "archive_held_parent_changed",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch backup parent changed",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "inspect-parent",
+          [
+            "acl-exit",
+            "ValueError"
+          ]
+        ],
+        "saved": {},
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "archive_stage_debt",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch backup parent changed",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          "inspect-parent",
+          [
+            "acl-exit",
+            "ValueError"
+          ]
+        ],
+        "saved": {},
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "archive_read_failure",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.OSError",
+            "message": "manifest read interrupted",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          "read-manifest",
+          "inspect-parent",
+          [
+            "acl-exit",
+            "OSError"
+          ]
+        ],
+        "saved": {},
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "archive_foreign_key",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore archive changed",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          "read-manifest",
+          "inspect-parent",
+          [
+            "acl-exit",
+            "ValueError"
+          ]
+        ],
+        "saved": {},
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "archive_foreign_source",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch restore archive changed",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          "read-manifest",
+          "inspect-parent",
+          [
+            "acl-exit",
+            "ValueError"
+          ]
+        ],
+        "saved": {},
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "archive_verify_failure",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.OSError",
+            "message": "archive verify interrupted",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          "read-manifest",
+          "verify-archive",
+          "inspect-parent",
+          [
+            "acl-exit",
+            "OSError"
+          ]
+        ],
+        "saved": {},
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    },
+    {
+      "name": "archive_final_parent_changed",
+      "expected": {
+        "result": {
+          "raised": {
+            "type": "builtins.ValueError",
+            "message": "Windows Coding Arch backup parent changed",
+            "cause": null,
+            "context": null
+          }
+        },
+        "trace": [
+          "inspect-parent",
+          [
+            "acl",
+            {}
+          ],
+          "acl-enter",
+          [
+            "open-parent",
+            {
+              "share_delete": false,
+              "read_control": true
+            }
+          ],
+          "acl-validate",
+          "held-parent",
+          "list",
+          "read-manifest",
+          "verify-archive",
+          "inspect-parent",
+          [
+            "acl-exit",
+            "ValueError"
+          ]
+        ],
+        "saved": {},
+        "parent_fds_closed": [
+          true
+        ]
+      }
+    }
+  ]
+}

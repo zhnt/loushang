@@ -24,6 +24,7 @@ from loushang.coding.lsp.model import (
     DocumentOutlineResult,
     LspServerDefinition,
 )
+from loushang.coding.lsp.ports import InspectSymbolRuntime as CodingLspToolRuntimePort
 from loushang.coding.lsp.runtime import (
     CodingLspRuntime,
     CodingLspSessionAccess,
@@ -116,33 +117,6 @@ class CodingLspSessionCapabilityConsumer:
         _require_callable_member(value, "status", name="semantic facet")
         _require_callable_member(value, "stop", name="semantic facet")
         return cast(CodingLspSessionAccess, value)
-
-
-class CodingLspToolRuntimePort(Protocol):
-    """Provider-neutral operations exposed to admitted LSP Tool consumers."""
-
-    async def inspect_symbol(
-        self,
-        *,
-        path: str,
-        line: int,
-        character: int,
-        query: str = "definition",
-        include_declaration: bool = True,
-        limit: int = 50,
-        correlation_id: str,
-        signal: object | None = None,
-    ) -> CodeQueryResult: ...
-
-    async def document_outline(
-        self,
-        *,
-        path: str,
-        depth: int = 4,
-        limit: int = 200,
-        correlation_id: str,
-        signal: object | None = None,
-    ) -> DocumentOutlineResult: ...
 
 
 @dataclass(frozen=True, slots=True)

@@ -519,10 +519,10 @@ class PluginPackageGcBindingJournal:
                 record_codec=_CLAIM_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
-                load_policy=self._load_policy,
+                load_policy=replace(self._load_policy, collect_duplicate_keys=True),
             )
             claims = loaded.records
-            _assert_no_duplicate_json_keys(self._claim_path)
+            loaded.require_unique_keys('Package GC binding evidence has a duplicate JSON key')
             requests: set[str] = set()
             for revision, claim in enumerate(claims, start=1):
                 if (
@@ -549,10 +549,12 @@ class PluginPackageGcBindingJournal:
                 record_codec=_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
-                load_policy=load_policy or self._load_policy,
+                load_policy=replace(
+                    load_policy or self._load_policy, collect_duplicate_keys=True
+                ),
             )
             records = loaded.records
-            _assert_no_duplicate_json_keys(self._path)
+            loaded.require_unique_keys('Package GC binding evidence has a duplicate JSON key')
             requests: set[str] = set()
             for revision, record in enumerate(records, start=1):
                 if (
@@ -620,22 +622,6 @@ def _string(value: object) -> str:
     if type(value) is not str or not value:
         raise ValueError("Package GC crosswalk string is invalid")
     return value
-
-
-def _assert_no_duplicate_json_keys(path: Path) -> None:
-    with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            if line.strip():
-                json.loads(line, object_pairs_hook=_unique_json_object)
-
-
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    document: dict[str, object] = {}
-    for key, value in pairs:
-        if key in document:
-            raise ValueError("Package GC binding evidence has a duplicate JSON key")
-        document[key] = value
-    return document
 
 
 __all__ = [

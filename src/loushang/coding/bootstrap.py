@@ -39,7 +39,6 @@ from loushang.coding._capability_plugin_composition import (
     create_coding_capability_plugin_composition_request,
     prepare_coding_capability_plugin_composition,
 )
-from loushang.coding._cleanup import run_cleanup_steps
 from loushang.coding._external_data_product_composition import (
     CodingExternalDataProductCompilation,
     compile_coding_external_data_product_selection,
@@ -244,6 +243,7 @@ from loushang.harness.session import (
 from loushang.harness.session import (
     prepare_agent_session_services as prepare_standard_agent_session_services,
 )
+from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.session.product_composition_assembly import (
     ProductCompositionAssemblyRequest,

@@ -9,24 +9,18 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Protocol
 
-from loushang.ai.model import model_selection_ref, normalize_model_selection
 from loushang.apphost import SessionDiscoveryScope, SessionIdentityEnvelopeV1
+from loushang.apphost.integrations.session_control import _SessionServiceAdapter
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
-    InteractionOutcomeV1,
     SessionEventKindV1,
     SessionEventV1,
     SessionIdentityV1,
-    SessionModelChoiceV1,
-    SessionModelsV1,
     SessionOpenSpecV1,
-    SessionSnapshotV1,
-    SessionSubmissionModeV1,
-    SessionThinkingV1,
     TranscriptRecordV1,
 )
-from loushang.appservice import HostedSessionEventListenerV1, HostedSessionPortV1
+from loushang.appservice import HostedSessionPortV1
 from loushang.appservice.resume_ports import (
     ResumeInputLookupQueryV1,
     ResumeInputLookupResultV1,
@@ -34,14 +28,6 @@ from loushang.appservice.resume_ports import (
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.session import (
     SessionControlPort,
-    SessionOperationRuntime,
-    SessionPromptRequest,
-)
-from loushang.harness.session.model_selection import (
-    apply_session_model_selection,
-    get_session_model_selection,
-    iter_available_model_details,
-    model_choice_data_from_details,
 )
 
 from .product_plan import CODING_PRODUCT_ID
@@ -118,25 +104,26 @@ class CodingHostedSessionBindingV1(Protocol):
     async def close(self) -> None: ...
 
 
-CodingHostedOpen = Callable[[SessionOpenSpecV1], Awaitable[CodingHostedSessionBindingV1]]
+CodingHostedOpen = Callable[
+    [SessionOpenSpecV1], Awaitable[CodingHostedSessionBindingV1]
+]
 
 
-class CodingHostedSessionV1:
-    """Adapt one already admitted Coding Session to Product-neutral AppService."""
+class CodingHostedSessionV1(
+    _SessionServiceAdapter[CodingHostedSnapshotProjectionV1, CodingHostedEventProjectionV1]
+):
+    """Product identity/projections over the existing Session control bridge."""
 
-    __slots__ = (
-        "_binding",
-        "_close_lock",
-        "_close_task",
-        "_cursor",
-        "_listeners",
-        "_operations",
-        "_settled",
-        "_submission_mode",
-        "_unsubscribe",
-        "_unsubscribed",
-        "identity",
-    )
+    __slots__ = ()
+    _product_id = CODING_PRODUCT_ID
+    _product_label = "Coding"
+    _snapshot_type = CodingHostedSnapshotProjectionV1
+    _event_type = CodingHostedEventProjectionV1
+
+    def __init__(self, binding: CodingHostedSessionBindingV1, *,
+        execution_submission: bool = False,
+    ) -> None:
+        super().__init__(binding, execution_submission=execution_submission)
 
     async def lookup_resume_input(
         self, query: ResumeInputLookupQueryV1,
@@ -149,275 +136,13 @@ class CodingHostedSessionV1:
             raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
         return await _lookup_coding_resume_input(self._binding, query)
 
-    def __init__(self, binding: CodingHostedSessionBindingV1, *,
-        execution_submission: bool = False,
-    ) -> None:
-        self._require_binding(binding)
-        if type(execution_submission) is not bool:
-            raise TypeError("Coding hosted submission mode is invalid")
-        identity = binding.identity
-        if type(identity) is not SessionIdentityV1 or identity.product_id != (
-            CODING_PRODUCT_ID
-        ):
-            raise TypeError("Coding hosted Session identity is invalid")
-        self.identity = identity
-        self._binding = binding
-        self._submission_mode = (SessionSubmissionModeV1.EXECUTION if execution_submission
-                                 else SessionSubmissionModeV1.LEGACY)
-        control = binding.control
-        self._operations = (
-            None if control is None else SessionOperationRuntime(control)
-        )
-        self._listeners: set[HostedSessionEventListenerV1] = set()
-        self._cursor = 0
-        self._settled = False
-        self._unsubscribed = False
-        self._close_task: asyncio.Task[None] | None = None
-        self._close_lock = asyncio.Lock()
-        if control is None:
-            self._unsubscribe = lambda: None
-            return
-        try:
-            unsubscribe = control.subscribe_runtime_events(self._on_runtime_event)
-        except BaseException:
-            raise TypeError("Coding hosted event subscription is unavailable") from None
-        if not callable(unsubscribe):
-            raise TypeError("Coding hosted event subscription is unavailable")
-        self._unsubscribe = unsubscribe
-
-    async def snapshot(self) -> SessionSnapshotV1:
-        self._require_open()
-        try:
-            projection = self._binding.project_snapshot()
-        except BaseException:
-            raise RuntimeError("coding_hosted_snapshot_unavailable") from None
-        if type(projection) is not CodingHostedSnapshotProjectionV1:
-            raise RuntimeError("coding_hosted_snapshot_unavailable")
-        return SessionSnapshotV1(
-            identity=self.identity,
-            title=projection.title,
-            cursor=self._cursor,
-            revision=projection.revision,
-            running=projection.running,
-            records=projection.records,
-            submission_mode=self._submission_mode,
-        )
-
-    def subscribe(
-        self,
-        listener: HostedSessionEventListenerV1,
-    ) -> Callable[[], None]:
-        self._require_open()
-        if not callable(listener):
-            raise TypeError("Coding hosted listener must be callable")
-        self._listeners.add(listener)
-
-        def unsubscribe() -> None:
-            self._listeners.discard(listener)
-
-        return unsubscribe
-
-    async def start_turn(self, text: str) -> None:
-        self._require_open()
-        await self._require_operations().prompt(request=self._prompt_request(text))
-
-    def steer_turn(self, text: str) -> None:
-        self._require_open()
-        self._require_operations().steer(text)
-
-    def follow_up_turn(self, text: str) -> None:
-        self._require_open()
-        self._require_operations().follow_up(text)
-
-    def interrupt_turn(self) -> bool:
-        self._require_open()
-        return False if self._operations is None else self._operations.abort_turn()
-
-    async def respond_interaction(
-        self,
-        interaction_id: str,
-        outcome: InteractionOutcomeV1,
-    ) -> bool:
-        self._require_open()
-        if self._operations is None:
-            return False
-        mapped = {
-            InteractionOutcomeV1.APPROVE: "allow_once",
-            InteractionOutcomeV1.DENY: "deny",
-            InteractionOutcomeV1.CANCEL: "abort",
-        }[outcome]
-        try:
-            result = await self._binding.respond_interaction(interaction_id, mapped)
-        except asyncio.CancelledError:
-            raise
-        except BaseException:
-            raise RuntimeError("coding_hosted_interaction_unavailable") from None
-        return result is True
-
-    async def list_models(self) -> SessionModelsV1:
-        self._require_open()
-        control = self._binding.control
-        active_model = getattr(getattr(control, "agent", None), "model", None)
-        selection = normalize_model_selection(active_model)
-        if selection is None:
-            selection = await get_session_model_selection(control)
-            active_model = selection
-        current = model_selection_ref(selection) if selection is not None else None
-        details = await iter_available_model_details(control)
-        if active_model is not None:
-            details.append(active_model)
-        models: list[SessionModelChoiceV1] = []
-        for choice in model_choice_data_from_details(details):
-            reference = normalize_model_selection(choice.selection)
-            if reference is None:
-                continue
-            models.append(SessionModelChoiceV1(
-                id=choice.value,
-                provider=reference.provider,
-                endpoint_id=reference.endpoint_id,
-                model_id=reference.model_id,
-                label=choice.label,
-                supports_thinking=bool(
-                    getattr(choice.selection, "supports_thinking", False)
-                    or getattr(choice.selection, "reasoning", False)
-                ),
-            ))
-        visible = models[:256]
-        active_choice = next((model for model in models[256:] if model.id == current), None)
-        if active_choice is not None:
-            visible[-1] = active_choice
-        return SessionModelsV1(
-            current, tuple(visible), _thinking_settings(control) if current is not None else None
-        )
-
-    async def select_model(
-        self, model_id: str, thinking_level: str | None = None,
-    ) -> SessionModelsV1:
-        self._require_open()
-        control = self._binding.control
-        if getattr(control, "is_streaming", False):
-            raise RuntimeError("coding_model_change_while_running")
-        if thinking_level is not None:
-            before = await self.list_models()
-            setter = getattr(control, "set_thinking_level", None)
-            if (
-                getattr(control, "is_streaming", False)
-                or before.current_id != model_id or before.thinking is None
-                or thinking_level not in before.thinking.available_levels
-                or not callable(setter)
-            ):
-                raise ValueError("coding_thinking_level_unavailable")
-            await setter(thinking_level)
-            return await self.list_models()
-        choices = model_choice_data_from_details(
-            await iter_available_model_details(control)
-        )
-        selected = next(
-            (choice.selection for choice in choices if choice.value == model_id), None
-        )
-        if selected is None:
-            raise ValueError("coding_model_unavailable")
-        await apply_session_model_selection(control, selected)
-        return await self.list_models()
-
-    async def close(self) -> None:
-        async with self._close_lock:
-            if self._settled:
-                return
-            if not self._unsubscribed:
-                self._unsubscribed = True
-                with suppress(BaseException):
-                    self._unsubscribe()
-                self._listeners.clear()
-            if self._close_task is None:
-                self._close_task = asyncio.create_task(self._binding.close())
-            task = self._close_task
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError:
-            raise
-        except BaseException:
-            async with self._close_lock:
-                if self._close_task is task:
-                    self._close_task = None
-            raise
-        async with self._close_lock:
-            if self._close_task is task:
-                self._settled = True
-                self._close_task = None
-
-    @property
-    def closed(self) -> bool:
-        return self._unsubscribed
-
-    async def _on_runtime_event(self, event: RuntimeEvent[object]) -> None:
-        if self._unsubscribed:
-            return
-        try:
-            projection = self._binding.project_event(event)
-        except BaseException:
-            projection = None
-        else:
-            if projection is None:
-                return
-        if type(projection) is not CodingHostedEventProjectionV1:
-            projection = CodingHostedEventProjectionV1(
-                SessionEventKindV1.ERROR,
-                "event_projection_unavailable",
-            )
-        self._cursor += 1
-        hosted_event = SessionEventV1(
-            session_id=self.identity.session_id,
-            cursor=self._cursor,
-            kind=projection.kind,
-            text=projection.text,
-            interaction_id=projection.interaction_id,
-        )
-        self._observe_projection(projection, hosted_event)
-        for listener in tuple(self._listeners):
-            try:
-                result = listener(hosted_event)
-                if inspect.isawaitable(result):
-                    await result
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                continue
 
     def _observe_projection(
         self, projection: CodingHostedEventProjectionV1, event: SessionEventV1
     ) -> None:
         """Synchronous Product observation before optional delivery listeners."""
 
-    @staticmethod
-    def _prompt_request(text: str) -> SessionPromptRequest:
-        return SessionPromptRequest(text=text, source="appservice")
 
-    def _require_open(self) -> None:
-        if self._unsubscribed:
-            raise RuntimeError("coding_hosted_session_closed")
-
-    def _require_operations(self) -> SessionOperationRuntime:
-        if self._operations is None:
-            raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
-        return self._operations
-
-    @staticmethod
-    def _require_binding(binding: object) -> None:
-        from .hosted_session import _require_coding_hosted_binding
-
-        _require_coding_hosted_binding(binding)
-
-
-def _thinking_settings(control: object) -> SessionThinkingV1 | None:
-    getter = getattr(control, "get_available_thinking_levels", None)
-    current = getattr(control, "thinking_level", None)
-    if not callable(getter) or not isinstance(current, str):
-        return None
-    levels = tuple(getter())
-    if current not in levels or levels == ("off",):
-        return None
-    return SessionThinkingV1(current, levels)
 
 
 def coding_hosted_identity_from_envelope(

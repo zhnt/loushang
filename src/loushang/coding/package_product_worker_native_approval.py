@@ -7,9 +7,7 @@ repair checks the current decision under the shared selection/GC gate.
 
 from __future__ import annotations
 
-import os
 import re
-import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -26,7 +24,7 @@ from loushang.harness.journal import (
     append_jsonl_record,
     decode_jsonl,
 )
-from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
+from loushang.harness.journal._rooted_io import RootedFile, bind_private_journal
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -411,38 +409,15 @@ class CodingWorkerNativeApprovalJournal:
 
     @contextmanager
     def _bound_journal(self, *, read_only: bool = False) -> Iterator[RootedFile]:
-        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-        parent_fd = os.open(self._path.parent, flags)
-        try:
-            opened = os.fstat(parent_fd)
-            visible = self._path.parent.lstat()
-            if (
-                not stat.S_ISDIR(opened.st_mode)
-                or opened.st_uid != os.geteuid()
-                or stat.S_IMODE(opened.st_mode) & 0o077
-                or (opened.st_dev, opened.st_ino) != (visible.st_dev, visible.st_ino)
-            ):
-                raise CodingWorkerNativeApprovalError(
-                    "coding_worker_native_approval_state_root_unsafe"
-                )
-            file_io = RootedFileIO(self._path.parent, parent_fd)
-            try:
-                with file_io.bind(self._path, durable=not read_only) as rooted:
-                    if not read_only:
-                        rooted.acquire_lock(exclusive=True, suffix=".lock")
-                    yield rooted
-            finally:
-                file_io.cleanup()
-            visible_after = self._path.parent.lstat()
-            if (opened.st_dev, opened.st_ino) != (
-                visible_after.st_dev,
-                visible_after.st_ino,
-            ):
-                raise CodingWorkerNativeApprovalError(
-                    "coding_worker_native_approval_state_root_changed"
-                )
-        finally:
-            os.close(parent_fd)
+        with bind_private_journal(
+            self._path,
+            error_type=CodingWorkerNativeApprovalError,
+            label="coding_worker_native_approval_state_root",
+            durable=not read_only,
+        ) as rooted:
+            if not read_only:
+                rooted.acquire_lock(exclusive=True, suffix=".lock")
+            yield rooted
 
     def _load(
         self, rooted: RootedFile

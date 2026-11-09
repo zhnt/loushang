@@ -6,9 +6,7 @@ does not delete data or authorize Package remove/GC to do so.
 
 from __future__ import annotations
 
-import json
-import os
-import stat
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -24,9 +22,16 @@ from loushang.harness.journal import (
     journal_file_read_lock,
     load_jsonl,
 )
+from loushang.harness.journal._path_admission import (
+    private_journal_exists,
+    require_private_journal_parent,
+)
 from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionConfirmationV1,
     PluginPrivateDataDeletionPlanV1,
+)
+from loushang.harness.resources.packages._private_receipts_windows import (
+    WindowsPrivateReceiptIO,
 )
 
 PRIVATE_DATA_CONFIRMATION_RECORD_VERSION = 1
@@ -52,7 +57,10 @@ class PluginPrivateDataConfirmationRecordV1:
             raise ValueError("Private-data confirmation plan changed")
         if not isinstance(self.actor_id, str) or not self.actor_id.strip():
             raise ValueError("Private-data confirmation actor is required")
-        if not isinstance(self.policy_revision, str) or not self.policy_revision.strip():
+        if (
+            not isinstance(self.policy_revision, str)
+            or not self.policy_revision.strip()
+        ):
             raise ValueError("Private-data confirmation policy is required")
         if (
             type(self.record_version) is not int
@@ -73,8 +81,12 @@ class PluginPrivateDataConfirmationRecordV1:
     @classmethod
     def from_dict(cls, value: object) -> PluginPrivateDataConfirmationRecordV1:
         if type(value) is not dict or set(value) != {
-            "actorId", "confirmation", "plan", "policyRevision",
-            "recordRevision", "recordVersion",
+            "actorId",
+            "confirmation",
+            "plan",
+            "policyRevision",
+            "recordRevision",
+            "recordVersion",
         }:
             raise JournalCodecError(
                 "Private-data confirmation fields are invalid",
@@ -143,7 +155,8 @@ class PluginPrivateDataConfirmationJournal:
                 (
                     record
                     for record in records
-                    if record.confirmation.confirmation_id == confirmation.confirmation_id
+                    if record.confirmation.confirmation_id
+                    == confirmation.confirmation_id
                 ),
                 None,
             )
@@ -197,13 +210,12 @@ class PluginPrivateDataConfirmationJournal:
             record_codec=_CODEC,
             format_profile=SORTED_UNICODE_JSONL_FORMAT,
             durability=self._unlocked_durability,
-            load_policy=load_policy or self._write_load_policy,
+            load_policy=replace(
+                load_policy or self._write_load_policy, collect_duplicate_keys=True
+            ),
         )
         records = loaded.records
-        with self._path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                if line.strip():
-                    json.loads(line, object_pairs_hook=_unique_json_object)
+        loaded.require_unique_keys("Private-data confirmation has a duplicate JSON key")
         seen_ids: set[str] = set()
         for revision, record in enumerate(records, start=1):
             confirmation_id = record.confirmation.confirmation_id
@@ -213,39 +225,18 @@ class PluginPrivateDataConfirmationJournal:
         return records
 
     def _require_safe_existing_journal(self) -> bool:
-        try:
-            metadata = self._path.lstat()
-        except FileNotFoundError:
-            return False
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or metadata.st_nlink != 1
-            or (os.name == "posix" and metadata.st_mode & 0o077)
-            or (
-                os.name == "posix"
-                and metadata.st_uid != os.geteuid()
-            )
-        ):
-            raise ValueError("Private-data confirmation journal is unsafe")
-        return True
+        return private_journal_exists(
+            self._path,
+            message="Private-data confirmation journal is unsafe",
+            posix_only=True,
+        )
 
     def _require_private_parent(self) -> None:
-        metadata = self._path.parent.lstat()
-        if (
-            not stat.S_ISDIR(metadata.st_mode)
-            or (os.name == "posix" and metadata.st_mode & 0o077)
-            or (os.name == "posix" and metadata.st_uid != os.geteuid())
-        ):
-            raise ValueError("Private-data confirmation parent is not private")
-
-
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Private-data confirmation has a duplicate JSON key")
-        result[key] = value
-    return result
+        require_private_journal_parent(
+            self._path,
+            message="Private-data confirmation parent is not private",
+            posix_only=True,
+        )
 
 
 __all__ = [
@@ -253,3 +244,28 @@ __all__ = [
     "PluginPrivateDataConfirmationJournal",
     "PluginPrivateDataConfirmationRecordV1",
 ]
+
+
+def accept_windows_private_confirmation(
+    path: Path,
+    payload: bytes,
+    record: PluginPrivateDataConfirmationRecordV1,
+    *,
+    io: WindowsPrivateReceiptIO,
+    maximum_bytes: int,
+    write_maximum_bytes: int,
+    decode: Callable[[bytes], PluginPrivateDataConfirmationRecordV1],
+    label: str,
+) -> PluginPrivateDataConfirmationRecordV1:
+    """Publish one independently admitted immutable confirmation, preserving staged retry."""
+    existing = io.read_private_receipt(
+        path, maximum_bytes=maximum_bytes, allow_unpublished_stage=True
+    )
+    if existing is not None:
+        if decode(existing) != record:
+            raise ValueError(f"{label} confirmation ID was reused")
+        return record
+    io.write_private_receipt(path, payload, maximum_bytes=write_maximum_bytes)
+    if io.read_private_receipt(path, maximum_bytes=maximum_bytes) != payload:
+        raise ValueError(f"{label} confirmation changed")
+    return record

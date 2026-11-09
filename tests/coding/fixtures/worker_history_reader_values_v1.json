@@ -1,0 +1,881 @@
+{
+  "origin": "original archived source; per-class source guard; exclusive capture",
+  "values": {
+    "composite_intent": {
+      "module": "loushang.coding.package_product_worker_history_stage_v2",
+      "name": "CodingWorkerV2PreparationIntent",
+      "signature": "(scope_id: 'str', store_id: 'str', checkpoint_digest: 'str', index_digest: 'str', artifact_digests: 'tuple[tuple[str, str], ...]', record_digest: 'str', version: 'int' = 2) -> None",
+      "annotations": {
+        "scope_id": "str",
+        "store_id": "str",
+        "checkpoint_digest": "str",
+        "index_digest": "str",
+        "artifact_digests": "tuple[tuple[str, str], ...]",
+        "record_digest": "str",
+        "version": "int"
+      },
+      "fields": [
+        {
+          "name": "scope_id",
+          "type": "str",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "store_id",
+          "type": "str",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "checkpoint_digest",
+          "type": "str",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "index_digest",
+          "type": "str",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "artifact_digests",
+          "type": "tuple[tuple[str, str], ...]",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "record_digest",
+          "type": "str",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "version",
+          "type": "int",
+          "has_default": true,
+          "default": 2
+        }
+      ],
+      "repr": "CodingWorkerV2PreparationIntent(scope_id='scope', store_id='store', checkpoint_digest='75a781d7dac9d05093ba24b8854304ec92355c1030817a31f99f863cd85665fc', index_digest='77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76', artifact_digests=(('worker-history-v2-index.candidate.json', '77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76'), ('worker-history-v2-worker-opt-in.base.json', '6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337'), ('worker-history-v2-worker-opt-in.cutover.json', 'b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234'), ('worker-history-v2-worker-activation-receipts.base.json', '1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465'), ('worker-history-v2-worker-activation-receipts.cutover.json', '7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e'), ('worker-history-v2-worker-activation-state.base.json', 'c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b'), ('worker-history-v2-worker-activation-state.cutover.json', '628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c'), ('worker-history-v2-worker-start-gates.base.json', '91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034'), ('worker-history-v2-worker-start-gates.cutover.json', '5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97'), ('worker-history-v2-worker-supervisor.base.json', '1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b'), ('worker-history-v2-worker-supervisor.cutover.json', '567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08')), record_digest='d027ab5829e72cb6400ed098adffb22aa11949e4498f078190ef10c76974a222', version=2)",
+      "dict": null,
+      "bytes": "7b22617274696661637444696765737473223a5b5b22776f726b65722d686973746f72792d76322d696e6465782e63616e6469646174652e6a736f6e222c2237376566386465313766633065666361633334353035613364313961313436353433383036623465326235313734656231313936663563373262383065633736225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d6f70742d696e2e626173652e6a736f6e222c2236363533643137633937656539646537376664383438663963373633336365316636303532363063333830366136633765346561326632616663383938333337225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d6f70742d696e2e6375746f7665722e6a736f6e222c2262353538353232616364646438306534376533346533643963643838646334356262343939326235636462363436626539353536383139326264373134323334225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d72656365697074732e626173652e6a736f6e222c2231643233626438323831343061613732373336306434646363653532363234396531376265393032663134346435323132313162666664646132643432343635225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d72656365697074732e6375746f7665722e6a736f6e222c2237633835306565326130643036383939613966323436396133376463616566373338373839343131343363363539613539336239336232343934386462613065225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d73746174652e626173652e6a736f6e222c2263303263343235646134663466633037656365336463353332336631646363636537613864623933326563373236666535666563393838323535376335303662225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d73746174652e6375746f7665722e6a736f6e222c2236323861646331636431393763666264636535653733363135356363306631373365306438643966653733616433633961646335333463323962306435623763225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d73746172742d67617465732e626173652e6a736f6e222c2239316531646262356434303439343637333166313733333564653530303964383162313162356639326265623235346330663931316431323632386131303334225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d73746172742d67617465732e6375746f7665722e6a736f6e222c2235623763363335333230396464373035316532363564656637363965366565306263376536326535383533666364613664643636353337396535653138633937225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d73757065727669736f722e626173652e6a736f6e222c2231663431663036383930393239386465343364346435333735393564396361666530353337326235373366363338343363663266376265363464643866633062225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d73757065727669736f722e6375746f7665722e6a736f6e222c2235363762383062626265653262306636323561366635386163373930386234306565373933353265376535663333323037316163623563626664663934633038225d5d2c22636865636b706f696e74446967657374223a2237356137383164376461633964303530393362613234623838353433303465633932333535633130333038313761333166393966383633636438353636356663222c22696e646578446967657374223a2237376566386465313766633065666361633334353035613364313961313436353433383036623465326235313734656231313936663563373262383065633736222c227265636f7264446967657374223a2264303237616235383239653732636236343030656430393861646666623232616131313934396534343938663037383139306566313063373639373461323232222c2273636f70654964223a2273636f7065222c2273746f72654964223a2273746f7265222c2276657273696f6e223a327d",
+      "pickle": {
+        "4": "8004956c060000000000008c376c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f686973746f72795f73746167655f7632948c1f436f64696e67576f726b657256325072657061726174696f6e496e74656e749493942981945d94288c0573636f7065948c0573746f7265948c4037356137383164376461633964303530393362613234623838353433303465633932333535633130333038313761333166393966383633636438353636356663948c403737656638646531376663306566636163333435303561336431396131343635343338303662346532623531373465623131393666356337326238306563373694288c26776f726b65722d686973746f72792d76322d696e6465782e63616e6469646174652e6a736f6e948c40373765663864653137666330656663616333343530356133643139613134363534333830366234653262353137346562313139366635633732623830656337369486948c29776f726b65722d686973746f72792d76322d776f726b65722d6f70742d696e2e626173652e6a736f6e948c40363635336431376339376565396465373766643834386639633736333363653166363035323630633338303661366337653465613266326166633839383333379486948c2c776f726b65722d686973746f72792d76322d776f726b65722d6f70742d696e2e6375746f7665722e6a736f6e948c40623535383532326163646464383065343765333465336439636438386463343562623439393262356364623634366265393535363831393262643731343233349486948c36776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d72656365697074732e626173652e6a736f6e948c40316432336264383238313430616137323733363064346463636535323632343965313762653930326631343464353231323131626666646461326434323436359486948c39776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d72656365697074732e6375746f7665722e6a736f6e948c40376338353065653261306430363839396139663234363961333764636165663733383738393431313433633635396135393362393362323439343864626130659486948c33776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d73746174652e626173652e6a736f6e948c40633032633432356461346634666330376563653364633533323366316463636365376138646239333265633732366665356665633938383235353763353036629486948c36776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d73746174652e6375746f7665722e6a736f6e948c40363238616463316364313937636662646365356537333631353563633066313733653064386439666537336164336339616463353334633239623064356237639486948c2e776f726b65722d686973746f72792d76322d776f726b65722d73746172742d67617465732e626173652e6a736f6e948c40393165316462623564343034393436373331663137333335646535303039643831623131623566393262656232353463306639313164313236323861313033349486948c31776f726b65722d686973746f72792d76322d776f726b65722d73746172742d67617465732e6375746f7665722e6a736f6e948c40356237633633353332303964643730353165323635646566373639653665653062633765363265353835336663646136646436363533373965356531386339379486948c2d776f726b65722d686973746f72792d76322d776f726b65722d73757065727669736f722e626173652e6a736f6e948c40316634316630363839303932393864653433643464353337353935643963616665303533373262353733663633383433636632663762653634646438666330629486948c30776f726b65722d686973746f72792d76322d776f726b65722d73757065727669736f722e6375746f7665722e6a736f6e948c403536376238306262626565326230663632356136663538616337393038623430656537393335326537653566333332303731616362356362666466393463303894869474948c4064303237616235383239653732636236343030656430393861646666623232616131313934396534343938663037383139306566313063373639373461323232944b0265622e",
+        "5": "8005956c060000000000008c376c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f686973746f72795f73746167655f7632948c1f436f64696e67576f726b657256325072657061726174696f6e496e74656e749493942981945d94288c0573636f7065948c0573746f7265948c4037356137383164376461633964303530393362613234623838353433303465633932333535633130333038313761333166393966383633636438353636356663948c403737656638646531376663306566636163333435303561336431396131343635343338303662346532623531373465623131393666356337326238306563373694288c26776f726b65722d686973746f72792d76322d696e6465782e63616e6469646174652e6a736f6e948c40373765663864653137666330656663616333343530356133643139613134363534333830366234653262353137346562313139366635633732623830656337369486948c29776f726b65722d686973746f72792d76322d776f726b65722d6f70742d696e2e626173652e6a736f6e948c40363635336431376339376565396465373766643834386639633736333363653166363035323630633338303661366337653465613266326166633839383333379486948c2c776f726b65722d686973746f72792d76322d776f726b65722d6f70742d696e2e6375746f7665722e6a736f6e948c40623535383532326163646464383065343765333465336439636438386463343562623439393262356364623634366265393535363831393262643731343233349486948c36776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d72656365697074732e626173652e6a736f6e948c40316432336264383238313430616137323733363064346463636535323632343965313762653930326631343464353231323131626666646461326434323436359486948c39776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d72656365697074732e6375746f7665722e6a736f6e948c40376338353065653261306430363839396139663234363961333764636165663733383738393431313433633635396135393362393362323439343864626130659486948c33776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d73746174652e626173652e6a736f6e948c40633032633432356461346634666330376563653364633533323366316463636365376138646239333265633732366665356665633938383235353763353036629486948c36776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d73746174652e6375746f7665722e6a736f6e948c40363238616463316364313937636662646365356537333631353563633066313733653064386439666537336164336339616463353334633239623064356237639486948c2e776f726b65722d686973746f72792d76322d776f726b65722d73746172742d67617465732e626173652e6a736f6e948c40393165316462623564343034393436373331663137333335646535303039643831623131623566393262656232353463306639313164313236323861313033349486948c31776f726b65722d686973746f72792d76322d776f726b65722d73746172742d67617465732e6375746f7665722e6a736f6e948c40356237633633353332303964643730353165323635646566373639653665653062633765363265353835336663646136646436363533373965356531386339379486948c2d776f726b65722d686973746f72792d76322d776f726b65722d73757065727669736f722e626173652e6a736f6e948c40316634316630363839303932393864653433643464353337353935643963616665303533373262353733663633383433636632663762653634646438666330629486948c30776f726b65722d686973746f72792d76322d776f726b65722d73757065727669736f722e6375746f7665722e6a736f6e948c403536376238306262626565326230663632356136663538616337393038623430656537393335326537653566333332303731616362356362666466393463303894869474948c4064303237616235383239653732636236343030656430393861646666623232616131313934396534343938663037383139306566313063373639373461323232944b0265622e"
+      },
+      "wire": {
+        "artifactDigests": [
+          [
+            "worker-history-v2-index.candidate.json",
+            "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76"
+          ],
+          [
+            "worker-history-v2-worker-opt-in.base.json",
+            "6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337"
+          ],
+          [
+            "worker-history-v2-worker-opt-in.cutover.json",
+            "b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234"
+          ],
+          [
+            "worker-history-v2-worker-activation-receipts.base.json",
+            "1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465"
+          ],
+          [
+            "worker-history-v2-worker-activation-receipts.cutover.json",
+            "7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e"
+          ],
+          [
+            "worker-history-v2-worker-activation-state.base.json",
+            "c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b"
+          ],
+          [
+            "worker-history-v2-worker-activation-state.cutover.json",
+            "628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c"
+          ],
+          [
+            "worker-history-v2-worker-start-gates.base.json",
+            "91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034"
+          ],
+          [
+            "worker-history-v2-worker-start-gates.cutover.json",
+            "5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97"
+          ],
+          [
+            "worker-history-v2-worker-supervisor.base.json",
+            "1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b"
+          ],
+          [
+            "worker-history-v2-worker-supervisor.cutover.json",
+            "567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08"
+          ]
+        ],
+        "checkpointDigest": "75a781d7dac9d05093ba24b8854304ec92355c1030817a31f99f863cd85665fc",
+        "indexDigest": "77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76",
+        "recordDigest": "d027ab5829e72cb6400ed098adffb22aa11949e4498f078190ef10c76974a222",
+        "scopeId": "scope",
+        "storeId": "store",
+        "version": 2
+      },
+      "outcomes": {
+        "valid": {
+          "type": "loushang.coding.package_product_worker_history_stage_v2.CodingWorkerV2PreparationIntent",
+          "bytes": "7b22617274696661637444696765737473223a5b5b22776f726b65722d686973746f72792d76322d696e6465782e63616e6469646174652e6a736f6e222c2237376566386465313766633065666361633334353035613364313961313436353433383036623465326235313734656231313936663563373262383065633736225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d6f70742d696e2e626173652e6a736f6e222c2236363533643137633937656539646537376664383438663963373633336365316636303532363063333830366136633765346561326632616663383938333337225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d6f70742d696e2e6375746f7665722e6a736f6e222c2262353538353232616364646438306534376533346533643963643838646334356262343939326235636462363436626539353536383139326264373134323334225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d72656365697074732e626173652e6a736f6e222c2231643233626438323831343061613732373336306434646363653532363234396531376265393032663134346435323132313162666664646132643432343635225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d72656365697074732e6375746f7665722e6a736f6e222c2237633835306565326130643036383939613966323436396133376463616566373338373839343131343363363539613539336239336232343934386462613065225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d73746174652e626173652e6a736f6e222c2263303263343235646134663466633037656365336463353332336631646363636537613864623933326563373236666535666563393838323535376335303662225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d61637469766174696f6e2d73746174652e6375746f7665722e6a736f6e222c2236323861646331636431393763666264636535653733363135356363306631373365306438643966653733616433633961646335333463323962306435623763225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d73746172742d67617465732e626173652e6a736f6e222c2239316531646262356434303439343637333166313733333564653530303964383162313162356639326265623235346330663931316431323632386131303334225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d73746172742d67617465732e6375746f7665722e6a736f6e222c2235623763363335333230396464373035316532363564656637363965366565306263376536326535383533666364613664643636353337396535653138633937225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d73757065727669736f722e626173652e6a736f6e222c2231663431663036383930393239386465343364346435333735393564396361666530353337326235373366363338343363663266376265363464643866633062225d2c5b22776f726b65722d686973746f72792d76322d776f726b65722d73757065727669736f722e6375746f7665722e6a736f6e222c2235363762383062626265653262306636323561366635386163373930386234306565373933353265376535663333323037316163623563626664663934633038225d5d2c22636865636b706f696e74446967657374223a2237356137383164376461633964303530393362613234623838353433303465633932333535633130333038313761333166393966383633636438353636356663222c22696e646578446967657374223a2237376566386465313766633065666361633334353035613364313961313436353433383036623465326235313734656231313936663563373262383065633736222c227265636f7264446967657374223a2264303237616235383239653732636236343030656430393861646666623232616131313934396534343938663037383139306566313063373639373461323232222c2273636f70654964223a2273636f7065222c2273746f72654964223a2273746f7265222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerV2PreparationIntent(scope_id='scope', store_id='store', checkpoint_digest='75a781d7dac9d05093ba24b8854304ec92355c1030817a31f99f863cd85665fc', index_digest='77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76', artifact_digests=(('worker-history-v2-index.candidate.json', '77ef8de17fc0efcac34505a3d19a146543806b4e2b5174eb1196f5c72b80ec76'), ('worker-history-v2-worker-opt-in.base.json', '6653d17c97ee9de77fd848f9c7633ce1f605260c3806a6c7e4ea2f2afc898337'), ('worker-history-v2-worker-opt-in.cutover.json', 'b558522acddd80e47e34e3d9cd88dc45bb4992b5cdb646be95568192bd714234'), ('worker-history-v2-worker-activation-receipts.base.json', '1d23bd828140aa727360d4dcce526249e17be902f144d521211bffdda2d42465'), ('worker-history-v2-worker-activation-receipts.cutover.json', '7c850ee2a0d06899a9f2469a37dcaef73878941143c659a593b93b24948dba0e'), ('worker-history-v2-worker-activation-state.base.json', 'c02c425da4f4fc07ece3dc5323f1dccce7a8db932ec726fe5fec9882557c506b'), ('worker-history-v2-worker-activation-state.cutover.json', '628adc1cd197cfbdce5e736155cc0f173e0d8d9fe73ad3c9adc534c29b0d5b7c'), ('worker-history-v2-worker-start-gates.base.json', '91e1dbb5d404946731f17335de5009d81b11b5f92beb254c0f911d12628a1034'), ('worker-history-v2-worker-start-gates.cutover.json', '5b7c6353209dd7051e265def769e6ee0bc7e62e5853fcda6dd665379e5e18c97'), ('worker-history-v2-worker-supervisor.base.json', '1f41f068909298de43d4d537595d9cafe05372b573f63843cf2f7be64dd8fc0b'), ('worker-history-v2-worker-supervisor.cutover.json', '567b80bbbee2b0f625a6f58ac7908b40ee79352e7e5f332071acb5cbfdf94c08')), record_digest='d027ab5829e72cb6400ed098adffb22aa11949e4498f078190ef10c76974a222', version=2)"
+        },
+        "empty": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": null
+          }
+        },
+        "non-object": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "not-bytes": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": null
+          }
+        },
+        "invalid-utf8": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.UnicodeDecodeError",
+              "message": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+              "cause": null
+            }
+          }
+        },
+        "deep-recursion": {
+          "error": {
+            "type": "builtins.RecursionError",
+            "message": "maximum recursion depth exceeded while decoding a JSON array from a unicode string",
+            "cause": null
+          }
+        },
+        "noncanonical": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent encoding changed",
+              "cause": null
+            }
+          }
+        },
+        "unknown-key": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "duplicate-key": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent encoding changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:artifactDigests": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "artifactDigests:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "artifactDigests:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "artifactDigests:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "artifactDigests:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "artifactDigests:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "artifactDigests:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "artifactDigests:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:checkpointDigest": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "checkpointDigest:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "checkpointDigest:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "checkpointDigest:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "checkpointDigest:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "checkpointDigest:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "checkpointDigest:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "checkpointDigest:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:indexDigest": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "indexDigest:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "indexDigest:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "indexDigest:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "indexDigest:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "indexDigest:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "indexDigest:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "indexDigest:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:recordDigest": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "recordDigest:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "recordDigest:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "recordDigest:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "recordDigest:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "recordDigest:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "recordDigest:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "recordDigest:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:scopeId": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:storeId": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "storeId:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "storeId:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "storeId:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "storeId:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "storeId:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "storeId:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "storeId:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:version": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent fields changed",
+              "cause": null
+            }
+          }
+        },
+        "version:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker V2 preparation intent bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker V2 preparation intent is invalid",
+              "cause": null
+            }
+          }
+        }
+      }
+    },
+    "composite_retained_history": {
+      "module": "loushang.coding.package_product_worker_history_read_v2",
+      "name": "CodingWorkerV2RetainedHistory",
+      "signature": "(stem: 'str', first_retained_generation: 'int', active_generation: 'int', segments: 'tuple[bytes, ...]', last_revision: 'int', replay: 'CodingWorkerV2Replay') -> None",
+      "annotations": {
+        "stem": "str",
+        "first_retained_generation": "int",
+        "active_generation": "int",
+        "segments": "tuple[bytes, ...]",
+        "last_revision": "int",
+        "replay": "CodingWorkerV2Replay"
+      },
+      "fields": [
+        {
+          "name": "stem",
+          "type": "str",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "first_retained_generation",
+          "type": "int",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "active_generation",
+          "type": "int",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "segments",
+          "type": "tuple[bytes, ...]",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "last_revision",
+          "type": "int",
+          "has_default": false,
+          "default": null
+        },
+        {
+          "name": "replay",
+          "type": "CodingWorkerV2Replay",
+          "has_default": false,
+          "default": null
+        }
+      ],
+      "repr": null,
+      "dict": null,
+      "bytes": null,
+      "pickle": {
+        "4": "80049549050000000000008c366c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f686973746f72795f726561645f7632948c1d436f64696e67576f726b6572563252657461696e6564486973746f72799493942981945d94288c11776f726b65722d73757065727669736f72944b014b0142f60200007b22617474656d70744964223a20226565656565656565656565656565656565656565656565656565656565656565222c20226661696c757265436f6465223a206e756c6c2c20226964656e7469747946696e6765727072696e74223a202266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c20227068617365223a2022636c61696d6564222c20227072696f72417474656d70745265766973696f6e223a20302c20227265636f72645265766973696f6e223a20342c20227265636f726456657273696f6e223a20312c2022726573746172744f7264696e616c223a20322c202273757065727669736f7245706f6368223a20322c202273757065727669736f724b6579223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d0a7b22617474656d70744964223a20226565656565656565656565656565656565656565656565656565656565656565222c20226661696c757265436f6465223a206e756c6c2c20226964656e7469747946696e6765727072696e74223a202266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c20227068617365223a20226c61756e6368696e67222c20227072696f72417474656d70745265766973696f6e223a20342c20227265636f72645265766973696f6e223a20352c20227265636f726456657273696f6e223a20312c2022726573746172744f7264696e616c223a20322c202273757065727669736f7245706f6368223a20322c202273757065727669736f724b6579223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d0a9485944b058c396c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f73757065727669736f725f626173655f7632948c1e436f64696e67576f726b657253757065727669736f725265706c617956329493942981945d94284b058c1f6c6f757368616e672e6861726e6573732e776f726b65722e6a6f75726e616c948c15576f726b6572417474656d70745265636f726456319493942981945d94288c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c4066666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666948c206565656565656565656565656565656565656565656565656565656565656565944b028c096c61756e6368696e67944b054b044b024e4b016562859468088c1f436f64696e67576f726b657253757065727669736f724b65794261736556329493942981945d9428681268104b004b0265628594288c206161616161616161616161616161616161616161616161616161616161616161949194656265622e",
+        "5": "80059549050000000000008c366c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f686973746f72795f726561645f7632948c1d436f64696e67576f726b6572563252657461696e6564486973746f72799493942981945d94288c11776f726b65722d73757065727669736f72944b014b0142f60200007b22617474656d70744964223a20226565656565656565656565656565656565656565656565656565656565656565222c20226661696c757265436f6465223a206e756c6c2c20226964656e7469747946696e6765727072696e74223a202266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c20227068617365223a2022636c61696d6564222c20227072696f72417474656d70745265766973696f6e223a20302c20227265636f72645265766973696f6e223a20342c20227265636f726456657273696f6e223a20312c2022726573746172744f7264696e616c223a20322c202273757065727669736f7245706f6368223a20322c202273757065727669736f724b6579223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d0a7b22617474656d70744964223a20226565656565656565656565656565656565656565656565656565656565656565222c20226661696c757265436f6465223a206e756c6c2c20226964656e7469747946696e6765727072696e74223a202266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c20227068617365223a20226c61756e6368696e67222c20227072696f72417474656d70745265766973696f6e223a20342c20227265636f72645265766973696f6e223a20352c20227265636f726456657273696f6e223a20312c2022726573746172744f7264696e616c223a20322c202273757065727669736f7245706f6368223a20322c202273757065727669736f724b6579223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d0a9485944b058c396c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f73757065727669736f725f626173655f7632948c1e436f64696e67576f726b657253757065727669736f725265706c617956329493942981945d94284b058c1f6c6f757368616e672e6861726e6573732e776f726b65722e6a6f75726e616c948c15576f726b6572417474656d70745265636f726456319493942981945d94288c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c4066666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666948c206565656565656565656565656565656565656565656565656565656565656565944b028c096c61756e6368696e67944b054b044b024e4b016562859468088c1f436f64696e67576f726b657253757065727669736f724b65794261736556329493942981945d9428681268104b004b0265628594288c206161616161616161616161616161616161616161616161616161616161616161949194656265622e"
+      }
+    }
+  }
+}

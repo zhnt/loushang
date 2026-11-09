@@ -87,8 +87,7 @@ def _require_committed_v2_history(
 ) -> CodingWorkerNoEffectArchiveV2 | None:
     """Prove the committed Product owner and all five retained streams."""
 
-    file_io = RootedFileIO(state_root, root_fd)
-    try:
+    with RootedFileIO(state_root, root_fd) as file_io:
         with file_io.bind(
             state_root / PRODUCT_OWNER_INDEX_NAME, durable=False
         ) as rooted:
@@ -102,8 +101,6 @@ def _require_committed_v2_history(
             if prepared is None:
                 raise ValueError("Linux Worker GC V2 preparation is absent")
             return prepared.no_effect_archive
-    finally:
-        file_io.cleanup()
 
 
 class CodingPosixWorkerGcHistoryAuthority:

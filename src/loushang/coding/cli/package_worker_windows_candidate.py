@@ -64,6 +64,7 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeRequestV1,
 )
 from loushang.harness.package_product.product_worker_candidate import (
+    _run_worker_candidate_lifecycle,
     verify_product_selected_worker_candidate,
 )
 from loushang.harness.plugin_management.operations import (
@@ -81,9 +82,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     open_windows_directory,
     open_windows_regular_file_at,
-)
-from loushang.harness.resources.packages.product_contract import (
-    PackageProductLifecycleIntentV1,
 )
 from loushang.harness.resources.packages.product_handoff import (
     package_product_command_identity,
@@ -480,63 +478,26 @@ def _execute(
                 }
             }
         session_id = f"worker-candidate-install-{secrets.token_hex(16)}"
-        factory = product.factory_for_session(
-            session_id=session_id, cwd=product.workspace, runtime_id=session_id
+        lifecycle, inventory_revision = _run_worker_candidate_lifecycle(
+            product,
+            binding,
+            product_id="coding",
+            plugin_id=args.plugin_id,
+            operation_id=args.operation_id,
+            session_id=session_id,
+            action="install",
+            label="Windows Worker",
+            entrypoint="cli",
+            refresh_install_inventory=True,
         )
-        try:
-            runtime = factory.create(
-                PackageProductRuntimeRequestV1(
-                    product_id="coding",
-                    session_id=session_id,
-                    cwd=str(product.workspace),
-                )
-            )
-        except BaseException:
-            factory.dispose_unbound_runtime()
-            raise
-        try:
-            runtime.activate()
-            routed = runtime.lifecycle.route(
-                PackageProductLifecycleIntentV1(
-                    operation_id=args.operation_id,
-                    action="install",
-                    source=binding.source_identity,
-                    scope="project",
-                ),
-                entrypoint="cli",
-            )
-            if (
-                not routed.handled
-                or routed.record is None
-                or routed.record.lifecycle != "installed"
-            ):
-                raise ValueError("Windows Worker candidate install did not settle")
-            selected = tuple(
-                item
-                for item in product.desired_state.snapshot().installations
-                if item.installation_key.plugin_id == args.plugin_id
-                and item.installation_key.product_id == "coding"
-                and item.installation_key.installation_scope == "workspace"
-            )
-            if (
-                len(selected) != 1
-                or selected[0].selection.package_revision is None
-                or selected[0].selection.package_revision.package_source_identity
-                != binding.source_identity
-                or selected[0].selection.package_revision.package_content_digest
-                != binding.artifact_digest
-            ):
-                raise ValueError("Windows Worker candidate install selection changed")
-            return {
-                "candidateInstall": {
-                    "pluginId": args.plugin_id,
-                    "artifactDigest": args.artifact_digest,
-                    "alreadyInstalled": False,
-                    "inventoryRevision": product.desired_state.snapshot().inventory_revision,
-                }
+        return {
+            "candidateInstall": {
+                "pluginId": args.plugin_id,
+                "artifactDigest": args.artifact_digest,
+                "alreadyInstalled": False,
+                "inventoryRevision": inventory_revision,
             }
-        finally:
-            runtime.dispose_runtime()
+        }
     raise ValueError("Windows Worker candidate action is unsupported")
 
 
@@ -702,63 +663,27 @@ def _change_candidate(
             )
         _require_candidate_revoked(product, args.plugin_id)
         session_id = f"worker-candidate-update-{secrets.token_hex(16)}"
-        factory = product.factory_for_session(
-            session_id=session_id, cwd=product.workspace, runtime_id=session_id
+        lifecycle, inventory_revision = _run_worker_candidate_lifecycle(
+            product,
+            binding,
+            product_id="coding",
+            plugin_id=args.plugin_id,
+            operation_id=args.operation_id,
+            session_id=session_id,
+            action="update",
+            label="Windows Worker",
+            entrypoint="cli",
+            selected_key=selected.installation_key,
         )
-        try:
-            runtime = factory.create(
-                PackageProductRuntimeRequestV1(
-                    product_id="coding",
-                    session_id=session_id,
-                    cwd=str(product.workspace),
-                )
-            )
-        except BaseException:
-            factory.dispose_unbound_runtime()
-            raise
-        try:
-            runtime.activate()
-            routed = runtime.lifecycle.route(
-                PackageProductLifecycleIntentV1(
-                    operation_id=args.operation_id,
-                    action="update",
-                    source=binding.source_identity,
-                    scope="project",
-                ),
-                entrypoint="cli",
-            )
-            if (
-                not routed.handled
-                or routed.record is None
-                or routed.record.lifecycle != "installed"
-            ):
-                raise ValueError("Windows Worker candidate update did not settle")
-            updated_snapshot = product.desired_state.snapshot()
-            updated = tuple(
-                item
-                for item in updated_snapshot.installations
-                if item.installation_key == selected.installation_key
-            )
-            if (
-                len(updated) != 1
-                or updated[0].selection.package_revision is None
-                or updated[0].selection.package_revision.package_source_identity
-                != binding.source_identity
-                or updated[0].selection.package_revision.package_content_digest
-                != binding.artifact_digest
-            ):
-                raise ValueError("Windows Worker candidate update selection changed")
-            return {
-                "candidateUpdate": {
-                    "pluginId": args.plugin_id,
-                    "fromArtifactDigest": args.from_artifact_digest,
-                    "artifactDigest": args.artifact_digest,
-                    "inventoryRevision": updated_snapshot.inventory_revision,
-                    "alreadyUpdated": False,
-                }
+        return {
+            "candidateUpdate": {
+                "pluginId": args.plugin_id,
+                "fromArtifactDigest": args.from_artifact_digest,
+                "artifactDigest": args.artifact_digest,
+                "inventoryRevision": inventory_revision,
+                "alreadyUpdated": False,
             }
-        finally:
-            runtime.dispose_runtime()
+        }
 
     if args.action == "candidate-remove":
         _require_candidate_revoked(product, args.plugin_id)

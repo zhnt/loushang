@@ -17,6 +17,9 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.worker._native_profile_bridge import (
     _rebuild_windows_lpac_cleanup_spec,
 )
+from loushang.harness.worker.history._windows_recovery import (
+    _valid_crash_effect_history as _worker_crash_effect_history,
+)
 from loushang.hosting import observe_windows_worker_job_absent
 from loushang.hosting.windows_backend_material import WINDOWS_LPAC_PLATFORM_IMPORTS
 
@@ -33,38 +36,6 @@ from .package_product_worker_windows_recovery_inventory import (
 )
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
-_CRASH_PHASES = frozenset(
-    {
-        "profile_effect",
-        "profile_created",
-        "grant_effect",
-        "grants_applied",
-        "verified",
-        "active",
-        "debt",
-        "cleaning",
-        "revoke_effect",
-        "grants_revoked",
-        "delete_effect",
-        "profile_deleted",
-    }
-)
-_TRANSITIONS: dict[str, frozenset[str]] = {
-    "reserved": frozenset({"profile_effect", "settled"}),
-    "profile_effect": frozenset({"profile_created", "debt", "cleaning", "settled"}),
-    "profile_created": frozenset({"grant_effect", "debt", "cleaning"}),
-    "grant_effect": frozenset({"grants_applied", "debt", "cleaning"}),
-    "grants_applied": frozenset({"verified", "debt", "cleaning"}),
-    "verified": frozenset({"active", "debt", "cleaning"}),
-    "active": frozenset({"debt", "cleaning"}),
-    "debt": frozenset({"cleaning"}),
-    "cleaning": frozenset({"revoke_effect", "debt"}),
-    "revoke_effect": frozenset({"grants_revoked", "debt", "cleaning"}),
-    "grants_revoked": frozenset({"delete_effect", "debt"}),
-    "delete_effect": frozenset({"profile_deleted", "debt"}),
-    "profile_deleted": frozenset({"settled", "debt"}),
-    "settled": frozenset(),
-}
 
 
 class CodingWindowsWorkerCrashCleanupReviewError(RuntimeError):
@@ -98,41 +69,7 @@ def _valid_crash_native_settlement_history(
 def _valid_crash_effect_history(
     attempt: CodingWindowsWorkerRecoveryAttemptV1, *, settled: bool
 ) -> bool:
-    phases = attempt.native_phase_history
-    witnesses = attempt.native_witness_present_history
-    ending = "settled" if settled else attempt.native_phase
-    if (
-        phases is None
-        or witnesses is None
-        or not phases
-        or phases[0] != "reserved"
-        or (phases[-1] != "settled" if settled else phases[-1] not in _CRASH_PHASES)
-        or phases[-1] != ending
-        or len(phases) != len(witnesses)
-        or len(phases) != attempt.native_revision
-    ):
-        return False
-    if settled and (
-        attempt.native_witness_state != "SETTLED"
-        or phases[-6:]
-        != (
-            "cleaning",
-            "revoke_effect",
-            "grants_revoked",
-            "delete_effect",
-            "profile_deleted",
-            "settled",
-        )
-    ):
-        return False
-    for index, phase in enumerate(phases):
-        if phase not in _TRANSITIONS:
-            return False
-        if index and phase not in _TRANSITIONS[phases[index - 1]]:
-            return False
-        if witnesses[index] != (phase not in {"reserved", "profile_effect"}):
-            return False
-    return True
+    return _worker_crash_effect_history(attempt, settled=settled)
 
 
 def _crash_cleanup_history_matches(

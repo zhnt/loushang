@@ -48,6 +48,12 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
     canonicalize_source_identity,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _nonempty_string as _wire_string,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_int as _wire_int,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
     PackageWheelVerificationError,
@@ -1186,18 +1192,6 @@ def _exact_dict(
     return value
 
 
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise TypeError(f"{name} must be a non-empty string")
-    return value
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an integer")
-    return value
-
-
 __all__ = [
     "PackageClosureCleanupDebtError",
     "PackageClosureCleanupOwnerPort",
@@ -1213,40 +1207,21 @@ __all__ = [
 ]
 
 
-_DEPENDENCY_SELECTION_REQUEST_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("operation_id", "operation id"),
-        RecordField("attempt_epoch", "attempt epoch", _wire_int),
-        RecordField("parent_node_id", "parent node id"),
-        RecordField("request_fingerprint", "request fingerprint"),
-        RecordField(
-            "resolution_environment_fingerprint", "resolution environment fingerprint"
-        ),
-        RecordField("requirement", decoder=NormalizedPackageRequirementV1.from_dict),
-        RecordField("request_version", "request version", _wire_int),
-    ),
+_DEPENDENCY_SELECTION_REQUEST_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageDependencySelectionRequestV1,
+    _wire_string,
+    RecordField("attempt_epoch", "attempt epoch", _wire_int),
+    RecordField("requirement", decoder=NormalizedPackageRequirementV1.from_dict),
+    RecordField("request_version", "request version", _wire_int),
+    derive_labels=True,
 )
 
 
-_DEPENDENCY_SELECTION_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("operation_id", "operation id"),
-        RecordField("attempt_epoch", "attempt epoch", _wire_int),
-        RecordField("parent_node_id", "parent node id"),
-        RecordField("request_fingerprint", "request fingerprint"),
-        RecordField(
-            "resolution_environment_fingerprint", "resolution environment fingerprint"
-        ),
-        RecordField("requirement_fingerprint", "requirement fingerprint"),
-        RecordField("project_name", "project name"),
-        RecordField("version", "version"),
-        RecordField("canonical_source_identity", "Source identity"),
-        RecordField("wheel_filename", "wheel filename"),
-        RecordField("expected_artifact_digest", "expected artifact digest"),
-        RecordField("resolver_id", "resolver id"),
-        RecordField("resolver_revision", "resolver revision"),
-        RecordField("selection_version", "selection version", _wire_int),
-    ),
+_DEPENDENCY_SELECTION_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageDependencySelectionV1,
+    _wire_string,
+    RecordField("attempt_epoch", "attempt epoch", _wire_int),
+    RecordField("canonical_source_identity", "Source identity"),
+    RecordField("selection_version", "selection version", _wire_int),
+    derive_labels=True,
 )

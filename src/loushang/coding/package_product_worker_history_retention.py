@@ -428,14 +428,11 @@ def _review_coding_product_worker_history_under_guard(
         v2_owner_present = PRODUCT_OWNER_INDEX_NAME in os.listdir(root_fd)
         archive = None
         if v2_owner_present:
-            file_io = RootedFileIO(product.state_root, root_fd)
-            try:
+            with RootedFileIO(product.state_root, root_fd) as file_io:
                 with file_io.bind(
                     product.state_root / PRODUCT_OWNER_INDEX_NAME, durable=False
                 ) as rooted:
                     archive = read_bound_coding_worker_no_effect_archive_v2(rooted)
-            finally:
-                file_io.cleanup()
     archived_proofs = (
         {} if archive is None else {item.attempt_id: item for item in archive.proofs}
     )
@@ -730,8 +727,7 @@ def _review_coding_product_worker_history_under_guard(
         )
 
         with product.pinned_state_root_gc_read() as root_fd:
-            file_io = RootedFileIO(product.state_root, root_fd)
-            try:
+            with RootedFileIO(product.state_root, root_fd) as file_io:
                 with file_io.bind(
                     product.state_root / PRODUCT_OWNER_INDEX_NAME, durable=False
                 ) as rooted:
@@ -743,8 +739,6 @@ def _review_coding_product_worker_history_under_guard(
                             rooted, stem="worker-supervisor"
                         ).last_revision
                     )
-            finally:
-                file_io.cleanup()
     expected_stream_revisions = {
         "worker-opt-in": opt_in_projection.revision,
         "worker-activation-receipts": receipt_history_revision,

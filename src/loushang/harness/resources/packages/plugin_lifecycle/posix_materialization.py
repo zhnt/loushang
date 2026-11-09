@@ -563,6 +563,7 @@ class _PosixVerifiedTreeSink(PackageVerifiedTreeSink["_PinnedPosixRoot"]):
             os.close(tree_fd)
         os.rmdir(name, dir_fd=self._root.descriptor)
 
+
 class _PosixFileWriter:
     def __init__(self, *, descriptor: int, identity: _Identity) -> None:
         self._descriptor: int | None = descriptor
@@ -920,8 +921,11 @@ def _open_regular_file(
     *,
     create_new: bool,
     write: bool,
+    read_write: bool = False,
 ) -> int:
-    flags = (os.O_WRONLY if write else os.O_RDONLY) | os.O_NOFOLLOW
+    flags = (
+        os.O_RDWR if read_write else (os.O_WRONLY if write else os.O_RDONLY)
+    ) | os.O_NOFOLLOW
     flags |= getattr(os, "O_CLOEXEC", 0)
     if create_new:
         flags |= os.O_CREAT | os.O_EXCL

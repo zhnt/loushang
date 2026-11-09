@@ -640,28 +640,9 @@ __all__ = [
 
 
 def _require_coding_hosted_binding(binding: object) -> None:
-    for name in ("project_snapshot", "project_event"):
-        if not callable(getattr(binding, name, None)):
-            raise TypeError("Coding hosted Session binding is invalid")
-    for name in ("respond_interaction", "close"):
-        if not inspect.iscoroutinefunction(getattr(binding, name, None)):
-            raise TypeError("Coding hosted Session binding is invalid")
-    try:
-        control = cast(CodingHostedSessionBindingV1, binding).control
-    except BaseException:
-        raise TypeError("Coding hosted Session binding is invalid") from None
-    if control is None:
-        return
-    for name in (
-        "subscribe_runtime_events",
-        "prompt",
-        "wait_for_idle",
-        "steer",
-        "follow_up",
-        "abort",
-    ):
-        if not callable(getattr(control, name, None)):
-            raise TypeError("Coding hosted Session control is invalid")
+    from loushang.apphost.integrations.session_control import _require_hosted_binding
+
+    _require_hosted_binding(binding, label="Coding")
 
 
 async def _lookup_coding_resume_input(

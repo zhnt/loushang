@@ -509,6 +509,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "errors.py",
         "integrations/__init__.py",
         "integrations/harness_session.py",
+        "integrations/session_control.py",
+        "integrations/session_product.py",
         "router.py",
         "runtime.py",
         "hosted.py",

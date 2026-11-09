@@ -10,7 +10,6 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_directory,
     windows_listdir_at,
 )
 
@@ -32,11 +31,7 @@ from .package_product_worker_windows_reserved_review import (
 )
 from .package_product_worker_windows_stage_retirement import (
     CodingWindowsWorkerStageRetirementReceiptV1,
-    _close_opened,
-    _delete_directory_if_empty,
-    _delete_file_if_present,
-    _open_existing_parent,
-    _require_remaining_subset,
+    _retirement,
     _stage_exists,
 )
 from .package_product_worker_windows_stage_review import _require_direct
@@ -270,73 +265,23 @@ def _remove_remaining_stage(
     intent: CodingWindowsWorkerLaunchIntentV1,
     receipt: CodingWindowsWorkerStageRetirementReceiptV1,
 ) -> None:
-    stage_name = "worker-payload-" + review.attempt_id
-    with WindowsPrivateDirectoryAcl() as acl:
-        _require_direct(root, acl, directory=True)
-        try:
-            stage = open_windows_directory(
-                stage_name, dir_fd=root, share_delete=False, read_control=True
-            )
-        except FileNotFoundError:
+    with _retirement().complete(root, review, intent) as stage:
+        if stage is None:
             return
-        try:
-            _require_remaining_subset(stage, review, intent, acl)
-            parts = review.entrypoint.split("/")
-            parent = _open_existing_parent(stage, parts[:-1], review, acl)
-            if parent is not None:
-                descriptor, opened = parent
-                try:
-                    _delete_file_if_present(
-                        descriptor,
-                        parts[-1],
-                        review.executable_identity,
-                        review.executable_digest,
-                        acl,
-                    )
-                finally:
-                    _close_opened(opened)
-            for depth in range(len(parts) - 1, 0, -1):
-                parent = _open_existing_parent(stage, parts[: depth - 1], review, acl)
-                if parent is None:
-                    continue
-                descriptor, opened = parent
-                try:
-                    _delete_directory_if_empty(
-                        descriptor,
-                        parts[depth - 1],
-                        review.directory_identities[depth - 1][1],
-                        acl,
-                    )
-                finally:
-                    _close_opened(opened)
-            _delete_file_if_present(
-                stage,
-                "worker-payload.json",
-                review.marker_identity,
-                None,
-                acl,
-                intent=intent,
-                stage_identity=review.stage_identity[:2],
-                expected_entrypoint=review.entrypoint,
-                expected_payload_size=review.executable_identity[3],
+        if windows_listdir_at(stage):
+            raise CodingWindowsWorkerUnlaunchedRetirementError(
+                "coding_worker_unlaunched_retirement_extra_member"
             )
-            if windows_listdir_at(stage):
-                raise CodingWindowsWorkerUnlaunchedRetirementError(
-                    "coding_worker_unlaunched_retirement_extra_member"
-                )
-            if _read_root_intent(product, review.attempt_id) is None:
-                write_windows_private_receipt(
-                    _root_intent_path(product, review.attempt_id),
-                    receipt.to_bytes(),
-                    maximum_bytes=_MAX_RECEIPT_BYTES,
-                )
-            if _read_root_intent(product, review.attempt_id) != receipt:
-                raise CodingWindowsWorkerUnlaunchedRetirementError(
-                    "coding_worker_unlaunched_retirement_root_intent_changed"
-                )
-        finally:
-            os.close(stage)
-        _delete_directory_if_empty(root, stage_name, review.stage_identity, acl)
+        if _read_root_intent(product, review.attempt_id) is None:
+            write_windows_private_receipt(
+                _root_intent_path(product, review.attempt_id),
+                receipt.to_bytes(),
+                maximum_bytes=_MAX_RECEIPT_BYTES,
+            )
+        if _read_root_intent(product, review.attempt_id) != receipt:
+            raise CodingWindowsWorkerUnlaunchedRetirementError(
+                "coding_worker_unlaunched_retirement_root_intent_changed"
+            )
 
 
 def _other_retirement_artifact_present(

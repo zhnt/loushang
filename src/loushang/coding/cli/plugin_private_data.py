@@ -52,6 +52,7 @@ from loushang.coding.package_product_runtime import (
     open_coding_fenced_product_application_owner,
     open_coding_package_product_state,
 )
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -573,13 +574,9 @@ def _read_json(path: Path) -> object:
     return json.loads(content.decode("utf-8"), object_pairs_hook=_unique_object)
 
 
-def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Coding private-data command has duplicate JSON keys")
-        result[key] = value
-    return result
+_unique_object = _unique_json_object_hook(
+    lambda: 'Coding private-data command has duplicate JSON keys',
+)
 
 
 if __name__ == "__main__":

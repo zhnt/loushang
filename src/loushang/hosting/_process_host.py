@@ -14,6 +14,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TypeVar, cast
 
+from loushang.foundation._owned_tasks import (
+    _join_cancellation_first,
+)
+
 from ._process_backend import (
     _ManagedProcessPreparation,
     _ProcessBackend,
@@ -1400,26 +1404,7 @@ def _start_failure(caught: BaseException, phase: str) -> BaseException:
     return HostingError(category, f"hosting process {phase} failed")
 
 
-async def _await_owned(task: asyncio.Task[_T]) -> _T:
-    """Shield one owner task and delay repeated caller cancellation until settled."""
-
-    cancellation: asyncio.CancelledError | None = None
-    while True:
-        try:
-            result = await asyncio.shield(task)
-            break
-        except asyncio.CancelledError as exc:
-            if task.cancelled():
-                raise
-            if cancellation is None:
-                cancellation = exc
-        except BaseException as exc:
-            if cancellation is not None:
-                raise cancellation from exc
-            raise
-    if cancellation is not None:
-        raise cancellation
-    return cast(_T, result)
+_await_owned = _join_cancellation_first
 
 
 def _task_failed(task: asyncio.Task[object]) -> bool:

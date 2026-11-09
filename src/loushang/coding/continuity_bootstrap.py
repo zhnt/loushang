@@ -12,7 +12,6 @@ import hashlib
 import os
 import re
 import secrets
-import stat
 import sys
 from collections.abc import Callable, Mapping
 from contextlib import suppress
@@ -90,6 +89,9 @@ from loushang.harness.plugin_management import (
 from loushang.harness.plugin_management.continuity_adapter import (
     PluginContinuitySecurityRetirementJournal,
     PluginInstanceLedgerContinuityFamilyAuthority,
+)
+from loushang.harness.resources.packages._private_directory import (
+    prepare_private_directory,
 )
 from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
@@ -1436,22 +1438,7 @@ def _source_trust_class(
 
 def _prepare_private_directory(root: Path, *, code: str) -> None:
     try:
-        root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        before = root.lstat()
-        if (
-            not stat.S_ISDIR(before.st_mode)
-            or stat.S_ISLNK(before.st_mode)
-            or bool(getattr(before, "st_reparse_tag", 0))
-        ):
-            raise OSError("private root is not a direct directory")
-        getuid = getattr(os, "getuid", None)
-        if os.name == "posix" and callable(getuid) and before.st_uid != getuid():
-            raise PermissionError("private root belongs to another user")
-        if os.name == "posix":
-            root.chmod(0o700)
-        after = root.lstat()
-        if not os.path.samestat(before, after):
-            raise OSError("private root identity changed")
+        prepare_private_directory(root)
     except OSError:
         raise CodingContinuityBootstrapError(code=code) from None
 

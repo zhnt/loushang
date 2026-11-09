@@ -4,13 +4,24 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import stat
 from contextlib import suppress
 from dataclasses import dataclass
 from hashlib import sha256
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Literal
 
+from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.journal._io_loops import write_all as _complete_write
+from loushang.harness.resources.packages._file_consumption import (
+    DescriptorReader,
+    FileConsumptionError,
+    borrowed_binary_stream,
+    closing_descriptor,
+    consume_file,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -49,6 +60,39 @@ _MAX_STATE_MANIFEST_BYTES = 1024 * 1024
 _NativeIdentity = tuple[int, int]
 
 _EntryKind = Literal["directory", "file"]
+
+
+def _write_inherited_private_snapshot(path: Path, encoded: bytes) -> None:
+    """Replace one file using its parent's private ACL and original buffered flush."""
+    temporary_path: Path | None = None
+    with WindowsPrivateDirectoryAcl(inherit_children=True) as acl:
+        parent_fd = open_windows_directory(path.parent, read_control=True)
+        try:
+            acl.validate(parent_fd)
+            candidate = path.parent / f".{path.name}.{secrets.token_hex(16)}.tmp"
+            temporary_fd = open_windows_regular_file_at(
+                parent_fd,
+                candidate.name,
+                create_new=True,
+                write=True,
+                security_descriptor=acl.security_descriptor,
+                read_control=True,
+            )
+            # Only a successful exclusive create grants custody of this path.
+            temporary_path = candidate
+            with closing_descriptor(temporary_fd):
+                acl.validate(temporary_fd)
+                with borrowed_binary_stream(temporary_fd, "wb") as stream:
+                    stream.write(encoded)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            os.replace(temporary_path, path)
+            temporary_path = None
+        finally:
+            os.close(parent_fd)
+            if temporary_path is not None:
+                with suppress(FileNotFoundError):
+                    temporary_path.unlink()
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,8 +372,9 @@ def _inspect_tree(
                 raise OSError("Snapshot tree exceeds configured entry/depth budget")
             logical_path = "/".join(parts)
             if stat.S_ISDIR(metadata.st_mode) and not _is_reparse(metadata):
-                child = _open_directory_at(directory_fd, name)
-                try:
+                with closing_descriptor(
+                    _open_directory_at(directory_fd, name)
+                ) as child:
                     identity = _native_identity(os.fstat(child))
                     if identity != _native_identity(metadata):
                         raise OSError("Snapshot directory identity changed")
@@ -342,20 +387,19 @@ def _inspect_tree(
                     )
                     identities[parts] = identity
                     visit(child, parts)
-                finally:
-                    os.close(child)
             elif (
                 stat.S_ISREG(metadata.st_mode)
                 and metadata.st_nlink == 1
                 and not _is_reparse(metadata)
             ):
-                descriptor = open_windows_regular_file_at(
-                    directory_fd,
-                    name,
-                    create_new=False,
-                    write=False,
-                )
-                try:
+                with closing_descriptor(
+                    open_windows_regular_file_at(
+                        directory_fd,
+                        name,
+                        create_new=False,
+                        write=False,
+                    )
+                ) as descriptor:
                     before = os.fstat(descriptor)
                     if _native_identity(before) != _native_identity(metadata):
                         raise OSError("Snapshot file identity changed")
@@ -385,8 +429,6 @@ def _inspect_tree(
                         )
                     )
                     identities[parts] = _native_identity(after)
-                finally:
-                    os.close(descriptor)
             else:
                 raise OSError("Snapshot contains an aliased or special member")
 
@@ -414,8 +456,9 @@ def _copy_tree(
 ) -> None:
     for entry in inspection.entries:
         parts = tuple(entry.logical_path.split("/"))
-        target_parent = _open_relative_directory(target_fd, parts[:-1])
-        try:
+        with closing_descriptor(
+            _open_relative_directory(target_fd, parts[:-1])
+        ) as target_parent:
             if entry.kind == "directory":
                 child = _open_directory_at(
                     target_parent,
@@ -425,25 +468,25 @@ def _copy_tree(
                 )
                 os.close(child)
                 continue
-            source_parent = _open_relative_directory(source_fd, parts[:-1])
-            try:
+            with closing_descriptor(
+                _open_relative_directory(source_fd, parts[:-1])
+            ) as source_parent:
                 source_file = open_windows_regular_file_at(
                     source_parent,
                     parts[-1],
                     create_new=False,
                     write=False,
                 )
-            finally:
-                os.close(source_parent)
             try:
-                target_file = open_windows_regular_file_at(
-                    target_parent,
-                    parts[-1],
-                    create_new=True,
-                    write=True,
-                    security_descriptor=security_descriptor,
-                )
-                try:
+                with closing_descriptor(
+                    open_windows_regular_file_at(
+                        target_parent,
+                        parts[-1],
+                        create_new=True,
+                        write=True,
+                        security_descriptor=security_descriptor,
+                    )
+                ) as target_file:
                     before = os.fstat(source_file)
                     if _native_identity(before) != inspection.identities[parts]:
                         raise OSError("Snapshot file identity changed before copy")
@@ -467,12 +510,8 @@ def _copy_tree(
                     ):
                         raise OSError("Snapshot file content changed during copy")
                     windows_flush_file(target_file)
-                finally:
-                    os.close(target_file)
             finally:
                 os.close(source_file)
-        finally:
-            os.close(target_parent)
 
 
 def _flush_tree(root_fd: int, entries: tuple[_TreeEntry, ...]) -> None:
@@ -484,11 +523,8 @@ def _flush_tree(root_fd: int, entries: tuple[_TreeEntry, ...]) -> None:
     for parts in sorted(
         directories, key=lambda value: (len(value), value), reverse=True
     ):
-        descriptor = _open_relative_directory(root_fd, parts)
-        try:
+        with closing_descriptor(_open_relative_directory(root_fd, parts)) as descriptor:
             windows_flush_directory(descriptor)
-        finally:
-            os.close(descriptor)
 
 
 def _remove_owned_namespace(
@@ -497,15 +533,14 @@ def _remove_owned_namespace(
     *,
     expected_identity: _NativeIdentity,
 ) -> None:
-    namespace = _open_directory_at(root_fd, name, share_delete=True)
-    try:
+    with closing_descriptor(
+        _open_directory_at(root_fd, name, share_delete=True)
+    ) as namespace:
         if _native_identity(os.fstat(namespace)) != expected_identity:
             raise OSError("Owned staging namespace identity changed")
         _remove_directory_contents(namespace)
         if windows_listdir_at(namespace):
             raise OSError("Owned staging namespace is not empty")
-    finally:
-        os.close(namespace)
     _assert_entry_identity(root_fd, name, expected_identity, expected_kind="directory")
     windows_rmdir_at(root_fd, name)
 
@@ -516,13 +551,12 @@ def _remove_directory_contents(directory_fd: int) -> None:
         metadata = windows_stat_at(directory_fd, name)
         identity = _native_identity(metadata)
         if stat.S_ISDIR(metadata.st_mode) and not _is_reparse(metadata):
-            child = _open_directory_at(directory_fd, name, share_delete=True)
-            try:
+            with closing_descriptor(
+                _open_directory_at(directory_fd, name, share_delete=True)
+            ) as child:
                 if _native_identity(os.fstat(child)) != identity:
                     raise OSError("Owned staging directory identity changed")
                 _remove_directory_contents(child)
-            finally:
-                os.close(child)
             _assert_entry_identity(
                 directory_fd,
                 name,
@@ -570,27 +604,32 @@ def _read_regular_file(
     *,
     maximum_bytes: int,
 ) -> tuple[bytes, _NativeIdentity]:
-    descriptor = open_windows_regular_file_at(
-        directory_fd,
-        name,
-        create_new=False,
-        write=False,
-    )
-    try:
+    with closing_descriptor(
+        open_windows_regular_file_at(
+            directory_fd,
+            name,
+            create_new=False,
+            write=False,
+        )
+    ) as descriptor:
         before = os.fstat(descriptor)
         if before.st_size > maximum_bytes:
             raise OSError("Windows restore metadata exceeds budget")
-        payload = bytearray()
-        while chunk := os.read(descriptor, min(64 * 1024, maximum_bytes + 1)):
-            payload.extend(chunk)
-            if len(payload) > maximum_bytes:
-                raise OSError("Windows restore metadata exceeds budget")
+        payload = BytesIO()
+        try:
+            consume_file(
+                DescriptorReader(descriptor),
+                destination=payload,
+                max_bytes=maximum_bytes,
+                chunk_size=min(64 * 1024, maximum_bytes + 1),
+                hash_content=False,
+            )
+        except FileConsumptionError:
+            raise OSError("Windows restore metadata exceeds budget") from None
         after = os.fstat(descriptor)
         if _stable_file_metadata(before) != _stable_file_metadata(after):
             raise OSError("Windows restore metadata changed while reading")
-        return bytes(payload), _native_identity(after)
-    finally:
-        os.close(descriptor)
+        return payload.getvalue(), _native_identity(after)
 
 
 def _write_new_file(
@@ -600,27 +639,25 @@ def _write_new_file(
     *,
     security_descriptor: int | None = None,
 ) -> None:
-    descriptor = open_windows_regular_file_at(
-        directory_fd,
-        name,
-        create_new=True,
-        write=True,
-        security_descriptor=security_descriptor,
-    )
-    try:
+    with closing_descriptor(
+        open_windows_regular_file_at(
+            directory_fd,
+            name,
+            create_new=True,
+            write=True,
+            security_descriptor=security_descriptor,
+        )
+    ) as descriptor:
         _write_all(descriptor, contents)
         windows_flush_file(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 def _write_all(descriptor: int, contents: bytes) -> None:
-    view = memoryview(contents)
-    while view:
-        written = os.write(descriptor, view)
-        if written < 1:
-            raise OSError("Windows restore write made no progress")
-        view = view[written:]
+    _complete_write(
+        lambda view: os.write(descriptor, view),
+        contents,
+        message="Windows restore write made no progress",
+    )
 
 
 def _strict_json_object(payload: bytes, *, name: str) -> dict[str, object]:

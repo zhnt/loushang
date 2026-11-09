@@ -5,11 +5,16 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from hashlib import sha256
 from pathlib import Path
+from typing import cast
 
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
     PackagePosixEpochCutoverError,
@@ -178,16 +183,7 @@ class CodingLegacyRemovedReviewEntryV1:
         )
 
     def to_dict(self) -> dict[str, str]:
-        result = {
-            "pluginId": self.plugin_id,
-            "sourceIdentity": self.source_identity,
-            "contentDigest": self.content_digest,
-            "manifestDigest": self.manifest_digest,
-            "dependencyLockDigest": self.dependency_lock_digest,
-            "bindingDigest": self.binding_digest,
-            "installOperationId": self.install_operation_id,
-            "removeOperationId": self.remove_operation_id,
-        }
+        result = cast(dict[str, str], _ENTRY_SCHEMA.encode(self))
         if self.head_operation_id is not None:
             assert self.head_transition_kind is not None
             result["headOperationId"] = self.head_operation_id
@@ -196,16 +192,7 @@ class CodingLegacyRemovedReviewEntryV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingLegacyRemovedReviewEntryV1:
-        keys = {
-            "pluginId",
-            "sourceIdentity",
-            "contentDigest",
-            "manifestDigest",
-            "dependencyLockDigest",
-            "bindingDigest",
-            "installOperationId",
-            "removeOperationId",
-        }
+        keys = _ENTRY_SCHEMA.keys
         if type(value) is not dict or set(value) not in (
             keys,
             keys | {"headOperationId", "headTransitionKind"},
@@ -217,17 +204,20 @@ class CodingLegacyRemovedReviewEntryV1:
         ):
             raise CodingLegacyRemovedReviewError("Old local removal entry is invalid")
         return cls(
-            plugin_id=value["pluginId"],
-            source_identity=value["sourceIdentity"],
-            content_digest=value["contentDigest"],
-            manifest_digest=value["manifestDigest"],
-            dependency_lock_digest=value["dependencyLockDigest"],
-            binding_digest=value["bindingDigest"],
-            install_operation_id=value["installOperationId"],
-            remove_operation_id=value["removeOperationId"],
+            **_ENTRY_SCHEMA.decode(dict, value),
             head_operation_id=value.get("headOperationId"),
             head_transition_kind=value.get("headTransitionKind"),
         )
+
+
+_ENTRY_SCHEMA = RecordSchema(
+    lambda value: value,
+    tuple(
+        RecordField(item.name)
+        for item in fields(CodingLegacyRemovedReviewEntryV1)
+        if item.name not in {"head_operation_id", "head_transition_kind"}
+    ),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,14 +340,7 @@ class CodingLegacyRemovedReviewV1:
 
     def _identity(self) -> dict[str, object]:
         identity = {
-            "storeId": self.store_id,
-            "namespaceId": self.namespace_id,
-            "scopeId": self.scope_id,
-            "firstFenceId": self.first_fence_id,
-            "snapshotReceiptId": self.snapshot_receipt_id,
-            "sourceProjectionDigest": self.source_projection_digest,
-            "lockfileDigest": self.lockfile_digest,
-            "desiredJournalDigest": self.desired_journal_digest,
+            **_REVIEW_SCHEMA.encode(self),
             "disabledPlugins": [
                 {"scope": item.scope, "pluginId": item.plugin_id}
                 for item in self.disabled_plugins
@@ -381,21 +364,13 @@ class CodingLegacyRemovedReviewV1:
 
     @classmethod
     def from_dict(cls, value: object) -> CodingLegacyRemovedReviewV1:
-        expected = {
-            "storeId",
-            "namespaceId",
-            "scopeId",
-            "firstFenceId",
-            "snapshotReceiptId",
-            "sourceProjectionDigest",
-            "lockfileDigest",
-            "desiredJournalDigest",
-            "disabledPlugins",
-            "builtinIntent",
-            "removedBuiltinIds",
+        expected = _REVIEW_SCHEMA.keys | {
+            "reviewId",
             "removedLocal",
             "reviewVersion",
-            "reviewId",
+            "removedBuiltinIds",
+            "builtinIntent",
+            "disabledPlugins",
         }
         if (
             type(value) is not dict
@@ -440,14 +415,7 @@ class CodingLegacyRemovedReviewV1:
             )
         try:
             review = cls(
-                store_id=value["storeId"],
-                namespace_id=value["namespaceId"],
-                scope_id=value["scopeId"],
-                first_fence_id=value["firstFenceId"],
-                snapshot_receipt_id=value["snapshotReceiptId"],
-                source_projection_digest=value["sourceProjectionDigest"],
-                lockfile_digest=value["lockfileDigest"],
-                desired_journal_digest=value["desiredJournalDigest"],
+                **_REVIEW_SCHEMA.decode(dict, value),
                 disabled_plugins=tuple(
                     CodingScopedLegacyDisableV1(item["scope"], item["pluginId"])
                     for item in disabled
@@ -472,6 +440,26 @@ class CodingLegacyRemovedReviewV1:
         if review.review_id != value["reviewId"]:
             raise CodingLegacyRemovedReviewError("Old local removal review ID changed")
         return review
+
+
+_REVIEW_SCHEMA = RecordSchema(
+    lambda value: value,
+    tuple(
+        RecordField(item.name)
+        for item in fields(CodingLegacyRemovedReviewV1)
+        if item.name
+        not in {
+            "disabled_plugins",
+            "builtin_intent",
+            "removed_builtin_ids",
+            "removed_local",
+            "review_version",
+            "operation_journal_digest",
+            "retained_store_roots",
+            "review_id",
+        }
+    ),
+)
 
 
 def admit_coding_removed_local_snapshot(

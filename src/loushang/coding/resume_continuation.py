@@ -376,7 +376,7 @@ async def prepare_coding_resume_continuation(
         def settled() -> None:
             with manager._lifecycle_session.sync_operation_scope():
                 current()
-                candidate = session._coding_resume_candidate
+                candidate = session._resume_candidate
                 if candidate is None:
                     raise RuntimeError("Coding Resume candidate was not delivered")
                 session._require_resume_candidate(candidate)

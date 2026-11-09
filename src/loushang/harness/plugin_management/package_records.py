@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from hashlib import sha256
-from typing import Literal, TypeVar, cast
+from typing import Literal
 
-from loushang.foundation.json import JsonValueError, require_json_mapping
 from loushang.harness.journal import FunctionalJournalRecordCodec, JournalCodecError
 from loushang.harness.plugin_management.instance_records import (
     PluginInstanceLeaseFamilyV1,
@@ -15,6 +14,18 @@ from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1,
     PluginLifecycleCodecError,
     PluginPackageRevisionRefV1,
+    _record_document,
+    _require_nonempty,
+    _require_nonnegative_integer,
+    _require_positive_integer,
+)
+from loushang.harness.plugin_management.records import (
+    _require_digest as _require_sha256,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+    decode_nullable,
 )
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.declarations import PluginDeclarationCodecError
@@ -49,17 +60,12 @@ PluginPackageLifecycleEventKind = Literal[
     "recovery_completed",
 ]
 
-_PIN_KINDS = frozenset(
-    {"cold_resume", "dependency_lock", "forensic_retention"}
-)
+_PIN_KINDS = frozenset({"cold_resume", "dependency_lock", "forensic_retention"})
 _CLEANUP_DISPOSITIONS = frozenset(
     {"succeeded", "retryable_failure", "terminal_failure"}
 )
 _REPAIR_ACTIONS = frozenset({"retry", "safe_abandon"})
-_RESULT_CODE_CHARACTERS = frozenset(
-    "abcdefghijklmnopqrstuvwxyz0123456789._-:"
-)
-_NestedT = TypeVar("_NestedT")
+_RESULT_CODE_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789._-:")
 
 
 class PluginPackageLifecycleRecordCodecError(JournalCodecError):
@@ -134,42 +140,19 @@ class PluginPackagePinV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginPackagePinV1:
-        document = _wire_object(value, name="Plugin Package pin")
-        _wire_exact_fields(
-            document,
-            keys={
-                "holderReference",
-                "idempotencyKey",
-                "operationId",
-                "packageRevision",
-                "pinId",
-                "pinKind",
-                "pinVersion",
-            },
+        document = _decode_document(
+            value,
             name="Plugin Package pin",
+            schema=_PLUGINPACKAGEPIN_SCHEMA,
+            version=PLUGIN_PACKAGE_PIN_VERSION,
+            version_field="pinVersion",
         )
-        _wire_version(document.get("pinVersion"), expected=PLUGIN_PACKAGE_PIN_VERSION)
         try:
             pin_kind = _wire_string(document["pinKind"], name="pin kind")
             if pin_kind not in _PIN_KINDS:
                 raise ValueError("Unsupported Plugin Package pin kind")
-            return cls(
-                pin_id=_wire_string(document["pinId"], name="pin id"),
-                package_revision=PluginPackageRevisionRefV1.from_dict(
-                    document["packageRevision"]
-                ),
-                pin_kind=cast(PluginPackagePinKind, pin_kind),
-                operation_id=_wire_string(
-                    document["operationId"], name="operation id"
-                ),
-                idempotency_key=_wire_string(
-                    document["idempotencyKey"], name="idempotency key"
-                ),
-                holder_reference=_wire_string(
-                    document["holderReference"], name="holder reference"
-                ),
-                pin_version=PLUGIN_PACKAGE_PIN_VERSION,
-            )
+            document["pinKind"] = pin_kind
+            return _PLUGINPACKAGEPIN_SCHEMA.decode(cls, document)
         except PluginPackageLifecycleRecordCodecError:
             raise
         except (PluginLifecycleCodecError, TypeError, ValueError) as exc:
@@ -208,36 +191,15 @@ class PluginPackagePinReleaseV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginPackagePinReleaseV1:
-        document = _wire_object(value, name="Plugin Package pin release")
-        _wire_exact_fields(
-            document,
-            keys={
-                "idempotencyKey",
-                "operationId",
-                "pinId",
-                "releaseReference",
-                "releaseVersion",
-            },
+        document = _decode_document(
+            value,
             name="Plugin Package pin release",
-        )
-        _wire_version(
-            document.get("releaseVersion"),
-            expected=PLUGIN_PACKAGE_PIN_RELEASE_VERSION,
+            schema=_PLUGINPACKAGEPINRELEASE_SCHEMA,
+            version=PLUGIN_PACKAGE_PIN_RELEASE_VERSION,
+            version_field="releaseVersion",
         )
         try:
-            return cls(
-                pin_id=_wire_string(document["pinId"], name="pin id"),
-                operation_id=_wire_string(
-                    document["operationId"], name="operation id"
-                ),
-                idempotency_key=_wire_string(
-                    document["idempotencyKey"], name="idempotency key"
-                ),
-                release_reference=_wire_string(
-                    document["releaseReference"], name="release reference"
-                ),
-                release_version=PLUGIN_PACKAGE_PIN_RELEASE_VERSION,
-            )
+            return _PLUGINPACKAGEPINRELEASE_SCHEMA.decode(cls, document)
         except PluginPackageLifecycleRecordCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -272,10 +234,14 @@ class PluginCleanupTaskV1:
         _require_sha256(self.coordination_id, name="cleanup coordination id")
         if self.coordination_kind not in {"graceful", "security"}:
             raise ValueError("Unsupported Plugin cleanup coordination kind")
-        if self.source_family.lease_kind not in {
-            "direct_host",
-            "owner_generation",
-        } or len(self.source_family.members) != 1:
+        if (
+            self.source_family.lease_kind
+            not in {
+                "direct_host",
+                "owner_generation",
+            }
+            or len(self.source_family.members) != 1
+        ):
             raise ValueError("Plugin cleanup requires one host/owner source family")
         member = self.source_family.members[0]
         if (
@@ -394,31 +360,12 @@ class PluginCleanupTaskV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginCleanupTaskV1:
-        document = _wire_object(value, name="Plugin cleanup task")
-        _wire_exact_fields(
-            document,
-            keys={
-                "cleanupId",
-                "cleanupKind",
-                "cleanupLeaseId",
-                "cleanupReference",
-                "coordinationId",
-                "coordinationKind",
-                "idempotencyKey",
-                "installationKey",
-                "instanceRevisionRef",
-                "operationId",
-                "packageRevision",
-                "retirementTargetId",
-                "sourceFamily",
-                "sourceRuntimeRevision",
-                "taskVersion",
-            },
+        document = _decode_document(
+            value,
             name="Plugin cleanup task",
-        )
-        _wire_version(
-            document.get("taskVersion"),
-            expected=PLUGIN_CLEANUP_TASK_VERSION,
+            schema=_PLUGINCLEANUPTASK_SCHEMA,
+            version=PLUGIN_CLEANUP_TASK_VERSION,
+            version_field="taskVersion",
         )
         try:
             coordination_kind = _wire_string(
@@ -426,52 +373,8 @@ class PluginCleanupTaskV1:
             )
             if coordination_kind not in {"graceful", "security"}:
                 raise ValueError("Unsupported Plugin cleanup coordination kind")
-            return cls(
-                cleanup_id=_wire_string(document["cleanupId"], name="cleanup id"),
-                cleanup_lease_id=_wire_string(
-                    document["cleanupLeaseId"], name="cleanup lease id"
-                ),
-                source_runtime_revision=_wire_integer(
-                    document["sourceRuntimeRevision"],
-                    name="source runtime revision",
-                ),
-                source_family=PluginInstanceLeaseFamilyV1.from_dict(
-                    document["sourceFamily"]
-                ),
-                installation_key=PluginInstallationKeyV1.from_dict(
-                    document["installationKey"]
-                ),
-                instance_revision_ref=PluginInstanceRevisionRef.from_dict(
-                    document["instanceRevisionRef"]
-                ),
-                package_revision=PluginPackageRevisionRefV1.from_dict(
-                    document["packageRevision"]
-                ),
-                coordination_kind=cast(
-                    PluginCleanupCoordinationKind,
-                    coordination_kind,
-                ),
-                coordination_id=_wire_string(
-                    document["coordinationId"], name="coordination id"
-                ),
-                retirement_target_id=_wire_optional_string(
-                    document["retirementTargetId"],
-                    name="retirement target id",
-                ),
-                cleanup_kind=_wire_string(
-                    document["cleanupKind"], name="cleanup kind"
-                ),
-                operation_id=_wire_string(
-                    document["operationId"], name="operation id"
-                ),
-                idempotency_key=_wire_string(
-                    document["idempotencyKey"], name="idempotency key"
-                ),
-                cleanup_reference=_wire_string(
-                    document["cleanupReference"], name="cleanup reference"
-                ),
-                task_version=PLUGIN_CLEANUP_TASK_VERSION,
-            )
+            document["coordinationKind"] = coordination_kind
+            return _PLUGINCLEANUPTASK_SCHEMA.decode(cls, document)
         except PluginPackageLifecycleRecordCodecError:
             raise
         except (
@@ -536,25 +439,12 @@ class PluginCleanupAttemptV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginCleanupAttemptV1:
-        document = _wire_object(value, name="Plugin cleanup attempt")
-        _wire_exact_fields(
-            document,
-            keys={
-                "attempt",
-                "attemptVersion",
-                "cleanupId",
-                "disposition",
-                "idempotencyKey",
-                "operationId",
-                "outcomeReference",
-                "resultCode",
-                "retryNotBeforeEpochMs",
-            },
+        document = _decode_document(
+            value,
             name="Plugin cleanup attempt",
-        )
-        _wire_version(
-            document.get("attemptVersion"),
-            expected=PLUGIN_CLEANUP_ATTEMPT_VERSION,
+            schema=_PLUGINCLEANUPATTEMPT_SCHEMA,
+            version=PLUGIN_CLEANUP_ATTEMPT_VERSION,
+            version_field="attemptVersion",
         )
         try:
             disposition = _wire_string(
@@ -562,28 +452,8 @@ class PluginCleanupAttemptV1:
             )
             if disposition not in _CLEANUP_DISPOSITIONS:
                 raise ValueError("Unsupported Plugin cleanup disposition")
-            return cls(
-                cleanup_id=_wire_string(document["cleanupId"], name="cleanup id"),
-                operation_id=_wire_string(
-                    document["operationId"], name="operation id"
-                ),
-                idempotency_key=_wire_string(
-                    document["idempotencyKey"], name="idempotency key"
-                ),
-                attempt=_wire_integer(document["attempt"], name="attempt"),
-                disposition=cast(PluginCleanupDisposition, disposition),
-                result_code=_wire_string(
-                    document["resultCode"], name="result code"
-                ),
-                retry_not_before_epoch_ms=_wire_optional_integer(
-                    document["retryNotBeforeEpochMs"],
-                    name="retry-not-before epoch milliseconds",
-                ),
-                outcome_reference=_wire_string(
-                    document["outcomeReference"], name="outcome reference"
-                ),
-                attempt_version=PLUGIN_CLEANUP_ATTEMPT_VERSION,
-            )
+            document["disposition"] = disposition
+            return _PLUGINCLEANUPATTEMPT_SCHEMA.decode(cls, document)
         except PluginPackageLifecycleRecordCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -679,53 +549,19 @@ class PluginCleanupRepairDecisionV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginCleanupRepairDecisionV1:
-        document = _wire_object(value, name="Plugin cleanup repair decision")
-        _wire_exact_fields(
-            document,
-            keys={
-                "action",
-                "authorityReference",
-                "cleanupId",
-                "decisionId",
-                "decisionVersion",
-                "idempotencyKey",
-                "operationId",
-                "reasonCode",
-                "repairSequence",
-            },
+        document = _decode_document(
+            value,
             name="Plugin cleanup repair decision",
-        )
-        _wire_version(
-            document.get("decisionVersion"),
-            expected=PLUGIN_CLEANUP_REPAIR_DECISION_VERSION,
+            schema=_PLUGINCLEANUPREPAIRDECISION_SCHEMA,
+            version=PLUGIN_CLEANUP_REPAIR_DECISION_VERSION,
+            version_field="decisionVersion",
         )
         try:
             action = _wire_string(document["action"], name="repair action")
             if action not in _REPAIR_ACTIONS:
                 raise ValueError("Unsupported Plugin cleanup repair action")
-            return cls(
-                decision_id=_wire_string(
-                    document["decisionId"], name="decision id"
-                ),
-                cleanup_id=_wire_string(document["cleanupId"], name="cleanup id"),
-                repair_sequence=_wire_integer(
-                    document["repairSequence"], name="repair sequence"
-                ),
-                action=cast(PluginCleanupRepairAction, action),
-                operation_id=_wire_string(
-                    document["operationId"], name="operation id"
-                ),
-                idempotency_key=_wire_string(
-                    document["idempotencyKey"], name="idempotency key"
-                ),
-                authority_reference=_wire_string(
-                    document["authorityReference"], name="authority reference"
-                ),
-                reason_code=_wire_string(
-                    document["reasonCode"], name="reason code"
-                ),
-                decision_version=PLUGIN_CLEANUP_REPAIR_DECISION_VERSION,
-            )
+            document["action"] = action
+            return _PLUGINCLEANUPREPAIRDECISION_SCHEMA.decode(cls, document)
         except PluginPackageLifecycleRecordCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -790,9 +626,7 @@ class PluginPackageRecoveryBarrierV1:
             observed_instance_runtime_revision=(
                 self.observed_instance_runtime_revision
             ),
-            observed_package_journal_revision=(
-                self.observed_package_journal_revision
-            ),
+            observed_package_journal_revision=(self.observed_package_journal_revision),
             open_pin_ids=self.open_pin_ids,
             open_cleanup_ids=self.open_cleanup_ids,
         ):
@@ -821,12 +655,8 @@ class PluginPackageRecoveryBarrierV1:
                 observed_desired_inventory_revision=(
                     observed_desired_inventory_revision
                 ),
-                observed_instance_runtime_revision=(
-                    observed_instance_runtime_revision
-                ),
-                observed_package_journal_revision=(
-                    observed_package_journal_revision
-                ),
+                observed_instance_runtime_revision=(observed_instance_runtime_revision),
+                observed_package_journal_revision=(observed_package_journal_revision),
                 open_pin_ids=open_pin_ids,
                 open_cleanup_ids=open_cleanup_ids,
             ),
@@ -852,9 +682,7 @@ class PluginPackageRecoveryBarrierV1:
             "observedInstanceRuntimeRevision": (
                 self.observed_instance_runtime_revision
             ),
-            "observedPackageJournalRevision": (
-                self.observed_package_journal_revision
-            ),
+            "observedPackageJournalRevision": (self.observed_package_journal_revision),
             "openCleanupIds": list(self.open_cleanup_ids),
             "openPinIds": list(self.open_pin_ids),
             "operationId": self.operation_id,
@@ -864,61 +692,15 @@ class PluginPackageRecoveryBarrierV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginPackageRecoveryBarrierV1:
-        document = _wire_object(value, name="Plugin Package recovery barrier")
-        _wire_exact_fields(
-            document,
-            keys={
-                "barrierId",
-                "barrierVersion",
-                "idempotencyKey",
-                "observedDesiredInventoryRevision",
-                "observedInstanceRuntimeRevision",
-                "observedPackageJournalRevision",
-                "openCleanupIds",
-                "openPinIds",
-                "operationId",
-                "recoveryReference",
-                "startupId",
-            },
+        document = _decode_document(
+            value,
             name="Plugin Package recovery barrier",
-        )
-        _wire_version(
-            document.get("barrierVersion"),
-            expected=PLUGIN_PACKAGE_RECOVERY_BARRIER_VERSION,
+            schema=_PLUGINPACKAGERECOVERYBARRIER_SCHEMA,
+            version=PLUGIN_PACKAGE_RECOVERY_BARRIER_VERSION,
+            version_field="barrierVersion",
         )
         try:
-            return cls(
-                barrier_id=_wire_string(document["barrierId"], name="barrier id"),
-                startup_id=_wire_string(document["startupId"], name="startup id"),
-                operation_id=_wire_string(
-                    document["operationId"], name="operation id"
-                ),
-                idempotency_key=_wire_string(
-                    document["idempotencyKey"], name="idempotency key"
-                ),
-                recovery_reference=_wire_string(
-                    document["recoveryReference"], name="recovery reference"
-                ),
-                observed_desired_inventory_revision=_wire_integer(
-                    document["observedDesiredInventoryRevision"],
-                    name="observed desired inventory revision",
-                ),
-                observed_instance_runtime_revision=_wire_integer(
-                    document["observedInstanceRuntimeRevision"],
-                    name="observed Instance runtime revision",
-                ),
-                observed_package_journal_revision=_wire_integer(
-                    document["observedPackageJournalRevision"],
-                    name="observed Package journal revision",
-                ),
-                open_pin_ids=_wire_string_tuple(
-                    document["openPinIds"], name="open pin ids"
-                ),
-                open_cleanup_ids=_wire_string_tuple(
-                    document["openCleanupIds"], name="open cleanup ids"
-                ),
-                barrier_version=PLUGIN_PACKAGE_RECOVERY_BARRIER_VERSION,
-            )
+            return _PLUGINPACKAGERECOVERYBARRIER_SCHEMA.decode(cls, document)
         except PluginPackageLifecycleRecordCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -1052,9 +834,7 @@ class PluginPackageLifecycleEventV1:
     def to_dict(self) -> dict[str, object]:
         return {
             "cleanupAttempt": (
-                None
-                if self.cleanup_attempt is None
-                else self.cleanup_attempt.to_dict()
+                None if self.cleanup_attempt is None else self.cleanup_attempt.to_dict()
             ),
             "cleanupTask": (
                 None if self.cleanup_task is None else self.cleanup_task.to_dict()
@@ -1072,33 +852,18 @@ class PluginPackageLifecycleEventV1:
                 else self.recovery_barrier.to_dict()
             ),
             "repairDecision": (
-                None
-                if self.repair_decision is None
-                else self.repair_decision.to_dict()
+                None if self.repair_decision is None else self.repair_decision.to_dict()
             ),
         }
 
     @classmethod
     def from_dict(cls, value: object) -> PluginPackageLifecycleEventV1:
-        document = _wire_object(value, name="Plugin Package lifecycle event")
-        _wire_exact_fields(
-            document,
-            keys={
-                "cleanupAttempt",
-                "cleanupTask",
-                "eventKind",
-                "journalRevision",
-                "pin",
-                "pinRelease",
-                "recordVersion",
-                "recoveryBarrier",
-                "repairDecision",
-            },
+        document = _decode_document(
+            value,
             name="Plugin Package lifecycle event",
-        )
-        _wire_version(
-            document.get("recordVersion"),
-            expected=PLUGIN_PACKAGE_LIFECYCLE_EVENT_VERSION,
+            schema=_PLUGINPACKAGELIFECYCLEEVENT_SCHEMA,
+            version=PLUGIN_PACKAGE_LIFECYCLE_EVENT_VERSION,
+            version_field="recordVersion",
         )
         try:
             event_kind = _wire_string(document["eventKind"], name="event kind")
@@ -1111,33 +876,8 @@ class PluginPackageLifecycleEventV1:
                 "recovery_completed",
             }:
                 raise ValueError("Unsupported Plugin Package lifecycle event kind")
-            return cls(
-                journal_revision=_wire_integer(
-                    document["journalRevision"], name="journal revision"
-                ),
-                event_kind=cast(PluginPackageLifecycleEventKind, event_kind),
-                pin=_wire_optional_nested(
-                    document["pin"], PluginPackagePinV1.from_dict
-                ),
-                pin_release=_wire_optional_nested(
-                    document["pinRelease"], PluginPackagePinReleaseV1.from_dict
-                ),
-                cleanup_task=_wire_optional_nested(
-                    document["cleanupTask"], PluginCleanupTaskV1.from_dict
-                ),
-                cleanup_attempt=_wire_optional_nested(
-                    document["cleanupAttempt"], PluginCleanupAttemptV1.from_dict
-                ),
-                repair_decision=_wire_optional_nested(
-                    document["repairDecision"],
-                    PluginCleanupRepairDecisionV1.from_dict,
-                ),
-                recovery_barrier=_wire_optional_nested(
-                    document["recoveryBarrier"],
-                    PluginPackageRecoveryBarrierV1.from_dict,
-                ),
-                record_version=PLUGIN_PACKAGE_LIFECYCLE_EVENT_VERSION,
-            )
+            document["eventKind"] = event_kind
+            return _PLUGINPACKAGELIFECYCLEEVENT_SCHEMA.decode(cls, document)
         except PluginPackageLifecycleRecordCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -1274,33 +1014,6 @@ def _derived_id(domain: bytes, value: dict[str, object]) -> str:
     return sha256(domain + StrictPluginJsonCodec.encode(value)).hexdigest()
 
 
-def _wire_object(value: object, *, name: str) -> dict[str, object]:
-    try:
-        return cast(dict[str, object], require_json_mapping(value, name=name))
-    except JsonValueError as exc:
-        raise _invalid_record(str(exc)) from exc
-
-
-def _wire_exact_fields(
-    value: dict[str, object], *, keys: set[str], name: str
-) -> None:
-    actual = set(value)
-    if actual != keys:
-        missing = sorted(keys - actual)
-        unknown = sorted(actual - keys)
-        raise _invalid_record(
-            f"{name} fields do not match; missing={missing!r}, unknown={unknown!r}"
-        )
-
-
-def _wire_version(value: object, *, expected: int) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value != expected:
-        raise PluginPackageLifecycleRecordCodecError(
-            "Unsupported Plugin Package lifecycle record version",
-            code="unsupported_plugin_package_lifecycle_record_version",
-        )
-
-
 def _wire_string(value: object, *, name: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{name} must be a non-empty string")
@@ -1329,37 +1042,6 @@ def _wire_string_tuple(value: object, *, name: str) -> tuple[str, ...]:
     if not isinstance(value, list):
         raise ValueError(f"{name} must be a JSON array")
     return tuple(_wire_string(item, name=name) for item in value)
-
-
-def _wire_optional_nested(
-    value: object,
-    decoder: Callable[[object], _NestedT],
-) -> _NestedT | None:
-    if value is None:
-        return None
-    return decoder(value)
-
-
-def _require_nonempty(value: str, *, name: str) -> None:
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{name} must be a non-empty string")
-
-
-def _require_sha256(value: str | None, *, name: str) -> None:
-    if not isinstance(value, str) or len(value) != 64 or any(
-        character not in "0123456789abcdef" for character in value
-    ):
-        raise ValueError(f"{name} must be a lowercase SHA-256 digest")
-
-
-def _require_positive_integer(value: int, *, name: str) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        raise ValueError(f"{name} must be a positive integer")
-
-
-def _require_nonnegative_integer(value: int, *, name: str) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise ValueError(f"{name} must be a non-negative integer")
 
 
 def _require_result_code(value: str, *, name: str) -> None:
@@ -1417,3 +1099,142 @@ __all__ = [
     "plugin_package_pin_id",
     "plugin_package_recovery_barrier_id",
 ]
+
+
+_PLUGINPACKAGEPIN_SCHEMA = RecordSchema.for_dataclass(
+    PluginPackagePinV1,
+    _wire_string,
+    RecordField("package_revision", decoder=PluginPackageRevisionRefV1.from_dict),
+    RecordField("pin_kind", decoder=lambda value: value),
+    RecordField("pin_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINPACKAGEPINRELEASE_SCHEMA = RecordSchema.for_dataclass(
+    PluginPackagePinReleaseV1,
+    _wire_string,
+    RecordField("release_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINCLEANUPTASK_SCHEMA = RecordSchema.for_dataclass(
+    PluginCleanupTaskV1,
+    _wire_string,
+    RecordField("source_runtime_revision", "source runtime revision", _wire_integer),
+    RecordField("source_family", decoder=PluginInstanceLeaseFamilyV1.from_dict),
+    RecordField("installation_key", decoder=PluginInstallationKeyV1.from_dict),
+    RecordField("instance_revision_ref", decoder=PluginInstanceRevisionRef.from_dict),
+    RecordField("package_revision", decoder=PluginPackageRevisionRefV1.from_dict),
+    RecordField("coordination_kind", decoder=lambda value: value),
+    RecordField("retirement_target_id", "retirement target id", _wire_optional_string),
+    RecordField("task_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINCLEANUPATTEMPT_SCHEMA = RecordSchema.for_dataclass(
+    PluginCleanupAttemptV1,
+    _wire_string,
+    RecordField("attempt", "attempt", _wire_integer),
+    RecordField("disposition", decoder=lambda value: value),
+    RecordField(
+        "retry_not_before_epoch_ms",
+        "retry-not-before epoch milliseconds",
+        _wire_optional_integer,
+    ),
+    RecordField("attempt_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINCLEANUPREPAIRDECISION_SCHEMA = RecordSchema.for_dataclass(
+    PluginCleanupRepairDecisionV1,
+    _wire_string,
+    RecordField("repair_sequence", "repair sequence", _wire_integer),
+    RecordField("action", decoder=lambda value: value),
+    RecordField("decision_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINPACKAGERECOVERYBARRIER_SCHEMA = RecordSchema.for_dataclass(
+    PluginPackageRecoveryBarrierV1,
+    _wire_string,
+    RecordField(
+        "observed_desired_inventory_revision",
+        "observed desired inventory revision",
+        _wire_integer,
+    ),
+    RecordField(
+        "observed_instance_runtime_revision",
+        "observed Instance runtime revision",
+        _wire_integer,
+    ),
+    RecordField(
+        "observed_package_journal_revision",
+        "observed Package journal revision",
+        _wire_integer,
+    ),
+    RecordField("open_pin_ids", "open pin ids", _wire_string_tuple),
+    RecordField("open_cleanup_ids", "open cleanup ids", _wire_string_tuple),
+    RecordField("barrier_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINPACKAGELIFECYCLEEVENT_SCHEMA = RecordSchema.for_dataclass(
+    PluginPackageLifecycleEventV1,
+    _wire_string,
+    RecordField("journal_revision", "journal revision", _wire_integer),
+    RecordField("event_kind", decoder=lambda value: value),
+    RecordField(
+        "pin",
+        decoder=lambda value: decode_nullable(
+            value, decoder=PluginPackagePinV1.from_dict
+        ),
+    ),
+    RecordField(
+        "pin_release",
+        decoder=lambda value: decode_nullable(
+            value, decoder=PluginPackagePinReleaseV1.from_dict
+        ),
+    ),
+    RecordField(
+        "cleanup_task",
+        decoder=lambda value: decode_nullable(
+            value, decoder=PluginCleanupTaskV1.from_dict
+        ),
+    ),
+    RecordField(
+        "cleanup_attempt",
+        decoder=lambda value: decode_nullable(
+            value, decoder=PluginCleanupAttemptV1.from_dict
+        ),
+    ),
+    RecordField(
+        "repair_decision",
+        decoder=lambda value: decode_nullable(
+            value, decoder=PluginCleanupRepairDecisionV1.from_dict
+        ),
+    ),
+    RecordField(
+        "recovery_barrier",
+        decoder=lambda value: decode_nullable(
+            value, decoder=PluginPackageRecoveryBarrierV1.from_dict
+        ),
+    ),
+    RecordField("record_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_decode_document = partial(
+    _record_document,
+    invalid_record=_invalid_record,
+    unsupported_version=lambda: PluginPackageLifecycleRecordCodecError(
+        "Unsupported Plugin Package lifecycle record version",
+        code="unsupported_plugin_package_lifecycle_record_version",
+    ),
+)

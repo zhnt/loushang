@@ -628,6 +628,12 @@ def test_c51_ci_makefile_and_manifest_verifier_are_required() -> None:
 
 
 def test_c51_has_only_the_accepted_product_consumers() -> None:
+    history_consumers = {
+        WORKER_ROOT / "history/_activation.py",
+        WORKER_ROOT / "history/_receipt_store.py",
+        WORKER_ROOT / "history/_receipts.py",
+        WORKER_ROOT / "history/_windows_record_journals.py",
+    }
     consumers: set[Path] = set()
     for path in SOURCE_ROOT.rglob("*.py"):
         if path in {IMPLEMENTATION, WORKER_FACADE}:
@@ -643,7 +649,7 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
         CODING_CANARY,
         CODING_APPHOST_PRODUCT,
         CODING_APPHOST_CANARY,
-        Path("src/loushang/coding/package_product_worker_activation_history.py"),
+        *history_consumers,
         Path("src/loushang/coding/package_product_worker_capability.py"),
         Path("src/loushang/coding/package_product_worker_crash_c5_settlement.py"),
         Path("src/loushang/coding/package_product_worker_registered_c5_settlement.py"),
@@ -659,7 +665,9 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
         Path("src/loushang/coding/package_product_worker_receipt.py"),
         Path("src/loushang/coding/package_product_worker_windows_provisioning.py"),
         Path("src/loushang/coding/package_product_worker_windows_cleanup_evidence.py"),
-        Path("src/loushang/coding/package_product_worker_windows_crash_c5_settlement.py"),
+        Path(
+            "src/loushang/coding/package_product_worker_windows_crash_c5_settlement.py"
+        ),
         Path("src/loushang/coding/package_product_worker_windows_launch_intent.py"),
         Path("src/loushang/coding/package_product_worker_windows_payload.py"),
         Path("src/loushang/coding/package_product_worker_windows_receipt.py"),
@@ -667,7 +675,7 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
         CODING_PRODUCT_START_GATE,
     }
     for path in WORKER_ROOT.rglob("*.py"):
-        if path in {IMPLEMENTATION, WORKER_FACADE, NATIVE_BRIDGE}:
+        if path in {IMPLEMENTATION, WORKER_FACADE, NATIVE_BRIDGE, *history_consumers}:
             continue
         assert "loushang.harness.worker.product_activation" not in _imports(path)
         assert not any(name in _read(path) for name in C51_IMPLEMENTATION_NAMES)

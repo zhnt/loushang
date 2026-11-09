@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import os
 import re
-import stat
-from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
@@ -18,19 +16,14 @@ from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 from packaging.version import Version
 
 from loushang.harness.journal import (
-    DURABLE_LOCKED_JOURNAL,
-    SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
-    JournalCodecError,
-    JournalFileError,
-    JournalLoadPolicy,
-    append_jsonl_record,
-    journal_file_lock,
-    journal_file_read_lock,
-    load_jsonl,
+    JournalRecordCodec,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
-    open_regular_no_follow,
+from loushang.harness.package_product._local_source_catalog import (
+    _DependencyWheelSourceCatalog,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -45,7 +38,7 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelDependencyV1,
-    PackageProductLocalWheelPolicy,
+    PackageProductLocalWorkerAdmissionV1,
 )
 
 _WHEEL_FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.whl\Z")
@@ -163,47 +156,13 @@ class CodingExternalDependencyWheelBindingV1:
         }
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "recordRevision": self.record_revision,
-            "storeId": self.store_id,
-            "namespaceId": self.namespace_id,
-            "scopeId": self.scope_id,
-            "originalSource": self.original_source,
-            "wheelFilename": self.wheel_filename,
-            "projectName": self.project_name,
-            "version": self.version,
-            "artifactDigest": self.artifact_digest,
-            "recordId": self.record_id,
-        }
+        return _BINDING_SCHEMA.encode(self)
 
     @classmethod
     def from_dict(cls, value: object) -> CodingExternalDependencyWheelBindingV1:
-        keys = {
-            "recordRevision",
-            "storeId",
-            "namespaceId",
-            "scopeId",
-            "originalSource",
-            "wheelFilename",
-            "projectName",
-            "version",
-            "artifactDigest",
-            "recordId",
-        }
-        if type(value) is not dict or set(value) != keys:
+        if type(value) is not dict or set(value) != _BINDING_SCHEMA.keys:
             raise ValueError("Dependency Wheel binding record is invalid")
-        return cls(
-            record_revision=value["recordRevision"],
-            store_id=value["storeId"],
-            namespace_id=value["namespaceId"],
-            scope_id=value["scopeId"],
-            original_source=value["originalSource"],
-            wheel_filename=value["wheelFilename"],
-            project_name=value["projectName"],
-            version=value["version"],
-            artifact_digest=value["artifactDigest"],
-            record_id=value["recordId"],
-        )
+        return _BINDING_SCHEMA.decode(cls, value)
 
     def policy_dependency(
         self, source_root: Path
@@ -216,34 +175,73 @@ class CodingExternalDependencyWheelBindingV1:
         )
 
 
+_BINDING_SCHEMA = RecordSchema.for_dataclass(
+    CodingExternalDependencyWheelBindingV1, lambda value: value
+)
+
+
 _CODEC = FunctionalJournalRecordCodec(
     encoder=CodingExternalDependencyWheelBindingV1.to_dict,
     decoder=CodingExternalDependencyWheelBindingV1.from_dict,
 )
 
 
-class CodingExternalDependencyWheelCatalog:
+class CodingExternalDependencyWheelCatalog(
+    _DependencyWheelSourceCatalog[CodingExternalDependencyWheelBindingV1]
+):
     """Append-only exact dependency Sources under one fenced Product namespace."""
 
-    def __init__(
+    _label = "Dependency Wheel"
+    _path_label = "Dependency Wheel"
+    _error_factory = CodingExternalDependencyWheelError
+
+    _source_label = "Dependency Wheel"
+    _product_id = "coding"
+
+    def _directory_name(self) -> str:
+        return _DIRECTORY
+
+    def _max_source_bytes(self) -> int:
+        return _MAX_WHEEL_BYTES
+
+    def _validate_source_name(self, filename: str) -> None:
+        _wheel_identity(filename)
+
+    def _verify_source_body(self, filename: str, body: bytes) -> None:
+        _verify_wheel_body(filename, body)
+
+    def _new_record(
         self,
-        path: Path,
+        source: Path,
+        digest: str,
+        revision: int,
         *,
-        source_root: Path,
-        store_id: str,
-        namespace_id: str,
-        scope_id: str,
-        read_only: bool = False,
+        admission: PackageProductLocalWorkerAdmissionV1 | None,
+    ) -> CodingExternalDependencyWheelBindingV1:
+        return CodingExternalDependencyWheelBindingV1.create(
+            record_revision=revision,
+            store_id=self.store_id,
+            namespace_id=self.namespace_id,
+            scope_id=self.scope_id,
+            original_source=str(source),
+            wheel_filename=source.name,
+            artifact_digest=digest,
+        )
+
+    def _require_new_record(
+        self,
+        record: CodingExternalDependencyWheelBindingV1,
+        records: tuple[CodingExternalDependencyWheelBindingV1, ...],
     ) -> None:
-        if not path.is_absolute() or not source_root.is_absolute():
-            raise ValueError("Dependency Wheel catalog paths must be absolute")
-        self.path = path
-        self.source_root = source_root
-        self.store_id = store_id
-        self.namespace_id = namespace_id
-        self.scope_id = scope_id
-        self._read_only = read_only
-        self._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
+        if any(
+            item.project_name == record.project_name
+            and Version(item.version) == Version(record.version)
+            for item in records
+        ):
+            raise CodingExternalDependencyWheelError(
+                "Dependency Wheel version is already bound"
+            )
+
 
     def capture(
         self,
@@ -262,283 +260,24 @@ class CodingExternalDependencyWheelCatalog:
             raise CodingExternalDependencyWheelError(
                 "Dependency Wheel Source is invalid"
             )
-        try:
-            _wheel_identity(source.name)
-            descriptor = open_regular_no_follow(source)
-            with os.fdopen(descriptor, "rb") as handle:
-                before = os.fstat(handle.fileno())
-                if before.st_size <= 0 or before.st_size > _MAX_WHEEL_BYTES:
-                    raise CodingExternalDependencyWheelError(
-                        "Dependency Wheel exceeds budget"
-                    )
-                body = handle.read(_MAX_WHEEL_BYTES + 1)
-                after = os.fstat(handle.fileno())
-            visible = source.lstat()
-        except (OSError, ValueError) as exc:
-            raise CodingExternalDependencyWheelError(
-                "Dependency Wheel Source changed or is invalid"
-            ) from exc
-        if (
-            not body
-            or len(body) > _MAX_WHEEL_BYTES
-            or _file_identity(before) != _file_identity(after)
-            or _file_identity(before) != _file_identity(visible)
-        ):
-            raise CodingExternalDependencyWheelError("Dependency Wheel Source changed")
-        digest = sha256(body).hexdigest()
-        _verify_wheel_body(source.name, body)
-        with journal_file_lock(self.path, "exclusive"):
-            self._assert_epoch(epoch_runtime)
-            records = self._load_unlocked()
-            existing = next(
-                (item for item in records if item.wheel_filename == source.name), None
-            )
-            if existing is not None:
-                if (
-                    existing.artifact_digest != digest
-                    or existing.original_source != str(source)
-                ):
-                    raise CodingExternalDependencyWheelError(
-                        "Dependency Wheel binding conflicts"
-                    )
-                self._verify_controlled(existing)
-                return existing
-            if len(records) >= 128:
-                raise CodingExternalDependencyWheelError(
-                    "Dependency Wheel binding limit reached"
-                )
-            record = CodingExternalDependencyWheelBindingV1.create(
-                record_revision=len(records) + 1,
-                store_id=self.store_id,
-                namespace_id=self.namespace_id,
-                scope_id=self.scope_id,
-                original_source=str(source),
-                wheel_filename=source.name,
-                artifact_digest=digest,
-            )
-            if any(
-                item.project_name == record.project_name
-                and Version(item.version) == Version(record.version)
-                for item in records
-            ):
-                raise CodingExternalDependencyWheelError(
-                    "Dependency Wheel version is already bound"
-                )
-            self._publish_controlled(record, body)
-            append_jsonl_record(
-                self.path,
-                record,
-                record_codec=_CODEC,
-                format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                durability=self._durability,
-            )
-            epoch_runtime.assert_current()
-            return record
+        return self._capture_validated(source, epoch_runtime=epoch_runtime)
+
+
+    def _record_codec(
+        self,
+    ) -> JournalRecordCodec[CodingExternalDependencyWheelBindingV1]:
+        return _CODEC
 
     def records(self) -> tuple[CodingExternalDependencyWheelBindingV1, ...]:
-        if self._read_only:
-            return self.read_records()
-        with journal_file_lock(self.path, "exclusive"):
-            return self._load_unlocked()
+        return super().records()
 
     def read_records(self) -> tuple[CodingExternalDependencyWheelBindingV1, ...]:
-        try:
-            with journal_file_read_lock(self.path, "shared", create_lock=False):
-                return self._load_unlocked(
-                    load_policy=JournalLoadPolicy(
-                        partial_tail="raise", create_lock=False
-                    )
-                )
-        except (
-            JournalFileError,
-            JournalCodecError,
-            OSError,
-            UnicodeError,
-            ValueError,
-        ) as exc:
-            raise CodingExternalDependencyWheelError(
-                "Dependency Wheel binding catalog is corrupt"
-            ) from exc
+        return super().read_records()
 
-    def extend_policy(
-        self, base: PackageProductLocalWheelPolicy
-    ) -> PackageProductLocalWheelPolicy:
-        if (
-            base.product_id != "coding"
-            or base.source_root != self.source_root
-            or base.project_scope_id != self.scope_id
-        ):
-            raise CodingExternalDependencyWheelError("Dependency Wheel Product changed")
-        records = self.records()
-        for record in records:
-            self._verify_controlled(record)
-        return replace(
-            base,
-            dependencies=tuple(
-                sorted(
-                    (
-                        *base.dependencies,
-                        *(item.policy_dependency(self.source_root) for item in records),
-                    ),
-                    key=lambda item: (item.project_name, item.version),
-                )
-            ),
-        )
-
-    def _assert_epoch(
-        self, epoch_runtime: PackageProductPosixFencedRuntimeOwner
-    ) -> None:
-        switch = epoch_runtime.cutover_result.switch_receipt
-        if (
-            epoch_runtime.registry.store_id != self.store_id
-            or switch is None
-            or switch.namespace_id != self.namespace_id
-            or epoch_runtime.prepare_product_source_root() != self.source_root
-        ):
-            raise CodingExternalDependencyWheelError("Dependency Wheel epoch changed")
-        epoch_runtime.assert_current()
-
-    def _load_unlocked(
-        self, *, load_policy: JournalLoadPolicy | None = None
-    ) -> tuple[CodingExternalDependencyWheelBindingV1, ...]:
-        if not self.path.exists():
-            return ()
-        records = load_jsonl(
-            self.path,
-            record_codec=_CODEC,
-            format_profile=SORTED_UNICODE_JSONL_FORMAT,
-            durability=self._durability,
-            load_policy=load_policy or JournalLoadPolicy(partial_tail="raise"),
-        ).records
-        if any(
-            record.record_revision != index
-            or record.store_id != self.store_id
-            or record.namespace_id != self.namespace_id
-            or record.scope_id != self.scope_id
-            for index, record in enumerate(records, start=1)
-        ):
-            raise CodingExternalDependencyWheelError(
-                "Dependency Wheel binding chain changed"
-            )
-        filenames = tuple(record.wheel_filename for record in records)
-        versions = tuple(
-            (record.project_name, Version(record.version)) for record in records
-        )
-        if len(set(filenames)) != len(records) or len(set(versions)) != len(records):
-            raise CodingExternalDependencyWheelError(
-                "Dependency Wheel binding is duplicated"
-            )
-        return records
-
-    def _open_directory(self, *, create: bool) -> int:
-        root_fd = os.open(
-            self.source_root,
-            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-        )
-        try:
-            root = os.fstat(root_fd)
-            if (
-                not stat.S_ISDIR(root.st_mode)
-                or stat.S_IMODE(root.st_mode) & 0o077
-                or root.st_uid != os.geteuid()
-            ):
-                raise CodingExternalDependencyWheelError(
-                    "Dependency Wheel root is unsafe"
-                )
-            if create:
-                with suppress(FileExistsError):
-                    os.mkdir(_DIRECTORY, 0o700, dir_fd=root_fd)
-            directory_fd = os.open(
-                _DIRECTORY,
-                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-                dir_fd=root_fd,
-            )
-        finally:
-            os.close(root_fd)
-        try:
-            directory = os.fstat(directory_fd)
-            if (
-                not stat.S_ISDIR(directory.st_mode)
-                or stat.S_IMODE(directory.st_mode) & 0o077
-                or directory.st_uid != os.geteuid()
-            ):
-                raise CodingExternalDependencyWheelError(
-                    "Dependency Wheel directory is unsafe"
-                )
-        except BaseException:
-            os.close(directory_fd)
-            raise
-        return directory_fd
-
-    def _publish_controlled(
-        self, record: CodingExternalDependencyWheelBindingV1, body: bytes
-    ) -> None:
-        directory = self._open_directory(create=True)
-        try:
-            staging = f".{record.wheel_filename}.staging"
-            with suppress(FileNotFoundError):
-                os.unlink(staging, dir_fd=directory)
-            descriptor = os.open(
-                staging,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
-                0o600,
-                dir_fd=directory,
-            )
-            try:
-                os.fchmod(descriptor, 0o600)
-                pending = memoryview(body)
-                while pending:
-                    written = os.write(descriptor, pending)
-                    if written <= 0:
-                        raise OSError("Dependency Wheel write made no progress")
-                    pending = pending[written:]
-                os.fsync(descriptor)
-            finally:
-                os.close(descriptor)
-            try:
-                with suppress(FileExistsError):
-                    os.link(
-                        staging,
-                        record.wheel_filename,
-                        src_dir_fd=directory,
-                        dst_dir_fd=directory,
-                        follow_symlinks=False,
-                    )
-                os.fsync(directory)
-            finally:
-                os.unlink(staging, dir_fd=directory)
-                os.fsync(directory)
-        finally:
-            os.close(directory)
-        self._verify_controlled(record)
-
-    def _verify_controlled(
+    def _record_key(
         self, record: CodingExternalDependencyWheelBindingV1
-    ) -> None:
-        directory = self._open_directory(create=False)
-        os.close(directory)
-        descriptor = open_regular_no_follow(
-            self.source_root / _DIRECTORY / record.wheel_filename
-        )
-        with os.fdopen(descriptor, "rb") as handle:
-            before = os.fstat(handle.fileno())
-            if (
-                before.st_nlink != 1
-                or before.st_uid != os.geteuid()
-                or stat.S_IMODE(before.st_mode) & 0o077
-                or before.st_size > _MAX_WHEEL_BYTES
-            ):
-                raise CodingExternalDependencyWheelError(
-                    "Dependency Wheel bytes are unsafe"
-                )
-            body = handle.read(_MAX_WHEEL_BYTES + 1)
-            after = os.fstat(handle.fileno())
-        if (
-            _file_identity(before) != _file_identity(after)
-            or sha256(body).hexdigest() != record.artifact_digest
-        ):
-            raise CodingExternalDependencyWheelError("Dependency Wheel bytes changed")
-        _verify_wheel_body(record.wheel_filename, body)
+    ) -> tuple[str, Version]:
+        return record.project_name, Version(record.version)
 
 
 def _verify_wheel_body(filename: str, body: bytes) -> None:
@@ -560,18 +299,6 @@ def _verify_wheel_body(filename: str, body: bytes) -> None:
         raise CodingExternalDependencyWheelError(
             "Dependency Wheel metadata identity changed"
         )
-
-
-def _file_identity(value: os.stat_result) -> tuple[int, ...]:
-    return (
-        value.st_dev,
-        value.st_ino,
-        value.st_mode,
-        value.st_uid,
-        value.st_size,
-        value.st_mtime_ns,
-        value.st_ctime_ns,
-    )
 
 
 __all__ = [

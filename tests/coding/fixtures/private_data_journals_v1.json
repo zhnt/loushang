@@ -1,0 +1,171 @@
+{
+  "source_baseline": "8ad6b6098f1c24c8cfb6f4d9d290e99bc74d618d",
+  "purpose": "old journal decoder/error compatibility; synthetic identities never authorize native effects",
+  "journals": {
+    "deletion": {
+      "valid_utf8": "{\"confirmation\":{\"confirmationId\":\"operator:fixture\",\"confirmationVersion\":1,\"planFingerprint\":\"51b5d498f04f3bf4e21b50961d93be625382c6dba3d6e8754ee1575305024e86\"},\"phase\":\"started\",\"plan\":{\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"},\"ownerId\":\"coding.arch.private-data:posix-v1\",\"planVersion\":1,\"targetId\":\"absent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"receipt\":null,\"recordVersion\":1,\"revision\":1,\"target\":{\"members\":[],\"rootIdentity\":null,\"rootPathDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}\n",
+      "cases": {
+        "valid": {
+          "records": 1
+        },
+        "duplicate_valid": {
+          "error_type": "builtins.ValueError",
+          "code": null,
+          "message": "Private-data deletion record has a duplicate JSON key"
+        },
+        "duplicate_and_invalid_schema": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "coding_arch_private_data_deletion_record_invalid",
+          "message": "Journal record is invalid"
+        },
+        "duplicate_before_invalid_schema": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "coding_arch_private_data_deletion_record_invalid",
+          "message": "Journal record is invalid"
+        },
+        "duplicate_before_invalid_json": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "invalid_record_json",
+          "message": "Journal record is not valid JSON"
+        },
+        "duplicate_before_unterminated_tail": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "partial_journal_tail",
+          "message": "Journal record is missing its commit newline"
+        }
+      }
+    },
+    "restore": {
+      "valid_utf8": "{\"backupId\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"deletionReceiptId\":\"fixture:deleted\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"},\"phase\":\"started\",\"recordDigest\":\"66ea185ab986305f24d22380abc2d75d3fdbc022f14eccd3968312ddc96f55e1\",\"recordVersion\":1,\"restoreId\":\"arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d\",\"revision\":1}\n",
+      "cases": {
+        "valid": {
+          "records": 1
+        },
+        "duplicate_valid": {
+          "error_type": "builtins.ValueError",
+          "code": null,
+          "message": "Coding Arch restore event repeats a field"
+        },
+        "duplicate_and_invalid_schema": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "coding_arch_restore_event_invalid",
+          "message": "Journal record is invalid"
+        },
+        "duplicate_before_invalid_schema": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "coding_arch_restore_event_invalid",
+          "message": "Journal record is invalid"
+        },
+        "duplicate_before_invalid_json": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "invalid_record_json",
+          "message": "Journal record is not valid JSON"
+        },
+        "duplicate_before_unterminated_tail": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "partial_journal_tail",
+          "message": "Journal record is missing its commit newline"
+        }
+      }
+    },
+    "confirmation": {
+      "valid_utf8": "{\"backupId\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"confirmationId\":\"arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4\",\"deletionReceiptId\":\"fixture:deleted\",\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"},\"recordDigest\":\"98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b\",\"recordVersion\":1,\"restoreCompletionDigest\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"restoreId\":\"arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d\",\"restoredTargetId\":\"present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393\",\"revision\":1}\n",
+      "cases": {
+        "valid": {
+          "records": 1
+        },
+        "duplicate_valid": {
+          "error_type": "builtins.ValueError",
+          "code": null,
+          "message": "Coding Arch restore confirmation repeats a field"
+        },
+        "duplicate_and_invalid_schema": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "coding_arch_restore_confirmation_invalid",
+          "message": "Journal record is invalid"
+        },
+        "duplicate_before_invalid_schema": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "coding_arch_restore_confirmation_invalid",
+          "message": "Journal record is invalid"
+        },
+        "duplicate_before_invalid_json": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "invalid_record_json",
+          "message": "Journal record is not valid JSON"
+        },
+        "duplicate_before_unterminated_tail": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "partial_journal_tail",
+          "message": "Journal record is missing its commit newline"
+        }
+      }
+    },
+    "expiry": {
+      "valid_utf8": "{\"archive\":null,\"confirmation\":{\"actorId\":\"fixture:operator\",\"confirmationId\":\"arch-backup-expiry-confirm:3f6f01a8d531ed568a7cfdffedc1ed391bfe41fbf24315931163ee8a91574d5d\",\"confirmationVersion\":1,\"planFingerprint\":\"15e00819a44cd1d6d771764914ac52f714c948cdb147db92b086971e19beef0f\",\"policyRevision\":\"fixture:1\"},\"phase\":\"confirmed\",\"plan\":{\"archiveRootIdentity\":[1,1,16832,0,2],\"archiveTargetId\":\"present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393\",\"backupId\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"backupReceiptId\":\"arch-backup:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"confirmationId\":\"arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4\",\"desiredInventoryRevision\":2,\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"},\"planVersion\":1,\"restoreCompletionDigest\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"restoredTargetId\":\"present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393\",\"sourceTargetId\":\"present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393\"},\"receipt\":null,\"recordVersion\":1,\"revision\":1}\n",
+      "cases": {
+        "valid": {
+          "records": 1
+        },
+        "duplicate_valid": {
+          "error_type": "builtins.ValueError",
+          "code": null,
+          "message": "Coding Arch backup expiry repeats a field"
+        },
+        "duplicate_and_invalid_schema": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "coding_arch_backup_expiry_record_invalid",
+          "message": "Journal record is invalid"
+        },
+        "duplicate_before_invalid_schema": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "coding_arch_backup_expiry_record_invalid",
+          "message": "Journal record is invalid"
+        },
+        "duplicate_before_invalid_json": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "invalid_record_json",
+          "message": "Journal record is not valid JSON"
+        },
+        "duplicate_before_unterminated_tail": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "partial_journal_tail",
+          "message": "Journal record is missing its commit newline"
+        }
+      }
+    },
+    "deletion_confirmation": {
+      "valid_utf8": "{\"actorId\":\"fixture:operator\",\"confirmation\":{\"confirmationId\":\"operator:fixture\",\"confirmationVersion\":1,\"planFingerprint\":\"51b5d498f04f3bf4e21b50961d93be625382c6dba3d6e8754ee1575305024e86\"},\"plan\":{\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"},\"ownerId\":\"coding.arch.private-data:posix-v1\",\"planVersion\":1,\"targetId\":\"absent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"policyRevision\":\"fixture:policy\",\"recordRevision\":1,\"recordVersion\":1}\n",
+      "cases": {
+        "valid": {
+          "confirmed": true
+        },
+        "duplicate_valid": {
+          "error_type": "builtins.ValueError",
+          "code": null,
+          "message": "Private-data confirmation has a duplicate JSON key"
+        },
+        "duplicate_and_invalid_schema": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "invalid_private_data_confirmation_record",
+          "message": "Journal record is invalid"
+        },
+        "duplicate_before_invalid_schema": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "invalid_private_data_confirmation_record",
+          "message": "Journal record is invalid"
+        },
+        "duplicate_before_invalid_json": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "invalid_record_json",
+          "message": "Journal record is not valid JSON"
+        },
+        "duplicate_before_unterminated_tail": {
+          "error_type": "loushang.harness.journal.jsonl.JournalFileError",
+          "code": "partial_journal_tail",
+          "message": "Journal record is missing its commit newline"
+        }
+      }
+    }
+  }
+}

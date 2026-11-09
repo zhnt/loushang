@@ -1039,74 +1039,57 @@ def _require_positive(value: int, *, name: str) -> None:
         raise ValueError(f"{name} must be positive")
 
 
-_PUBLICATION_RECEIPT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("receipt_id", "receipt id"),
-        RecordField("operation_id", "operation identity"),
-        RecordField("operation_fingerprint", "operation fingerprint"),
-        RecordField("request_fingerprint", "request fingerprint"),
-        RecordField("attempt_epoch", "attempt epoch", _wire_int),
-        RecordField("product_id", "Product identity"),
-        RecordField("scope_id", "scope identity"),
-        RecordField("installation_id", "Installation identity"),
-        RecordField("plugin_id", "Plugin identity"),
-        RecordField("classification_fingerprint", "classification fingerprint"),
-        RecordField("committed_set", decoder=CommittedPackageSetRefV1.from_dict),
-        RecordField("transaction_pin_receipt_id", "transaction pin receipt id"),
-        RecordField("commit_status_revision", "commit status revision", _wire_int),
-        RecordField("receipt_version", "receipt version", _wire_int),
-    ),
+_PUBLICATION_RECEIPT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackagePublicationReceiptV1,
+    _wire_string,
+    RecordField("operation_id", "operation identity"),
+    RecordField("attempt_epoch", "attempt epoch", _wire_int),
+    RecordField("product_id", "Product identity"),
+    RecordField("scope_id", "scope identity"),
+    RecordField("installation_id", "Installation identity"),
+    RecordField("plugin_id", "Plugin identity"),
+    RecordField("committed_set", decoder=CommittedPackageSetRefV1.from_dict),
+    RecordField("commit_status_revision", "commit status revision", _wire_int),
+    RecordField("receipt_version", "receipt version", _wire_int),
+    derive_labels=True,
 )
 
 
-_COMMIT_ADMISSION_FAILURE_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("failure_id", "failure id"),
-        RecordField("admission_request_id", "admission request id"),
-        RecordField("operation_id", "operation identity"),
-        RecordField("evidence_ref", "evidence ref"),
-        RecordField("code", "failure code"),
-        RecordField("failure_version", "failure version", _wire_int),
-    ),
+_COMMIT_ADMISSION_FAILURE_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageCommitAdmissionFailureV1,
+    _wire_string,
+    RecordField("operation_id", "operation identity"),
+    RecordField("code", "failure code"),
+    RecordField("failure_version", "failure version", _wire_int),
+    derive_labels=True,
 )
 
 
-_COMMIT_ADMISSION_RECEIPT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("admission_id", "admission id"),
-        RecordField("admission_request_id", "admission request id"),
-        RecordField("publication_receipt_id", "publication receipt id"),
-        RecordField("operation_fingerprint", "operation fingerprint"),
-        RecordField("committed_set_id", "committed set id"),
-        RecordField("closure_lock_digest", "closure lock digest"),
-        RecordField("transaction_pin_receipt_id", "transaction pin receipt id"),
-        RecordField("root_ref", decoder=PluginRevisionRefV1.from_dict),
-        RecordField("receipt_version", "receipt version", _wire_int),
-    ),
+_COMMIT_ADMISSION_RECEIPT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageCommitAdmissionReceiptV1,
+    _wire_string,
+    RecordField("root_ref", decoder=PluginRevisionRefV1.from_dict),
+    RecordField("receipt_version", "receipt version", _wire_int),
+    derive_labels=True,
 )
 
 
-_COMMIT_ADMISSION_RESULT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("admission_request_id", "admission request id"),
-        RecordField("disposition", "disposition"),
-        RecordField("code", "admission code"),
-        RecordField(
-            "receipt",
-            decoder=partial(
-                decode_nullable, decoder=PackageCommitAdmissionReceiptV1.from_dict
-            ),
+_COMMIT_ADMISSION_RESULT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageCommitAdmissionResultV1,
+    _wire_string,
+    RecordField("code", "admission code"),
+    RecordField(
+        "receipt",
+        decoder=partial(
+            decode_nullable, decoder=PackageCommitAdmissionReceiptV1.from_dict
         ),
-        RecordField(
-            "failure",
-            decoder=partial(
-                decode_nullable, decoder=PackageCommitAdmissionFailureV1.from_dict
-            ),
-        ),
-        RecordField("result_version", "result version", _wire_int),
     ),
+    RecordField(
+        "failure",
+        decoder=partial(
+            decode_nullable, decoder=PackageCommitAdmissionFailureV1.from_dict
+        ),
+    ),
+    RecordField("result_version", "result version", _wire_int),
+    derive_labels=True,
 )

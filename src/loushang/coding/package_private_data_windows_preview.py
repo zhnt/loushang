@@ -11,25 +11,22 @@ from __future__ import annotations
 
 import os
 import re
-import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_directory,
-    open_windows_regular_file_at,
-    windows_directory_stream_names,
-    windows_listdir_at,
-    windows_regular_file_stream_names,
-    windows_stat_at,
+from loushang.harness.resources.packages._private_tree_windows import (
+    PrivateWindowsTreeIO,
+)
+from loushang.harness.resources.packages._private_tree_windows_observation import (
+    PrivateWindowsTreeShape,
+    capture_private_windows_tree,
 )
 
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
@@ -44,13 +41,25 @@ from .package_private_data_deletion_preview import (
     _MAX_TOTAL_BYTES,
     CodingArchPrivateDataMemberV1,
     CodingArchPrivateDataTargetSnapshotV1,
-    _identity,
 )
 
+_ROOT_DIRECTORY = "sessions"
 _SESSION_NAME = re.compile(r"[0-9a-f]{64}\Z")
 _FILE_ATTRIBUTE_DIRECTORY = 0x00000010
 _SIMPLE_FILE_ATTRIBUTES = 0x00000020 | 0x00000080 | 0x00002000
 _SIMPLE_DIRECTORY_ATTRIBUTES = _FILE_ATTRIBUTE_DIRECTORY | 0x00000020 | 0x00002000
+
+
+_native_io = PrivateWindowsTreeIO(
+    label="Windows Coding Arch",
+    backup_label="Coding Arch",
+    simple_file_attributes=_SIMPLE_FILE_ATTRIBUTES,
+    simple_directory_attributes=_SIMPLE_DIRECTORY_ATTRIBUTES,
+    max_read_bytes=_MAX_FILE_BYTES,
+    read_chunk_size=1024 * 1024,
+    inherited_directory_depth=2,
+    exact_directory_name=_ROOT_DIRECTORY,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,227 +136,36 @@ class CodingWindowsArchPrivateDataReadPreview:
 def _capture_windows_target_snapshot(
     root: Path, *, expected_root: tuple[int, int]
 ) -> CodingArchPrivateDataTargetSnapshotV1:
-    with (
-        WindowsPrivateDirectoryAcl() as exact_acl,
-        WindowsPrivateDirectoryAcl(inherit_children=True) as session_acl,
-    ):
-        root_fd = open_windows_directory(root, share_delete=False, read_control=True)
-        try:
-            exact_acl.validate(root_fd)
-            _require_no_named_directory_streams(root_fd)
-            root_metadata = os.fstat(root_fd)
-            _require_simple_windows_metadata(root_metadata, directory=True)
-            if (root_metadata.st_dev, root_metadata.st_ino) != expected_root:
-                raise ValueError("Windows Coding Arch private-data root changed")
-            members: list[CodingArchPrivateDataMemberV1] = []
-            total_bytes = 0
-            root_names = windows_listdir_at(root_fd)
-            if any(name != "sessions" for name in root_names):
-                raise ValueError(
-                    "Windows Coding Arch private-data member is unsupported"
-                )
-            if root_names:
-                sessions_fd, sessions_metadata = _open_directory_child(
-                    root_fd, "sessions", exact_acl
-                )
-                try:
-                    _append_member(
-                        members,
-                        CodingArchPrivateDataMemberV1(
-                            "sessions", "directory", _identity(sessions_metadata)
-                        ),
-                    )
-                    for session_name in sorted(windows_listdir_at(sessions_fd)):
-                        if _SESSION_NAME.fullmatch(session_name) is None:
-                            raise ValueError(
-                                "Windows Coding Arch private-data Session is invalid"
-                            )
-                        session_fd, session_metadata = _open_directory_child(
-                            sessions_fd, session_name, session_acl
-                        )
-                        try:
-                            session_path = "sessions/" + session_name
-                            _append_member(
-                                members,
-                                CodingArchPrivateDataMemberV1(
-                                    session_path,
-                                    "directory",
-                                    _identity(session_metadata),
-                                ),
-                            )
-                            for file_name in sorted(windows_listdir_at(session_fd)):
-                                member, byte_count = _read_cache_file(
-                                    session_fd,
-                                    file_name,
-                                    session_path,
-                                    session_acl,
-                                )
-                                total_bytes += byte_count
-                                if total_bytes > _MAX_TOTAL_BYTES:
-                                    raise ValueError(
-                                        "Windows Coding Arch private-data preview is too large"
-                                    )
-                                _append_member(members, member)
-                            _require_directory_unchanged(
-                                sessions_fd, session_name, session_fd, session_metadata
-                            )
-                        finally:
-                            os.close(session_fd)
-                    _require_directory_unchanged(
-                        root_fd, "sessions", sessions_fd, sessions_metadata
-                    )
-                finally:
-                    os.close(sessions_fd)
-            _require_no_named_directory_streams(root_fd)
-            current_root = os.fstat(root_fd)
-            current_path = root.lstat()
-            _require_same_windows_metadata(current_root, root_metadata, directory=True)
-            _require_same_windows_metadata(current_path, root_metadata, directory=True)
-            if _identity(current_root) != _identity(root_metadata) or _identity(
-                current_path
-            ) != _identity(root_metadata):
-                raise ValueError("Windows Coding Arch private-data root changed")
-            return CodingArchPrivateDataTargetSnapshotV1(
+    return capture_private_windows_tree(
+        root,
+        expected_root=expected_root,
+        io=_native_io,
+        shape=PrivateWindowsTreeShape(
+            root_directory=_ROOT_DIRECTORY,
+            child_names=_SESSION_NAME,
+            invalid_child_message="Windows Coding Arch private-data Session is invalid",
+            max_entries=_MAX_ENTRIES,
+            max_file_bytes=_MAX_FILE_BYTES,
+            max_total_bytes=_MAX_TOTAL_BYTES,
+        ),
+        make_member=CodingArchPrivateDataMemberV1,
+        project_snapshot=lambda identity, members: (
+            CodingArchPrivateDataTargetSnapshotV1(
                 root_path_digest=sha256(os.fsencode(str(root))).hexdigest(),
-                root_identity=_identity(root_metadata),
-                members=tuple(sorted(members, key=lambda item: item.relative_path)),
+                root_identity=identity,
+                members=members,
             )
-        finally:
-            os.close(root_fd)
-
-
-def _open_directory_child(
-    parent_fd: int, name: str, acl: WindowsPrivateDirectoryAcl
-) -> tuple[int, os.stat_result]:
-    metadata = windows_stat_at(parent_fd, name)
-    descriptor = open_windows_directory(
-        name, dir_fd=parent_fd, share_delete=False, read_control=True
-    )
-    try:
-        acl.validate(descriptor)
-        _require_no_named_directory_streams(descriptor)
-        _require_same_windows_metadata(os.fstat(descriptor), metadata, directory=True)
-        if _identity(os.fstat(descriptor)) != _identity(metadata):
-            raise ValueError("Windows Coding Arch private-data directory changed")
-        return descriptor, metadata
-    except BaseException:
-        os.close(descriptor)
-        raise
-
-
-def _read_cache_file(
-    parent_fd: int,
-    name: str,
-    parent_path: str,
-    acl: WindowsPrivateDirectoryAcl,
-) -> tuple[CodingArchPrivateDataMemberV1, int]:
-    metadata = windows_stat_at(parent_fd, name)
-    descriptor = open_windows_regular_file_at(
-        parent_fd, name, create_new=False, write=False, read_control=True
-    )
-    try:
-        acl.validate(descriptor, inherited_file=True)
-        _require_same_windows_metadata(os.fstat(descriptor), metadata, directory=False)
-        if windows_regular_file_stream_names(descriptor) != ("::$DATA",):
-            raise ValueError("Windows Coding Arch private-data file has a named stream")
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or metadata.st_nlink != 1
-            or metadata.st_size > _MAX_FILE_BYTES
-            or _identity(os.fstat(descriptor)) != _identity(metadata)
-        ):
-            raise ValueError("Windows Coding Arch private-data file is unsafe")
-        digest = sha256()
-        size = 0
-        while chunk := os.read(descriptor, 1024 * 1024):
-            size += len(chunk)
-            if size > _MAX_FILE_BYTES:
-                raise ValueError("Windows Coding Arch private-data file is too large")
-            digest.update(chunk)
-        current_file = os.fstat(descriptor)
-        current_path = windows_stat_at(parent_fd, name)
-        _require_same_windows_metadata(current_file, metadata, directory=False)
-        _require_same_windows_metadata(current_path, metadata, directory=False)
-        if (
-            windows_regular_file_stream_names(descriptor) != ("::$DATA",)
-            or size != metadata.st_size
-            or _identity(current_file) != _identity(metadata)
-            or _identity(current_path) != _identity(metadata)
-        ):
-            raise ValueError("Windows Coding Arch private-data file changed")
-        return (
-            CodingArchPrivateDataMemberV1(
-                parent_path + "/" + name,
-                "file",
-                _identity(metadata),
-                digest.hexdigest(),
-            ),
-            size,
-        )
-    finally:
-        os.close(descriptor)
-
-
-def _require_directory_unchanged(
-    parent_fd: int, name: str, descriptor: int, expected: os.stat_result
-) -> None:
-    _require_no_named_directory_streams(descriptor)
-    current_directory = os.fstat(descriptor)
-    current_path = windows_stat_at(parent_fd, name)
-    _require_same_windows_metadata(current_directory, expected, directory=True)
-    _require_same_windows_metadata(current_path, expected, directory=True)
-    if _identity(current_directory) != _identity(expected) or _identity(
-        current_path
-    ) != _identity(expected):
-        raise ValueError("Windows Coding Arch private-data directory changed")
-
-
-def _require_no_named_directory_streams(descriptor: int) -> None:
-    if any(
-        name.casefold().endswith(":$data") and name.casefold() != "::$data"
-        for name in windows_directory_stream_names(descriptor)
-    ):
-        raise ValueError(
-            "Windows Coding Arch private-data directory has a named stream"
-        )
-
-
-def _require_simple_windows_metadata(
-    metadata: os.stat_result, *, directory: bool
-) -> None:
-    _require_simple_windows_attributes(
-        getattr(metadata, "st_file_attributes", None), directory=directory
+        ),
     )
 
 
-def _require_simple_windows_attributes(attributes: object, *, directory: bool) -> None:
-    allowed = _SIMPLE_DIRECTORY_ATTRIBUTES if directory else _SIMPLE_FILE_ATTRIBUTES
-    if (
-        type(attributes) is not int
-        or attributes == 0
-        or attributes & ~allowed
-        or bool(attributes & _FILE_ATTRIBUTE_DIRECTORY) != directory
-    ):
-        raise ValueError("Windows Coding Arch private-data attributes are unsupported")
+_require_no_named_directory_streams = _native_io.require_no_named_directory_streams
 
 
-def _require_same_windows_metadata(
-    current: os.stat_result, expected: os.stat_result, *, directory: bool
-) -> None:
-    _require_simple_windows_metadata(expected, directory=directory)
-    _require_simple_windows_metadata(current, directory=directory)
-    if getattr(current, "st_file_attributes") != getattr(
-        expected, "st_file_attributes"
-    ):
-        raise ValueError("Windows Coding Arch private-data attributes changed")
+_require_simple_windows_metadata = _native_io.require_simple_metadata
 
 
-def _append_member(
-    members: list[CodingArchPrivateDataMemberV1], member: CodingArchPrivateDataMemberV1
-) -> None:
-    if len(members) >= _MAX_ENTRIES:
-        raise ValueError("Windows Coding Arch private-data preview is too large")
-    members.append(member)
+_require_same_windows_metadata = _native_io.require_same_metadata
 
 
 __all__ = ["CodingWindowsArchPrivateDataReadPreview"]

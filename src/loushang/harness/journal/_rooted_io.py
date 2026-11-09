@@ -17,9 +17,100 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Event, RLock, get_ident
-from typing import Protocol
+from typing import Literal, Protocol
+
+from loushang.harness.journal._io_loops import write_all as _complete_write
 
 DirectoryBinding = tuple[tuple[int, int], str, tuple[int, int]]
+
+
+def _private_parent_matches(
+    path: Path, opened: os.stat_result, previous: os.stat_result | None = None
+) -> bool:
+    visible = path.lstat()
+    return (
+        (
+            previous is None
+            or (previous.st_dev, previous.st_ino) == (opened.st_dev, opened.st_ino)
+        )
+        and stat.S_ISDIR(opened.st_mode)
+        and opened.st_uid == os.geteuid()
+        and not stat.S_IMODE(opened.st_mode) & 0o077
+        and (opened.st_dev, opened.st_ino) == (visible.st_dev, visible.st_ino)
+    )
+
+
+def publish_private_bytes(
+    path: Path,
+    payload: bytes,
+    *,
+    error_type: type[Exception],
+    directory_label: str,
+    postcheck: Literal["separate", "combined"] = "separate",
+) -> None:
+    """Publish through original rooted IO, owning only this call's parent FD.
+
+    The caller retains admission and locks. Separate postchecks diagnose an FD
+    change before pathname lookup; combined postchecks first look up the name
+    and diagnose every failed predicate as a change. No cleanup retry is added.
+    """
+    descriptor = os.open(
+        path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    )
+    try:
+        before = os.fstat(descriptor)
+        if not _private_parent_matches(path.parent, before):
+            raise error_type(f"{directory_label} is unsafe")
+        with RootedFileIO(path.parent, descriptor) as file_io:
+            with file_io.bind(path) as target:
+                target.atomic_write(payload, exclusive=True)
+        after = os.fstat(descriptor)
+        changed = f"{directory_label} changed during write"
+        if postcheck == "separate" and (before.st_dev, before.st_ino) != (
+            after.st_dev,
+            after.st_ino,
+        ):
+            raise error_type(changed)
+        if not _private_parent_matches(
+            path.parent, after, before if postcheck == "combined" else None
+        ):
+            raise error_type(
+                changed if postcheck == "combined" else f"{directory_label} is unsafe"
+            )
+    finally:
+        os.close(descriptor)
+
+
+@contextmanager
+def bind_private_journal(
+    path: Path,
+    *,
+    error_type: Callable[[str], Exception],
+    label: str,
+    durable: bool = True,
+    reject_open: bool = False,
+) -> Iterator[RootedFile]:
+    """Own one private parent scope; journal locks and history policy stay outside."""
+    try:
+        descriptor = os.open(
+            path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        )
+    except OSError as error:
+        if not reject_open:
+            raise
+        raise error_type(f"{label}_unsafe") from error
+    try:
+        before = os.fstat(descriptor)
+        if not _private_parent_matches(path.parent, before):
+            raise error_type(f"{label}_unsafe")
+        with RootedFileIO(path.parent, descriptor) as file_io:
+            with file_io.bind(path, durable=durable) as rooted:
+                yield rooted
+        visible = path.parent.lstat()
+        if (before.st_dev, before.st_ino) != (visible.st_dev, visible.st_ino):
+            raise error_type(f"{label}_changed")
+    finally:
+        os.close(descriptor)
 
 
 class _DirectoryEntries(Protocol):
@@ -219,6 +310,7 @@ class RootedFileIO:
     No destructor, root close, automatic admission, or pathname fallback. The
     owning operation scope is the authority for borrowing, not dev/ino alone.
     cleanup() is called by that existing owner only after all calls have drained.
+    A lexical context calls that same cleanup without taking custody of the root.
     """
 
     root: Path
@@ -268,6 +360,12 @@ class RootedFileIO:
         self._operations: list[_Operation] = []
         self._publication: tuple[tuple[str, ...], _PublicationWitness] | None = None
         self._mutex = RLock()
+
+    def __enter__(self) -> RootedFileIO:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self.cleanup()
 
     @property
     def cleanup_pending(self) -> bool:
@@ -614,9 +712,7 @@ class RootedFile:
             or not 0 <= keep_bytes < len(expected)
         ):
             raise ValueError("rooted IO exact truncate input is invalid")
-        fd = RootedFileIO._open(
-            self._operation, self._parent, self._name, os.O_RDWR
-        )
+        fd = RootedFileIO._open(self._operation, self._parent, self._name, os.O_RDWR)
         before = os.fstat(fd)
         if before.st_size != len(expected):
             raise OSError("rooted IO exact truncate size changed")
@@ -638,12 +734,10 @@ class RootedFile:
         os.ftruncate(fd, keep_bytes)
         os.fsync(fd)
         after = os.fstat(fd)
-        named_after = os.stat(
-            self._name, dir_fd=self._parent, follow_symlinks=False
-        )
-        if (
-            after.st_size != keep_bytes
-            or (after.st_dev, after.st_ino) != (named_after.st_dev, named_after.st_ino)
+        named_after = os.stat(self._name, dir_fd=self._parent, follow_symlinks=False)
+        if after.st_size != keep_bytes or (after.st_dev, after.st_ino) != (
+            named_after.st_dev,
+            named_after.st_ino,
         ):
             raise OSError("rooted IO exact truncate target changed")
         self.sync_directory()
@@ -1039,9 +1133,75 @@ def _version(value: os.stat_result) -> tuple[int, int, int, int, int]:
 
 
 def _write_all(fd: int, data: bytes) -> None:
-    remaining = memoryview(data)
-    while remaining:
-        written = os.write(fd, remaining)
-        if written <= 0:
-            raise OSError("rooted IO write made no progress")
-        remaining = remaining[written:]
+    _complete_write(
+        lambda view: os.write(fd, view),
+        data,
+        message="rooted IO write made no progress",
+    )
+
+
+def read_private_text(
+    path: Path,
+    *,
+    max_bytes: int,
+    error_type: type[Exception],
+    directory_label: str,
+    file_label: str,
+) -> str | None:
+    """Read bounded UTF-8 through the original private, version-pinned FD path.
+
+    Own only these two raw FDs. Caller retains original admission/locks/codecs.
+    Missing differs from empty. No text newline conversion, create or repair.
+    """
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        parent_fd = os.open(path.parent, flags)
+    except FileNotFoundError:
+        return None
+    try:
+        parent = os.fstat(parent_fd)
+        if not _private_parent_matches(path.parent, parent):
+            raise error_type(f"{directory_label} is unsafe")
+        try:
+            file_fd = os.open(
+                path.name,
+                os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
+                dir_fd=parent_fd,
+            )
+        except FileNotFoundError:
+            return None
+        try:
+            opened = os.fstat(file_fd)
+            visible = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or opened.st_nlink != 1
+                or opened.st_uid != os.geteuid()
+                or stat.S_IMODE(opened.st_mode) & 0o077
+                or opened.st_size > max_bytes
+                or _version(opened) != _version(visible)
+            ):
+                raise error_type(f"{file_label} file is unsafe")
+            with os.fdopen(file_fd, "rb", closefd=False) as handle:
+                raw = handle.read(max_bytes + 1)
+            after = os.fstat(file_fd)
+            visible_after = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+            if (
+                len(raw) > max_bytes
+                or _version(opened) != _version(after)
+                or _version(after) != _version(visible_after)
+            ):
+                raise error_type(f"{file_label} changed during read")
+        finally:
+            os.close(file_fd)
+        parent_after = os.fstat(parent_fd)
+        if (parent.st_dev, parent.st_ino) != (
+            parent_after.st_dev,
+            parent_after.st_ino,
+        ):
+            raise error_type(f"{directory_label} changed during read")
+        if not _private_parent_matches(path.parent, parent_after):
+            raise error_type(f"{directory_label} is unsafe")
+        return raw.decode("utf-8")
+    finally:
+        os.close(parent_fd)
