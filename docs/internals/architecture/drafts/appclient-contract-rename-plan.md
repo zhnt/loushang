@@ -14,9 +14,8 @@
   reference used to create the dedicated task worktree; not a claim of current upstream freshness.
 - Method consulted: local committed architecture method `master`,
   `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`; no method text is vendored.
-- Evidence status: prototype history is retained below; the actual implementation
-  and final verification are recorded in Implementation Delivery. No additional
-  independent R2 reviewer is claimed.
+- Evidence status: prototype history is retained below; implementation validation
+  and the subsequent three independent review viewpoints are recorded separately.
 - Follow-up review: user supplied another agent's review. Its source-reading
   benefit, role distinction, split analysis, coverage and budget concerns are
   addressed below; the gate-routing conclusion is based on current source rules.
@@ -457,6 +456,44 @@ and three-platform native/wheel re-acceptance were not run; the subset and
 existing-routing limits above still apply. Remote publication and integration
 are separate from this local implementation.
 
+## Three-Perspective Implementation Review
+
+The user requested three perspectives after local implementation. Three
+separate reviewer agents independently reviewed the fixed revision
+`bd89616233c2506481f8f23895eaa20fabfdcb22` against
+`cfbe1286ff5a7ef7ae90055ca7445ce496a89d76`, without editing the worktree.
+
+| Reviewer / scope | Verdict | Independent evidence |
+| --- | --- | --- |
+| A: naming, semantics and architecture boundaries | APPROVE | All 27 source diffs and full-module normalized AST comparison; ownership, authentication, close and Resume identity paths |
+| B: compatibility and runtime behavior | APPROVE | Seven type identities/metadata/exports/pickle references, Protocol shapes, 27 module imports, legacy keyword/factory/monkeypatch probes; 82 existing tests passed in 40.23s |
+| C: engineering, governance and concurrent integration | APPROVE for local R2 | Token inventory/remainder, all three budgets, full-module AST, Ruff and diff checks, unchanged test/gate/schema scope, actual selector and fresh parallel-merge snapshots |
+
+No reviewer found a blocking issue or an introduced defect requiring a source
+fix. The accepted naming/metadata limits remain explicit; approval does not
+claim a full-product regression or native multi-platform acceptance.
+
+Reviewer B investigated `get_type_hints()` failures on five Resume borrowed
+methods. Executing baseline source in a separate namespace reproduced the same
+`TYPE_CHECKING`-only scope-name limitation. This is pre-existing behavior, not
+a new compatibility regression; no unrelated reflection fix was added.
+
+Reviewer C independently repeated the two overlapping AppHost merge previews;
+both remained textually clean for the current Coding snapshot and preserved
+its normalized class ASTs. The snapshot hashes matched the earlier preview.
+No combined-branch runtime test or guarantee against future conflicts follows.
+
+The non-blocking audit advice was to make probe provenance easier to find. The
+four probe sources already existed outside Product; a same-hash copy, exact
+command, fresh log and JUnit are now grouped in the local review evidence.
+That supplemental run passed five cases: the four external probes plus one
+existing legacy-contract case to load project pytest options. The original
+1,424-case run was not independently repeated and its raw full-run log/JUnit
+was not retained; the reviewers did not count that author result as an
+independently reproduced run. No test route, assertion or gate was added.
+
+This record-only follow-up leaves the reviewed Product source unchanged.
+
 ## Review History And Closure
 
 The initial independent review correctly found scope/connection inaccuracies,
@@ -468,8 +505,9 @@ evidence, not architecture acceptance.
 
 At the proposal checkpoint the disposition was **direction accepted for this
 proposal, concrete implementation not yet delivered**; Implementation Delivery
-now records the local implementation. This is one reviewing/authoring agent's
-explicit conclusion, not a fabricated user acceptance or extra reviewer vote.
+now records the local implementation. The proposal checkpoint recorded the
+author's technical conclusion; the later independent implementation reviews
+above are separate and do not retroactively endorse R1 or the scope-only R2.
 The original three-perspective R1 record follows verbatim as historical input;
 its old measurements and rejected choices do not govern this revision.
 
