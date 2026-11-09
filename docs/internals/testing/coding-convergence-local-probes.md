@@ -86,3 +86,12 @@ The fixture records original commit/source hashes and exact record-byte hashes.
 It is explicit local validation, not default PR coverage.
 
 Explicit local path: [probe_worker_candidate_update_compatibility.py](../../../tests/coding/probe_worker_candidate_update_compatibility.py).
+
+The native-release reader probe replays 105 immutable original observations over
+real files, descriptors, canonical catalogs, installed RECORD and Product receipt.
+Source bytes/version are fixed inputs; Product admission and approval are controlled.
+It covers generated/installed mode asymmetry, eight stat fields, overflow, nested
+close failures and public approval/generation projection. It never executes ELF
+bytes. Original directory-fstat leakage is recorded rather than silently corrected.
+
+Explicit local path: [probe_native_release_readers_compatibility.py](../../../tests/coding/probe_native_release_readers_compatibility.py).

@@ -6,21 +6,12 @@ This reader cannot issue a Product receipt or authorize a Worker launch.
 
 from __future__ import annotations
 
-import json
-import os
-import platform
-import stat
-import sys
-from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
-from loushang.harness.worker.native_executable_format import (
-    WorkerNativeExecutableFormatError,
-    verify_worker_native_executable_format,
-)
+from loushang.harness.worker._linux_native_release import _LinuxNativeReleaseVerifier
 
 from .package_product_worker_policy import (
     CodingWorkerNativeClosureReadError,
@@ -31,18 +22,6 @@ _SOURCE = (
     Path(__file__).resolve().parents[1]
     / "hosting/native/contained_launcher_linux_x86_64.c"
 )
-_CATALOG_FIELDS = frozenset(
-    {
-        "catalogVersion",
-        "platform",
-        "profileSourceSha256",
-        "launcherSha256",
-        "launcherFile",
-        "buildFlags",
-    }
-)
-_MAX_CATALOG_BYTES = 4096
-_MAX_LAUNCHER_BYTES = 16 * 1024 * 1024
 
 
 class CodingWorkerNativeReleaseError(CodingWorkerNativeClosureReadError):
@@ -74,79 +53,21 @@ class CodingLinuxWorkerReleaseCatalogReader:
         return self._gc_gate
 
     def current_closure(self) -> CodingWorkerNativeClosureV1:
-        if sys.platform != "linux" or platform.machine().lower() not in {
-            "x86_64",
-            "amd64",
-        }:
-            raise CodingWorkerNativeReleaseError("Linux x86-64 release is required")
-        try:
-            root = os.open(
-                self._release_root,
-                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-            )
-            try:
-                metadata = os.fstat(root)
-                if (
-                    not stat.S_ISDIR(metadata.st_mode)
-                    or metadata.st_uid != os.geteuid()
-                    or stat.S_IMODE(metadata.st_mode) & 0o077
-                ):
-                    raise CodingWorkerNativeReleaseError(
-                        "Worker release root is not private"
-                    )
-                catalog_bytes = _read_member(root, "catalog.json", _MAX_CATALOG_BYTES)
-                launcher = _read_member(
-                    root, "containment-launcher", _MAX_LAUNCHER_BYTES,
-                    executable=True,
-                )
-                return _verify_release_bytes(catalog_bytes, launcher)
-            finally:
-                os.close(root)
-        except (
-            OSError,
-            UnicodeError,
-            ValueError,
-            TypeError,
-            WorkerNativeExecutableFormatError,
-        ) as exc:
-            raise CodingWorkerNativeReleaseError(
-                "Worker release cannot be verified"
-            ) from exc
+        return _release_verifier().generated_closure(self._release_root)
+
+
+def _release_verifier() -> _LinuxNativeReleaseVerifier[CodingWorkerNativeClosureV1]:
+    return _LinuxNativeReleaseVerifier(
+        source_path=_SOURCE,
+        error_type=CodingWorkerNativeReleaseError,
+        closure_type=CodingWorkerNativeClosureV1,
+    )
 
 
 def _verify_release_bytes(
     catalog_bytes: bytes, launcher: bytes
 ) -> CodingWorkerNativeClosureV1:
-    source_digest = sha256(_SOURCE.read_bytes()).hexdigest()
-    catalog = json.loads(catalog_bytes)
-    if (
-        type(catalog) is not dict
-        or set(catalog) != _CATALOG_FIELDS
-        or type(catalog["catalogVersion"]) is not int
-        or catalog["catalogVersion"] != 1
-        or catalog["platform"] != "linux-x86_64"
-        or catalog["profileSourceSha256"] != source_digest
-        or catalog["launcherFile"] != "containment-launcher"
-        or not isinstance(catalog["buildFlags"], list)
-        or any(type(flag) is not str for flag in catalog["buildFlags"])
-        or catalog_bytes
-        != (
-            json.dumps(catalog, sort_keys=True, separators=(",", ":")) + "\n"
-        ).encode()
-    ):
-        raise CodingWorkerNativeReleaseError("Worker release catalog changed")
-    launcher_digest = sha256(launcher).hexdigest()
-    if catalog["launcherSha256"] != launcher_digest:
-        raise CodingWorkerNativeReleaseError("Worker release launcher changed")
-    verify_worker_native_executable_format(launcher, platform="linux-x86_64")
-    return CodingWorkerNativeClosureV1(
-        native_platform="linux-x86_64",
-        native_profile_catalog_revision=(
-            "h6-linux:" + sha256(catalog_bytes).hexdigest()
-        ),
-        containment_launcher_digest=launcher_digest,
-        containment_profile_digest=source_digest,
-    )
+    return _release_verifier().verify_release_bytes(catalog_bytes, launcher)
 
 
 def _read_member(
@@ -157,45 +78,6 @@ def _read_member(
     executable: bool = False,
     installed: bool = False,
 ) -> bytes:
-    member = os.open(
-        name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=root
+    return _release_verifier().read_member(
+        root, name, limit, executable=executable, installed=installed
     )
-    try:
-        metadata = os.fstat(member)
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or metadata.st_uid != os.geteuid()
-            or metadata.st_nlink != 1
-            or metadata.st_size > limit
-            or (
-                executable
-                and (
-                    not stat.S_IMODE(metadata.st_mode) & 0o100
-                    if installed
-                    else stat.S_IMODE(metadata.st_mode) != 0o500
-                )
-            )
-        ):
-            raise CodingWorkerNativeReleaseError("Worker release member is unsafe")
-        data = bytearray()
-        while chunk := os.read(member, min(64 * 1024, limit + 1 - len(data))):
-            data.extend(chunk)
-            if len(data) > limit:
-                raise CodingWorkerNativeReleaseError(
-                    "Worker release member exceeds budget"
-                )
-        after = os.fstat(member)
-        if (
-            after.st_dev != metadata.st_dev
-            or after.st_ino != metadata.st_ino
-            or after.st_mode != metadata.st_mode
-            or after.st_uid != metadata.st_uid
-            or after.st_nlink != metadata.st_nlink
-            or after.st_size != metadata.st_size
-            or after.st_mtime_ns != metadata.st_mtime_ns
-            or after.st_ctime_ns != metadata.st_ctime_ns
-        ):
-            raise CodingWorkerNativeReleaseError("Worker release member changed")
-        return bytes(data)
-    finally:
-        os.close(member)

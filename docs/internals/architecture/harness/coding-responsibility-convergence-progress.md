@@ -2,11 +2,35 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P1/A1–A66指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P1/A1–A67指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A66）
+## 当前状态（2026-11-09，A67）
+
+A67 在专用任务分支完成 generated/installed Linux H6 release 的完整 inert
+reader 闭环：目录、成员/稳定 stat、canonical catalog、RECORD/发行身份及 ELF
+验证由原 Harness Worker 接管，复用原 bounded-prefix/ELF；Coding 保持公开
+DTO/Error/reader、Product 回执/审批/GC/generation 及完整 install/repair。
+Code 两源 −295、Core +361、系统 +66，全成本含接口/薄绑定；当前 Coding430
+文件118373行、系统1954源644544行，距15K仍103373，完整Goal未完成。
+其余1951旧生产源 SHA 不变；430行清单及28组汇总已刷新。
+
+原生产改前105固定场景+1原unit通过106；为长期重放另固定source/version输入、
+独占新建105旧观察，before/after同106过，第一组历史未覆盖。持久化显式probe
+无capture路径，联合原C54/CLI消费者117过、1host-runtime排除（109.45s）。
+真实文件、FD、catalog/RECORD/receipt验证；Product准入/approval受控，ELF未执行，
+不能外推native权限/安装升级或全平台证明。原目录fstat失败遗留fd2已固定为旧事实，
+留待独立修复，不掩盖或静默改expected。
+
+三个独立设计与实际代码视角均无本片新增阻断；实施owner有界接受迁移。三源
+mypy、Ruff/格式、文档9项、依赖freshness、检查plan及diff通过。C54只刷新两项
+实际import事实，原断言函数/谓词、CI catalog/route/workflow/platform不扩大。
+既有AI通过记录保留，相关源码与输入未再变。详细成本、SHA、接受及局限见
+[本片工作件](key-designs/linux-native-release-reader-convergence.md)。
+KD011/A33待确认不自动采用；P1–P4其余完整职责继续推进。
+
+## A66 历史状态（2026-11-09）
 
 专用任务分支`harness/coding-convergence-delivery`继续完整P1–P4；A65已由
 `b155b4b03`本地提交。A66将两平台candidate-update完整程序归原Package Product，

@@ -158,10 +158,11 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.journal",
     },
     CODING_ROOT / "package_product_worker_native_release.py": {
-        "loushang.harness.worker.native_executable_format"
+        "loushang.harness.worker._linux_native_release"
     },
     CODING_ROOT / "package_product_worker_installed_native.py": {
-        "loushang.harness.worker.native_executable_format"
+        "loushang.harness.worker.native_executable_format",
+        "loushang.harness.worker._linux_native_release",
     },
     CODING_ROOT / "package_product_worker_payload.py": {
         'loushang.harness.worker.contracts',
