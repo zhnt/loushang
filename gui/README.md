@@ -64,6 +64,13 @@ npm --prefix gui run build
 ```
 
 `dev:web` starts only the browser shell. `dev` starts the native Tauri window.
+The native desktop app creates a system tray icon with Show window and Quit
+menu items. Show window restores and focuses the main window; left-clicking
+the icon does the same on platforms that deliver tray click events. On Linux,
+use the tray menu (the desktop must provide an AppIndicator-compatible host).
+Quit uses the normal connection cleanup path. Closing the main window retains
+the existing exit behavior. Tray initialization failure is logged without
+preventing the app from opening. The browser shell has no system tray.
 `test` runs reducer and React playback checks. During rapid B1 development,
 `check` runs only TypeScript type checking and these offline tests, without
 requiring Rust or building assets. Use `check:full` for Rust/native/toolchain

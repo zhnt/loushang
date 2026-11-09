@@ -4,6 +4,8 @@ mod connection_lifecycle;
 mod live_bridge;
 mod local_host;
 mod offline_account;
+#[cfg(desktop)]
+mod tray;
 // Exit joins run on the blocking pool.
 #[allow(dead_code)]
 mod read_stop;
@@ -80,6 +82,14 @@ pub fn run() {
         live_bridge::stop_live_readonly
     ]);
     builder
+        .setup(|app| {
+            #[cfg(desktop)]
+            if let Err(error) = tray::setup(app) {
+                // A desktop without a tray host must still be able to launch.
+                eprintln!("Unable to create system tray: {error}");
+            }
+            Ok(())
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
