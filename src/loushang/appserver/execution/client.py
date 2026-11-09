@@ -1,4 +1,4 @@
-"""Optional semantic client, separate from the unchanged AppClientV1 port."""
+"""Optional semantic client, separate from the unchanged AppServicePortV1 port."""
 
 from __future__ import annotations
 
@@ -45,3 +45,5 @@ class ExecutionClientV1(Protocol):
     async def read_execution_events(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,
     ) -> tuple[ExecutionContentEventV1 | ExecutionUpdateV1, ...]: ...
+
+ExecutionPortV1 = ExecutionClientV1

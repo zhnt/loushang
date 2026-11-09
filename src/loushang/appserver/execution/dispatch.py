@@ -4,7 +4,7 @@ import inspect
 from typing import cast
 
 from ..protocol import AppErrorCodeV1, AppServiceError
-from .client import ExecutionClientV1
+from .client import ExecutionPortV1
 from .model import (
     ExecutionCallV1,
     ExecutionEventsV1,
@@ -13,7 +13,7 @@ from .model import (
 )
 
 
-async def dispatch_execution(client: ExecutionClientV1, call: ExecutionCallV1) -> ExecutionResultV1:
+async def dispatch_execution(client: ExecutionPortV1, call: ExecutionCallV1) -> ExecutionResultV1:
     args = call.control, call.expected_instance_id
     match call.operation:
         case ExecutionOperationV1.RESUME_INPUT_LOOKUP:

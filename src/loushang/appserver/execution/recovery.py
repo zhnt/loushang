@@ -17,7 +17,7 @@ from ..protocol import (
     SessionIdentityV1,
     SessionSnapshotRequestV1,
 )
-from .client import ExecutionClientV1
+from .client import ExecutionPortV1
 from .model import (
     ExecutionErrorCodeV1,
     ExecutionRecordV1,
@@ -64,13 +64,13 @@ class SubmissionRecoveryV1:
         self._observed: OrderedDict[str, ExecutionStateV1] = OrderedDict()
         self._busy = False
 
-    def _same_instance(self, client: ExecutionClientV1) -> bool:
+    def _same_instance(self, client: ExecutionPortV1) -> bool:
         if client.service_instance_id == self.pending.service_instance_id:
             return True
         self.delivery = SubmissionDeliveryV1.INSTANCE_CHANGED
         return False
 
-    async def submit(self, client: ExecutionClientV1, control: SessionSnapshotRequestV1) -> None:
+    async def submit(self, client: ExecutionPortV1, control: SessionSnapshotRequestV1) -> None:
         """Explicit initial send/retry; this method never manufactures an ID."""
         if self._busy:
             raise RuntimeError("submission delivery already in progress")
@@ -95,7 +95,7 @@ class SubmissionRecoveryV1:
         finally:
             self._busy = False
 
-    async def recover(self, client: ExecutionClientV1, control: SessionSnapshotRequestV1) -> None:
+    async def recover(self, client: ExecutionPortV1, control: SessionSnapshotRequestV1) -> None:
         """Read only: a racing not_found does not cause another submission."""
         if self._busy:
             raise RuntimeError("submission delivery already in progress")

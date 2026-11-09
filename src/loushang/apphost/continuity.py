@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from loushang.appserver.client import AppClientV1, SessionDiscoveryClientV1
+from loushang.appserver.client import AppServicePortV1, SessionDiscoveryPortV1
 from loushang.appservice import (
     ApplicationContinuityError,
     ApplicationContinuityErrorCodeV1,
@@ -32,7 +32,7 @@ from .application import (
 )
 
 if TYPE_CHECKING:
-    from loushang.appservice.client_scope import AppClientScopeV1
+    from loushang.appservice.client_scope import ScopedAppServicePortV1
 
 HOSTED_APPLICATION_CONTINUITY_CONTRACT_VERSION = (
     "loushang.apphost.application-continuity/v1"
@@ -227,11 +227,11 @@ class HostedApplicationContinuityRuntimeV1:
         return self._application.generation_id
 
     @property
-    def client(self) -> AppClientV1:
+    def client(self) -> AppServicePortV1:
         return self._application.client
 
     @property
-    def discovery_client(self) -> SessionDiscoveryClientV1 | None:
+    def discovery_client(self) -> SessionDiscoveryPortV1 | None:
         if not self.accepting:
             raise HostedApplicationError("hosted_application_not_ready")
         return self._application.discovery_client
@@ -254,7 +254,7 @@ class HostedApplicationContinuityRuntimeV1:
             raise HostedApplicationError("hosted_application_not_ready")
         self._application.enable_client_scopes()
 
-    def open_client_scope(self) -> AppClientScopeV1:
+    def open_client_scope(self) -> ScopedAppServicePortV1:
         if not self.accepting:
             raise HostedApplicationError("hosted_application_not_ready")
         return self._application.open_client_scope()

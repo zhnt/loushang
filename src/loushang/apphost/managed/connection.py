@@ -17,19 +17,19 @@ from time import monotonic
 from typing import Any, TypeVar, cast
 
 from loushang.appserver.client import (
-    AppClientV1,
     AppConnectionClosedError,
-    SessionDiscoveryClientV1,
+    AppServicePortV1,
+    SessionDiscoveryPortV1,
 )
-from loushang.appserver.execution.client import ExecutionClientV1
+from loushang.appserver.execution.client import ExecutionPortV1
 from loushang.appserver.local import LocalAppClientConnectionV1
 from loushang.appserver.local_record import (
     LocalConnectionDirectoryV1,
     LocalRecordScopeV1,
     require_endpoint,
 )
-from loushang.appserver.managed_mux import ManagedMuxCreationClientV1
-from loushang.appserver.managed_mux_close import ManagedMuxCloseClientV1
+from loushang.appserver.managed_mux import ManagedMuxCreationPortV1
+from loushang.appserver.managed_mux_close import ManagedMuxClosePortV1
 from loushang.hosting.service import LinuxServiceObserverV1
 
 from ._files import ManagedStorageError, _check_deadline
@@ -114,23 +114,23 @@ class ManagedConnectionLeaseV1:
         return self._connection
 
     @property
-    def client(self) -> AppClientV1:
+    def client(self) -> AppServicePortV1:
         return self._require_connection().client
 
     @property
-    def discovery_client(self) -> SessionDiscoveryClientV1 | None:
+    def discovery_client(self) -> SessionDiscoveryPortV1 | None:
         return self._require_connection().discovery_client
 
     @property
-    def execution_client(self) -> ExecutionClientV1 | None:
+    def execution_client(self) -> ExecutionPortV1 | None:
         return self._require_connection().execution_client
 
     @property
-    def managed_mux_client(self) -> ManagedMuxCreationClientV1 | None:
+    def managed_mux_client(self) -> ManagedMuxCreationPortV1 | None:
         return self._require_connection().managed_mux_client
 
     @property
-    def managed_mux_close_client(self) -> ManagedMuxCloseClientV1 | None:
+    def managed_mux_close_client(self) -> ManagedMuxClosePortV1 | None:
         return self._require_connection().managed_mux_close_client
 
     @property

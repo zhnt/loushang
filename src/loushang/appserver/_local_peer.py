@@ -7,13 +7,13 @@ from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import suppress
 from typing import Protocol, cast
 
-from .client import AppClientV1, SessionDiscoveryClientV1
+from .client import AppServicePortV1, SessionDiscoveryPortV1
 from .connection import AppServerConnectionV1
-from .execution.client import ExecutionClientV1
+from .execution.client import ExecutionPortV1
 from .framing import AppByteTransportV1, AppConnectionClosedError
 from .local_auth import LocalAuthenticationV1, authenticate_local_server
-from .managed_mux import ManagedMuxCreationClientV1
-from .managed_mux_close import ManagedMuxCloseClientV1
+from .managed_mux import ManagedMuxCreationPortV1
+from .managed_mux_close import ManagedMuxClosePortV1
 from .protocol import AppErrorCodeV1, AppServiceError
 from .protocol.connection_profile import AppConnectionProfileV1
 
@@ -22,7 +22,7 @@ LOCAL_STOP_MODE = b"stop"
 LOCAL_STOP_ACK = b'{"result":"stop_requested"}'
 
 
-class OwnedLocalClientScopeV1(AppClientV1, Protocol):
+class OwnedLocalClientScopeV1(AppServicePortV1, Protocol):
     """Factory result owned by one authenticated peer; not the application."""
 
     async def close(self) -> None: ...
@@ -32,22 +32,22 @@ class OwnedLocalDiscoveryScopeV1(OwnedLocalClientScopeV1, Protocol):
     """Optional factory result; the legacy scope surface stays unchanged."""
 
     @property
-    def discovery_client(self) -> SessionDiscoveryClientV1 | None: ...
+    def discovery_client(self) -> SessionDiscoveryPortV1 | None: ...
 
 
 class OwnedLocalExecutionScopeV1(OwnedLocalDiscoveryScopeV1, Protocol):
     @property
-    def execution_client(self) -> ExecutionClientV1 | None: ...
+    def execution_client(self) -> ExecutionPortV1 | None: ...
 
 
 class OwnedLocalManagedMuxScopeV1(OwnedLocalExecutionScopeV1, Protocol):
     @property
-    def managed_mux_client(self) -> ManagedMuxCreationClientV1 | None: ...
+    def managed_mux_client(self) -> ManagedMuxCreationPortV1 | None: ...
 
 
 class OwnedLocalManagedMuxCloseScopeV1(OwnedLocalManagedMuxScopeV1, Protocol):
     @property
-    def managed_mux_close_client(self) -> ManagedMuxCloseClientV1 | None: ...
+    def managed_mux_close_client(self) -> ManagedMuxClosePortV1 | None: ...
 
 
 def _observe(task: asyncio.Task[None]) -> None:

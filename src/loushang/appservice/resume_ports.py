@@ -57,22 +57,22 @@ async def _lookup_resume_product_input(
 
 
 if TYPE_CHECKING:
-    from .client_scope import AppClientScopeV1
+    from .client_scope import ScopedAppServicePortV1
     from .runtime import _SessionOwner
 
 
-_RESUME_SUBJECT: ContextVar[tuple[AppClientScopeV1, SessionSnapshotRequestV1, str, str | None] | None] = ContextVar(
+_RESUME_SUBJECT: ContextVar[tuple[ScopedAppServicePortV1, SessionSnapshotRequestV1, str, str | None] | None] = ContextVar(
     "appservice_resume_subject", default=None,
 )
 
 
 def _resume_subject_digest(
-    scope: AppClientScopeV1, request: SessionSnapshotRequestV1,
+    scope: ScopedAppServicePortV1, request: SessionSnapshotRequestV1,
     *, expected_session_id: str | None = None,
 ) -> str:
-    from .client_scope import AppClientScopeV1
+    from .client_scope import ScopedAppServicePortV1
 
-    if type(scope) is not AppClientScopeV1:
+    if type(scope) is not ScopedAppServicePortV1:
         raise TypeError("Resume subject requires the original native client scope")
     scope._service._require_request(request, SessionSnapshotRequestV1)
     scope._attachment(request.attachment_id, request.controller_generation)
@@ -115,7 +115,7 @@ def _resume_subject_digest(
 
 @contextmanager
 def _resume_subject_scope(
-    scope: AppClientScopeV1, request: SessionSnapshotRequestV1,
+    scope: ScopedAppServicePortV1, request: SessionSnapshotRequestV1,
     *, submission_id: str | None = None,
 ) -> Iterator[None]:
     digest = scope.resume_subject_digest(request)
@@ -128,14 +128,14 @@ def _resume_subject_scope(
         _RESUME_SUBJECT.reset(token)
 
 
-def _current_resume_subject() -> tuple[AppClientScopeV1, SessionSnapshotRequestV1, str]:
-    from .client_scope import AppClientScopeV1
+def _current_resume_subject() -> tuple[ScopedAppServicePortV1, SessionSnapshotRequestV1, str]:
+    from .client_scope import ScopedAppServicePortV1
 
     borrowed = _RESUME_SUBJECT.get()
     if borrowed is None:
         raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
     scope, control, digest, _ = borrowed
-    if type(scope) is not AppClientScopeV1 or type(control) is not SessionSnapshotRequestV1:
+    if type(scope) is not ScopedAppServicePortV1 or type(control) is not SessionSnapshotRequestV1:
         raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
     scope.require_current_resume_subject(control, digest)
     return scope, control, digest
@@ -149,7 +149,7 @@ def _current_resume_submission_id() -> str | None:
 
 
 async def _lookup_scoped_resume_input(
-    scope: AppClientScopeV1, request: SessionSnapshotRequestV1, query: ResumeInputLookupQueryV1,
+    scope: ScopedAppServicePortV1, request: SessionSnapshotRequestV1, query: ResumeInputLookupQueryV1,
 ) -> ResumeInputLookupResultV1:
     scope._service._require_request(request, SessionSnapshotRequestV1)
     scope._service._require_request(query, ResumeInputLookupQueryV1)
@@ -163,7 +163,7 @@ async def _lookup_scoped_resume_input(
 
 
 def _require_scoped_session(
-    scope: AppClientScopeV1, request: SessionSnapshotRequestV1, session: _SessionOwner,
+    scope: ScopedAppServicePortV1, request: SessionSnapshotRequestV1, session: _SessionOwner,
 ) -> None:
     scope._attachment(request.attachment_id, request.controller_generation)
     pair = scope._service._attachments.get(request.attachment_id)
@@ -183,7 +183,7 @@ def _require_scoped_session(
 
 
 def _require_current_resume_subject(
-    scope: AppClientScopeV1, request: SessionSnapshotRequestV1, expected_digest: str,
+    scope: ScopedAppServicePortV1, request: SessionSnapshotRequestV1, expected_digest: str,
     *, expected_session_id: str | None = None,
 ) -> None:
     current = scope.resume_subject_digest(request, expected_session_id=expected_session_id)

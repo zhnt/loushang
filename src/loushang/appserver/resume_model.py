@@ -47,9 +47,11 @@ class ResumeInputLookupResultV1:
 
 
 class ResumeInputLookupClientV1(Protocol):
-    """Borrowed negotiated read capability, separate from legacy AppClientV1."""
+    """Borrowed negotiated read capability, separate from legacy AppServicePortV1."""
 
     async def lookup_resume_input(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,
         query: ResumeInputLookupQueryV1,
     ) -> ResumeInputLookupResultV1: ...
+
+ResumeInputLookupPortV1 = ResumeInputLookupClientV1
