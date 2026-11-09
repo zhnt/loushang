@@ -2,11 +2,35 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P1/A1–A71指定路径及A74三类payload恢复、P2/A73审批协调、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P1/A1–A71指定路径及A74三类payload恢复、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A74 Worker payload恢复）
+## 当前状态（2026-11-09，A75 prepared-operation任务寿命）
+
+从A74 `20033880e`接续；准备Task/交付Task/未交付operation/cleanup debt/loop五份
+状态及prepare/consume/abort/drain完整custody归同一原SessionLifecycleRuntime。
+原_prepare_candidate与PreparedOperation状态机直接复用，Code保领域准入/build、
+真实DTO与首输入，不留第二manager、镜像账本或完整Code.prepare厚回调。
+
+Coding430文件116791行，系统1959源645632行：Code−88、原Core+160、系统净+72，
+其余1957旧源SHA同。完整适配/Protocol/字段/格式计账，是职责迁移。距15K仍101791；
+P1–P4和完整Goal仍partial/active，领域化及必要保留成本继续核实。
+
+原真实55消费者先通过；固定37先在旧源全过，迁后同37加原55共92过（114.72s）。
+真实Task.cancel/双取消与原native operation、失败候选/debt原对象重试均已观察；
+probe的domain/Session/Product端口受控，3.11 completed Future不等于原生3.12 eager。
+原test仅7处私有观察读新实际owner，逆映射后全模块AST同，97原断言/raises保持。
+另原首输入/UI/Product/Transcript边界35过（174.86s），三个实际视角有界接受。
+两源mypy及Ruff通过；原两源全文件format基线已失败，保原无关布局不泛化重排。
+完整来源/限制/成本见[本片交付](key-designs/prepared-operation-task-custody-convergence.md)。
+
+继续原全量职责剩余处置，下一批优先剩余启动/装配或Worker完整路径的直接复用。
+不把已接入Construction/Graph/Catalog再次计益，不将薄壳行数当必要下界。KD011
+仅是待用户的Transcript Continuity导航候选，与本片无依赖；A33待用户、KD003未
+实施均保持，完整P1–P4继续，不以本片代替全Goal。
+
+## A74历史交付（2026-11-09）
 
 从A73 `039d787ed`接续；三类Linux payload debt的preview/review/list、repair、
 read/reopen和retry完整程序已归原Worker payload组，直接复用Storage、RepairJournal

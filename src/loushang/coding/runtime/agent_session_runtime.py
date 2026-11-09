@@ -192,14 +192,6 @@ class AgentSessionRuntime(
         self._resume_history_closed = False
         self._resume_planning = ResumePlanningSlot()
         self._configured_resume_planning: _ConfiguredResumePlanning | None = None
-        self._resume_activation_tasks: set[asyncio.Task[CodingRuntimePreparedResume]] = set()
-        self._resume_delivery_tasks: dict[
-            PreparedSessionLifecycleOperation[AgentSession, str],
-            asyncio.Task[SessionOperationResult[AgentSession, str | None]],
-        ] = {}
-        self._resume_prepared_operations: set[PreparedSessionLifecycleOperation[AgentSession, str]] = set()
-        self._resume_cleanup_debts: list[CodingResumeContinuationCleanupFailure] = []
-        self._resume_activation_loop: asyncio.AbstractEventLoop | None = None
         transcript_type = (
             _bind_owned_session_manager(self._owned_transcript_factory)
             if self._owned_transcript_factory is not None else SessionManager
@@ -232,7 +224,7 @@ class AgentSessionRuntime(
 
         if type(owner) is not InteractiveApprovalResolver:
             raise TypeError("Coding Embedded Resume requires its native Root Approval owner")
-        if self._resume_history_closed or self.current_session is not None or self._resume_activation_tasks:
+        if self._resume_history_closed or self.current_session is not None or self.lifecycle._retained_preparation_tasks:
             raise PermissionError("Coding Embedded Resume Root binding is no longer available")
         if self._embedded_resume_approval_owner is not None and self._embedded_resume_approval_owner is not owner:
             raise PermissionError("Coding Embedded Resume Approval owner cannot be replaced")
@@ -406,16 +398,7 @@ class AgentSessionRuntime(
         selection = self._product_owner_selection
         if factory is None or selection is None:
             raise RuntimeError("Coding Resume requires original application Transcript and Product owners")
-        loop = asyncio.get_running_loop()
-        if self._resume_activation_loop is None:
-            self._resume_activation_loop = loop
-        elif self._resume_activation_loop is not loop:
-            raise RuntimeError("coding_resume_activation_loop_changed")
-        self._resume_prepared_operations = {
-            operation for operation in self._resume_prepared_operations if not operation.consumed
-        }
-        if self._resume_activation_tasks or self._resume_prepared_operations or self._resume_cleanup_debts:
-            raise RuntimeError("coding_resume_activation_pending")
+        self.lifecycle.require_retained_preparation_idle(error_prefix="coding_resume")
         if not callable(require_current_admission) or inspect.iscoroutinefunction(require_current_admission):
             raise TypeError("Coding Resume requires synchronous current owner checks")
         previous = self.current_session
@@ -477,41 +460,22 @@ class AgentSessionRuntime(
                 raise
             return continuation.session
 
-        async def prepare() -> CodingRuntimePreparedResume:
+        def bind_operation(prepared: PreparedSessionLifecycleOperation[AgentSession, str]) -> None:
             nonlocal operation
-            try:
-                operation = await self.lifecycle._prepare_candidate(
-                    SessionLifecycleTransition(
-                        reason="resume", target_session_ref=str(session_file),
-                        metadata={"activate_extensions": False, "emit_before_transition": False, "schedule_index": False},
-                    ), build,
-                )
-            except CodingResumeContinuationCleanupFailure as debt:
-                self._resume_cleanup_debts.append(debt)
-                raise
+            operation = prepared
             assert continuation is not None
-            self._resume_prepared_operations.add(operation)
-            return CodingRuntimePreparedResume(self, operation, continuation)
 
-        task = asyncio.create_task(prepare())
-        self._resume_activation_tasks.add(task)
-        try:
-            return await asyncio.shield(task)
-        except asyncio.CancelledError:
-            task.cancel()
-            # Root keeps the original task until all native cleanup settles.
-            while not task.done():
-                try:
-                    await asyncio.shield(task)
-                except asyncio.CancelledError:
-                    continue
-                except BaseException:
-                    break
-            if not task.cancelled() and task.exception() is None:
-                await task.result().abort()
-            raise
-        finally:
-            self._resume_activation_tasks.discard(task)
+        return await self.lifecycle.prepare_retained_candidate(
+            lambda: SessionLifecycleTransition(
+                reason="resume", target_session_ref=str(session_file),
+                metadata={"activate_extensions": False, "emit_before_transition": False, "schedule_index": False},
+            ), build,
+            cleanup_error_type=CodingResumeContinuationCleanupFailure,
+            bind_operation=bind_operation,
+            result_factory=lambda prepared: CodingRuntimePreparedResume(
+                self, prepared, cast("CodingResumePreparedContinuation", continuation),
+            ),
+        )
 
     async def _consume_resume_preparation(
         self, prepared: CodingRuntimePreparedResume,
@@ -519,43 +483,16 @@ class AgentSessionRuntime(
         if self._resume_history_closed:
             raise RuntimeError("coding_resume_root_closed")
         operation = prepared._operation
-        if prepared._root is not self or operation not in self._resume_prepared_operations:
+        if prepared._root is not self:
             raise RuntimeError("coding_resume_preparation_not_owned")
-        if operation in self._resume_delivery_tasks:
-            raise RuntimeError("coding_resume_delivery_pending")
-        task = asyncio.create_task(operation.consume())
-        self._resume_delivery_tasks[operation] = task
-        try:
-            return await asyncio.shield(task)
-        except asyncio.CancelledError:
-            task.cancel()
-            await self._settle_cancelled_resume_task(task)
-            raise
-        finally:
-            self._resume_delivery_tasks.pop(operation, None)
-
-    @staticmethod
-    async def _settle_cancelled_resume_task(task: asyncio.Task[object]) -> None:
-        while not task.done():
-            try:
-                await asyncio.shield(task)
-            except asyncio.CancelledError:
-                continue
-            except BaseException:
-                break
-        if not task.cancelled():
-            task.exception()
+        return await self.lifecycle.consume_retained_preparation(
+            operation, error_prefix="coding_resume",
+        )
 
     async def _abort_resume_preparation(self, prepared: CodingRuntimePreparedResume) -> None:
         if prepared._root is not self:
             raise RuntimeError("coding_resume_preparation_not_owned")
-        operation = prepared._operation
-        task = self._resume_delivery_tasks.get(operation)
-        if task is not None:
-            task.cancel()
-            await self._settle_cancelled_resume_task(task)
-        await operation.abort()
-        self._resume_prepared_operations.discard(operation)
+        await self.lifecycle.abort_retained_preparation(prepared._operation)
 
     async def _run_resume_first_input(self, prepared: CodingRuntimePreparedResume) -> None:
         from ..resume_activation_attempt import CodingResumeRecoveryRequired
@@ -567,7 +504,7 @@ class AgentSessionRuntime(
             or self.current_session is not prepared.continuation.session
         ):
             raise CodingResumeRecoveryRequired("model.root_not_delivered")
-        if self._resume_activation_loop is not asyncio.get_running_loop():
+        if self.lifecycle._retained_preparation_loop is not asyncio.get_running_loop():
             raise RuntimeError("coding_resume_activation_loop_changed")
         continuation = prepared.continuation
         # Original Host claim, Model Input transport admission, fixed input
@@ -577,32 +514,7 @@ class AgentSessionRuntime(
         )
 
     async def _drain_resume_activations(self) -> None:
-        if self._resume_activation_loop is not None and self._resume_activation_loop is not asyncio.get_running_loop():
-            raise RuntimeError("coding_resume_activation_loop_changed")
-        tasks = tuple(self._resume_activation_tasks)
-        deliveries = tuple(self._resume_delivery_tasks.items())
-        for task in tasks:
-            task.cancel()
-        for _, delivery in deliveries:
-            delivery.cancel()
-        for task in tasks:
-            try:
-                await asyncio.shield(task)
-            except asyncio.CancelledError:
-                if not task.done():
-                    raise
-            except Exception:
-                pass  # Preparation caller and retained debt own the failure.
-            self._resume_activation_tasks.discard(task)
-        for operation, delivery in deliveries:
-            await self._settle_cancelled_resume_task(delivery)
-            self._resume_delivery_tasks.pop(operation, None)
-        for operation in tuple(self._resume_prepared_operations):
-            await operation.abort()  # Native operation retains failed aborts for retry.
-            self._resume_prepared_operations.discard(operation)
-        for debt in tuple(self._resume_cleanup_debts):
-            await debt.retry_cleanup()
-            self._resume_cleanup_debts.remove(debt)
+        await self.lifecycle.drain_retained_preparations(error_prefix="coding_resume")
 
     async def start_resume_planning(
         self, history: CodingResumeHistoryPreview, current_composition: CodingCompositionSetPlan,

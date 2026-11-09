@@ -745,3 +745,16 @@ Supervisor factory still admits/constructs the original owner at each old point;
 there is no Product scan/verify/delete callback. Registered recovery retains its
 separate evidence contract. [Bounded recovery evidence](key-designs/worker-payload-recovery-convergence.md)
 records the three different claim/settlement contracts and execution limits.
+
+## Retained prepared-operation task custody (A75)
+
+The original SessionLifecycleRuntime owns opt-in preparation/delivery Tasks,
+retained native operations, original cleanup debts and loop binding, including
+cancellation settlement, explicit abort and ordered drain/retry. Its existing
+_prepare_candidate and PreparedSessionLifecycleOperation remain the sole
+transition/candidate and consume/abort state owners. Coding retains domain
+Resume admission/build/continuation and first-input policy, public DTO construction
+and thin Root adapters; no second closed fact or manager is added. Ordinary
+restore/import/dispose does not automatically enroll or drain this custody.
+[Bounded custody evidence](key-designs/prepared-operation-task-custody-convergence.md)
+records original task/operation/debt identities and distinct cancellation programs.
