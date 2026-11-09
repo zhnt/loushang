@@ -8,8 +8,8 @@ import type {
   SessionSnapshot,
   SubmitReceipt,
   SubmitTextInput,
-} from "./model";
-import { reduceSession } from "./state";
+} from "../../src/client/model";
+import { reduceSession } from "../../src/client/state";
 
 interface ScriptedStep {
   readonly sessionId: string;

@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { HarnessGui } from "../../src/App";
-import { createMockAppClient } from "../../src/client/mockAppClient";
+import { createMockAppClient } from "../support/mockAppClient";
 import type { ClientSnapshot, HarnessClientUiPort } from "../../src/client/model";
 
 beforeEach(() => {

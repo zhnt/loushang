@@ -47,7 +47,7 @@ beforeEach(() => {
   native.invoke.mockReset(); native.create.mockClear(); native.listeners.clear();
   native.invoke.mockImplementation(async (command, args) => {
     if (command === "offline_account") return { name: "desktop-user", id: "local-test-id" };
-    if (command === "local_host_environment") return { supported: true, workspace: "/workspace" };
+    if (command === "client_settings") return { supported: true, workspace: "/workspace" };
     return ["connect", "status", "stop"].includes(args.request.action)
       ? { state: "not_running", errorCode: null, workspace: "/workspace" }
       : { state: "running", errorCode: null, workspace: "/workspace", instanceId: "instance-1", serviceInstanceId: "service-1", pid: 123 };
@@ -86,10 +86,9 @@ describe("local managed Host presentation", () => {
   });
 
   it("automatically enters a running Host without starting a process or opening Settings", async () => {
-    localStorage.setItem("loushang.gui.local-workspace.v1", "/previous");
     native.invoke.mockImplementation(async (command) => {
       if (command === "offline_account") return null;
-      if (command === "local_host_environment") return { supported: true, workspace: "/workspace" };
+      if (command === "client_settings") return { supported: true, workspace: "/previous" };
       return { state: "running", errorCode: null, workspace: "/previous", instanceId: "instance-1" };
     });
     render(<StrictMode><LocalHostGate /></StrictMode>);
@@ -122,7 +121,7 @@ describe("local managed Host presentation", () => {
   });
 
   it("refuses to offer another start when identity is unconfirmed", async () => {
-    native.invoke.mockImplementation(async (command) => command === "local_host_environment"
+    native.invoke.mockImplementation(async (command) => command === "client_settings"
       ? { supported: true, workspace: "/workspace" }
       : { state: "unknown", errorCode: "authentication_failed" });
     render(<LocalHostGate />);
@@ -136,6 +135,6 @@ describe("local managed Host presentation", () => {
     render(<LocalHostGate />);
     openHostSettings();
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Linux only"));
-    expect(native.invoke.mock.calls.every(([name]) => name === "local_host_environment" || name === "offline_account")).toBe(true);
+    expect(native.invoke.mock.calls.every(([name]) => name === "client_settings" || name === "offline_account")).toBe(true);
   });
 });

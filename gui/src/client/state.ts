@@ -119,7 +119,7 @@ export function emptyGuiState(): GuiState {
     remote: {
       generation: "",
       connection: "disconnected",
-      source: { kind: "fixture", label: "Fixture not loaded" },
+      source: { kind: "disconnected", label: "Not connected" },
       capabilities: [],
       workspaces: {},
       workspaceOrder: [],

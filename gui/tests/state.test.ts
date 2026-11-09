@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMockAppClient } from "../src/client/mockAppClient";
+import { createMockAppClient } from "./support/mockAppClient";
 import type { ClientEvent } from "../src/client/model";
 import { emptyGuiState, guiReducer } from "../src/client/state";
 

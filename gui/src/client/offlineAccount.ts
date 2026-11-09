@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { sharedSettings } from "./hostApi";
 
 export interface OfflineAccount {
   readonly name: string;
@@ -9,9 +10,9 @@ export interface OfflineAccount {
 export function useOfflineAccount(): OfflineAccount | null {
   const [account, setAccount] = useState<OfflineAccount | null>(null);
   useEffect(() => {
-    if (!isTauri()) return;
     let active = true;
-    void invoke<OfflineAccount | null>("offline_account").then((value) => {
+    const request = isTauri() ? invoke<OfflineAccount | null>("offline_account") : sharedSettings<OfflineAccount | null>({ operation: "account" });
+    void request.then((value) => {
       if (active && typeof value?.name === "string" && value.name.trim()) {
         setAccount({ name: value.name, id: typeof value.id === "string" ? value.id : null });
       }

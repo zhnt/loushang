@@ -6,6 +6,8 @@ import App, { HarnessGui } from "./App";
 import { useOfflineAccount } from "./client/offlineAccount";
 import { createNativeLiveClient, nativeLiveAvailable } from "./client/nativeLiveClient";
 import type { HarnessClientUiPort } from "./client/model";
+import { sharedSettings, webRequest } from "./client/hostApi";
+import { createWebLiveClient } from "./client/webLiveClient";
 import "./LocalHostGate.css";
 
 type HostState = "unknown" | "not_running" | "starting" | "running" | "stopping" | "exited";
@@ -18,7 +20,7 @@ interface HostStatus {
   serviceInstanceId?: string;
   pid?: number;
 }
-const WORKSPACE_KEY = "loushang.gui.local-workspace.v1";
+
 const states = {
   unknown: "localHost.states.unknown", not_running: "localHost.states.notRunning",
   starting: "localHost.states.starting", running: "localHost.states.running",
@@ -36,11 +38,11 @@ const errors = {
   instance_changed: "localHost.errors.instance",
 } as const;
 
-/** Management remains native. The conversation stays mounted during reconnect. */
+/** Both surfaces share Host management; keep conversations mounted during reconnect. */
 export default function LocalHostGate() {
   const { t } = useTranslation("workspace");
   const account = useOfflineAccount();
-  const [legacy, setLegacy] = useState(!isTauri());
+  const [legacy, setLegacy] = useState(false);
   const [supported, setSupported] = useState<boolean | null>(null);
   const [workspace, setWorkspace] = useState("");
   const [host, setHost] = useState<HostStatus>({ state: "unknown", errorCode: null });
@@ -51,6 +53,8 @@ export default function LocalHostGate() {
   const clientRef = useRef<HarnessClientUiPort | null>(null);
   const generation = useRef(0);
   const pending = useRef(false);
+  const remote = useRef(false);
+  const connectionId = useRef<string | undefined>(undefined);
 
   async function perform(action: Action, path = workspace, expected = host.instanceId) {
     if (pending.current || !path) return;
@@ -60,19 +64,22 @@ export default function LocalHostGate() {
     if (action === "start" || action === "restart") setHost((current) => ({ ...current, state: "starting", errorCode: null }));
     if (action === "stop") setHost((current) => ({ ...current, state: "stopping", errorCode: null }));
     try {
-      const result = await invoke<HostStatus>("local_host_action", {
-        request: { action, workspace: path, ...(expected ? { instanceId: expected } : {}) },
-      });
+      const request = { action, workspace: path, ...(expected ? { instanceId: expected } : {}) };
+      const result = isTauri() && !remote.current ? await invoke<HostStatus>("local_host_action", { request })
+        : await webRequest<HostStatus>({ operation: "manage", ...request }, connectionId.current);
       if (serial !== generation.current) return;
       if (!(result.state in states)) throw new Error("management_response_invalid");
       setHost(result);
       if (result.workspace) {
         setWorkspace(result.workspace);
-        try { localStorage.setItem(WORKSPACE_KEY, result.workspace); } catch { /* Optional UI preference. */ }
+        if (result.state === "running" && !result.errorCode) {
+          if (remote.current) await webRequest({ operation: "remember-workspace", workspace: result.workspace }, connectionId.current);
+          else await sharedSettings({ operation: "remember-workspace", workspace: result.workspace });
+        }
       }
       if (["connect", "start", "restart"].includes(action) && result.state === "running" && !result.errorCode) {
         setConnectionError(null);
-        clientRef.current ??= createNativeLiveClient();
+        clientRef.current ??= isTauri() && !remote.current ? createNativeLiveClient() : createWebLiveClient(path, connectionId.current);
         setClient(clientRef.current);
       }
     } catch (error) {
@@ -83,15 +90,15 @@ export default function LocalHostGate() {
   }
 
   useEffect(() => {
-    if (!isTauri()) return;
     let active = true;
     void (async () => {
       if (await nativeLiveAvailable()) { if (active) setLegacy(true); return; }
-      const environment = await invoke<{ supported: boolean; workspace: string }>("local_host_environment");
+      const environment = await sharedSettings<{ supported: boolean; workspace: string; remote?: boolean; connectionId?: string }>({ operation: "environment" });
       if (!active) return;
+      remote.current = environment.remote ?? !isTauri();
+      connectionId.current = environment.connectionId;
       setSupported(environment.supported);
-      let selected = environment.workspace;
-      try { selected = localStorage.getItem(WORKSPACE_KEY) ?? selected; } catch { /* Optional preference. */ }
+      const selected = environment.workspace;
       setWorkspace(selected);
       if (environment.supported) await perform("connect", selected, undefined);
     })().catch(() => { if (active) setHost({ state: "unknown", errorCode: "management_unavailable" }); });

@@ -7,6 +7,7 @@ async function simulateDesktop(page: Page, managed = false) {
   await page.addInitScript((managed) => {
     Object.assign(window, {
       isTauri: true,
+      __LOUSHANG_MANAGED_TEST__: managed,
       resizeRequests: [] as unknown[],
       __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
       __TAURI_INTERNALS__: {
@@ -21,7 +22,7 @@ async function simulateDesktop(page: Page, managed = false) {
           if (command === "plugin:event|listen") return 1;
           if (command === "fixture_bridge_handshake") throw new Error("Fixture bridge disabled");
           if (managed && command === "offline_account") return { name: "desktop-user", id: "local-preview-account" };
-          if (managed && command === "local_host_environment") return { supported: true, workspace: "/preview" };
+          if (managed && command === "client_settings") return { supported: true, workspace: "/preview" };
           if (managed && command === "local_host_action") return {
             state: "exited", workspace: "/preview", errorCode: "unclean_exit", pid: 1234,
             instanceId: "host-instance-" + "a".repeat(48), serviceInstanceId: "service-instance-" + "b".repeat(48),

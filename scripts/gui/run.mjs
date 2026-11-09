@@ -16,6 +16,8 @@ const childEnv = path.isAbsolute(cargo)
     }
   : process.env;
 
+childEnv.PYTHONPATH = [path.resolve(guiDir, "..", "src"), childEnv.PYTHONPATH].filter(Boolean).join(path.delimiter);
+
 // Development uses this checkout's existing Python environment; installed
 // desktop launches may explicitly select their installed interpreter.
 const localPython = path.resolve(guiDir, "..", ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
@@ -141,12 +143,10 @@ try {
     checkFull();
   } else if (mode === "dev-native") {
     runNative("dev");
-  } else if (mode === "dev-fixture-native") {
-    runNative("dev", true);
+
   } else if (mode === "build-native") {
     runNative("build");
-  } else if (mode === "build-fixture-native") {
-    runNative("build", true);
+
   } else {
     throw new Error(`unknown GUI command mode: ${mode ?? "<missing>"}`);
   }

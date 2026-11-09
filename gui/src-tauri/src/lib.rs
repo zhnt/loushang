@@ -54,6 +54,7 @@ pub fn run() {
     let builder = builder.invoke_handler(tauri::generate_handler![
         fixture_bridge_handshake,
         local_host::local_host_environment,
+        local_host::client_settings,
         offline_account::offline_account,
         local_host::local_host_action,
         live_bridge::live_readonly_available,
@@ -69,6 +70,7 @@ pub fn run() {
     #[cfg(not(feature = "fixture-bridge"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         local_host::local_host_environment,
+        local_host::client_settings,
         offline_account::offline_account,
         local_host::local_host_action,
         live_bridge::live_readonly_available,

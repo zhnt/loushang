@@ -6,20 +6,84 @@ TypeScript own presentation and UI-local state; Tauri/Rust owns desktop
 integration and adapts the accepted App Contract slice. The GUI does not
 own Product, Harness, AppService, or AppHost runtimes.
 
-The default B1 launch is deliberately offline. It provides a Product-neutral UI
-port and a deterministic Mock AppClient with three Workspace kinds, grouped
-Sessions, isolated per-Session drafts, active Run and Task progress, expandable
-Activity details, distinct root/subagent AgentRuns, and read-only ChangeSet
-review through a central Quick Look and the Work Dock. Every sample value is
-labelled as fixture data. It does not read a repository, start a Python backend,
-or request a model. An opt-in B2 native launch can attach to an
-existing AppHost, install one barriered initial Session snapshot, publish
-validated ongoing event rounds with authoritative replacement snapshots, and
-reconnect through a fresh snapshot after transport loss or an event gap. It can
-submit text and interrupt the current execution in that existing Session over
-the same authenticated controller connection. Further cross-language and real-service work
-remains in C1/B2 as described in the
-[engineering plan](../docs/internals/architecture/drafts/gui-engineering-bootstrap-plan.md).
+Both browser and desktop launches use real AppHost data. A disconnected Host
+shows a disconnected shell and Host settings; there is no Mock fallback or
+product fixture mode. Deterministic clients live under `tests/support/` only.
+The browser adapter reuses authenticated AppClient/ExecutionClient contracts;
+React uses the same validated snapshot projection as the native bridge.
+
+## Shared local storage and browser access
+
+`npm --prefix gui run dev:web` starts Vite and a private Python proxy. The proxy
+reuses or starts one shared adapter per user directory.
+`npm --prefix gui run dev` starts the same Web server plus the Tauri window.
+Open Settings → Host to select a workspace and explicitly start/connect its Host.
+Both surfaces show the same shell and initial panel layout (native window controls
+remain desktop-only). The development API accepts only same-origin loopback
+requests with the client header. Stopping Vite closes its proxy; the shared adapter and managed Hosts continue
+running so other clients remain connected. The Python environment must contain the installed
+project dependencies; `LOUSHANG_GUI_PYTHON` can select its interpreter.
+
+Storage below `LOUSHANG_HOME` (default `~/.loushang`) follows existing ownership:
+
+| Path | Owner and meaning |
+| --- | --- |
+| `models/*.json` | Existing user model registry; unchanged |
+| `auth/<provider>-auth.json` | Existing model OAuth credentials; unchanged |
+| `coding/settings.json` | Existing Coding settings; unchanged |
+| `connections.json` | Client connection targets and last local workspace |
+| `host.json` | Standalone Web listener configuration |
+| `auth/connections/<id>.json` | Client credential for a configured remote server |
+| `auth/server/web-token` | Standalone server access token; separate from model auth |
+| `state/web/` | Shared adapter discovery, ownership locks and logs |
+| `data/client-preferences.sqlite3` | Host-side pins, recent visits and selected-session recovery, scoped by mux |
+| `data/`, `state/`, `lmux/` | Existing business, internal and managed-service storage |
+
+Language, appearance and Markdown theme remain independent localStorage
+preferences. Navigation changes use atomic operations so concurrent windows do
+not overwrite each other's pins. Other windows observe changes on the next
+one-second refresh; each open window keeps its own current selection and drafts.
+The current access token identifies one local user profile, not a multi-user
+account system. Workspace/user scope expansion remains future contract work.
+
+### Standalone server and remote desktop
+
+Build the Web assets, then run the server without a desktop:
+
+```sh
+npm --prefix gui run build:web
+uv run python -m loushang.coding.web_server --dist gui/dist
+```
+
+The default listener is `127.0.0.1:1422`. On first launch it creates a restricted
+`auth/server/web-token` file. Enter its contents in the browser login page;
+the token is never printed in logs or stored in browser localStorage. Provider
+credentials and private AppHost records never enter the browser. Closing the
+server releases its connections without stopping managed Hosts. The authenticated
+`shutdown-adapter` API stops only this adapter; a later client can restart it.
+
+Optional `host.json`:
+
+```json
+{"web":{"bind":"127.0.0.1","port":1422,"dist":"/absolute/path/to/gui/dist"}}
+```
+
+A non-loopback listener requires `web.certificate` and `web.privateKey` paths
+for TLS. This server grants the authenticated operator local Host management;
+it is not a multi-tenant service.
+
+For a desktop-only installation, configure `connections.json`:
+
+```json
+{"version":1,"defaultConnection":"office","servers":[{"id":"office","url":"https://host.example:1422"}]}
+```
+
+Store `{"token":"<server access token>"}` in
+`auth/connections/office.json` with user-only permissions. The native helper
+performs authenticated remote requests; React never receives the credential.
+The selected remote server supplies workspace, navigation and session data.
+Omit `defaultConnection` to use the shared local adapter. This task
+provides file-based connection setup; it does not add an account management UI.
 
 ## Application icons
 
@@ -57,13 +121,12 @@ npm --prefix gui run doctor
 npm --prefix gui run bootstrap
 npm --prefix gui run dev:web
 npm --prefix gui run dev
-npm --prefix gui run dev:fixture-native
 npm --prefix gui run test
 npm --prefix gui run check
 npm --prefix gui run build
 ```
 
-`dev:web` starts only the browser shell. `dev` starts the native Tauri window.
+`dev:web` starts the browser shell and real Host adapter. `dev` starts the native Tauri window.
 The native desktop app creates a system tray icon with Show window and Quit
 menu items. Show window restores and focuses the main window; left-clicking
 the icon does the same on platforms that deliver tray click events. On Linux,
@@ -77,15 +140,13 @@ requiring Rust or building assets. Use `check:full` for Rust/native/toolchain
 changes; it retains the toolchain doctor, web build, tests and Rust checks.
 Layout playback and native packaging remain on-demand acceptance commands.
 `build` creates a native
-executable without producing installers. `dev:fixture-native` and
-`build:fixture-native` enable the B1-only Rust invoke/event canary; the command
-is absent from the default native build.
+executable without producing installers. The Rust fixture-bridge feature is retained only for protocol tests.
 
 ## Controlled live launch
 
 The AppHost/desktop launcher may start the built executable with both native
 arguments below. Omitting both opens local Host management in the native app
-(browser development retains the offline fixture). Partial, duplicate or
+(browser development uses the real Host adapter). Partial, duplicate or
 unknown arguments disable live availability rather than falling back with
 ambiguous authority.
 
@@ -211,7 +272,7 @@ disconnect/resynchronization and cooperative desktop-exit lifecycle. The
 automated integration check additionally submits through the production desktop
 control bridge. Windows display scaling remains outside this slice.
 
-For a standalone offline executable, use `npm --prefix gui run build:fixture-native`
+For a standalone desktop executable, use `npm --prefix gui run build`
 from the repository root. Do not substitute a plain `cargo build`: that bypasses
 the Tauri frontend build and production protocol configuration and can produce a
 window that expects a running localhost development server.
