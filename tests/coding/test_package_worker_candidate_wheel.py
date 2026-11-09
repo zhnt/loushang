@@ -43,6 +43,7 @@ import loushang.coding.package_product_worker_registered_payload_repair as regis
 import loushang.coding.package_product_worker_start_gate_journal as gate_journal_module
 import loushang.coding.package_product_worker_start_gate_recovery as gated_recovery_module
 import loushang.coding.session.agent_session as coding_agent_session_module
+import loushang.harness.package_product._linux_worker_history as history_proof_module
 import loushang.harness.package_product._linux_worker_native_release as native_release_custody_module
 import loushang.harness.package_product.product_local_wheel_runtime as local_wheel_runtime_module
 import loushang.harness.package_product.product_root_gc_runtime as root_gc_module
@@ -9605,7 +9606,7 @@ def test_worker_history_review_refuses_swapped_product_state_root(
             return os.listdir(path)
 
     swapping_os = SwappingOs()
-    monkeypatch.setattr(history_retention_module, "os", swapping_os)
+    monkeypatch.setattr(history_proof_module, "os", swapping_os)
     monkeypatch.setattr(local_wheel_runtime_module, "os", swapping_os)
     try:
         with pytest.raises(ValueError, match="state root descriptor changed"):

@@ -2,11 +2,34 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P1/A1–A71指定路径及A74三类payload恢复、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口及A76备份拓扑存储）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P1/A1–A71指定路径及A74三类payload恢复、A77完整Linux history proof、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口及A76备份拓扑存储）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A76备份拓扑完整存储custody）
+## 当前状态（2026-11-09，A77完整Linux history proof）
+
+从A76 `f2c7a6fe7`接续；retention、gated offline、committed V2与strict GC完整
+程序归原PackageProduct，纯join/Review派生归Worker.history。直接复用原Journal、
+Snapshot/Checkpoint/V2 Reader、PayloadStorage/RepairJournal、A70 native与A76
+topology。Code保实际DTO8/41/5自有字段、公开签名/薄getter、政策与原外层锁，不
+保Code history/scan/verify厚回调或第二执行器；两种判定及独立重读不合并。
+
+当前Coding430文件115973行，系统1962源646149行：Code−768、Core+1232、系统
+净+464；其余1954原source SHA同。全部适配/Protocol/构造/getter/import/格式成本
+计入，是职责迁移；距15K仍100973，完整P1–P4/Goal保持partial/active。
+
+旧121固定先过（18.00s）；完整树外候选含8源origin校验122过（33.12s）；真实
+worktree同121加原27消费者148过（39.27s）。原型两具体阻断、夹具搭建与collect
+失败及147过/1旧hook失败均保留；仅将旧root-swap hook移至实际owner，逆映射后
+1171原assert/raises保持。相邻原preflight/commit/V2/checkpoint/receipt和架构
+边界203过（114.62s）；8源mypy、10源Ruff、9源format通过，三实际视角有界接受。
+全部来源/有限边界见[本片交付](key-designs/linux-worker-history-proof-convergence.md)。
+
+下一批继续registered恢复driver与cleanup authority的完整闭包，直接使用已共享
+proof/GC程序，不重复记原引擎收益。其他P2/P3/P4义务继续，单批不代表全Goal；
+KD003未实施、KD011/A33待用户且不采用的边界保持，与本片无依赖。
+
+## A76历史交付（2026-11-09）
 
 从A75 `8e5a52229`接续；bootstrap、Arch writer与Worker无引用attestation共同使用
 的完整topology read/create/reopen程序已归原PackageProduct。直接复用原RootedIO、

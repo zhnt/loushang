@@ -17,6 +17,9 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
+from loushang.harness.worker.history._retention import (
+    registered_repair_matches_no_effect_closure,
+)
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 from loushang.harness.worker.payload._repair import RepairJournal
 
@@ -30,9 +33,6 @@ from .package_product_worker_cleanup_evidence import (
     CodingPosixWorkerCleanupEvidenceAuthority,
 )
 from .package_product_worker_history_retention import _known_worker_state_name
-from .package_product_worker_no_effect_closure import (
-    is_coding_worker_no_effect_closure,
-)
 from .package_product_worker_payload import (
     _DIR_FLAGS,
     CodingWorkerPayloadDebtPlanV1,
@@ -237,23 +237,13 @@ def registered_payload_repair_matches_no_effect_closure(
 ) -> bool:
     """Bind a retained repair record to the exact settled C5 no-effect proof."""
 
-    if gate is None or receipt is None or activation is None:
-        return False
-    return bool(
-        is_coding_worker_no_effect_closure(
-            gate=gate,
-            activation=activation,
-            supervisor=supervisor,
-            receipt=receipt,
-        )
-        and intent.attempt_id == gate.attempt_id
-        and intent.plan.receipt_fingerprint == receipt.receipt.fingerprint
-        and intent.gate_record_digest == gate.record_digest
-        and intent.receipt_record_digest == receipt.record_digest
-        and intent.policy_fingerprint == activation.policy_fingerprint
-        and intent.host_identity == activation.host_identity
-        and intent.boot_identity == activation.boot_identity
-        and intent.owner_generation == activation.owner_generation
+    return registered_repair_matches_no_effect_closure(
+        intent,
+        gate=gate,
+        receipt=receipt,
+        activation=activation,
+        supervisor=supervisor,
+        product_id="coding",
     )
 
 

@@ -709,13 +709,8 @@ def read_coding_product_worker_receipt_records(
 ) -> tuple[CodingWorkerReceiptRecordV1, ...]:
     """Read complete V1 history or explicitly retained V2 receipts."""
 
-    if not isinstance(product, PosixLocalWheelProductSessionOwner):
-        raise TypeError("Coding Worker Product owner is required")
-    path = product.state_root / "worker-activation-receipts.jsonl"
-    return _CodingReceiptHistory(
-        path, access=_CodingHistoryAccess(product)
-    ).read_records(
-        retained_only=retained_only,
+    return _receipt_history_for_product(product).read_records(
+        retained_only=retained_only
     )
 
 
@@ -883,3 +878,13 @@ __all__ = [
     "read_coding_product_worker_receipt_record",
     "read_coding_product_worker_receipt_records",
 ]
+
+
+def _receipt_history_for_product(
+    product: PosixLocalWheelProductSessionOwner,
+) -> _CodingReceiptHistory:
+    """Admit the original Product and construct its existing history owner."""
+    if not isinstance(product, PosixLocalWheelProductSessionOwner):
+        raise TypeError("Coding Worker Product owner is required")
+    path = product.state_root / "worker-activation-receipts.jsonl"
+    return _CodingReceiptHistory(path, access=_CodingHistoryAccess(product))

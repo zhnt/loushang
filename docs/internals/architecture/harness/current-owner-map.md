@@ -769,3 +769,15 @@ values and retains closed kinds, hash identity, Product/GC admission and actual
 observation DTO. No new manager, store or Code IO callback is introduced.
 [Bounded topology evidence](key-designs/backup-topology-custody-convergence.md)
 records the platform asymmetries, original observations and complete cost.
+
+## Complete Linux Worker history proof (A77)
+
+Package Product owns retention review, gated offline reads, committed-V2 proof
+and strict GC history revalidation. These remain distinct programs with their
+original root/guard/reader ordering. Worker.history owns the pure joins and
+Review projections; the existing journals, V2 reader, snapshot/checkpoint owners,
+PayloadStorage/RepairJournal and native/topology custody remain sole mechanisms.
+Coding keeps actual DTOs, original public getter signatures and Product policy/
+admission with thin entries. There is no Code history/scan/verify callback or
+second manager. [Bounded proof evidence](key-designs/linux-worker-history-proof-convergence.md)
+records original bytes, failures, source origin, counters and execution limits.

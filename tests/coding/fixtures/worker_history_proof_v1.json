@@ -1,0 +1,938 @@
+{
+  "normalization": "only24hex Rooted temp-name nonces; per-name ordinal identities retained",
+  "observations": {
+    "gated:cancel-exception": {
+      "first_error": "CancelledError",
+      "retry_error": null,
+      "sha256": "b5bd423366ce9466c11ab0a120387852d15850247819c10658c4063a9bb32500",
+      "source": "observations-4/gated-cancel-exception.json"
+    },
+    "gated:empty": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "69a880c88ba4188e366017cce1d941e66bced71777ab497bfa036e74c2900db9",
+      "source": "observations-4/gated-empty.json"
+    },
+    "gated:gate-mismatch": {
+      "first_error": "CodingWorkerGatedRecoveryError",
+      "retry_error": "CodingWorkerGatedRecoveryError",
+      "sha256": "3fb97c5274d4b6ab550cdf59aec46036cc2dc3d9b5c52c4bb730b0fce2f3bbca",
+      "source": "observations-4/gated-gate-mismatch.json"
+    },
+    "gated:interrupt": {
+      "first_error": "KeyboardInterrupt",
+      "retry_error": null,
+      "sha256": "9bc4e3569829f10cd3098729b1291097f2fbce750e29408b7997f7c69fab9742",
+      "source": "observations-4/gated-interrupt.json"
+    },
+    "gated:native-error": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "7d2300b7fd26cab24dd4c5e915096c0ce0ff2fb8b1b388a225d3931e9d0af24e",
+      "source": "observations-4/gated-native-error.json"
+    },
+    "gated:native-other": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "28ea00431e451ca2c3923630dd19577c02aec0f89fa58094b7ec82a29e1b4a42",
+      "source": "observations-4/gated-native-other.json"
+    },
+    "gated:native-present": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "2d37b7d8b2c24dc90fc1ae7bb26c2c3d58625d471383e25d7c2a2199f24a2182",
+      "source": "observations-4/gated-native-present.json"
+    },
+    "gated:native-prior-boot": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "3c80b1ced6f81d064e94e30ae67c25726701b426eded80b87beef31c5a976e30",
+      "source": "observations-4/gated-native-prior-boot.json"
+    },
+    "gated:native-second-error": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "e7adc89c5286ec4034902a7124484ad4eb71cf1e8f94202a558f2d22ecd6a984",
+      "source": "observations-4/gated-native-second-error.json"
+    },
+    "gated:normal": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "94d143d9f2d67c32e0043151b685ead66476563a8cebd68ed7c238b31ba6671a",
+      "source": "observations-4/gated-normal.json"
+    },
+    "gc:activation-active": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "008884421888e61ab43d6a07484d9fb1582c7f2216a3089e59baedb4752013ab",
+      "source": "observations-4/gc-activation-active.json"
+    },
+    "gc:archive-exact": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "579a9a2cdbdae6fdac04ad396117d187533a69d39bd6d9e73539f45a9bda52dc",
+      "source": "observations-5/gc-archive-exact.json"
+    },
+    "gc:archive-missing-ledger": {
+      "first_error": "CodingWorkerV2ReadError",
+      "retry_error": "CodingWorkerV2ReadError",
+      "sha256": "171cc8682b1e22a21c1ca96f93e6d98a48f7fbe9e93f3da49f588458d6c38562",
+      "source": "observations-5/gc-archive-missing-ledger.json"
+    },
+    "gc:archive-repair-changed": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "c897fe7abbd6c1c54f72d42bdcdbe906a4951c6d6e51cc4a323b47b8d66fc00a",
+      "source": "observations-5/gc-archive-repair-changed.json"
+    },
+    "gc:archive-retired": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "35533a4e33d8eb64442cf1207a274b4df1da9e8a0f17f2e136d9013241e62a77",
+      "source": "observations-5/gc-archive-retired.json"
+    },
+    "gc:body-and-cleanup": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "47ddb1a8b5cdc2c470dce4f2633f67b84f6afa936f2a294f00e5e910d67c0ef1",
+      "source": "observations-4/gc-body-and-cleanup.json"
+    },
+    "gc:case-name": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "1fee194c09b805bdb73622a19d16d827fc2e67ee566a063a90c083a7afa00d49",
+      "source": "observations-4/gc-case-name.json"
+    },
+    "gc:cleanup-error": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "5f62d3f5cdb9fd891aad88cb49952d725cc1381ffcdaf3906832d835d2755d11",
+      "source": "observations-4/gc-cleanup-error.json"
+    },
+    "gc:current-first": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "5487e1d5b09a2b5170e3e893e8dbe1aa7b43d7aad1a0b845aa704d2b34c40ac9",
+      "source": "observations-4/gc-current-first.json"
+    },
+    "gc:empty": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "bf75b9c945a536a484c2dc116e9622d3b34943b382c3879a5ec957fa165d86de",
+      "source": "observations-4/gc-empty.json"
+    },
+    "gc:gate-mismatch": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "0b425e18cbbd9eb71578c62cfcd3547a3da3a15b4ddb07298a997b2705ac4a29",
+      "source": "observations-4/gc-gate-mismatch.json"
+    },
+    "gc:global-opt-in-unverified": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "bc94a778e9b950df3e0ae881cc8ca221f4d4d7289a105f7f8a7f3f5c0276d928",
+      "source": "observations-4/gc-global-opt-in-unverified.json"
+    },
+    "gc:global-supervisor-active": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "b44835897738bb36cab107091481165f3e7eb8321fa4bd1b5251cb7e8fc9bdc3",
+      "source": "observations-4/gc-global-supervisor-active.json"
+    },
+    "gc:global-unbound": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "31a9395789da2f6db09e3a9a4c596d34f85cf8c0b340da6dcdd500026931cbce",
+      "source": "observations-4/gc-global-unbound.json"
+    },
+    "gc:group-cancel": {
+      "first_error": "CancelledError",
+      "retry_error": null,
+      "sha256": "878afc2d471f3941a09852b90528272dcb1eaf807e04b8582741d9b43a6d8bda",
+      "source": "observations-4/gc-group-cancel.json"
+    },
+    "gc:group-error": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "9d9243a2e0287ef9f210050b140215286e4add2fcf4415c193cdd851e5f81402",
+      "source": "observations-4/gc-group-error.json"
+    },
+    "gc:group-interrupt": {
+      "first_error": "KeyboardInterrupt",
+      "retry_error": null,
+      "sha256": "f4aaa55d3633dcbcd29e171597fb161a023c264097ba67a170e57460400f127b",
+      "source": "observations-4/gc-group-interrupt.json"
+    },
+    "gc:inventory-duplicate": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "ac41eb18a974532e56b38144565e2ea3b1e1a800496a47d291c5572b3cbe838e",
+      "source": "observations-4/gc-inventory-duplicate.json"
+    },
+    "gc:inventory-first": {
+      "first_error": "ValueError",
+      "retry_error": null,
+      "sha256": "2551a9ee98b340f7246ba16f98fee9a29207bceee47a1a2ca018e0b34fec3c6b",
+      "source": "observations-4/gc-inventory-first.json"
+    },
+    "gc:inventory-last": {
+      "first_error": "ValueError",
+      "retry_error": null,
+      "sha256": "c389f1565ee3698131192df92e707364a07fdc36da6d8094f2d30f66b5828679",
+      "source": "observations-4/gc-inventory-last.json"
+    },
+    "gc:inventory-type": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "5fc396e627280578819081bfab14ff6b5c341ca2f79ae4b056efa35506bae893",
+      "source": "observations-4/gc-inventory-type.json"
+    },
+    "gc:missing-c5": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "86a72507acc2bb42bf68a36ca1c73258c973221b34be8703823eb68bf7fabaa2",
+      "source": "observations-4/gc-missing-c5.json"
+    },
+    "gc:missing-receipt": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "6e0ff8efe2bcad746aab1d633beffb226c510a55b13bf35d16f0bee44526f714",
+      "source": "observations-4/gc-missing-receipt.json"
+    },
+    "gc:native-present": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "a4a542e4419f0bfb491f5da0c053782858196cfeae358748bacae54bcf969ea9",
+      "source": "observations-4/gc-native-present.json"
+    },
+    "gc:native-prior-boot": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "ac41eb18a974532e56b38144565e2ea3b1e1a800496a47d291c5572b3cbe838e",
+      "source": "observations-4/gc-native-prior-boot.json"
+    },
+    "gc:no-effect": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "38e8c74bbb57f32a1bec73b2ecbaad65d836ed2965717f29b0d36e427360d04a",
+      "source": "observations-4/gc-no-effect.json"
+    },
+    "gc:normal": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "ac41eb18a974532e56b38144565e2ea3b1e1a800496a47d291c5572b3cbe838e",
+      "source": "observations-4/gc-normal.json"
+    },
+    "gc:open-preparation": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "ba2a94a4b63b0f7cb0dd6bf600a77737956dd173958f95add49258cb026d02b5",
+      "source": "observations-4/gc-open-preparation.json"
+    },
+    "gc:opt-in-duplicate": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "ac41eb18a974532e56b38144565e2ea3b1e1a800496a47d291c5572b3cbe838e",
+      "source": "observations-4/gc-opt-in-duplicate.json"
+    },
+    "gc:opt-in-missing": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "f1ab0a88fd5f70030aa5e8ec950f5c5f123326e421dc749e267e22036e6ac30e",
+      "source": "observations-4/gc-opt-in-missing.json"
+    },
+    "gc:opt-in-wrong-last": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "079c9db6c766beca8b8dbd130a4227b95caba7a940cbbaefa9065da0f1cc68ef",
+      "source": "observations-4/gc-opt-in-wrong-last.json"
+    },
+    "gc:payload-stage": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "12593287bb2faf89ddcd69a13ecd2566d849eda6b154b87e311bb95bb36e620f",
+      "source": "observations-4/gc-payload-stage.json"
+    },
+    "gc:pin1-enter": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "53272aaf2165dbba2dbf2679a3ed33dd4c3b380b208956c2c32c6f4707ee4582",
+      "source": "observations-4/gc-pin1-enter.json"
+    },
+    "gc:pin1-exit": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "48447a92fa0c3270d26f27c613e26750b2664d5c5dbb67c4f3aaa3da8714b428",
+      "source": "observations-4/gc-pin1-exit.json"
+    },
+    "gc:read-error": {
+      "first_error": "CodingWorkerStartGateJournalError",
+      "retry_error": null,
+      "sha256": "528ecebb87945dc6c776645af8dc95dc7139f3f9e6ad0e8ecabf8c9838c440d9",
+      "source": "observations-4/gc-read-error.json"
+    },
+    "gc:receipt-product": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "7e33e51c0720309cebb678b23feb41b5c69936e6b0419ded04bb20fa34c30cfd",
+      "source": "observations-4/gc-receipt-product.json"
+    },
+    "gc:registered-stage": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "b8a8045d56ff31b3bf67e96d9b5d27c3b08deeb3e805445d32965eb0519f6356",
+      "source": "observations-4/gc-registered-stage.json"
+    },
+    "gc:repair-bad": {
+      "first_error": "CodingWorkerPayloadMaterializationError",
+      "retry_error": "CodingWorkerPayloadMaterializationError",
+      "sha256": "68a9939cb715fe7561bfed8e67c6cbcbdac1b2ce198c972d1c1d2aeaef245d10",
+      "source": "observations-4/gc-repair-bad.json"
+    },
+    "gc:repair-complete": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "2c12f0ebf9a5f4f6d1268bcc06969555dde6e6dff7e56c9bed0476b64fab3e7b",
+      "source": "observations-4/gc-repair-complete.json"
+    },
+    "gc:repair-empty": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "afed7d25015d2dd89099fa7ae02192f28507c81e013e5b2e6b303c4e792ab9ce",
+      "source": "observations-4/gc-repair-empty.json"
+    },
+    "gc:repair-registered": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "75ea5b8f1e5d1c74bfd651c1b22eddacd1eac881de29184cf2fa466d156e08d4",
+      "source": "observations-4/gc-repair-registered.json"
+    },
+    "gc:repair-registered-duplicate": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "4dfea5940d6d8e7c31b9af6758e22c9c42e403b4bd209dc78213331be640e3a5",
+      "source": "observations-4/gc-repair-registered-duplicate.json"
+    },
+    "gc:repair-registered-mismatch": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "dde67694c8342192d7aec97e1291696a8affb48d9f61e26fa4619e8fc2e26697",
+      "source": "observations-4/gc-repair-registered-mismatch.json"
+    },
+    "gc:repair-stage": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "ae505ec5323f126c1a9f2287ebed5e52de2f18b9a51a9368ac8a3c5e63ed7b20",
+      "source": "observations-4/gc-repair-stage.json"
+    },
+    "gc:repair-unmarked": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "b1857493249d081667335b0f16f03987b67558dd420a19cc9caff75b78927523",
+      "source": "observations-4/gc-repair-unmarked.json"
+    },
+    "gc:supervisor-active": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "229545028a98218c6eeb916672c5c755241dacfecdbcadfbfea6caef0267e3b7",
+      "source": "observations-4/gc-supervisor-active.json"
+    },
+    "gc:unbound-gate": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "b11a3ba0b5a7d8b98dc010643b7b9a5f599f5be9ff2ae1bd694853c010e507a5",
+      "source": "observations-4/gc-unbound-gate.json"
+    },
+    "gc:unknown-name": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "029225fb11cedd5470a864df2bb081f41395fe7b050cfaffa02f94d856925cb2",
+      "source": "observations-4/gc-unknown-name.json"
+    },
+    "retention:activation-active": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "c608fb9f8da16dd41e6c6b951d3a4f3fcce37225cac04eed99c1b02a3eb8e7e4",
+      "source": "observations-4/retention-activation-active.json"
+    },
+    "retention:active-leases": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "a2aae64fb4b85c4ee58af40bde06d3f484b2c1450ab1e47d75bed13cfa74e23a",
+      "source": "observations-4/retention-active-leases.json"
+    },
+    "retention:archive-exact": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "ef8a1120660646074cb39e4f34621422ccd6edf050ca0d322649d9838300927c",
+      "source": "observations-5/retention-archive-exact.json"
+    },
+    "retention:archive-missing-ledger": {
+      "first_error": "CodingWorkerStartGateJournalError",
+      "retry_error": "CodingWorkerStartGateJournalError",
+      "sha256": "4ca987a719bb1982986bbf353d4f7a6b3780514ead6d25f62c33b02d0780fbf7",
+      "source": "observations-5/retention-archive-missing-ledger.json"
+    },
+    "retention:archive-repair-changed": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "9014ade0de616a3dcc917fbb9b75d5f8df3d1bca20a8e6133be5ea827e22ee54",
+      "source": "observations-5/retention-archive-repair-changed.json"
+    },
+    "retention:archive-retired": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "6df727838f4046697a96de8f86bad1fe68b8b93a505a3fc6455baef31cca7a96",
+      "source": "observations-5/retention-archive-retired.json"
+    },
+    "retention:attempt-invalid": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "f409dc4d1965d1049665954f1df97b188ccc881e092da5f2ea96d4e935e267ca",
+      "source": "observations-4/retention-attempt-invalid.json"
+    },
+    "retention:backup-changed": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "2ce82b0bbef7c9a41f5dd81c807c4fef06af764c80e8820cca536b598382cbd4",
+      "source": "observations-4/retention-backup-changed.json"
+    },
+    "retention:backup-missing": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "500d5bdc510300c7da0500a52b0416ea7a7d5c704712ef6b55aac57b07a2d7c2",
+      "source": "observations-4/retention-backup-missing.json"
+    },
+    "retention:body-and-cleanup": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "af771aa092eb0aac38b1d48bbbaa4a6289878cc7effdba20e145eece00320b96",
+      "source": "observations-4/retention-body-and-cleanup.json"
+    },
+    "retention:cancel-exception": {
+      "first_error": "CancelledError",
+      "retry_error": null,
+      "sha256": "0cae5c5c520296b12a322b2be23995c2705998711c54c3389f7d530aa1aeddf9",
+      "source": "observations-4/retention-cancel-exception.json"
+    },
+    "retention:case-name": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "02c762ceb52d6e4ff268f34d2b15c1c9689526682e8800f1b388f535de5c9282",
+      "source": "observations-4/retention-case-name.json"
+    },
+    "retention:cleanup-error": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "b85e818e041a98748b4ecf443eb7a9b84d50e9748228b464230b7d28b004fbd4",
+      "source": "observations-4/retention-cleanup-error.json"
+    },
+    "retention:current-first": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "c2d4816c89c63bc29a4afaa82bf32067fa89e79f6a95315ad291b793032d1b12",
+      "source": "observations-4/retention-current-first.json"
+    },
+    "retention:empty": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "a9db67f62815f5827d3b8b1ba34a04524eededcd6320411b4d4cbb3027c4bdf6",
+      "source": "observations-4/retention-empty.json"
+    },
+    "retention:gate-mismatch": {
+      "first_error": "CodingWorkerGatedRecoveryError",
+      "retry_error": "CodingWorkerGatedRecoveryError",
+      "sha256": "49bfe5562d7cf7cbc9bdb788b17c53de3726786b5928811c53be0ead138a5cff",
+      "source": "observations-4/retention-gate-mismatch.json"
+    },
+    "retention:gc-enter": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "e8dd2e9124b37d09db6a2867881aa987e162192c25ce841a9a90d897ad6bccbe",
+      "source": "observations-4/retention-gc-enter.json"
+    },
+    "retention:gc-exit": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "32ce9185d83653fdd4898075e90c84f1d908c5170a9ea4b48bcb01951b79dc0d",
+      "source": "observations-4/retention-gc-exit.json"
+    },
+    "retention:gc-pins": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "81719dac7361a63331deb9523bc03f4298039fa545b04d97782efc1cb1534bcd",
+      "source": "observations-4/retention-gc-pins.json"
+    },
+    "retention:global-opt-in-unverified": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "dcb1c4aa67144056ded015c22744bf2a643f5664a57001c7afb04881decbb71d",
+      "source": "observations-4/retention-global-opt-in-unverified.json"
+    },
+    "retention:global-supervisor-active": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "9d88c0646329a77567380a769a7f78d312178fe39da3f5a8bb5bd02924e69114",
+      "source": "observations-4/retention-global-supervisor-active.json"
+    },
+    "retention:global-unbound": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "14e46e1fb80bc7a2ab48eda6846c94f6743e3155ff4d94570890267f74862040",
+      "source": "observations-4/retention-global-unbound.json"
+    },
+    "retention:interrupt": {
+      "first_error": "KeyboardInterrupt",
+      "retry_error": null,
+      "sha256": "47b316be980c6f0c3b38f3ee68477a94beaccb5c7315358366d1bbbfb2bcb48c",
+      "source": "observations-4/retention-interrupt.json"
+    },
+    "retention:missing-c5": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "7d16c8017e7261c727077c27f0cb8d7d3cd3950544a0a7becefde429570d9d84",
+      "source": "observations-4/retention-missing-c5.json"
+    },
+    "retention:missing-receipt": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "c41a64421a8f72ac2f19344b89803f823765dd8fb9d123c939fbc2ac157e0d94",
+      "source": "observations-4/retention-missing-receipt.json"
+    },
+    "retention:native-error": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "958be33a0a78177dece083c3b334ffcde6808c085e4c948b3b6ab2545e09400a",
+      "source": "observations-4/retention-native-error.json"
+    },
+    "retention:native-other": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "43d26d05cee6aadd3b560a90edfbad3341ff649ff334281c52e4d2bdae20a7fd",
+      "source": "observations-4/retention-native-other.json"
+    },
+    "retention:native-present": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "a249e6eab64a592160b22ce4d48f5a5777ca3c869943d23072ca84a1ee11c8eb",
+      "source": "observations-4/retention-native-present.json"
+    },
+    "retention:native-prior-boot": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "a451badd2ea263afae5f53a213474e7cdc9ff6834c0e470b3ba77cb6de35e880",
+      "source": "observations-4/retention-native-prior-boot.json"
+    },
+    "retention:native-second-error": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "c755ed4d3097e70a2c3a1e254640858b3d17017dda0901e17433a8c04543cf38",
+      "source": "observations-4/retention-native-second-error.json"
+    },
+    "retention:no-effect": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "b037d4fc8217f804e05884605e5fb130d20a3ba13c4cbea4a3e7de9f6a9a2823",
+      "source": "observations-4/retention-no-effect.json"
+    },
+    "retention:normal": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "e00f4c10529acfabf78f4a88ce25521c4df415ea678cb5145a357923698d4072",
+      "source": "observations-4/retention-normal.json"
+    },
+    "retention:opt-in-duplicate": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "47caa83365505795a2d708544ab2aee1f2452feb7d55943b3370a1592ec9196e",
+      "source": "observations-4/retention-opt-in-duplicate.json"
+    },
+    "retention:opt-in-missing": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "8b4e231dc9a921fda772e12dc7d313871a79ce87687e1b2b913a7340a34ccbbd",
+      "source": "observations-4/retention-opt-in-missing.json"
+    },
+    "retention:opt-in-wrong-last": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "47caa83365505795a2d708544ab2aee1f2452feb7d55943b3370a1592ec9196e",
+      "source": "observations-4/retention-opt-in-wrong-last.json"
+    },
+    "retention:payload-stage": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "fb2ad2871487d0241e4596f605e816427887186c0fffd8752d863b34bb9fa8c6",
+      "source": "observations-4/retention-payload-stage.json"
+    },
+    "retention:pin1-enter": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "b21ee6f855f546812a206b784b47be8755c67e873c6a5e848c802fb29569e34c",
+      "source": "observations-4/retention-pin1-enter.json"
+    },
+    "retention:pin1-exit": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "b42075e6fce8ba8aaf324b87f5e396b5040420cea06f8c2d4911acda77c5e156",
+      "source": "observations-4/retention-pin1-exit.json"
+    },
+    "retention:pin2-exit": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "d49ec530be20fcb03ed64a3454ff7484bc0d6bcf1217af7aaba08e12964bf533",
+      "source": "observations-4/retention-pin2-exit.json"
+    },
+    "retention:pin3-exit": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "e04f379ee2c4247be6ab42533a589ae7e36679e1f6ea24e98f9417f57a339fa3",
+      "source": "observations-4/retention-pin3-exit.json"
+    },
+    "retention:quiescence-enter": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "f2095d5c82a81fc76c0836793c5800404c3bd4739c86bd856cacd6a1e6896548",
+      "source": "observations-4/retention-quiescence-enter.json"
+    },
+    "retention:quiescence-exit": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "9fd6e1ab686f7b6f3e3604176e66e7fc630c361debbb1790ef89ec6d717e1327",
+      "source": "observations-4/retention-quiescence-exit.json"
+    },
+    "retention:read-error": {
+      "first_error": "CodingWorkerStartGateJournalError",
+      "retry_error": null,
+      "sha256": "de37f6f89408c8b3d0785b5ed3b13ec9adb957a2fa480cb83cef9f32e39e677c",
+      "source": "observations-4/retention-read-error.json"
+    },
+    "retention:registered-stage": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "3c99632e5144784b1390ac14c8f936193edbdb68cdb39909fd57575f04c63a84",
+      "source": "observations-4/retention-registered-stage.json"
+    },
+    "retention:repair-complete": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "8c9ee49564980d80471857c36537b88aade611f0eb4bc5c9e490fd7ffac979ee",
+      "source": "observations-4/retention-repair-complete.json"
+    },
+    "retention:repair-empty": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "7a7f16a5a81b389c3d01f0f3ad350ae44901e90ad9d99cdc9c9279181cc8cf5f",
+      "source": "observations-4/retention-repair-empty.json"
+    },
+    "retention:repair-registered": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "0f0850891fb04b471239026aa8bad972b9f66df254756a891e7aef9eacfc3a8f",
+      "source": "observations-4/retention-repair-registered.json"
+    },
+    "retention:repair-registered-mismatch": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "0cb14e724f895f6ca6057a30c02f629e64c6977c2d94f1678f1521bcefe28d14",
+      "source": "observations-4/retention-repair-registered-mismatch.json"
+    },
+    "retention:repair-unmarked": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "5dd0875e65c00423166d986655e0c3f332a1cbc608441bbef1bb27de428bbed8",
+      "source": "observations-4/retention-repair-unmarked.json"
+    },
+    "retention:scope-invalid": {
+      "first_error": "CodingWorkerReceiptError",
+      "retry_error": "CodingWorkerReceiptError",
+      "sha256": "9ea97bcd421cb4e91f377c915f5e13b1bc268094a655e8692ef1eecf72a9fe14",
+      "source": "observations-4/retention-scope-invalid.json"
+    },
+    "retention:snapshot-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "f3c8f39822222c8742560cbb015155a6b721ea64182bcbc27c5e6271bc1b485d",
+      "source": "observations-4/retention-snapshot-after.json"
+    },
+    "retention:snapshot-error": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "d4a64f2b1cdf728b69caf795aff07e062dba3fb39c7239ad6ad74c059e90d988",
+      "source": "observations-4/retention-snapshot-error.json"
+    },
+    "retention:snapshot-mismatch": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "a4461686798604511129ca9ee81e21e1dc4ffc5acefe1ba29a4046a01036dd2e",
+      "source": "observations-4/retention-snapshot-mismatch.json"
+    },
+    "retention:supervisor-active": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "ab972638d283a8efc0bf7ef961f103dfb9b1be7affd5b085f6a63f0c42dacead",
+      "source": "observations-4/retention-supervisor-active.json"
+    },
+    "retention:unbound-gate": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "936b8b3d766e0a547aa0b325b5714e39c0501cd2e0789a5c015c810a38c6b3c0",
+      "source": "observations-4/retention-unbound-gate.json"
+    },
+    "retention:unknown-name": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "a3ee1d924c74bbcea2ec5414b1e926526fcf0fa8368781a4d08a5d9ba856e1f7",
+      "source": "observations-4/retention-unknown-name.json"
+    },
+    "v2:checkpoint-corrupt": {
+      "first_error": "CodingWorkerCheckpointAnchorError",
+      "retry_error": "CodingWorkerCheckpointAnchorError",
+      "sha256": "b009740716e0cc53b6ad7b71de5c85caaba208f53be6c2da4adc975f61ce9fdc",
+      "source": "observations-4/v2-checkpoint-corrupt.json"
+    },
+    "v2:head-corrupt": {
+      "first_error": "CodingWorkerV2ReadError",
+      "retry_error": "CodingWorkerV2ReadError",
+      "sha256": "4fc52a3ff8851ed253e51ba858878c2fe3bc8f75521bfd36cc84fc93f9bd81d6",
+      "source": "observations-4/v2-head-corrupt.json"
+    },
+    "v2:missing-ledger": {
+      "first_error": "CodingWorkerV2ReadError",
+      "retry_error": "CodingWorkerV2ReadError",
+      "sha256": "61025f0b46e442cb1555186db962704aa825d411aee92af56147ebdeef0f24db",
+      "source": "observations-4/v2-missing-ledger.json"
+    },
+    "v2:normal": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "87fb0238274044dd79f57fca6e39b6665fc7b23478a595f086a09626ea870f7e",
+      "source": "observations-4/v2-normal.json"
+    },
+    "v2:preparation-corrupt": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "bcd4df3aa63f95d3258b0846790dee32d66df16f5d708399ad13a6409018b321",
+      "source": "observations-4/v2-preparation-corrupt.json"
+    },
+    "v2:retired": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "5acac711520af7f44300d496c154aed5bf878ea1f7951ec29d3d66e90329b471",
+      "source": "observations-4/v2-retired.json"
+    }
+  },
+  "original_head": "f2c7a6fe79ae246aa13f128a2d423a5c740e1134",
+  "original_sources": {
+    "src/loushang/coding/package_product_worker_gc_references.py": "e325fde0e88f5c2079b814c6af48b6b570c72265fab90bec196d5ba565741193",
+    "src/loushang/coding/package_product_worker_history_retention.py": "d70502fd399f69b01de92fc5e8a7bfb193b22455c3c4bd8d628000d61a4c25d5",
+    "src/loushang/coding/package_product_worker_posix_gc_history.py": "37c6040e01b4012e5c9aa46eec8e93e683a2676248ceb94fe9f525f5093798a7",
+    "src/loushang/coding/package_product_worker_receipt.py": "36a26fa92721892f8a4782d3e40c9a6ad833b741ffbbb718081bd5ced20aaa84",
+    "src/loushang/coding/package_product_worker_registered_payload_repair.py": "f15543141776cb0f13fcac07f182f012ef3f81f4e925b55f9d879148c389207d",
+    "src/loushang/coding/package_product_worker_start_gate_recovery.py": "9628c983845b3a4849703edf730fb27ca924fafa57c36d74fe9c5b197d82d71b"
+  },
+  "reflection": {
+    "CodingWorkerAttemptReferenceV1": {
+      "annotations": {
+        "attempt_id": "str",
+        "gate_phase": "Literal['intent', 'bound']",
+        "gate_revision": "int",
+        "native_platform": "Literal['linux']",
+        "plugin_id": "str",
+        "receipt_fingerprint": "str",
+        "selected_locator_revision": "str",
+        "selected_package_revision_digest": "str"
+      },
+      "fields": [
+        "attempt_id",
+        "plugin_id",
+        "receipt_fingerprint",
+        "selected_package_revision_digest",
+        "selected_locator_revision",
+        "native_platform",
+        "gate_revision",
+        "gate_phase"
+      ],
+      "module": "loushang.coding.package_product_worker_history_retention",
+      "properties": {},
+      "qualname": "CodingWorkerAttemptReferenceV1",
+      "signature": "(attempt_id: 'str', plugin_id: 'str', receipt_fingerprint: 'str', selected_package_revision_digest: 'str', selected_locator_revision: 'str', native_platform: \"Literal['linux']\", gate_revision: 'int', gate_phase: \"Literal['intent', 'bound']\") -> None",
+      "slots": [
+        "attempt_id",
+        "plugin_id",
+        "receipt_fingerprint",
+        "selected_package_revision_digest",
+        "selected_locator_revision",
+        "native_platform",
+        "gate_revision",
+        "gate_phase"
+      ]
+    },
+    "CodingWorkerGatedRecoveryReviewV1": {
+      "annotations": {
+        "attempt_id": "str",
+        "attempt_record": "WorkerAttemptRecordV1 | None",
+        "gate_record": "CodingWorkerStartGateRecordV1 | None",
+        "group_status": "GatedGroupStatus",
+        "native_closure_current": "bool"
+      },
+      "fields": [
+        "attempt_id",
+        "gate_record",
+        "attempt_record",
+        "native_closure_current",
+        "group_status"
+      ],
+      "module": "loushang.coding.package_product_worker_start_gate_recovery",
+      "properties": {},
+      "qualname": "CodingWorkerGatedRecoveryReviewV1",
+      "signature": "(attempt_id: 'str', gate_record: 'CodingWorkerStartGateRecordV1 | None', attempt_record: 'WorkerAttemptRecordV1 | None', native_closure_current: 'bool', group_status: 'GatedGroupStatus') -> None",
+      "slots": [
+        "attempt_id",
+        "gate_record",
+        "attempt_record",
+        "native_closure_current",
+        "group_status"
+      ]
+    },
+    "CodingWorkerHistoryRetentionReviewV1": {
+      "annotations": {
+        "activation_state_revision": "int | None",
+        "active_activation_references": "tuple[tuple[str, str], ...]",
+        "active_gc_reservation_count": "int",
+        "active_runtime_lease_ids": "tuple[str, ...]",
+        "attempt_id": "str",
+        "attempt_record": "WorkerAttemptRecordV1 | None",
+        "current_opt_in": "CodingWorkerOptInDecisionV1 | None",
+        "gate_record": "CodingWorkerStartGateRecordV1 | None",
+        "gc_matching_revision_refs": "tuple[PluginPackageRevisionRefV1, ...]",
+        "gc_reservation_revision": "int",
+        "global_activation_reference_ids_match": "bool",
+        "global_unverified_activation_references": "tuple[tuple[str, str], ...]",
+        "global_unverified_opt_in_references": "tuple[tuple[str, str], ...]",
+        "global_unverified_receipt_gate_references": "tuple[tuple[str, str], ...]",
+        "group_status": "GatedGroupStatus",
+        "historical_opt_in_verified": "bool",
+        "history_stream_revisions_match": "bool",
+        "history_stream_snapshots": "tuple[CodingWorkerHistoryStreamSnapshotV1, ...]",
+        "opt_in_generation_high_water": "tuple[tuple[str, int, int, str, str], ...]",
+        "opt_in_history_revision": "int",
+        "payload_stage_names": "tuple[str, ...]",
+        "receipt_gate_references": "tuple[str, ...]",
+        "receipt_history_revision": "int",
+        "receipt_record": "CodingWorkerReceiptRecordV1 | None",
+        "receipt_references_verified": "bool",
+        "registered_repair_reference_verified": "bool",
+        "retained_activation_references": "tuple[CodingProductWorkerRetainedAttemptV1, ...]",
+        "retained_opt_in_operation_ids": "tuple[str, ...]",
+        "retained_payload_repair_reference_names": "tuple[str, ...]",
+        "retained_receipt_fingerprints": "tuple[str, ...]",
+        "retained_start_gate_attempt_ids": "tuple[str, ...]",
+        "retained_supervisor_attempt_ids": "tuple[str, ...]",
+        "start_gate_history_revision": "int",
+        "supervisor_epoch_high_water": "tuple[tuple[str, int], ...]",
+        "supervisor_history_revision": "int",
+        "unbound_supervisor_attempt_ids": "tuple[str, ...]",
+        "unrecognized_worker_state_names": "tuple[str, ...]",
+        "unsettled_receipt_gate_references": "tuple[str, ...]",
+        "unverified_activation_references": "tuple[tuple[str, str], ...]",
+        "unverified_receipt_gate_references": "tuple[tuple[str, str], ...]",
+        "worker_backup_references": "CodingWorkerBackupReferenceObservationV1 | None"
+      },
+      "fields": [
+        "attempt_id",
+        "gate_record",
+        "attempt_record",
+        "receipt_record",
+        "current_opt_in",
+        "historical_opt_in_verified",
+        "group_status",
+        "opt_in_history_revision",
+        "retained_opt_in_operation_ids",
+        "opt_in_generation_high_water",
+        "start_gate_history_revision",
+        "supervisor_history_revision",
+        "receipt_history_revision",
+        "retained_start_gate_attempt_ids",
+        "retained_supervisor_attempt_ids",
+        "retained_receipt_fingerprints",
+        "history_stream_snapshots",
+        "history_stream_revisions_match",
+        "supervisor_epoch_high_water",
+        "unbound_supervisor_attempt_ids",
+        "activation_state_revision",
+        "active_activation_references",
+        "retained_activation_references",
+        "global_activation_reference_ids_match",
+        "unverified_activation_references",
+        "global_unverified_activation_references",
+        "global_unverified_opt_in_references",
+        "receipt_gate_references",
+        "unsettled_receipt_gate_references",
+        "unverified_receipt_gate_references",
+        "global_unverified_receipt_gate_references",
+        "receipt_references_verified",
+        "payload_stage_names",
+        "retained_payload_repair_reference_names",
+        "registered_repair_reference_verified",
+        "unrecognized_worker_state_names",
+        "active_runtime_lease_ids",
+        "active_gc_reservation_count",
+        "gc_reservation_revision",
+        "gc_matching_revision_refs",
+        "worker_backup_references"
+      ],
+      "module": "loushang.coding.package_product_worker_history_retention",
+      "properties": {
+        "attempt_reference": "(self) -> 'CodingWorkerAttemptReferenceV1 | None'",
+        "missing_proofs": "(self) -> 'tuple[str, ...]'",
+        "no_effect_closure": "(self) -> 'bool'"
+      },
+      "qualname": "CodingWorkerHistoryRetentionReviewV1",
+      "signature": "(attempt_id: 'str', gate_record: 'CodingWorkerStartGateRecordV1 | None', attempt_record: 'WorkerAttemptRecordV1 | None', receipt_record: 'CodingWorkerReceiptRecordV1 | None', current_opt_in: 'CodingWorkerOptInDecisionV1 | None', historical_opt_in_verified: 'bool', group_status: 'GatedGroupStatus', opt_in_history_revision: 'int', retained_opt_in_operation_ids: 'tuple[str, ...]', opt_in_generation_high_water: 'tuple[tuple[str, int, int, str, str], ...]', start_gate_history_revision: 'int', supervisor_history_revision: 'int', receipt_history_revision: 'int', retained_start_gate_attempt_ids: 'tuple[str, ...]', retained_supervisor_attempt_ids: 'tuple[str, ...]', retained_receipt_fingerprints: 'tuple[str, ...]', history_stream_snapshots: 'tuple[CodingWorkerHistoryStreamSnapshotV1, ...]', history_stream_revisions_match: 'bool', supervisor_epoch_high_water: 'tuple[tuple[str, int], ...]', unbound_supervisor_attempt_ids: 'tuple[str, ...]', activation_state_revision: 'int | None', active_activation_references: 'tuple[tuple[str, str], ...]', retained_activation_references: 'tuple[CodingProductWorkerRetainedAttemptV1, ...]', global_activation_reference_ids_match: 'bool', unverified_activation_references: 'tuple[tuple[str, str], ...]', global_unverified_activation_references: 'tuple[tuple[str, str], ...]', global_unverified_opt_in_references: 'tuple[tuple[str, str], ...]', receipt_gate_references: 'tuple[str, ...]', unsettled_receipt_gate_references: 'tuple[str, ...]', unverified_receipt_gate_references: 'tuple[tuple[str, str], ...]', global_unverified_receipt_gate_references: 'tuple[tuple[str, str], ...]', receipt_references_verified: 'bool', payload_stage_names: 'tuple[str, ...]', retained_payload_repair_reference_names: 'tuple[str, ...]', registered_repair_reference_verified: 'bool', unrecognized_worker_state_names: 'tuple[str, ...]', active_runtime_lease_ids: 'tuple[str, ...]', active_gc_reservation_count: 'int', gc_reservation_revision: 'int', gc_matching_revision_refs: 'tuple[PluginPackageRevisionRefV1, ...]', worker_backup_references: 'CodingWorkerBackupReferenceObservationV1 | None') -> None",
+      "slots": [
+        "attempt_id",
+        "gate_record",
+        "attempt_record",
+        "receipt_record",
+        "current_opt_in",
+        "historical_opt_in_verified",
+        "group_status",
+        "opt_in_history_revision",
+        "retained_opt_in_operation_ids",
+        "opt_in_generation_high_water",
+        "start_gate_history_revision",
+        "supervisor_history_revision",
+        "receipt_history_revision",
+        "retained_start_gate_attempt_ids",
+        "retained_supervisor_attempt_ids",
+        "retained_receipt_fingerprints",
+        "history_stream_snapshots",
+        "history_stream_revisions_match",
+        "supervisor_epoch_high_water",
+        "unbound_supervisor_attempt_ids",
+        "activation_state_revision",
+        "active_activation_references",
+        "retained_activation_references",
+        "global_activation_reference_ids_match",
+        "unverified_activation_references",
+        "global_unverified_activation_references",
+        "global_unverified_opt_in_references",
+        "receipt_gate_references",
+        "unsettled_receipt_gate_references",
+        "unverified_receipt_gate_references",
+        "global_unverified_receipt_gate_references",
+        "receipt_references_verified",
+        "payload_stage_names",
+        "retained_payload_repair_reference_names",
+        "registered_repair_reference_verified",
+        "unrecognized_worker_state_names",
+        "active_runtime_lease_ids",
+        "active_gc_reservation_count",
+        "gc_reservation_revision",
+        "gc_matching_revision_refs",
+        "worker_backup_references"
+      ]
+    }
+  }
+}
