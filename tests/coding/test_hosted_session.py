@@ -14,7 +14,7 @@ from loushang.agent import synthetic_model_transport
 from loushang.ai.api_registry import get_default_api_registry
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import AssistantMessage, TextPart, Usage
+from loushang.ai.types import AssistantMessage, TextPart, ThinkingPart, ToolCall, Usage
 from loushang.apphost import (
     SessionBindingKeyV1,
     SessionCreateIntentV1,
@@ -153,6 +153,60 @@ async def _binding(tmp_path: Path, model: Model | None = None, **kwargs):
     await claimed.close()
     await candidate.close()
     return binding
+
+
+def test_tool_only_rounds_stay_in_history_without_empty_hosted_messages(tmp_path: Path) -> None:
+    progress = "Checking available sources."
+    tool_only = [
+        ThinkingPart(type="thinking", thinking="Inspect the next source"),
+        ToolCall(type="toolCall", id="lookup-2", name="unused_tool", arguments={}),
+    ]
+    content = iter((
+        [
+            TextPart(type="text", text=progress),
+            ToolCall(type="toolCall", id="lookup-1", name="unused_tool", arguments={}),
+        ],
+        tool_only,
+    ))
+
+    @synthetic_model_transport
+    async def stream(model, context, options=None):
+        result = await _stream(model, context, options)
+        parts = next(content, None)
+        if parts is None:
+            return result
+        message = replace(await result.result(), content=parts, stop_reason="toolUse")
+        tool_turn = AssistantMessageEventStream()
+        tool_turn.push({"type": "done", "reason": "toolUse", "message": message})
+        return tool_turn
+
+    async def scenario():
+        binding = await _binding(tmp_path, stream_fn=stream)
+        hosted = CodingHostedExecutionSessionV1(binding)
+        events = []
+        hosted.subscribe(events.append)
+        try:
+            hosted.start_execution(ExecutionRequestV1("lookup", "Check the sources."))
+            outcome = await asyncio.wait_for(hosted.wait_execution("lookup"), timeout=5)
+            assert outcome.status is ExecutionStatusV1.SUCCEEDED
+            expected = ["Check the sources.", progress, "real Coding response"]
+            snapshot = (await hosted.snapshot_execution()).source
+            assert [row.text for row in snapshot.records] == expected
+            assert [event.text for event in events if event.kind is SessionEventKindV1.ASSISTANT_MESSAGE] == expected[1:]
+            path = binding.control.session_manager.session_file
+            assert path is not None
+        finally:
+            await hosted.close()
+
+        history = read_coding_resume_snapshot(path, max_bytes=1024 * 1024)
+        assert any(
+            isinstance(entry.payload, AssistantMessage) and entry.payload.content == tool_only
+            for entry in history.records
+        )
+        restored = CodingHostedHistoryBindingV1(binding.identity, history)
+        assert [row.text for row in restored.project_snapshot().records[:-1]] == expected
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.parametrize("first_title", ["工作区连接诊断", "标题" * 40])

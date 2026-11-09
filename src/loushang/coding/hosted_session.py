@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, cast
 
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection
-from loushang.ai.types import AssistantMessage, UserMessage
+from loushang.ai.types import AssistantMessage, ToolCall, UserMessage
 from loushang.apphost import SessionBindingKeyV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -606,11 +606,19 @@ def _session_title(
 def _message_record(message: object) -> TranscriptRecordV1 | None:
     if not isinstance(message, UserMessage | AssistantMessage):
         return None
+    text = _message_text(message)
+    if (
+        isinstance(message, AssistantMessage)
+        and message.stop_reason not in {"error", "aborted"}
+        and not text
+        and any(isinstance(part, ToolCall) for part in message.content)
+    ):
+        return None
     return TranscriptRecordV1(
         TranscriptRecordKindV1.USER
         if isinstance(message, UserMessage)
         else TranscriptRecordKindV1.ASSISTANT,
-        _bounded(_message_text(message)),
+        _bounded(text),
     )
 
 
