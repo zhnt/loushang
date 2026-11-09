@@ -2,16 +2,31 @@
 
 from __future__ import annotations
 
+import secrets
 from collections.abc import Callable
-from typing import Literal
+from typing import Literal, Protocol
 
-from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
+from loushang.harness.plugin_management.records import (
+    PluginInstallationKeyV1,
+    PluginInstallationStateV1,
+)
+from loushang.harness.plugin_management.updates import PluginUpdateOperationEventV2
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
     PackageCommittedSetJournal,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.journal import (
+    PackageLifecycleJournal,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    PackageLifecycleRequestV2,
 )
 from loushang.harness.resources.packages.product_contract import (
     PackageProductEntrypoint,
     PackageProductLifecycleIntentV1,
+)
+from loushang.harness.resources.packages.product_handoff import (
+    package_product_command_identity,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
@@ -253,3 +268,108 @@ def _run_worker_candidate_lifecycle(
         return routed.record.lifecycle, inventory_revision
     finally:
         runtime.dispose_runtime()
+
+
+class _WorkerCandidateUpdateInput(Protocol):
+    @property
+    def plugin_id(self) -> str: ...
+
+    @property
+    def operation_id(self) -> str: ...
+
+    @property
+    def artifact_digest(self) -> str: ...
+
+    @property
+    def from_artifact_digest(self) -> str: ...
+
+    @property
+    def expected_inventory_revision(self) -> int: ...
+
+
+def _update_worker_candidate(
+    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+    binding: PackageProductLocalWheelBindingV1,
+    snapshot: PluginDesiredStateSnapshotV1,
+    selected: PluginInstallationStateV1 | None,
+    request: _WorkerCandidateUpdateInput,
+    *,
+    product_id: str,
+    label: str,
+    require_revoked: Callable[[], None],
+    error_type: Callable[[str, str], Exception],
+    error_code: str,
+    post_selection_error_type: Callable[[str, str], Exception] | None = None,
+) -> tuple[str, int, bool]:
+    """Prove an exact retry or update through the original lifecycle authorities.
+
+    Selection-count policy remains at the caller. The deferred guard supplies
+    one Product opt-in decision and never drives a lifecycle phase.
+    """
+    selected_revision = (
+        None if selected is None else selected.selection.package_revision
+    )
+    lifecycle_request = PackageLifecycleJournal(
+        product.state_root / "lifecycle.jsonl"
+    ).request(request.operation_id)
+    prior_update = None
+    if (
+        isinstance(lifecycle_request, PackageLifecycleRequestV2)
+        and lifecycle_request.action == "update"
+        and lifecycle_request.requested_plugin_id == request.plugin_id
+        and lifecycle_request.canonical_source_identity == binding.source_identity
+    ):
+        command_id, _ = package_product_command_identity(
+            request.operation_id, lifecycle_request.request_fingerprint
+        )
+        prior_update = product.management.operation(command_id)
+    if (
+        isinstance(prior_update, PluginUpdateOperationEventV2)
+        and selected is not None
+        and selected_revision is not None
+        and prior_update.status == "terminal"
+        and prior_update.result is not None
+        and prior_update.result.disposition in {"succeeded", "restart_required"}
+        and prior_update.result.transition is not None
+        and prior_update.command.installation_key == selected.installation_key
+        and prior_update.command.expected_inventory_revision
+        == request.expected_inventory_revision
+        and prior_update.command.expected_package_revision.package_content_digest
+        == request.from_artifact_digest
+        and prior_update.command.staged_package_revision.package_source_identity
+        == binding.source_identity
+        and prior_update.command.staged_package_revision.package_content_digest
+        == request.artifact_digest
+        and prior_update.result.transition.committed_state == selected
+        and prior_update.result.transition.inventory_revision
+        == snapshot.inventory_revision
+    ):
+        require_revoked()
+        return ("installed", snapshot.inventory_revision, True)
+    if (
+        snapshot.inventory_revision != request.expected_inventory_revision
+        or selected is None
+        or selected_revision is None
+        or selected_revision.package_content_digest != request.from_artifact_digest
+        or request.from_artifact_digest == request.artifact_digest
+        or selected.selection.desired_state
+        not in {"installed_enabled", "installed_disabled"}
+    ):
+        raise error_type(error_code, f"{label} candidate update selection changed")
+    require_revoked()
+    session_id = f"worker-candidate-update-{secrets.token_hex(16)}"
+    lifecycle, inventory_revision = _run_worker_candidate_lifecycle(
+        product,
+        binding,
+        product_id=product_id,
+        plugin_id=request.plugin_id,
+        operation_id=request.operation_id,
+        session_id=session_id,
+        action="update",
+        label=label,
+        entrypoint="cli",
+        selected_key=selected.installation_key,
+        update_error_type=post_selection_error_type,
+        update_error_code=error_code,
+    )
+    return (lifecycle, inventory_revision, False)

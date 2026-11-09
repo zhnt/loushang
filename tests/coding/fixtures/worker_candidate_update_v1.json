@@ -1,0 +1,4648 @@
+{
+  "observations": {
+    "linux-activate-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-activate",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "linux-allow": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_opt_in_revoke_required",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate opt-in must be revoked",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ]
+      ]
+    },
+    "linux-ambiguous-binding": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate is unavailable or ambiguous",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": []
+    },
+    "linux-create-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-create",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "unbound"
+        ]
+      ]
+    },
+    "linux-create-error+unbound-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": {
+          "cause": null,
+          "code": null,
+          "context": null,
+          "id": 1,
+          "message": "injected-create",
+          "notes": [],
+          "suppress": false,
+          "type": "RuntimeError"
+        },
+        "id": 0,
+        "message": "injected-unbound",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "unbound"
+        ]
+      ]
+    },
+    "linux-current-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-current",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ]
+      ]
+    },
+    "linux-disable-existing": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "2335906d20b012e762a2441645ef42980e5b8f3408003559d5d42154f3e31f06",
+        "operations.jsonl": "21287bedeae5a706d1191ca6592609932a0704bcbb541dd7bcc50d788b00aa56"
+      },
+      "result": {
+        "candidateManagementOperation": {
+          "command": {
+            "action": "disable",
+            "commandVersion": 1,
+            "mutation": {
+              "actorId": "actor",
+              "approvalReference": null,
+              "desiredState": "installed_disabled",
+              "expectedInventoryRevision": 1,
+              "idempotencyKey": "update",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "workerprobe",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "scope"
+              },
+              "operationId": "update",
+              "packageRevision": null,
+              "policyRevision": "policy",
+              "schemaVersion": 1
+            }
+          },
+          "compensationState": "not_required",
+          "journalRevision": 6,
+          "operationRevision": 3,
+          "progressCode": "desired_state_committed",
+          "recordVersion": 1,
+          "result": {
+            "disposition": "succeeded",
+            "errorCode": null,
+            "resultVersion": 1,
+            "transition": {
+              "committedState": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "latestInstanceRevisionRef": null,
+                "schemaVersion": 1,
+                "selection": {
+                  "desiredState": "installed_disabled",
+                  "instanceRevisionRef": null,
+                  "packageRevision": {
+                    "dependencyLockDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+                    "packageContentDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+                    "packageSourceIdentity": "/worker/old.whl",
+                    "pluginId": "workerprobe",
+                    "pluginVersion": "1",
+                    "schemaVersion": 1
+                  },
+                  "schemaVersion": 1
+                }
+              },
+              "inventoryRevision": 2,
+              "mutation": {
+                "actorId": "actor",
+                "approvalReference": null,
+                "desiredState": "installed_disabled",
+                "expectedInventoryRevision": 1,
+                "idempotencyKey": "update",
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "operationId": "update",
+                "packageRevision": null,
+                "policyRevision": "policy",
+                "schemaVersion": 1
+              },
+              "previousState": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "latestInstanceRevisionRef": null,
+                "schemaVersion": 1,
+                "selection": {
+                  "desiredState": "installed_disabled",
+                  "instanceRevisionRef": null,
+                  "packageRevision": {
+                    "dependencyLockDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+                    "packageContentDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+                    "packageSourceIdentity": "/worker/old.whl",
+                    "pluginId": "workerprobe",
+                    "pluginVersion": "1",
+                    "schemaVersion": 1
+                  },
+                  "schemaVersion": 1
+                }
+              },
+              "recordVersion": 1,
+              "transitionKind": "unchanged"
+            }
+          },
+          "status": "terminal"
+        },
+        "inventoryRevision": 2,
+        "productSelection": "not_checked",
+        "productUse": "not_checked"
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "submit",
+          {
+            "action": "disable",
+            "commandVersion": 1,
+            "mutation": {
+              "actorId": "actor",
+              "approvalReference": null,
+              "desiredState": "installed_disabled",
+              "expectedInventoryRevision": 1,
+              "idempotencyKey": "update",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "workerprobe",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "scope"
+              },
+              "operationId": "update",
+              "packageRevision": null,
+              "policyRevision": "policy",
+              "schemaVersion": 1
+            }
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ]
+      ]
+    },
+    "linux-dispose-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-dispose",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "linux-enable-existing": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "f80c0f58b57329f086f8c55d5147130ac6e0c64e46b130b839d5bd736b098096",
+        "operations.jsonl": "9ced4566fa09c64e0a1e917f3d515b9d726067ac1d46d11495663db086ac75f3"
+      },
+      "result": {
+        "candidateManagementOperation": {
+          "command": {
+            "action": "enable",
+            "commandVersion": 1,
+            "mutation": {
+              "actorId": "actor",
+              "approvalReference": null,
+              "desiredState": "installed_enabled",
+              "expectedInventoryRevision": 1,
+              "idempotencyKey": "update",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "workerprobe",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "scope"
+              },
+              "operationId": "update",
+              "packageRevision": null,
+              "policyRevision": "policy",
+              "schemaVersion": 1
+            }
+          },
+          "compensationState": "not_required",
+          "journalRevision": 6,
+          "operationRevision": 3,
+          "progressCode": "desired_state_committed",
+          "recordVersion": 1,
+          "result": {
+            "disposition": "succeeded",
+            "errorCode": null,
+            "resultVersion": 1,
+            "transition": {
+              "committedState": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "latestInstanceRevisionRef": {
+                  "instanceId": "instance",
+                  "pluginId": "workerprobe",
+                  "revision": 1
+                },
+                "schemaVersion": 1,
+                "selection": {
+                  "desiredState": "installed_enabled",
+                  "instanceRevisionRef": {
+                    "instanceId": "instance",
+                    "pluginId": "workerprobe",
+                    "revision": 1
+                  },
+                  "packageRevision": {
+                    "dependencyLockDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+                    "packageContentDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+                    "packageSourceIdentity": "/worker/old.whl",
+                    "pluginId": "workerprobe",
+                    "pluginVersion": "1",
+                    "schemaVersion": 1
+                  },
+                  "schemaVersion": 1
+                }
+              },
+              "inventoryRevision": 2,
+              "mutation": {
+                "actorId": "actor",
+                "approvalReference": null,
+                "desiredState": "installed_enabled",
+                "expectedInventoryRevision": 1,
+                "idempotencyKey": "update",
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "operationId": "update",
+                "packageRevision": null,
+                "policyRevision": "policy",
+                "schemaVersion": 1
+              },
+              "previousState": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "latestInstanceRevisionRef": null,
+                "schemaVersion": 1,
+                "selection": {
+                  "desiredState": "installed_disabled",
+                  "instanceRevisionRef": null,
+                  "packageRevision": {
+                    "dependencyLockDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+                    "packageContentDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+                    "packageSourceIdentity": "/worker/old.whl",
+                    "pluginId": "workerprobe",
+                    "pluginVersion": "1",
+                    "schemaVersion": 1
+                  },
+                  "schemaVersion": 1
+                }
+              },
+              "recordVersion": 1,
+              "transitionKind": "enable"
+            }
+          },
+          "status": "terminal"
+        },
+        "inventoryRevision": 2,
+        "productSelection": "not_checked",
+        "productUse": "not_checked"
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "submit",
+          {
+            "action": "enable",
+            "commandVersion": 1,
+            "mutation": {
+              "actorId": "actor",
+              "approvalReference": null,
+              "desiredState": "installed_enabled",
+              "expectedInventoryRevision": 1,
+              "idempotencyKey": "update",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "workerprobe",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "scope"
+              },
+              "operationId": "update",
+              "packageRevision": null,
+              "policyRevision": "policy",
+              "schemaVersion": 1
+            }
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ]
+      ]
+    },
+    "linux-factory-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-factory",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ]
+      ]
+    },
+    "linux-fresh": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": {
+        "candidateUpdate": {
+          "alreadyUpdated": false,
+          "artifactDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "fromArtifactDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "inventoryRevision": 2,
+          "lifecycle": "installed",
+          "pluginId": "workerprobe"
+        },
+        "productAdmission": "installed",
+        "productSelection": "not_checked",
+        "productUse": "not_checked"
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "linux-fresh-enabled": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "a67c53c827aa234fb4f29cb244a51ff1c039a87d63149eec238b96615139ae0c",
+        "operations.jsonl": "41ef921d4c41f09d85439e8e79d611c980f3e4a40b46e6a190570885f3519ffc"
+      },
+      "result": {
+        "candidateUpdate": {
+          "alreadyUpdated": false,
+          "artifactDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "fromArtifactDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "inventoryRevision": 3,
+          "lifecycle": "installed",
+          "pluginId": "workerprobe"
+        },
+        "productAdmission": "installed",
+        "productSelection": "not_checked",
+        "productUse": "not_checked"
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "linux-from-mismatch": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-install-existing": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": {
+        "candidateInstall": {
+          "alreadyInstalled": true,
+          "artifactDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "inventoryRevision": 1,
+          "lifecycle": "installed",
+          "pluginId": "workerprobe"
+        },
+        "productAdmission": "installed",
+        "productSelection": "not_checked",
+        "productUse": "not_checked"
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ]
+      ]
+    },
+    "linux-missing-selection": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {},
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-multiple-selection": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate installation is ambiguous",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "files": {
+        "desired.jsonl": "0638a0410ffcac5dc8de78b48e56dc7186f901dd949e7600ddf71394239ae01e",
+        "operations.jsonl": "7c7ebec2f51b1ed61451fcdcbde8db5a0a8f20494caa4ea42e12599a2c478457"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ]
+      ]
+    },
+    "linux-operation-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-operation",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-owner-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-owner",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ]
+      ]
+    },
+    "linux-post-snapshot-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-post-snapshot",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "linux-remove-existing": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "16ca029575df828b21dbdf8ddf58c740b110b7defc055821d229423f2f41ee29",
+        "operations.jsonl": "184e1cec0b57a7a20117fa5825a67fc16bd6aecd5a99f9fb2596c2d8cb5019c8"
+      },
+      "result": {
+        "candidateManagementOperation": {
+          "command": {
+            "action": "remove",
+            "commandVersion": 1,
+            "mutation": {
+              "actorId": "actor",
+              "approvalReference": null,
+              "desiredState": "absent",
+              "expectedInventoryRevision": 1,
+              "idempotencyKey": "update",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "workerprobe",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "scope"
+              },
+              "operationId": "update",
+              "packageRevision": null,
+              "policyRevision": "policy",
+              "schemaVersion": 1
+            }
+          },
+          "compensationState": "not_required",
+          "journalRevision": 6,
+          "operationRevision": 3,
+          "progressCode": "desired_state_committed",
+          "recordVersion": 1,
+          "result": {
+            "disposition": "succeeded",
+            "errorCode": null,
+            "resultVersion": 1,
+            "transition": {
+              "committedState": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "latestInstanceRevisionRef": null,
+                "schemaVersion": 1,
+                "selection": {
+                  "desiredState": "absent",
+                  "instanceRevisionRef": null,
+                  "packageRevision": null,
+                  "schemaVersion": 1
+                }
+              },
+              "inventoryRevision": 2,
+              "mutation": {
+                "actorId": "actor",
+                "approvalReference": null,
+                "desiredState": "absent",
+                "expectedInventoryRevision": 1,
+                "idempotencyKey": "update",
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "operationId": "update",
+                "packageRevision": null,
+                "policyRevision": "policy",
+                "schemaVersion": 1
+              },
+              "previousState": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "latestInstanceRevisionRef": null,
+                "schemaVersion": 1,
+                "selection": {
+                  "desiredState": "installed_disabled",
+                  "instanceRevisionRef": null,
+                  "packageRevision": {
+                    "dependencyLockDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+                    "packageContentDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+                    "packageSourceIdentity": "/worker/old.whl",
+                    "pluginId": "workerprobe",
+                    "pluginVersion": "1",
+                    "schemaVersion": 1
+                  },
+                  "schemaVersion": 1
+                }
+              },
+              "recordVersion": 1,
+              "transitionKind": "remove"
+            }
+          },
+          "status": "terminal"
+        },
+        "inventoryRevision": 2,
+        "packageRetirement": "not_checked",
+        "productSelection": "not_checked",
+        "productUse": "not_checked"
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "submit",
+          {
+            "action": "remove",
+            "commandVersion": 1,
+            "mutation": {
+              "actorId": "actor",
+              "approvalReference": null,
+              "desiredState": "absent",
+              "expectedInventoryRevision": 1,
+              "idempotencyKey": "update",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "workerprobe",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "scope"
+              },
+              "operationId": "update",
+              "packageRevision": null,
+              "policyRevision": "policy",
+              "schemaVersion": 1
+            }
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ]
+      ]
+    },
+    "linux-removed": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "f144daeb636e87daa20aee35c2ca8e99a69038d09eac1d3d3fffa7805c0b972c",
+        "operations.jsonl": "0cf1487dd04ef00f25c8d3f8e6ca6caa041394fbd79fb90ca5647ea2dcc18769"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-request-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-request",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ]
+      ]
+    },
+    "linux-retry": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": {
+        "candidateUpdate": {
+          "alreadyUpdated": true,
+          "artifactDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "fromArtifactDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "inventoryRevision": 2,
+          "lifecycle": "installed",
+          "pluginId": "workerprobe"
+        },
+        "productAdmission": "installed",
+        "productSelection": "not_checked",
+        "productUse": "not_checked"
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ]
+      ]
+    },
+    "linux-retry-accepted": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-retry-allow": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_opt_in_revoke_required",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate opt-in must be revoked",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ]
+      ]
+    },
+    "linux-retry-enabled": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "a67c53c827aa234fb4f29cb244a51ff1c039a87d63149eec238b96615139ae0c",
+        "operations.jsonl": "41ef921d4c41f09d85439e8e79d611c980f3e4a40b46e6a190570885f3519ffc"
+      },
+      "result": {
+        "candidateUpdate": {
+          "alreadyUpdated": true,
+          "artifactDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "fromArtifactDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "inventoryRevision": 3,
+          "lifecycle": "installed",
+          "pluginId": "workerprobe"
+        },
+        "productAdmission": "installed",
+        "productSelection": "not_checked",
+        "productUse": "not_checked"
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ]
+      ]
+    },
+    "linux-retry-expect": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-retry-failed": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-retry-from": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-retry-inventory": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-retry-key": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-retry-request-absent": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ]
+      ]
+    },
+    "linux-retry-request-action": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ]
+      ]
+    },
+    "linux-retry-request-plugin": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ]
+      ]
+    },
+    "linux-retry-request-source": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ]
+      ]
+    },
+    "linux-retry-request-v1": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ]
+      ]
+    },
+    "linux-retry-running": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-retry-source": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "alternate-desired.jsonl": "122101a207979cd9b107a5cc1c9be3d9f3b050b783bb17d93a1db8df43075048",
+        "alternate-operations.jsonl": "4662250e249cea15de07762560e1ba7bd78602ae8aa5f2ebb27aa8ca1822b07f",
+        "desired.jsonl": "cb7994d62936d434e38062643325d68eec520be2e43fc6e42718056c8309d629",
+        "operations.jsonl": "1e8cb4772b28317d5a6cdf6e340de42269eb3667716b09b6d1814fb62c18ea32"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:686c993715c875729e75859bf5a6522e0ee43591475bbd7471e804e14e1b0abe"
+        ]
+      ]
+    },
+    "linux-retry-state": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-retry-target": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-route-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-route",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "linux-route-error+dispose-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": {
+          "cause": null,
+          "code": null,
+          "context": null,
+          "id": 1,
+          "message": "injected-route",
+          "notes": [],
+          "suppress": false,
+          "type": "RuntimeError"
+        },
+        "id": 0,
+        "message": "injected-dispose",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "linux-route-refused": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update did not settle",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "linux-same-artifact": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-selection-changed": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "linux-stale": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-stale-allow": {
+      "error": {
+        "cause": null,
+        "code": "coding_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "linux-token-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-token",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ]
+      ]
+    },
+    "windows-activate-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-activate",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "windows-allow": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_opt_in_revoke_required",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate opt-in must be revoked",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ]
+      ]
+    },
+    "windows-ambiguous-binding": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate is unavailable or ambiguous",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": []
+    },
+    "windows-create-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-create",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "unbound"
+        ]
+      ]
+    },
+    "windows-create-error+unbound-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": {
+          "cause": null,
+          "code": null,
+          "context": null,
+          "id": 1,
+          "message": "injected-create",
+          "notes": [],
+          "suppress": false,
+          "type": "RuntimeError"
+        },
+        "id": 0,
+        "message": "injected-unbound",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "unbound"
+        ]
+      ]
+    },
+    "windows-current-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-current",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ]
+      ]
+    },
+    "windows-disable-existing": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "2335906d20b012e762a2441645ef42980e5b8f3408003559d5d42154f3e31f06",
+        "operations.jsonl": "21287bedeae5a706d1191ca6592609932a0704bcbb541dd7bcc50d788b00aa56"
+      },
+      "result": {
+        "candidateManagementOperation": {
+          "command": {
+            "action": "disable",
+            "commandVersion": 1,
+            "mutation": {
+              "actorId": "actor",
+              "approvalReference": null,
+              "desiredState": "installed_disabled",
+              "expectedInventoryRevision": 1,
+              "idempotencyKey": "update",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "workerprobe",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "scope"
+              },
+              "operationId": "update",
+              "packageRevision": null,
+              "policyRevision": "policy",
+              "schemaVersion": 1
+            }
+          },
+          "compensationState": "not_required",
+          "journalRevision": 6,
+          "operationRevision": 3,
+          "progressCode": "desired_state_committed",
+          "recordVersion": 1,
+          "result": {
+            "disposition": "succeeded",
+            "errorCode": null,
+            "resultVersion": 1,
+            "transition": {
+              "committedState": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "latestInstanceRevisionRef": null,
+                "schemaVersion": 1,
+                "selection": {
+                  "desiredState": "installed_disabled",
+                  "instanceRevisionRef": null,
+                  "packageRevision": {
+                    "dependencyLockDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+                    "packageContentDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+                    "packageSourceIdentity": "/worker/old.whl",
+                    "pluginId": "workerprobe",
+                    "pluginVersion": "1",
+                    "schemaVersion": 1
+                  },
+                  "schemaVersion": 1
+                }
+              },
+              "inventoryRevision": 2,
+              "mutation": {
+                "actorId": "actor",
+                "approvalReference": null,
+                "desiredState": "installed_disabled",
+                "expectedInventoryRevision": 1,
+                "idempotencyKey": "update",
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "operationId": "update",
+                "packageRevision": null,
+                "policyRevision": "policy",
+                "schemaVersion": 1
+              },
+              "previousState": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "latestInstanceRevisionRef": null,
+                "schemaVersion": 1,
+                "selection": {
+                  "desiredState": "installed_disabled",
+                  "instanceRevisionRef": null,
+                  "packageRevision": {
+                    "dependencyLockDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+                    "packageContentDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+                    "packageSourceIdentity": "/worker/old.whl",
+                    "pluginId": "workerprobe",
+                    "pluginVersion": "1",
+                    "schemaVersion": 1
+                  },
+                  "schemaVersion": 1
+                }
+              },
+              "recordVersion": 1,
+              "transitionKind": "unchanged"
+            }
+          },
+          "status": "terminal"
+        },
+        "inventoryRevision": 2
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "submit",
+          {
+            "action": "disable",
+            "commandVersion": 1,
+            "mutation": {
+              "actorId": "actor",
+              "approvalReference": null,
+              "desiredState": "installed_disabled",
+              "expectedInventoryRevision": 1,
+              "idempotencyKey": "update",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "workerprobe",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "scope"
+              },
+              "operationId": "update",
+              "packageRevision": null,
+              "policyRevision": "policy",
+              "schemaVersion": 1
+            }
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ]
+      ]
+    },
+    "windows-dispose-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-dispose",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "windows-enable-existing": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "f80c0f58b57329f086f8c55d5147130ac6e0c64e46b130b839d5bd736b098096",
+        "operations.jsonl": "9ced4566fa09c64e0a1e917f3d515b9d726067ac1d46d11495663db086ac75f3"
+      },
+      "result": {
+        "candidateManagementOperation": {
+          "command": {
+            "action": "enable",
+            "commandVersion": 1,
+            "mutation": {
+              "actorId": "actor",
+              "approvalReference": null,
+              "desiredState": "installed_enabled",
+              "expectedInventoryRevision": 1,
+              "idempotencyKey": "update",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "workerprobe",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "scope"
+              },
+              "operationId": "update",
+              "packageRevision": null,
+              "policyRevision": "policy",
+              "schemaVersion": 1
+            }
+          },
+          "compensationState": "not_required",
+          "journalRevision": 6,
+          "operationRevision": 3,
+          "progressCode": "desired_state_committed",
+          "recordVersion": 1,
+          "result": {
+            "disposition": "succeeded",
+            "errorCode": null,
+            "resultVersion": 1,
+            "transition": {
+              "committedState": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "latestInstanceRevisionRef": {
+                  "instanceId": "instance",
+                  "pluginId": "workerprobe",
+                  "revision": 1
+                },
+                "schemaVersion": 1,
+                "selection": {
+                  "desiredState": "installed_enabled",
+                  "instanceRevisionRef": {
+                    "instanceId": "instance",
+                    "pluginId": "workerprobe",
+                    "revision": 1
+                  },
+                  "packageRevision": {
+                    "dependencyLockDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+                    "packageContentDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+                    "packageSourceIdentity": "/worker/old.whl",
+                    "pluginId": "workerprobe",
+                    "pluginVersion": "1",
+                    "schemaVersion": 1
+                  },
+                  "schemaVersion": 1
+                }
+              },
+              "inventoryRevision": 2,
+              "mutation": {
+                "actorId": "actor",
+                "approvalReference": null,
+                "desiredState": "installed_enabled",
+                "expectedInventoryRevision": 1,
+                "idempotencyKey": "update",
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "operationId": "update",
+                "packageRevision": null,
+                "policyRevision": "policy",
+                "schemaVersion": 1
+              },
+              "previousState": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "latestInstanceRevisionRef": null,
+                "schemaVersion": 1,
+                "selection": {
+                  "desiredState": "installed_disabled",
+                  "instanceRevisionRef": null,
+                  "packageRevision": {
+                    "dependencyLockDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+                    "packageContentDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+                    "packageSourceIdentity": "/worker/old.whl",
+                    "pluginId": "workerprobe",
+                    "pluginVersion": "1",
+                    "schemaVersion": 1
+                  },
+                  "schemaVersion": 1
+                }
+              },
+              "recordVersion": 1,
+              "transitionKind": "enable"
+            }
+          },
+          "status": "terminal"
+        },
+        "inventoryRevision": 2
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "submit",
+          {
+            "action": "enable",
+            "commandVersion": 1,
+            "mutation": {
+              "actorId": "actor",
+              "approvalReference": null,
+              "desiredState": "installed_enabled",
+              "expectedInventoryRevision": 1,
+              "idempotencyKey": "update",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "workerprobe",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "scope"
+              },
+              "operationId": "update",
+              "packageRevision": null,
+              "policyRevision": "policy",
+              "schemaVersion": 1
+            }
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ]
+      ]
+    },
+    "windows-factory-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-factory",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ]
+      ]
+    },
+    "windows-fresh": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": {
+        "candidateUpdate": {
+          "alreadyUpdated": false,
+          "artifactDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "fromArtifactDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "inventoryRevision": 2,
+          "pluginId": "workerprobe"
+        }
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "windows-fresh-enabled": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "a67c53c827aa234fb4f29cb244a51ff1c039a87d63149eec238b96615139ae0c",
+        "operations.jsonl": "41ef921d4c41f09d85439e8e79d611c980f3e4a40b46e6a190570885f3519ffc"
+      },
+      "result": {
+        "candidateUpdate": {
+          "alreadyUpdated": false,
+          "artifactDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "fromArtifactDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "inventoryRevision": 3,
+          "pluginId": "workerprobe"
+        }
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "windows-from-mismatch": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-install-existing": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": {
+        "candidateInstall": {
+          "alreadyInstalled": true,
+          "artifactDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "inventoryRevision": 1,
+          "pluginId": "workerprobe"
+        }
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ]
+      ]
+    },
+    "windows-missing-selection": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate installation changed",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "files": {},
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ]
+      ]
+    },
+    "windows-multiple-selection": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate installation changed",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "files": {
+        "desired.jsonl": "0638a0410ffcac5dc8de78b48e56dc7186f901dd949e7600ddf71394239ae01e",
+        "operations.jsonl": "7c7ebec2f51b1ed61451fcdcbde8db5a0a8f20494caa4ea42e12599a2c478457"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ]
+      ]
+    },
+    "windows-operation-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-operation",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-owner-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-owner",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ]
+      ]
+    },
+    "windows-post-snapshot-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-post-snapshot",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "windows-remove-existing": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "16ca029575df828b21dbdf8ddf58c740b110b7defc055821d229423f2f41ee29",
+        "operations.jsonl": "184e1cec0b57a7a20117fa5825a67fc16bd6aecd5a99f9fb2596c2d8cb5019c8"
+      },
+      "result": {
+        "candidateManagementOperation": {
+          "command": {
+            "action": "remove",
+            "commandVersion": 1,
+            "mutation": {
+              "actorId": "actor",
+              "approvalReference": null,
+              "desiredState": "absent",
+              "expectedInventoryRevision": 1,
+              "idempotencyKey": "update",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "workerprobe",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "scope"
+              },
+              "operationId": "update",
+              "packageRevision": null,
+              "policyRevision": "policy",
+              "schemaVersion": 1
+            }
+          },
+          "compensationState": "not_required",
+          "journalRevision": 6,
+          "operationRevision": 3,
+          "progressCode": "desired_state_committed",
+          "recordVersion": 1,
+          "result": {
+            "disposition": "succeeded",
+            "errorCode": null,
+            "resultVersion": 1,
+            "transition": {
+              "committedState": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "latestInstanceRevisionRef": null,
+                "schemaVersion": 1,
+                "selection": {
+                  "desiredState": "absent",
+                  "instanceRevisionRef": null,
+                  "packageRevision": null,
+                  "schemaVersion": 1
+                }
+              },
+              "inventoryRevision": 2,
+              "mutation": {
+                "actorId": "actor",
+                "approvalReference": null,
+                "desiredState": "absent",
+                "expectedInventoryRevision": 1,
+                "idempotencyKey": "update",
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "operationId": "update",
+                "packageRevision": null,
+                "policyRevision": "policy",
+                "schemaVersion": 1
+              },
+              "previousState": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "workerprobe",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "scope"
+                },
+                "latestInstanceRevisionRef": null,
+                "schemaVersion": 1,
+                "selection": {
+                  "desiredState": "installed_disabled",
+                  "instanceRevisionRef": null,
+                  "packageRevision": {
+                    "dependencyLockDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+                    "packageContentDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+                    "packageSourceIdentity": "/worker/old.whl",
+                    "pluginId": "workerprobe",
+                    "pluginVersion": "1",
+                    "schemaVersion": 1
+                  },
+                  "schemaVersion": 1
+                }
+              },
+              "recordVersion": 1,
+              "transitionKind": "remove"
+            }
+          },
+          "status": "terminal"
+        },
+        "inventoryRevision": 2,
+        "packageRetirement": "not_checked"
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "submit",
+          {
+            "action": "remove",
+            "commandVersion": 1,
+            "mutation": {
+              "actorId": "actor",
+              "approvalReference": null,
+              "desiredState": "absent",
+              "expectedInventoryRevision": 1,
+              "idempotencyKey": "update",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "workerprobe",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "scope"
+              },
+              "operationId": "update",
+              "packageRevision": null,
+              "policyRevision": "policy",
+              "schemaVersion": 1
+            }
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ]
+      ]
+    },
+    "windows-removed": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "f144daeb636e87daa20aee35c2ca8e99a69038d09eac1d3d3fffa7805c0b972c",
+        "operations.jsonl": "0cf1487dd04ef00f25c8d3f8e6ca6caa041394fbd79fb90ca5647ea2dcc18769"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-request-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-request",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ]
+      ]
+    },
+    "windows-retry": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": {
+        "candidateUpdate": {
+          "alreadyUpdated": true,
+          "artifactDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "fromArtifactDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "inventoryRevision": 2,
+          "pluginId": "workerprobe"
+        }
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ]
+      ]
+    },
+    "windows-retry-accepted": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-retry-allow": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_opt_in_revoke_required",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate opt-in must be revoked",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ]
+      ]
+    },
+    "windows-retry-enabled": {
+      "error": null,
+      "files": {
+        "desired.jsonl": "a67c53c827aa234fb4f29cb244a51ff1c039a87d63149eec238b96615139ae0c",
+        "operations.jsonl": "41ef921d4c41f09d85439e8e79d611c980f3e4a40b46e6a190570885f3519ffc"
+      },
+      "result": {
+        "candidateUpdate": {
+          "alreadyUpdated": true,
+          "artifactDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "fromArtifactDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "inventoryRevision": 3,
+          "pluginId": "workerprobe"
+        }
+      },
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ]
+      ]
+    },
+    "windows-retry-expect": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-retry-failed": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-retry-from": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-retry-inventory": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-retry-key": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-retry-request-absent": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ]
+      ]
+    },
+    "windows-retry-request-action": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ]
+      ]
+    },
+    "windows-retry-request-plugin": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ]
+      ]
+    },
+    "windows-retry-request-source": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ]
+      ]
+    },
+    "windows-retry-request-v1": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ]
+      ]
+    },
+    "windows-retry-running": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-retry-source": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "alternate-desired.jsonl": "122101a207979cd9b107a5cc1c9be3d9f3b050b783bb17d93a1db8df43075048",
+        "alternate-operations.jsonl": "4662250e249cea15de07762560e1ba7bd78602ae8aa5f2ebb27aa8ca1822b07f",
+        "desired.jsonl": "cb7994d62936d434e38062643325d68eec520be2e43fc6e42718056c8309d629",
+        "operations.jsonl": "1e8cb4772b28317d5a6cdf6e340de42269eb3667716b09b6d1814fb62c18ea32"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:686c993715c875729e75859bf5a6522e0ee43591475bbd7471e804e14e1b0abe"
+        ]
+      ]
+    },
+    "windows-retry-state": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-retry-target": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-route-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-route",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "windows-route-error+dispose-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": {
+          "cause": null,
+          "code": null,
+          "context": null,
+          "id": 1,
+          "message": "injected-route",
+          "notes": [],
+          "suppress": false,
+          "type": "RuntimeError"
+        },
+        "id": 0,
+        "message": "injected-dispose",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "windows-route-refused": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update did not settle",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "windows-same-artifact": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-selection-changed": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "files": {
+        "desired.jsonl": "cda1834ab5896ca719a7311a76383db09b3c147934d0a00807030402d51ab40a",
+        "operations.jsonl": "fedd1899e1c20f5082cac96badb8383f01d2e47bc0ac40b30de7f0c89bb320b5"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ],
+        [
+          "factory",
+          {
+            "cwd": "/workspace",
+            "runtime_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+            "session_id": "worker-candidate-update-ffffffffffffffffffffffffffffffff"
+          }
+        ],
+        [
+          "create",
+          "coding",
+          "worker-candidate-update-ffffffffffffffffffffffffffffffff",
+          "/workspace"
+        ],
+        [
+          "activate"
+        ],
+        [
+          "route",
+          "update",
+          "update",
+          "/worker/update.whl",
+          {
+            "entrypoint": "cli"
+          }
+        ],
+        [
+          "snapshot",
+          2
+        ],
+        [
+          "dispose"
+        ]
+      ]
+    },
+    "windows-stale": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-stale-allow": {
+      "error": {
+        "cause": null,
+        "code": "windows_worker_candidate_update_selection_stale",
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker candidate update selection changed",
+        "notes": [],
+        "suppress": false,
+        "type": "WindowsWorkerCandidateCommandError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ]
+      ]
+    },
+    "windows-token-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected-token",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "files": {
+        "desired.jsonl": "a1f987ebea3e00054adfdb11b8a13df307226ea3bbea7cdb9ac6f3050774f69e",
+        "operations.jsonl": "75bf30e2133e668653e320e4be486107e21003cd38322dab8848caf256522fc3"
+      },
+      "result": null,
+      "trace": [
+        [
+          "snapshot",
+          1
+        ],
+        [
+          "request",
+          "update"
+        ],
+        [
+          "operation",
+          "package:1ca52204b2b7d6b4d43abc84e385d836659764bf7e83ac82c57b17d0991cb9df"
+        ],
+        [
+          "owner"
+        ],
+        [
+          "current",
+          "workerprobe"
+        ],
+        [
+          "token",
+          16
+        ]
+      ]
+    }
+  },
+  "source_commit": "b155b4b03254bed0128d60f3c716edf478a1fe48",
+  "source_sha256": {
+    "src/loushang/coding/cli/package_worker_native.py": "c6cc8ab9488a7a91eb68c71824dd1be6175355af57d0f812e05280ff5dfcf777",
+    "src/loushang/coding/cli/package_worker_windows_candidate.py": "e7df6aa7439555fa1fa7ce043e6e96bdda6cf402ddfd1ad4d63294211d9227f8",
+    "src/loushang/harness/package_product/product_worker_candidate.py": "879ba3e95513cacf5999aa15194c5e67cc0b0bdd43650b5895640d0275c9842c"
+  }
+}

@@ -78,3 +78,11 @@ controlled while Desired records use their real DTOs. It checks action traces,
 record encodings and exception graphs, not native-process or physical IO.
 
 Explicit local path: [probe_builtin_bootstrap_compatibility.py](../../../tests/coding/probe_builtin_bootstrap_compatibility.py).
+
+The Worker candidate-update local probe compares both full CLI paths with 96
+immutable original observations. Desired/Management DTOs and journal writes
+are real; runtime/native ports and Lifecycle request reads are controlled.
+The fixture records original commit/source hashes and exact record-byte hashes.
+It is explicit local validation, not default PR coverage.
+
+Explicit local path: [probe_worker_candidate_update_compatibility.py](../../../tests/coding/probe_worker_candidate_update_compatibility.py).

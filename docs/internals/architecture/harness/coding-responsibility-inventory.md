@@ -111,8 +111,8 @@
 | [cli/package_cutover.py](../../../../src/loushang/coding/cli/package_cutover.py) | C11 | 976 | M | C11 CLI | 5f42a0f9e1ad | 976 | 5f42a0f9e1ad |
 | [cli/package_gc.py](../../../../src/loushang/coding/cli/package_gc.py) | C11 | 391 | M | C11 CLI | 3eb85096303e | 391 | 3eb85096303e |
 | [cli/package_repair.py](../../../../src/loushang/coding/cli/package_repair.py) | C11 | 72 | M | C11 CLI | 0b70bee5c48d | 72 | 0b70bee5c48d |
-| [cli/package_worker_native.py](../../../../src/loushang/coding/cli/package_worker_native.py) | C11 | 1,098 | M | C11 CLI | 1799d915325a | 1,012 | c6cc8ab9488a |
-| [cli/package_worker_windows_candidate.py](../../../../src/loushang/coding/cli/package_worker_windows_candidate.py) | C11 | 874 | M | C11 CLI | 0a0fa4aa42dc | 799 | e7df6aa74395 |
+| [cli/package_worker_native.py](../../../../src/loushang/coding/cli/package_worker_native.py) | C11 | 1,098 | M | C11 CLI | 1799d915325a | 936 | 363ff019b49c |
+| [cli/package_worker_windows_candidate.py](../../../../src/loushang/coding/cli/package_worker_windows_candidate.py) | C11 | 874 | M | C11 CLI | 0a0fa4aa42dc | 732 | 51d4a564265e |
 | [cli/plugin_private_data.py](../../../../src/loushang/coding/cli/plugin_private_data.py) | C11 | 586 | M | C11 CLI | a0894741f81c | 583 | e9d97da046c4 |
 | [cli/profile.py](../../../../src/loushang/coding/cli/profile.py) | C11 | 248 | M | C11 CLI | f05b8d2e1e2e | 248 | f05b8d2e1e2e |
 | [cli/screen_startup.py](../../../../src/loushang/coding/cli/screen_startup.py) | C11 | 221 | M | C11 CLI | 4cc56d5f3535 | 221 | 4cc56d5f3535 |
@@ -463,7 +463,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C08 | 31 | 7,139 |
 | C09 | 34 | 9,711 |
 | C10 | 12 | 5,834 |
-| C11 | 25 | 9,453 |
+| C11 | 25 | 9,310 |
 | C12 | 25 | 7,517 |
 | C13 | 21 | 5,668 |
 | C14 | 13 | 3,628 |
@@ -481,4 +481,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 118,811 |
+| 合计 | 430 | 118,668 |

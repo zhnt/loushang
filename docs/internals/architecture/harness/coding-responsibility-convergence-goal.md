@@ -27,7 +27,19 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前续接与交付状态（2026-11-09，A64–A65）
+## 当前状态（2026-11-09，A66）
+
+完整P1–P4及Coding≤15K目标保持，优先复用Harness现有组件、公共机制归原owner，
+保持高内聚低耦合与架构简洁。A65已提交`b155b4b03`；A66把两平台candidate-update
+完整重试证明/CAS/revoke/原lifecycle程序归一，Code−143/Core+120/系统净−23。
+当前Coding430文件118668行、全系统1953源644478行，距15K仍103668，未完成Goal。
+
+96固定旧对照+1原unit的before/after各97过，同96持久探针96过；原消费者83过/
+1native skip/1host deselect，实际三代码视角无本片阻断。三源类型/Ruff/格式及既有
+文档、依赖与plan检查通过，完整成本和限制见[执行记录](coding-responsibility-convergence-progress.md)。
+KD011/A33明确待审事项不据整体Goal自动采用，继续推进无依赖的剩余完整职责簇。
+
+## A64–A65续接历史（2026-11-09）
 
 继续用户完整P1–P4及≤15K目标，补充优先复用Harness既有组件、公共机制归原owner、
 高内聚低耦合与简洁架构要求。A63实物已保存为本地checkpoint `9a5285723`并复制

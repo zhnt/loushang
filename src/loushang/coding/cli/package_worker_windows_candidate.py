@@ -65,6 +65,7 @@ from loushang.harness.package_product.product_runtime import (
 )
 from loushang.harness.package_product.product_worker_candidate import (
     _run_worker_candidate_lifecycle,
+    _update_worker_candidate,
     verify_product_selected_worker_candidate,
 )
 from loushang.harness.plugin_management.operations import (
@@ -72,19 +73,9 @@ from loushang.harness.plugin_management.operations import (
     PluginManagementOperationEventV1,
 )
 from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
-from loushang.harness.plugin_management.updates import PluginUpdateOperationEventV2
-from loushang.harness.resources.packages.plugin_lifecycle.journal import (
-    PackageLifecycleJournal,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    PackageLifecycleRequestV2,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     open_windows_directory,
     open_windows_regular_file_at,
-)
-from loushang.harness.resources.packages.product_handoff import (
-    package_product_command_identity,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWorkerAdmissionV1,
@@ -605,75 +596,17 @@ def _change_candidate(
     selected = installed[0]
     revision = selected.selection.package_revision
     if args.action == "candidate-update":
-        request = PackageLifecycleJournal(
-            product.state_root / "lifecycle.jsonl"
-        ).request(args.operation_id)
-        prior_update = None
-        if (
-            isinstance(request, PackageLifecycleRequestV2)
-            and request.action == "update"
-            and request.requested_plugin_id == args.plugin_id
-            and request.canonical_source_identity == binding.source_identity
-        ):
-            command_id, _ = package_product_command_identity(
-                args.operation_id, request.request_fingerprint
-            )
-            prior_update = product.management.operation(command_id)
-        if (
-            isinstance(prior_update, PluginUpdateOperationEventV2)
-            and revision is not None
-            and prior_update.status == "terminal"
-            and prior_update.result is not None
-            and prior_update.result.disposition in {"succeeded", "restart_required"}
-            and prior_update.result.transition is not None
-            and prior_update.command.installation_key == selected.installation_key
-            and prior_update.command.expected_inventory_revision
-            == args.expected_inventory_revision
-            and prior_update.command.expected_package_revision.package_content_digest
-            == args.from_artifact_digest
-            and prior_update.command.staged_package_revision.package_source_identity
-            == binding.source_identity
-            and prior_update.command.staged_package_revision.package_content_digest
-            == args.artifact_digest
-            and prior_update.result.transition.committed_state == selected
-            and prior_update.result.transition.inventory_revision
-            == snapshot.inventory_revision
-        ):
-            _require_candidate_revoked(product, args.plugin_id)
-            return {
-                "candidateUpdate": {
-                    "pluginId": args.plugin_id,
-                    "fromArtifactDigest": args.from_artifact_digest,
-                    "artifactDigest": args.artifact_digest,
-                    "inventoryRevision": snapshot.inventory_revision,
-                    "alreadyUpdated": True,
-                }
-            }
-        if (
-            snapshot.inventory_revision != args.expected_inventory_revision
-            or revision is None
-            or revision.package_content_digest != args.from_artifact_digest
-            or args.from_artifact_digest == args.artifact_digest
-            or selected.selection.desired_state
-            not in {"installed_enabled", "installed_disabled"}
-        ):
-            raise WindowsWorkerCandidateCommandError(
-                "windows_worker_candidate_update_selection_stale",
-                "Windows Worker candidate update selection changed",
-            )
-        _require_candidate_revoked(product, args.plugin_id)
-        session_id = f"worker-candidate-update-{secrets.token_hex(16)}"
-        lifecycle, inventory_revision = _run_worker_candidate_lifecycle(
+        _lifecycle, inventory_revision, already_updated = _update_worker_candidate(
             product,
             binding,
+            snapshot,
+            selected,
+            args,
             product_id="coding",
-            plugin_id=args.plugin_id,
-            operation_id=args.operation_id,
-            session_id=session_id,
-            action="update",
             label="Windows Worker",
-            entrypoint="cli",
-            selected_key=selected.installation_key,
+            require_revoked=lambda: _require_candidate_revoked(product, args.plugin_id),
+            error_type=WindowsWorkerCandidateCommandError,
+            error_code="windows_worker_candidate_update_selection_stale",
         )
         return {
             "candidateUpdate": {
@@ -681,7 +614,7 @@ def _change_candidate(
                 "fromArtifactDigest": args.from_artifact_digest,
                 "artifactDigest": args.artifact_digest,
                 "inventoryRevision": inventory_revision,
-                "alreadyUpdated": False,
+                "alreadyUpdated": already_updated,
             }
         }
 

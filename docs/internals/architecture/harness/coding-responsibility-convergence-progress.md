@@ -2,11 +2,29 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P1/A1–A63指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P1/A1–A66指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前续接（2026-11-09，A64–A65）
+## 当前状态（2026-11-09，A66）
+
+专用任务分支`harness/coding-convergence-delivery`继续完整P1–P4；A65已由
+`b155b4b03`本地提交。A66将两平台candidate-update完整程序归原Package Product，
+Code保产品准入/错误/JSON，原journal/Management/lifecycle/清理机制直接复用。
+Code−143、Core+120、系统净−23；当前Coding118668/430文件，完整系统644478/
+1953源，其余1950旧源SHA不变。相对原Goal Coding少19087（13.86%），距15K
+仍103668；整个Goal未完成，系统仍比原634794多9684。
+
+三独立设计/实际代码评审无本片阻断；96固定原观察+1原unit的before/after各97过，
+持久化同96对照96过；原CLI/真实Management/Product消费者83过、1原native
+Windows跳过、1host-runtime排除，未扩大支持范围。三源类型/Ruff/格式、文档、
+依赖事实与计划检查通过。原捕获探针setup失败和无效节点launcher记录保留，
+不改变产品掩盖；详细范围见[本片设计/交付](key-designs/worker-candidate-update-convergence.md)。
+
+完整P1–P4、≤15K、存量与恢复义务保持；KD011/A33未擅自采用。后续继续按
+剩余完整职责簇核现成机制、删旧及全部接收成本，不把CLI其它领域政策当作重复引擎。
+
+## A64–A65续接历史（2026-11-09）
 
 用户以完整P1–P4、Coding归属≤15K及优先复用Harness的Goal继续执行。
 原A63的535份source/test/fixture/doc变更已逐文件SHA复制到专用任务worktree
@@ -32,7 +50,7 @@ Code−176/Core+240/系统+64，全成本计入，不称系统净精简。
 
 [逐文件清单R2](coding-responsibility-inventory.md)刷新430文件当前行数/SHA与28组
 汇总，保留原审计列；它不把候选处置改写成接受。完整P1–P4/15K仍未完成，
-KD011/A33待用户事项未擅自采用。本片真实回归失败已关闭，正在整理可追溯提交；
+KD011/A33待用户事项未擅自采用。本片真实回归失败已关闭，并已提交`b155b4b03`；
 随后按完整业务簇复核其余Worker、Session装配、托管/Continuity和入口机制。
 
 ## 起点与保存
@@ -2019,3 +2037,32 @@ fixture，31过3.06s，不依赖树外源码；此为同批覆盖的持久化复
 公开dataclass/格式/默认路线不变；store_id与actor_id真实稳定字段的提前读取
 已明确接受，不覆盖effectful替身getter或任意私有热替换。实施owner `/root` 在
 核定三独立设计/代码报告及真实JUnit后接受本片，完整Goal仍未完成。
+
+## A66：两平台candidate-update完整重试与更新程序归一
+
+原Linux/Windows两段重复的Lifecycle request→derived Management operation→
+精确retry proof→CAS→原opt-in revoke guard→原candidate lifecycle→结果事实
+已只留在既有`product_worker_candidate.py`一份。没有平台总控、新manager/日志/
+状态或阶段handler；五字段Protocol借原已解析输入，Code保零参领域guard、
+两平台installation计数差异和JSON投影。原Core全部定义、其余action AST未变。
+
+原完整三源及1953生产源帧在改动前保存，实际接入仅三源变；原96观察在完整旧CLI
+实际函数上捕获，binding/request/update类型均用合法原DTO，Desired/Management
+是真实物理日志，factory/runtime/route及Lifecycle request读取受控。初轮探针96
+setup失败（漏manifest/无效失败枚举）保留，未执行目标CLI、未改Product；修正
+输入后原SHA守卫通过，before97过10.12s。after同97过17.05s，持久化原96期待
+并移除capture路径后同96过7.84s；不累计为290独立覆盖。
+
+原CLI/Management staged update/Product epoch与生命周期消费者选择83过、1原
+native-Windows skip、1host deselect，94.29s；首轮节点名称错误exit4未执行用例，
+正确节点命令另存。未运行requires-host的完整Linux operator或真实Windows update/GC，
+不能把受控差分代替这些支持/恢复义务，也未新增平台或CI gate。
+
+实际Linux1012→936（−76）、Windows799→732（−67）、Core255→375（+120），
+全部Protocol/guard/import/投影计入；系统净−23，Code118668/系统644478。
+Core中间387到375仅去冗余括号，整模块AST守卫相等；不把12行格式整理称算法收益。
+三独立设计与实际代码/成本审查后，实施owner `/root`核源码/JUnit作本片有界接受。
+三源mypy、变动Python Ruff及格式、9项文档、依赖freshness、原plan与diff检查通过。
+原AI及其它已过且无相关新变化的suite不重跑。树外证据为
+`coding-convergence-continue/a66-worker-candidate-update`，含before/after完整源帧、
+原三模块、初失败/修正JUnit及不可变期待；原lane与控制用户改动保持。
