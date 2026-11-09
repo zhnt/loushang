@@ -6,22 +6,27 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A67）
+## 当前状态（2026-11-09，A67 及独立清理修复）
 
 A67 在专用任务分支完成 generated/installed Linux H6 release 的完整 inert
 reader 闭环：目录、成员/稳定 stat、canonical catalog、RECORD/发行身份及 ELF
 验证由原 Harness Worker 接管，复用原 bounded-prefix/ELF；Coding 保持公开
 DTO/Error/reader、Product 回执/审批/GC/generation 及完整 install/repair。
-Code 两源 −295、Core +361、系统 +66，全成本含接口/薄绑定；当前 Coding430
-文件118373行、系统1954源644544行，距15K仍103373，完整Goal未完成。
+Code 两源 −295、Core +365、系统 +70，全成本含接口/薄绑定与独立4行清理修复；
+当前 Coding430 文件118373行、系统1954源644548行，距15K仍103373，完整Goal未完成。
 其余1951旧生产源 SHA 不变；430行清单及28组汇总已刷新。
 
 原生产改前105固定场景+1原unit通过106；为长期重放另固定source/version输入、
 独占新建105旧观察，before/after同106过，第一组历史未覆盖。持久化显式probe
 无capture路径，联合原C54/CLI消费者117过、1host-runtime排除（109.45s）。
 真实文件、FD、catalog/RECORD/receipt验证；Product准入/approval受控，ELF未执行，
-不能外推native权限/安装升级或全平台证明。原目录fstat失败遗留fd2已固定为旧事实，
-留待独立修复，不掩盖或静默改expected。
+不能外推native权限/安装升级或全平台证明。纯迁移已提交`b4f44cd6e`。
+
+后续仅为Core目录fstat失败增加close/re-raise，unsafe原分支保持，Code两源不再变。
+原fixture字节不改，旧泄漏一例显式增加childclose/清空outstanding且异常图保持；
+另7例覆盖每级目录、双close失败及KeyboardInterrupt/CancelledError。首轮111过、
+2因探针匹配错误失败；只修探针定位后原2节点2过（2.60s），未重复已过111或将
+旧消费者声称为新重跑。三个独立视角有界接受该故意清理修复，保留全部失败记录。
 
 三个独立设计与实际代码视角均无本片新增阻断；实施owner有界接受迁移。三源
 mypy、Ruff/格式、文档9项、依赖freshness、检查plan及diff通过。C54只刷新两项

@@ -27,17 +27,19 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-09，A67）
+## 当前状态（2026-11-09，A67 及独立清理修复）
 
 完整 P1–P4、Coding ≤15K、Harness 复用和兼容恢复目标保持。A67 将 generated/
 installed Linux H6 release 完整惰性读取与校验归原 Worker，复用原 bounded-prefix
-和 ELF 校验；Coding 保留产品回执/审批/GC/安装及修复。Code −295、Core +361、
-系统 +66；当前 Coding 430 文件 118373 行，系统 1954 源 644544 行，距15K仍
+和 ELF 校验；Coding 保留产品回执/审批/GC/安装及修复。Code −295、Core +365、
+系统 +70；当前 Coding 430 文件 118373 行，系统 1954 源 644548 行，距15K仍
 103373。职责归位不冒称系统净精简，整个 Goal 未完成。
 
 105 固定旧观察加 1 原 unit 的 before/after 各106过；持久探针及原消费者117过、
 1 host-runtime 排除。设计及实际代码三独立视角均无本片新增阻断，静态/文档/依赖/
-plan 检查通过。原目录 fstat 失败泄漏已明确固定为历史观察，另片修复；详见
+plan 检查通过。纯迁移提交 `b4f44cd6e`；独立关闭了原目录 fstat 失败泄漏，
+原期望字节保留且仅显式调整一个清理差异。故障验证首轮111过/2探针定位失败，
+修正后同2节点2过，生产修复未变；详见
 [本片设计及交付](key-designs/linux-native-release-reader-convergence.md)。
 KD011/A33 待用户事项仍未采用，完整安装/repair 与其余职责继续在剩余范围内。
 

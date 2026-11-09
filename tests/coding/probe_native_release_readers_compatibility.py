@@ -13,8 +13,10 @@ import json
 import os
 import platform
 import sys
+from asyncio import CancelledError
 from base64 import urlsafe_b64encode
 from contextlib import suppress
+from copy import deepcopy
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from types import SimpleNamespace as NS
@@ -116,6 +118,46 @@ CASES += tuple(
         "approval-missing",
     )
 )
+
+DIRECTORY_FAULTS = {
+    "directory-fstat-package": ("loushang_h6_native", "OSError", ["fd2", "fd1"], []),
+    "directory-fstat-release": (
+        "loushang_h6_native/release",
+        "OSError",
+        ["fd3", "fd2", "fd1"],
+        [],
+    ),
+    "directory-fstat-metadata": (
+        "loushang_h6_native-0.1.0.dist-info",
+        "OSError",
+        ["fd4", "fd3", "fd2", "fd1"],
+        [],
+    ),
+    "directory-fstat-child-close": (
+        "loushang_h6_native",
+        "OSError",
+        ["fd2", "fd1"],
+        ["fd2"],
+    ),
+    "directory-fstat-child-root-close": (
+        "loushang_h6_native",
+        "OSError",
+        ["fd2", "fd1"],
+        ["fd1", "fd2"],
+    ),
+    "directory-fstat-interrupt": (
+        "loushang_h6_native",
+        "KeyboardInterrupt",
+        ["fd2", "fd1"],
+        [],
+    ),
+    "directory-fstat-cancelled": (
+        "loushang_h6_native",
+        "CancelledError",
+        ["fd2", "fd1"],
+        [],
+    ),
+}
 CASES += tuple(
     ("member", case)
     for case in (
@@ -353,6 +395,12 @@ def observe(kind, case, base, patch):
         fstat_seen[fd] = fstat_seen.get(fd, 0) + 1
         if case == "directory-fstat" and name.endswith("/" + package):
             raise OSError("injected directory fstat")
+        if case in DIRECTORY_FAULTS and name.endswith("/" + DIRECTORY_FAULTS[case][0]):
+            failure = {
+                "KeyboardInterrupt": KeyboardInterrupt,
+                "CancelledError": CancelledError,
+            }.get(DIRECTORY_FAULTS[case][1], OSError)
+            raise failure("injected directory fstat")
         change = {}
         if case == "root-owner" and name == normalize(str(read_root)):
             change["st_uid"] = result.st_uid + 1
@@ -399,6 +447,14 @@ def observe(kind, case, base, patch):
         if fd in active:
             label, name = active[fd]
             trace.append(["close", label])
+            if case in DIRECTORY_FAULTS:
+                if case in {
+                    "directory-fstat-child-close",
+                    "directory-fstat-child-root-close",
+                } and name.endswith("/" + DIRECTORY_FAULTS[case][0]):
+                    raise OSError("injected close child")
+                if "root-close" in case and name == normalize(str(read_root)):
+                    raise OSError("injected close root")
             if (
                 case in ("close-member", "close-both")
                 and name.endswith("/catalog.json")
@@ -529,4 +585,50 @@ def test_original_native_reader(kind, case, tmp_path, monkeypatch):
         "member": {"valid", "empty-zero", "writable"},
     }
     assert (actual["error"] is None) == (case in accepted[kind]), actual
-    assert actual == OBSERVATIONS[f"{kind}-{case}"]
+    expected = deepcopy(OBSERVATIONS[f"{kind}-{case}"])
+    if (kind, case) == ("installed", "directory-fstat"):
+        # Intentional cleanup fix: preserve the original evidence and account for
+        # exactly one child close, without changing the original exception graph.
+        assert expected["outstanding"] == ["fd2"]
+        expected["trace"].insert(-1, ["close", "fd2"])
+        expected["outstanding"] = []
+    assert actual == expected
+
+
+@pytest.mark.parametrize("case", DIRECTORY_FAULTS)
+def test_failed_directory_admission_settles_its_descriptor(case, tmp_path, monkeypatch):
+    actual = observe("installed", case, tmp_path, monkeypatch)
+    _target, failure_type, closes, outstanding = DIRECTORY_FAULTS[case]
+    assert actual["result"] is None
+    assert [entry[1] for entry in actual["trace"] if entry[0] == "close"] == closes
+    assert actual["outstanding"] == outstanding
+    error = actual["error"]
+    if failure_type != "OSError":
+        assert error == {
+            "id": 0,
+            "type": failure_type,
+            "message": "injected directory fstat",
+            "notes": [],
+            "suppress": False,
+            "cause": None,
+            "context": None,
+        }
+        return
+    assert error["type"] == "CodingWorkerNativeReleaseError"
+    assert error["message"] == "Installed Worker native release cannot be verified"
+    assert error["suppress"] is True
+    inner = error["cause"]
+    assert error["context"] == {"ref": inner["id"]}
+    messages = []
+    while inner is not None:
+        assert inner["type"] == "OSError"
+        assert inner["cause"] is None
+        assert inner["suppress"] is False
+        messages.append(inner["message"])
+        inner = inner["context"]
+    expected = ["injected directory fstat"]
+    if case in {"directory-fstat-child-close", "directory-fstat-child-root-close"}:
+        expected.insert(0, "injected close child")
+    if "root-close" in case:
+        expected.insert(0, "injected close root")
+    assert messages == expected

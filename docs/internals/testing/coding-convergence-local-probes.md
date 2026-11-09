@@ -92,6 +92,8 @@ real files, descriptors, canonical catalogs, installed RECORD and Product receip
 Source bytes/version are fixed inputs; Product admission and approval are controlled.
 It covers generated/installed mode asymmetry, eight stat fields, overflow, nested
 close failures and public approval/generation projection. It never executes ELF
-bytes. Original directory-fstat leakage is recorded rather than silently corrected.
+bytes. Original directory-fstat leakage remains recorded; its independent fix has
+one explicit expected cleanup delta. Seven additional local faults check each
+directory level, compound close failures and interrupt/cancellation propagation.
 
 Explicit local path: [probe_native_release_readers_compatibility.py](../../../tests/coding/probe_native_release_readers_compatibility.py).

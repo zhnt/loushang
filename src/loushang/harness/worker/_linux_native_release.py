@@ -261,7 +261,11 @@ class _LinuxNativeReleaseVerifier(Generic[ClosureT]):
             os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
             dir_fd=parent,
         )
-        metadata = os.fstat(descriptor)
+        try:
+            metadata = os.fstat(descriptor)
+        except BaseException:
+            os.close(descriptor)
+            raise
         if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.geteuid():
             os.close(descriptor)
             raise self.error_type("Installed Worker native directory is unsafe")
