@@ -541,7 +541,7 @@ class AppClientScopeV1:
         session = await self._session(
             request.attachment_id, request.controller_generation, request.member_id
         )
-        value = await session.select_model(request.model_id)
+        value = await session.select_model(request.model_id, request.thinking_level)
         self._attachment(request.attachment_id, request.controller_generation)
         return value
 

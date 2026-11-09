@@ -149,6 +149,20 @@ class _DeferredHostedControlV1:
     async def set_model(self, selection: ModelSelection) -> None:
         await apply_session_model_selection(self._require_active(), selection)
 
+    @property
+    def thinking_level(self) -> object:
+        return getattr(self._delegate, "thinking_level", None)
+
+    def get_available_thinking_levels(self) -> tuple[str, ...]:
+        getter = getattr(self._delegate, "get_available_thinking_levels", None)
+        return tuple(getter()) if callable(getter) else ()
+
+    async def set_thinking_level(self, level: str) -> None:
+        setter = getattr(self._require_active(), "set_thinking_level", None)
+        if not callable(setter):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        await setter(level)
+
     def close(self) -> None:
         self._closed = True
         if self._unsubscribe is not None:
@@ -242,15 +256,12 @@ class CodingDeferredHostedSessionV1:
         self, text: str, cancel_requested: Callable[[], bool],
     ) -> ExecutionWorkV1:
         from ._hosted_execution_work import (
-            CodingExecutionWorkV1,
             current_coding_hosted_resume_subject,
             current_coding_hosted_resume_submission_id,
         )
 
         if self._active is not None:
-            return CodingExecutionWorkV1(
-                cast(AgentSession, self._active.control), text, cancel_requested
-            )
+            return self._active.create_execution_work(text, cancel_requested)
         scope, control, subject_digest = current_coding_hosted_resume_subject()
         submission_id = current_coding_hosted_resume_submission_id()
         if submission_id is None:
@@ -259,6 +270,14 @@ class CodingDeferredHostedSessionV1:
             self, text, cancel_requested, scope, control, subject_digest,
             submission_id,
         )
+
+    async def wait_for_title(self) -> None:
+        if self._active is not None:
+            await self._active.wait_for_title()
+
+    def start_title_if_unnamed(self) -> None:
+        if self._active is not None:
+            self._active.start_title_if_unnamed()
 
     def project_snapshot(self) -> CodingHostedSnapshotProjectionV1:
         if self._close_task is not None:
@@ -721,6 +740,11 @@ class _HostedResumeExecutionWorkV1:
         if self._unsubscribe is not None:
             self._unsubscribe()
             self._unsubscribe = None
+        if (
+            not self._cancel_requested() and self._outcome is not None
+            and self._outcome.status is ExecutionStatusV1.SUCCEEDED
+        ):
+            self._binding.start_title_if_unnamed()
 
 
 

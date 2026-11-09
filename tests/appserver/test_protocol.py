@@ -43,6 +43,7 @@ from loushang.appserver.protocol import (
     SessionSnapshotRequestV1,
     SessionSnapshotV1,
     SessionSubmissionModeV1,
+    SessionThinkingV1,
     TranscriptRecordKindV1,
     TranscriptRecordV1,
     TurnInterruptV1,
@@ -167,6 +168,12 @@ def test_snapshot_execution_submission_mode_is_optional_and_round_trips():
             ),
         ),
         (
+            AppOperationV1.SESSION_MODEL_SELECT,
+            SessionModelSelectV1(
+                "attachment-1", 2, "member-1", "provider:endpoint:model", "high"
+            ),
+        ),
+        (
             AppOperationV1.TURN_START,
             TurnTextV1("attachment-1", 2, "member-1", "hello"),
         ),
@@ -213,6 +220,7 @@ def test_G11_CONTRACT_STRICT_request_round_trip(
         MuxListResultV1((_mux(),)),
         _attachment(),
         _snapshot(),
+        SessionModelsV1(None, ()),
         SessionModelsV1(
             "provider:endpoint:model",
             (
@@ -225,6 +233,7 @@ def test_G11_CONTRACT_STRICT_request_round_trip(
                     True,
                 ),
             ),
+            SessionThinkingV1("high", ("low", "high")),
         ),
     ),
 )

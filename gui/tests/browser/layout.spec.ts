@@ -7,6 +7,7 @@ const scenarios = [
   { name: "wide-sidebar", width: 1240, height: 720, rail: 420, scale: 1 },
   { name: "compact", width: 900, height: 720, rail: 280, scale: 1 },
   { name: "sidebar-hidden", width: 900, height: 720, rail: 0, scale: 1 },
+  { name: "short-window", width: 560, height: 420, rail: 0, scale: 1 },
   { name: "narrow", width: 700, height: 720, rail: 0, scale: 1 },
   { name: "density-125", width: 1440, height: 720, rail: 280, scale: 1.25 },
   { name: "density-150", width: 1440, height: 720, rail: 280, scale: 1.5 },
@@ -26,7 +27,7 @@ async function verifyLayout(page: Page, info: TestInfo, mode: string) {
       message: rect(".message.assistant"), changes: rect(".change-card"),
       playback: rect(".playback-strip"), pane: rect(".conversation-pane"),
       header: rect(".conversation-header"), headerActions: rect(".header-actions"),
-      right: document.querySelector(".environment-popover, .work-dock") ? rect(".environment-popover, .work-dock") : null,
+      right: document.querySelector(".work-dock") ? rect(".work-dock") : null,
       stacked: document.querySelector("main")!.classList.contains("right-stacked"),
       viewport: innerWidth, overflow: document.documentElement.scrollWidth > innerWidth,
     };

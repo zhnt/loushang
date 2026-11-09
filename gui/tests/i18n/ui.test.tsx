@@ -14,7 +14,8 @@ async function changeLanguage(user: ReturnType<typeof userEvent.setup>, language
   await user.click(screen.getByRole("button", { name: /^(Account menu|用户菜单)$/ }));
   await user.click(screen.getByRole("button", { name: /^(Settings|设置)$/ }));
   const dialog = screen.getByRole("dialog") as HTMLDialogElement;
-  await user.selectOptions(within(dialog).getByRole("combobox"), language);
+  await user.click(within(dialog).getByRole("combobox", { name: /^(Interface language|界面语言)$/ }));
+  await user.click(within(dialog).getByRole("option", { name: language === "zh-CN" ? "简体中文" : "English" }));
   if (!keepOpen) dialog.close();
 }
 

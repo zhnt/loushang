@@ -4,6 +4,7 @@ export default interface Resources {
     "additions": "+{{value, number}}",
     "connection": {
       "connected": "Connected",
+      "connecting": "Connecting",
       "disconnected": "Disconnected",
       "resync": "Resync required"
     },
@@ -64,6 +65,7 @@ export default interface Resources {
     "execution": {
       "completeSnapshot": "complete snapshot",
       "details": "Live execution details",
+      "failureCode": "Failure code",
       "finalCursor": "Final cursor",
       "lastKnownStatus": "Last known execution state: {{status}} (disconnected)",
       "notObserved": "not observed",
@@ -128,7 +130,6 @@ export default interface Resources {
       "fixturePlaceholder": "Type a fixture prompt…",
       "interrupt": "Interrupt",
       "keyboardHint": "Enter to send. Ctrl+Enter for a new line.",
-      "liveControl": "AppHost control",
       "livePlaceholder": "Message the live Agent…",
       "messageFor": "Message for {{title}}",
       "send": "Send",
@@ -150,13 +151,20 @@ export default interface Resources {
       "summary_other": "Fixture playback · {{count, number}} queued events"
     },
     "models": {
-      "changeHint": "Change the model for this Session",
-      "effortUnavailable": "Effort unavailable",
+      "back": "Models",
       "endpoint": "Endpoint: {{endpoint}}",
       "label": "Session model",
+      "levels": {
+        "high": "High",
+        "low": "Low",
+        "medium": "Medium",
+        "minimal": "Minimal",
+        "off": "Default",
+        "xhigh": "Extra high"
+      },
       "none": "Model information unavailable",
       "option": "{{provider}} · {{model}}",
-      "reasoningOption": "{{provider}} · {{model}} · Reasoning",
+      "thinking": "Reasoning effort",
       "unavailable": "Model catalog unavailable"
     },
     "notice": {
@@ -182,6 +190,8 @@ export default interface Resources {
       "playback": "Playback: {{label}}.",
       "rejected": "Submission rejected.",
       "submitFailed": "Submit failed before its outcome could be confirmed. The draft was preserved.",
+      "thinkingChanged": "Reasoning effort updated.",
+      "thinkingRejected": "Could not change reasoning effort.",
       "unknownSubmission": "Submission outcome is unknown. The draft was preserved; resynchronize before retrying."
     },
     "opening": "Opening loushang…",
@@ -189,6 +199,7 @@ export default interface Resources {
       "disconnected": "Disconnected.",
       "fixture": "Synchronizing fixture…",
       "live": "Connecting to AppHost…",
+      "offlineHost": "No AppHost is connected. Manage the local AppHost in Settings.",
       "retry": "Resynchronize fixture"
     },
     "transcript": {
@@ -196,6 +207,7 @@ export default interface Resources {
       "label": "Session transcript",
       "message": "{{role}} message",
       "noText": "No text output was recorded.",
+      "plainTextCode": "Plain text",
       "waiting": "Waiting for output…",
       "you": "You"
     }
@@ -204,10 +216,16 @@ export default interface Resources {
     "about": "About loushang",
     "aboutDescription": "loushang — a workspace for conversations and work.",
     "aboutRuntime": "Available features depend on the connected service. Offline fixture data is labelled in the interface.",
+    "accountId": "Local account ID",
     "accountMenu": "Account menu",
+    "accountName": "System user",
     "actionFailed": "Window action failed. Please retry.",
     "actionUnavailable": "Currently unavailable",
     "actualSize": "Actual size",
+    "appearance": "Appearance",
+    "appearanceDark": "Dark",
+    "appearanceLight": "Light",
+    "appearanceSaveFailed": "The appearance changed for this window but could not be saved.",
     "applicationMenu": "Application menu",
     "arrowsShortcut": "↑ / ↓ / ← / →",
     "back": "Back",
@@ -233,10 +251,14 @@ export default interface Resources {
     "fullscreen": "Toggle full screen",
     "generalSettings": "General",
     "help": "Help",
+    "hostSettings": "Host",
     "insertNewline": "Insert a new line",
     "language": "Interface language",
     "languageDescription": "Choose the language used in loushang.",
     "mainMenu": "Main menu",
+    "markdownSaveFailed": "The Markdown preference changed for this window but could not be saved.",
+    "markdownTheme": "Markdown theme",
+    "markdownThemeDescription": "Set the reading style for replies.",
     "maximize": "Maximize window",
     "menuNavigation": "Navigate menus",
     "minimize": "Minimize window",
@@ -246,6 +268,7 @@ export default interface Resources {
     "newlineShortcut": "Ctrl + Enter",
     "nextSidebarItem": "Next sidebar item",
     "nextTab": "Next tab",
+    "offlineAccount": "Offline account",
     "openFolder": "Open folder",
     "openTerminal": "Open terminal",
     "paste": "Paste",
@@ -262,6 +285,7 @@ export default interface Resources {
     "sendMessage": "Send message",
     "sendShortcut": "Enter",
     "settings": "Settings",
+    "settingsNavigation": "Settings categories",
     "shortcuts": "Keyboard shortcuts",
     "sidebarShortcut": "Ctrl+B",
     "signOut": "Sign out",
@@ -338,18 +362,21 @@ export default interface Resources {
         "unavailable": "Local management entrypoint is unavailable. Check the installed Python environment.",
         "unknown": "The operation could not be confirmed. Check status before trying another lifecycle operation."
       },
-      "identity": "Host identity",
+      "identity": "Host information",
+      "identityUnavailable": "Host details are available once its identity is confirmed.",
+      "instanceId": "Host instance ID",
       "intro": "Select a local workspace and check its Host. Start and connect when it is not running. Closing this window does not stop the Host.",
       "pathHint": "Absolute local directory",
       "pid": "Process ID",
       "reconnect": "Reconnect",
       "refresh": "Check status",
       "restart": "Restart Host",
+      "serviceInstanceId": "Service instance ID",
       "start": "Start and connect",
       "states": {
         "exited": "Host exited unexpectedly",
         "notRunning": "Host not running",
-        "running": "Host ready",
+        "running": "Running",
         "starting": "Host starting",
         "stopping": "Host stopping",
         "unknown": "Status unconfirmed"
@@ -360,21 +387,21 @@ export default interface Resources {
       "workspace": "Workspace"
     },
     "sidebar": {
-      "attached": "Attached AppHost sessions",
+      "chats": "Chats",
       "creating": "Creating…",
       "fixtureBanner": "Fixture data · no backend",
       "live": "Live · AppHost",
       "liveBanner": "Live AppHost · controlled",
-      "mux": "AppHost mux",
       "navigation": "Workspace and Session navigation",
       "newSession": "New Session",
       "offline": "Offline fixture",
+      "pinChat": "Pin {{title}}",
+      "pinned": "Pinned",
       "plain": "plain",
       "plugins": "Plugins",
       "pluginsHint": "Plugins are unavailable in the offline fixture",
       "prHint": "Pull requests are unavailable in the offline fixture",
       "pullRequests": "Pull requests",
-      "recent": "Recent",
       "scheduleHint": "Scheduling is unavailable in the offline fixture",
       "scheduled": "Scheduled",
       "searchHint": "Search is unavailable in the offline fixture",
@@ -382,9 +409,9 @@ export default interface Resources {
       "sessionLabel": "{{title}} · {{status}}",
       "shortcuts": "Application shortcuts",
       "stale": "Stale · was {{status}}",
-      "unread": "Unread updates",
-      "workspaceUnavailable": "Workspace details unavailable",
-      "workspaces": "Workspaces"
+      "unassigned": "Without a workspace",
+      "unpinChat": "Unpin {{title}}",
+      "unread": "Unread updates"
     }
   }
 }

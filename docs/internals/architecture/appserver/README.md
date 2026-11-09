@@ -56,6 +56,66 @@ submission registration and cleanup; this transport still owns only request
 delivery and borrowed scoped capabilities. Existing v1 frames and default
 profiles are unchanged. Native GUI acceptance follows the documented handoff.
 
+## Optional Session Reasoning
+
+Internal acceptance by the implementation agent (Codex), 2026-11-09.
+Reviewed the `feature/gui-settings-reasoning` change based on `58a937909`
+across HarnessGUI, AppServer, AppService and Coding. Coding projects the
+current and available levels from its existing Session control. AppService
+retains the attached-member and current-model checks. The GUI requests one
+of the returned levels and displays the confirmed value.
+
+The execution hello remains byte-compatible by default. An authenticated
+execution client can echo the canonical hello with `sessionThinking: true`
+and wait for an identical acknowledgement before attaching. Only that
+connection can receive the optional `thinking` model metadata and send
+`thinkingLevel` on model selection. An older Host closes the augmented
+exchange. HarnessGUI retries the original exchange within the same startup
+budget before acquiring attachment authority. The original exchange keeps
+the two-field model result and model-only selection behavior.
+
+The reviewed decision keeps level resolution in Coding and uses the
+existing model selection authority, with an explicit opt-in to protect
+strict legacy decoders. Evidence includes the
+[connection](../../../../tests/appserver/test_execution_connection.py),
+[protocol](../../../../tests/appserver/test_protocol.py) and
+[hosted session](../../../../tests/coding/test_hosted_session.py) regressions
+and a Linux native build against an isolated managed AppHost with a
+deterministic model transport.
+
+Reviewability budget reconciliation by the implementation agent (Codex),
+2026-11-09, against the integrated GUI revision `39efc0910`. The G11 check
+accounts for 63 net lines in AppServer protocol values, exports and codecs,
+five in AppService's existing model selection authority, and 28 in the Coding
+adapter. The counted files and remaining headroom stay the same. The
+[G11 architecture test](../../../../tests/architecture/test_hosted_application_g11.py)
+continues to check those boundaries.
+
+## Automatic GUI Session Titles
+
+Internal acceptance by the implementation agent (Codex), 2026-11-09.
+Reviewed `feature/gui-session-title` based on `6ec51010b` across Coding's
+Hosted Session and the existing Model Input boundary. GUI-created sessions
+use the `gui-new-` and `gui-default-` continuity prefixes. After a successful
+execution settles, an unnamed session can schedule a background title request
+using a bounded excerpt of the original first user message. The request uses
+the selected model and the existing prepared-request barrier, with an
+eight-second budget and no tools.
+
+Both requests write Model Input evidence to the same transcript. The
+implementation starts title preparation after the primary execution settles
+and lets the primary execution publish its outcome immediately. Follow-up
+execution and model selection wait for any in-flight title request so their
+transcript writes remain ordered. The Hosted Session cancels and joins the
+title task on close. The existing metadata writer persists the title and
+signals snapshot readers through a status event without adding a transcript row.
+
+Until a title is stored, snapshots display `New Session`. After a failed
+title attempt, the next successful execution can try again with the original
+first message. The [hosted-session regression](../../../../tests/coding/test_hosted_session.py)
+exercises the prepared-request barrier with a deterministic transport and
+covers the primary outcome, background title publication and history restoration.
+
 ## Accepted Resume Contract
 
 AppServer retains client framing and transport. Product readiness projections preserve old Ack completion timing and negotiate supported continuation behavior.

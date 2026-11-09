@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 
 from .client import AppClientV1, SessionDiscoveryClientV1
 from .dispatch import dispatch_request
@@ -46,10 +47,12 @@ from .protocol import (
     AppResultPayloadV1,
     AppServiceError,
     InvalidAppMessageError,
+    SessionModelSelectV1,
+    SessionModelsV1,
     decode_request,
     encode_response,
 )
-from .protocol.codec import _loads
+from .protocol.codec import _dumps, _loads
 from .protocol.connection_profile import (
     AppConnectionProfileV1,
     connection_hello,
@@ -92,6 +95,7 @@ class AppServerConnectionV1:
         else:
             self._hello = connection_hello(profile)
         self._execution = execution
+        self._session_thinking = False
         if supports_managed_mux(profile) != (managed_mux is not None):
             raise ValueError("managed profile requires its explicit capability")
         self._managed_mux = managed_mux
@@ -120,8 +124,16 @@ class AppServerConnectionV1:
         try:
             async with asyncio.timeout(self._timeout):
                 await self._stream.send(self._hello)
-                if await self._stream.receive() != self._hello:
-                    raise InvalidAppMessageError()
+                echo = await self._stream.receive()
+                if echo != self._hello:
+                    # Legacy peers exchange the exact original hello and keep
+                    # the original model result shape on this connection.
+                    if self._execution is None or echo != _dumps({
+                        **_loads(self._hello), "sessionThinking": True,
+                    }):
+                        raise InvalidAppMessageError()
+                    self._session_thinking = True
+                    await self._stream.send(echo)
             self._receiver = asyncio.create_task(self._receive_requests())
             completed, _ = await asyncio.wait(
                 {self._receiver, self._fault}, return_when=asyncio.FIRST_COMPLETED
@@ -197,6 +209,12 @@ class AppServerConnectionV1:
                 return
             try:
                 require_profile_operation(self._profile, request.operation)
+                if (
+                    not self._session_thinking
+                    and isinstance(request.payload, SessionModelSelectV1)
+                    and request.payload.thinking_level is not None
+                ):
+                    raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
                 result: AppResultPayloadV1 = await dispatch_request(
                     self._client, request, discovery=self._discovery
                 )
@@ -204,6 +222,8 @@ class AppServerConnectionV1:
                 result = AppFailureV1(error.code)
             except Exception:
                 result = AppFailureV1(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            if isinstance(result, SessionModelsV1) and not self._session_thinking:
+                result = replace(result, thinking=None)
             await self._stream.send(
                 encode_response(AppResponseV1(request.request_id, result))
             )

@@ -5,7 +5,9 @@ from unittest.mock import create_autospec
 
 import pytest
 
+from loushang.appserver.client import AppClientV1
 from loushang.appserver.connection import AppServerConnectionV1
+from loushang.appserver.execution.client import ExecutionClientV1
 from loushang.appserver.execution.model import (
     ExecutionCallV1,
     ExecutionOperationV1,
@@ -15,7 +17,21 @@ from loushang.appserver.execution.model import (
 from loushang.appserver.framing import AppFramedStreamV1
 from loushang.appserver.managed_mux import ManagedMuxCreationClientV1
 from loushang.appserver.managed_mux_close import ManagedMuxCloseClientV1
-from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
+from loushang.appserver.protocol import (
+    AppErrorCodeV1,
+    AppFailureV1,
+    AppOperationV1,
+    AppRequestV1,
+    AppServiceError,
+    SessionModelChoiceV1,
+    SessionModelSelectV1,
+    SessionModelsV1,
+    SessionSnapshotRequestV1,
+    SessionThinkingV1,
+    decode_response,
+    encode_request,
+)
+from loushang.appserver.protocol.codec import _dumps, _loads
 from loushang.appserver.protocol.connection_profile import (
     AppConnectionProfileV1,
     supports_managed_mux,
@@ -30,6 +46,53 @@ from tests.appservice.test_execution_guard import scenario
 from tests.appservice.test_execution_service import fixture
 
 from .test_connection import _pair
+
+
+@pytest.mark.parametrize("request_thinking", [False, True])
+def test_session_thinking_uses_an_opt_in_execution_hello(request_thinking):
+    async def run():
+        left, right = _pair()
+        frames = AppFramedStreamV1(left)
+        client = create_autospec(AppClientV1, instance=True)
+        execution = create_autospec(ExecutionClientV1, instance=True)
+        execution.service_instance_id = "instance"
+        choice = SessionModelChoiceV1("model", "provider", "endpoint", "id", "Model", True)
+        thinking = SessionThinkingV1("high", ("off", "high"))
+        client.list_session_models.return_value = SessionModelsV1("model", (choice,), thinking)
+        client.select_session_model.return_value = client.list_session_models.return_value
+        server = AppServerConnectionV1(
+            client, AppFramedStreamV1(right),
+            profile=AppConnectionProfileV1.LOCAL_EXECUTION, execution=execution,
+        )
+        serving = asyncio.create_task(server.serve())
+        try:
+            hello = await frames.receive()
+            echo = _dumps({**_loads(hello), "sessionThinking": True}) if request_thinking else hello
+            await frames.send(echo)
+            if request_thinking:
+                assert await frames.receive() == echo
+            request = AppRequestV1(
+                "1", AppOperationV1.SESSION_MODELS, SessionSnapshotRequestV1("a", 1, "m"),
+            )
+            await frames.send(encode_request(request))
+            result = decode_response(await frames.receive()).result
+            assert result == SessionModelsV1("model", (choice,), thinking if request_thinking else None)
+            selection = SessionModelSelectV1("a", 1, "m", "model", "high")
+            await frames.send(encode_request(AppRequestV1(
+                "2", AppOperationV1.SESSION_MODEL_SELECT, selection,
+            )))
+            updated = decode_response(await frames.receive()).result
+            if request_thinking:
+                assert updated == result
+                client.select_session_model.assert_awaited_once_with(selection)
+            else:
+                assert updated == AppFailureV1(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+                client.select_session_model.assert_not_awaited()
+        finally:
+            await frames.close()
+            await serving
+
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize("profile", [

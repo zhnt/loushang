@@ -1,0 +1,36 @@
+:root {
+  color-scheme: light dark;
+  --canvas: light-dark(#f7f7f6, #191918);
+  --paper: light-dark(#ffffff, #20201f);
+  --sidebar: light-dark(#f6f6f5, #252525);
+  --panel: light-dark(#fafafa, #242424);
+  --line: light-dark(#e7e7e5, #373737);
+  --line-strong: light-dark(#d8d8d5, #474747);
+  --ink: light-dark(#25272a, #ededeb);
+  --ink-secondary: light-dark(#4e5154, #d0d0cc);
+  --muted: light-dark(#737579, #adada9);
+  --faint: light-dark(#929497, #959591);
+  --control-hover: light-dark(#ececeb, #333333);
+  --control-focus: light-dark(#686c72, #b4b4ae);
+  --primary: light-dark(#252527, #e7e7e5);
+  --primary-text: light-dark(#ffffff, #252527);
+  --accent: light-dark(#7555dc, #b9a6f5);
+  --accent-ink: light-dark(#534483, #d3c5fc);
+  --accent-soft: light-dark(#eee9ff, #363044);
+  --orange: light-dark(#b5481e, #f4a07e);
+  --green: light-dark(#168a50, #8ad3a6);
+  --green-soft: light-dark(#e9f7ee, #21362b);
+  --red: light-dark(#b6453d, #f29e96);
+  --red-soft: light-dark(#fff0ee, #412b29);
+  --warning: light-dark(#8a6a30, #dfbc7d);
+  --warning-soft: light-dark(#fff6e5, #392f23);
+  --warning-line: light-dark(#d8c79e, #625035);
+  --blue: light-dark(#3c71c7, #9dbcf0);
+  --blue-soft: light-dark(#edf1fb, #273246);
+  --teal: light-dark(#59686b, #b4c9c9);
+  --teal-soft: light-dark(#e8eeee, #2b3838);
+  --dialog-backdrop: light-dark(#17181a55, #0008);
+}
+
+:root[data-appearance="light"] { color-scheme: light; }
+:root[data-appearance="dark"] { color-scheme: dark; }

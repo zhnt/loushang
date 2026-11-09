@@ -22,7 +22,9 @@
     "rejected": "提交被拒绝。",
     "playback": "回放：{{label}}。",
     "modelChanged": "会话模型已切换为 {{model}}。",
-    "interruptReason": "中断请求未被接受。"
+    "interruptReason": "中断请求未被接受。",
+    "thinkingChanged": "已更新推理强度。",
+    "thinkingRejected": "无法更改推理强度。"
   },
   "composer": {
     "fixturePlaceholder": "输入测试提示词…",
@@ -30,7 +32,6 @@
     "attachUnavailable": "无法添加附件",
     "attachHint": "暂不支持附件",
     "fixtureAccess": "测试访问",
-    "liveControl": "AppHost 控制",
     "interrupt": "中断",
     "send": "发送",
     "stopHint": "停止执行",
@@ -40,13 +41,20 @@
   },
   "models": {
     "label": "会话模型",
-    "changeHint": "切换当前会话的模型",
     "unavailable": "模型列表不可用",
     "none": "模型信息不可用",
-    "effortUnavailable": "推理强度不可用",
     "endpoint": "端点：{{endpoint}}",
     "option": "{{provider}} · {{model}}",
-    "reasoningOption": "{{provider}} · {{model}} · 推理"
+    "thinking": "推理强度",
+    "back": "模型",
+    "levels": {
+      "off": "默认",
+      "minimal": "最低",
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "极高"
+    }
   },
   "transcript": {
     "label": "会话记录",
@@ -54,6 +62,7 @@
     "harness": "Harness",
     "waiting": "正在等待输出…",
     "noText": "未记录文本输出。",
+    "plainTextCode": "纯文本",
     "message": "{{role}}消息"
   },
   "fixture": {
@@ -69,6 +78,7 @@
     "verified": "Rust 调用与事件已验证"
   },
   "sync": {
+    "offlineHost": "尚未连接 AppHost，可在设置中管理本地 AppHost。",
     "fixture": "正在同步测试数据…",
     "live": "正在连接 AppHost…",
     "disconnected": "连接已断开。",

@@ -23,6 +23,7 @@ from loushang.appserver.protocol import (
     SessionOpenSpecV1,
     SessionSnapshotV1,
     SessionSubmissionModeV1,
+    SessionThinkingV1,
     TranscriptRecordV1,
 )
 from loushang.appservice import HostedSessionEventListenerV1, HostedSessionPortV1
@@ -285,13 +286,29 @@ class CodingHostedSessionV1:
         active_choice = next((model for model in models[256:] if model.id == current), None)
         if active_choice is not None:
             visible[-1] = active_choice
-        return SessionModelsV1(current, tuple(visible))
+        return SessionModelsV1(
+            current, tuple(visible), _thinking_settings(control) if current is not None else None
+        )
 
-    async def select_model(self, model_id: str) -> SessionModelsV1:
+    async def select_model(
+        self, model_id: str, thinking_level: str | None = None,
+    ) -> SessionModelsV1:
         self._require_open()
         control = self._binding.control
         if getattr(control, "is_streaming", False):
             raise RuntimeError("coding_model_change_while_running")
+        if thinking_level is not None:
+            before = await self.list_models()
+            setter = getattr(control, "set_thinking_level", None)
+            if (
+                getattr(control, "is_streaming", False)
+                or before.current_id != model_id or before.thinking is None
+                or thinking_level not in before.thinking.available_levels
+                or not callable(setter)
+            ):
+                raise ValueError("coding_thinking_level_unavailable")
+            await setter(thinking_level)
+            return await self.list_models()
         choices = model_choice_data_from_details(
             await iter_available_model_details(control)
         )
@@ -390,6 +407,17 @@ class CodingHostedSessionV1:
         from .hosted_session import _require_coding_hosted_binding
 
         _require_coding_hosted_binding(binding)
+
+
+def _thinking_settings(control: object) -> SessionThinkingV1 | None:
+    getter = getattr(control, "get_available_thinking_levels", None)
+    current = getattr(control, "thinking_level", None)
+    if not callable(getter) or not isinstance(current, str):
+        return None
+    levels = tuple(getter())
+    if current not in levels or levels == ("off",):
+        return None
+    return SessionThinkingV1(current, levels)
 
 
 def coding_hosted_identity_from_envelope(

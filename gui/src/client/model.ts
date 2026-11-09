@@ -57,6 +57,7 @@ export interface ConversationMessage {
 
 export interface ExecutionProjection {
   readonly id: string;
+  readonly errorCode?: string;
   readonly status: "accepted" | "running" | "succeeded" | "failed" | "interrupted";
   readonly revision: number;
   readonly interruptRequested: boolean;
@@ -238,6 +239,7 @@ export interface SubmitTextInput {
 export interface SubmitReceipt {
   readonly submissionId: string;
   readonly accepted: boolean;
+  readonly executionId?: string;
   readonly reason?: string;
 }
 
@@ -255,9 +257,16 @@ export interface ModelChoice {
   readonly supportsThinking: boolean;
 }
 
+export const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+export type ThinkingLevel = (typeof thinkingLevels)[number];
+
 export interface SessionModels {
   readonly currentId: string | null;
   readonly models: readonly ModelChoice[];
+  readonly thinking?: {
+    readonly currentLevel: ThinkingLevel;
+    readonly availableLevels: readonly ThinkingLevel[];
+  };
 }
 
 export interface CreateSessionInput {
@@ -284,7 +293,7 @@ export interface HarnessClientUiPort {
   interrupt(sessionId: string): Promise<ControlReceipt>;
   createSession?(input: CreateSessionInput): Promise<CreateSessionReceipt>;
   sessionModels?(sessionId: string): Promise<SessionModels>;
-  selectModel?(sessionId: string, modelId: string): Promise<SessionModels>;
+  selectModel?(sessionId: string, modelId: string, thinkingLevel?: ThinkingLevel): Promise<SessionModels>;
 }
 
 export interface FixturePlaybackPort extends HarnessClientUiPort {

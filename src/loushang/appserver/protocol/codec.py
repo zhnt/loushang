@@ -51,6 +51,7 @@ from .model import (
     SessionSnapshotRequestV1,
     SessionSnapshotV1,
     SessionSubmissionModeV1,
+    SessionThinkingV1,
     TranscriptRecordKindV1,
     TranscriptRecordV1,
     TurnInterruptV1,
@@ -215,6 +216,11 @@ def encode_response(response: AppResponseV1) -> bytes:
                 for item in result.models
             ],
         }
+        if result.thinking is not None:
+            value["thinking"] = {
+                "currentLevel": result.thinking.current_level,
+                "availableLevels": list(result.thinking.available_levels),
+            }
     elif type(result) is SessionListResultV1:
         result_type, value = "sessionList", _encode_session_list(result)
     elif type(result) is AttachmentEventsV1:
@@ -268,13 +274,27 @@ def decode_response(payload: bytes) -> AppResponseV1:
     elif result_type == "snapshot":
         result = _decode_snapshot(raw)
     elif result_type == "sessionModels":
-        value = _object(raw, {"currentId", "models"})
+        fields = {"currentId", "models"}
+        if type(raw) is dict and "thinking" in raw:
+            fields.add("thinking")
+        value = _object(raw, fields)
         models = value["models"]
         if type(models) is not list or len(models) > 256:
             raise InvalidAppMessageError()
+        thinking = None
+        if "thinking" in fields:
+            settings = _object(value["thinking"], {"currentLevel", "availableLevels"})
+            levels = settings["availableLevels"]
+            if type(levels) is not list or len(levels) > 6:
+                raise InvalidAppMessageError()
+            thinking = _construct(
+                SessionThinkingV1, current_level=_string(settings["currentLevel"]),
+                available_levels=tuple(_string(level) for level in levels),
+            )
         result = _construct(
             SessionModelsV1,
             current_id=_optional_string(value["currentId"]),
+            thinking=thinking,
             models=tuple(
                 _construct(
                     SessionModelChoiceV1,
@@ -418,7 +438,10 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
         return _encode_member_operation(cast(SessionSnapshotRequestV1, payload))
     if operation is AppOperationV1.SESSION_MODEL_SELECT:
         selection = cast(SessionModelSelectV1, payload)
-        return {**_encode_member_operation(selection), "modelId": selection.model_id}
+        value = {**_encode_member_operation(selection), "modelId": selection.model_id}
+        if selection.thinking_level is not None:
+            value["thinkingLevel"] = selection.thinking_level
+        return value
     if operation in {
         AppOperationV1.TURN_START,
         AppOperationV1.TURN_STEER,
@@ -501,7 +524,10 @@ def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
     if operation in {AppOperationV1.SESSION_SNAPSHOT, AppOperationV1.SESSION_MODELS}:
         return _decode_member_operation(SessionSnapshotRequestV1, raw, set())
     if operation is AppOperationV1.SESSION_MODEL_SELECT:
-        return _decode_member_operation(SessionModelSelectV1, raw, {"modelId"})
+        fields = {"modelId"}
+        if type(raw) is dict and "thinkingLevel" in raw:
+            fields.add("thinkingLevel")
+        return _decode_member_operation(SessionModelSelectV1, raw, fields)
     if operation in {
         AppOperationV1.TURN_START,
         AppOperationV1.TURN_STEER,
@@ -550,6 +576,8 @@ def _decode_member_operation(
         arguments["text"] = _string(value["text"])
     if "modelId" in extra_fields:
         arguments["model_id"] = _string(value["modelId"])
+    if "thinkingLevel" in extra_fields:
+        arguments["thinking_level"] = _string(value["thinkingLevel"])
     return _construct(factory, **arguments)
 
 

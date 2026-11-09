@@ -14,6 +14,9 @@
       {
         "title": "loushang",
         "decorations": false,
+        "resizable": true,
+        "minWidth": 560,
+        "minHeight": 420,
         "width": 1440,
         "height": 720
       }

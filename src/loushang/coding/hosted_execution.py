@@ -16,6 +16,7 @@ from loushang.appserver.protocol import (
     AppServiceError,
     SessionEventKindV1,
     SessionEventV1,
+    SessionModelsV1,
     SessionOpenSpecV1,
     SessionSnapshotV1,
 )
@@ -179,6 +180,12 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
 
     async def wait_execution(self, execution_id: str) -> ExecutionOutcomeV1:
         return await self._guard.wait(execution_id)
+
+    async def select_model(
+        self, model_id: str, thinking_level: str | None = None,
+    ) -> SessionModelsV1:
+        await self._product_binding.wait_for_title()
+        return await super().select_model(model_id, thinking_level)
 
     def subscribe_execution_observation(
         self, listener: Callable[[ExecutionObservationV1], None]

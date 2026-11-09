@@ -566,9 +566,29 @@ class SessionModelChoiceV1:
 
 
 @dataclass(frozen=True, slots=True)
+class SessionThinkingV1:
+    current_level: str
+    available_levels: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        levels = self.available_levels
+        if (
+            type(levels) is not tuple or not 1 <= len(levels) <= len(_THINKING_LEVELS)
+            or any(type(level) is not str or level not in _THINKING_LEVELS for level in levels)
+            or len(set(levels)) != len(levels)
+            or type(self.current_level) is not str or self.current_level not in levels
+        ):
+            raise ValueError("invalid session thinking settings")
+
+
+_THINKING_LEVELS = frozenset(("off", "minimal", "low", "medium", "high", "xhigh"))
+
+
+@dataclass(frozen=True, slots=True)
 class SessionModelsV1:
     current_id: str | None
     models: tuple[SessionModelChoiceV1, ...]
+    thinking: SessionThinkingV1 | None = None
 
     def __post_init__(self) -> None:
         if self.current_id is not None:
@@ -580,6 +600,10 @@ class SessionModelsV1:
         ids = {item.id for item in self.models}
         if len(ids) != len(self.models) or (self.current_id is not None and self.current_id not in ids):
             raise ValueError("invalid current session model")
+        if self.thinking is not None and (
+            type(self.thinking) is not SessionThinkingV1 or self.current_id is None
+        ):
+            raise ValueError("thinking settings require a current session model")
 
 
 @dataclass(frozen=True, slots=True)
@@ -588,12 +612,17 @@ class SessionModelSelectV1:
     controller_generation: int
     member_id: str
     model_id: str
+    thinking_level: str | None = None
 
     def __post_init__(self) -> None:
         SessionSnapshotRequestV1(
             self.attachment_id, self.controller_generation, self.member_id
         )
         _require_text(self.model_id, field="model id", maximum=512, empty=False)
+        if self.thinking_level is not None and (
+            type(self.thinking_level) is not str or self.thinking_level not in _THINKING_LEVELS
+        ):
+            raise ValueError("invalid session thinking level")
 
 
 @dataclass(frozen=True, slots=True)
@@ -824,6 +853,7 @@ __all__ = [
     "SessionModelChoiceV1",
     "SessionModelSelectV1",
     "SessionModelsV1",
+    "SessionThinkingV1",
     "SessionSubmissionModeV1",
     "TranscriptRecordKindV1",
     "TranscriptRecordV1",

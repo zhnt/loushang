@@ -296,14 +296,17 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # See hosted-session-workflow-g17.md, Reviewability Budget Supplement.
         # GUI's attachment-scoped model control adds 121 net lines to the
         # existing protocol/client group (6 client, 6 exports, 49 codec, 60 model).
-        "appserver": 2_100 + 121,
+        # Optional Session reasoning adds 63 lines (2 exports, 31 codec, 30 model).
+        # See Optional Session Reasoning in the AppServer architecture overview.
+        "appserver": 2_100 + 121 + 63,
         # LMUX M0 §60 reviewed ManagedCreate adds 170 net lines for the same
         # state lock/atomic continuity authority; all four core files still count.
         # LMUX M0 §72 keeps close coordination on the same state/continuity
         # owner; reviewed core is 1876 lines, including original core files.
         # Hosted capability routing and attachment-scoped model control share
         # this existing AppService core owner.
-        "appservice-core": 1_961,
+        # Optional reasoning adds five lines to confirm the selected level.
+        "appservice-core": 1_961 + 5,
         # LMUX M0 §71 reviewed v3 close history adds 59 net lines to the
         # same continuity schema/recovery boundary; no owner split or activation.
         # LMUX M0 §73 reviewed recovery stays on the original Attempt/lease;
@@ -313,7 +316,8 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         "appserver-close-values": 80,
         # Hosted execution plus redacted, session-local model control remain
         # isolated in the Coding AppService adapter.
-        "coding-adapter": 470,
+        # Optional reasoning adds 28 lines to project and validate Coding levels.
+        "coding-adapter": 470 + 28,
         # Stable execution recovery and explicit profile wiring from main.
         "harnesstui-mux": 688,
     }

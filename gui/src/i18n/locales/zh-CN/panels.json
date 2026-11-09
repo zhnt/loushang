@@ -1,5 +1,6 @@
 {
   "execution": {
+    "failureCode": "失败代码",
     "details": "在线执行详情",
     "title": "执行",
     "source": "来源",

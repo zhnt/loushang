@@ -3,7 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import App, { HarnessGui } from "./App";
-import { DesktopFrame } from "./DesktopFrame";
+import { useOfflineAccount } from "./client/offlineAccount";
 import { createNativeLiveClient, nativeLiveAvailable } from "./client/nativeLiveClient";
 import type { HarnessClientUiPort } from "./client/model";
 import "./LocalHostGate.css";
@@ -39,6 +39,7 @@ const errors = {
 /** Management remains native. The conversation stays mounted during reconnect. */
 export default function LocalHostGate() {
   const { t } = useTranslation("workspace");
+  const account = useOfflineAccount();
   const [legacy, setLegacy] = useState(!isTauri());
   const [supported, setSupported] = useState<boolean | null>(null);
   const [workspace, setWorkspace] = useState("");
@@ -92,7 +93,7 @@ export default function LocalHostGate() {
       let selected = environment.workspace;
       try { selected = localStorage.getItem(WORKSPACE_KEY) ?? selected; } catch { /* Optional preference. */ }
       setWorkspace(selected);
-      if (environment.supported) await perform("status", selected, undefined);
+      if (environment.supported) await perform("connect", selected, undefined);
     })().catch(() => { if (active) setHost({ state: "unknown", errorCode: "management_unavailable" }); });
     return () => { active = false; };
     // Native setup is process-local; workspace edits are explicit selection.
@@ -115,7 +116,7 @@ export default function LocalHostGate() {
     return () => window.clearInterval(timer);
   });
 
-  if (legacy) return <App />;
+  if (legacy) return <App account={account} />;
   const reason = host.errorCode ?? (host.state === "running" ? connectionError : null);
   const errorLabel = reason && reason in errors ? t(errors[reason as keyof typeof errors])
     : reason?.startsWith("start_") || reason === "spawn_failed" ? t("localHost.errors.start")
@@ -124,33 +125,45 @@ export default function LocalHostGate() {
   const stop = (action: "stop" | "restart") => {
     setConfirmation({ action, workspace, instanceId: host.instanceId });
   };
-  return <div className={`local-host-shell ${client ? "has-conversation" : ""}`}>
-    {!client ? <DesktopFrame sidebarOpen={false} onToggleSidebar={() => undefined} /> : null}
-    <section className="local-host-panel" aria-label={t("localHost.title")}>
-      <strong>{t("localHost.title")}</strong>
-      <label>{t("localHost.workspace")}
-        <input value={workspace} disabled={!!client || busy} onChange={(event) => setWorkspace(event.target.value)} placeholder={t("localHost.pathHint")} />
-      </label>
-      <span role="status">{supported === false ? t("localHost.unsupported") : t(states[host.state])}</span>
-      <div className="local-host-actions">
-        <button disabled={busy || !supported || !workspace} onClick={() => void perform("status")}>{t("localHost.refresh")}</button>
-        {host.state === "not_running" ? <button disabled={busy || !supported} onClick={() => void perform("start")}>{t("localHost.start")}</button> : null}
-        {host.state === "running" ? <>
-          <button disabled={busy} onClick={() => void perform("connect")}>{t(client ? "localHost.reconnect" : "localHost.connect")}</button>
-          <button disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>
-          <button disabled={busy} onClick={() => stop("restart")}>{t("localHost.restart")}</button>
-        </> : null}
+  const hostSettings = <>
+    <section className="local-host-panel" aria-labelledby="settings-local-host">
+      <div className="local-host-heading">
+        <h3 id="settings-local-host">{t("localHost.title")}</h3>
+        <span className="local-host-status" data-state={host.state} role="status">
+          {supported === false ? t("localHost.unsupported") : t(states[host.state])}
+        </span>
+      </div>
+      <div className="local-host-card">
+        <label>{t("localHost.workspace")}
+          <input value={workspace} disabled={!!client || busy} onChange={(event) => setWorkspace(event.target.value)} placeholder={t("localHost.pathHint")} />
+        </label>
+        <div className="local-host-actions">
+          <button disabled={busy || !supported || !workspace} onClick={() => void perform("status")}>{t("localHost.refresh")}</button>
+          {host.state === "not_running" ? <button disabled={busy || !supported} onClick={() => void perform("start")}>{t("localHost.start")}</button> : null}
+          {host.state === "running" ? <>
+            <button disabled={busy} onClick={() => void perform("connect")}>{t(client ? "localHost.reconnect" : "localHost.connect")}</button>
+            <button disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>
+            <button disabled={busy} onClick={() => stop("restart")}>{t("localHost.restart")}</button>
+          </> : null}
+        </div>
       </div>
       {reason ? <p role="alert">{errorLabel} <code>{reason}</code></p> : null}
-      {host.instanceId ? <details><summary>{t("localHost.identity")}</summary><p>{t("localHost.pid")}: {host.pid ?? "—"}</p><code>{host.instanceId}</code><br /><code>{host.serviceInstanceId}</code></details> : null}
+      <section className="local-host-card local-host-info" aria-labelledby="local-host-info-title">
+        <h4 id="local-host-info-title">{t("localHost.identity")}</h4>
+        {host.instanceId || host.serviceInstanceId || host.pid != null ? <dl className="detail-list">
+          {host.pid != null ? <div><dt>{t("localHost.pid")}</dt><dd>{host.pid}</dd></div> : null}
+          {host.instanceId ? <div><dt>{t("localHost.instanceId")}</dt><dd>{host.instanceId}</dd></div> : null}
+          {host.serviceInstanceId ? <div><dt>{t("localHost.serviceInstanceId")}</dt><dd>{host.serviceInstanceId}</dd></div> : null}
+        </dl> : <p>{t("localHost.identityUnavailable")}</p>}
+      </section>
     </section>
-    {confirmation ? <div className="local-host-confirm" role="alertdialog" aria-modal="true" aria-label={t("localHost.confirmTitle")} onKeyDown={(event) => { if (event.key === "Escape") setConfirmation(null); }}>
+    {confirmation ? <div className="local-host-confirm" role="alertdialog" aria-modal="true" aria-label={t("localHost.confirmTitle")} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setConfirmation(null); } }}>
       <div><strong>{t("localHost.confirmTitle")}</strong><p>{t("localHost.confirmStop")}</p>
         <p>{confirmation.workspace}</p>
         <button autoFocus onClick={() => setConfirmation(null)}>{t("localHost.cancel")}</button>
         <button onClick={() => { const selected = confirmation; setConfirmation(null); void perform(selected.action, selected.workspace, selected.instanceId); }}>{t("localHost.confirm")}</button>
       </div>
     </div> : null}
-    {client ? <div className="local-host-conversation"><HarnessGui client={client} /></div> : <p className="local-host-intro">{t("localHost.intro")}</p>}
-  </div>;
+  </>;
+  return <HarnessGui client={client} account={account} hostSettings={hostSettings} />;
 }

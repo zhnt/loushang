@@ -5,6 +5,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { UiIcon } from "./UiIcon";
 import { FrameMenu, type FrameActions } from "./FrameMenu";
 
+const resizeEdges = ["North", "South", "West", "East", "NorthWest", "NorthEast", "SouthWest", "SouthEast"] as const;
+
 export function PanelIcon({ side }: { side: "left" | "right" | "bottom" | "environment" }) {
   return <svg aria-hidden="true" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.2">
     {side === "environment" ? <><circle cx="5" cy="5" r="1.5" /><circle cx="5" cy="14" r="1.5" /><path d="M10 5h6M10 14h6" /></>
@@ -60,6 +62,13 @@ export function DesktopFrame({ onBack, onForward, ...actions }: FrameActions & {
         <button className="window-close" aria-label={t("close")} disabled={!native} onClick={() => void control("close")}><WindowIcon action="close" /></button>
       </div>
     </header>
+    {!maximized ? resizeEdges.map((edge) => (
+      <div key={edge} className="window-resize-edge" data-edge={edge} aria-hidden="true" onPointerDown={(event) => {
+        if (event.button !== 0 || event.pointerType !== "mouse") return;
+        event.preventDefault();
+        void getCurrentWindow().startResizeDragging(edge).catch(() => setError("actionFailed"));
+      }} />
+    )) : null}
     {error ? <div role="alert" className="window-error">{t(error)}</div> : null}
   </>;
 }

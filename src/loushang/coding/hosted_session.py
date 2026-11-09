@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import json
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from secrets import token_hex
@@ -43,6 +43,9 @@ from loushang.harness.policy import PolicyEvaluator, PolicyEvaluatorChain
 from loushang.harness.session import SessionControlPort
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import workspace_tool_runtime_settings
+from loushang.harness.transcript.session_catalog import (
+    load_agent_transcript_session_metadata,
+)
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 from .appservice_adapter import (
@@ -116,8 +119,15 @@ class CodingHostedHistoryBindingV1:
                 TranscriptRecordKindV1.STATUS,
                 "Earlier messages omitted from this bounded snapshot; the canonical transcript is unchanged.",
             ))
+        title = load_agent_transcript_session_metadata(
+            history.header_preview.header, history.records
+        ).name
         self._projection = CodingHostedSnapshotProjectionV1(
-            title="Coding", revision=0, running=False, records=tuple(records),
+            title=_session_title(
+                title, (entry.payload for entry in history.records),
+                automatic=_uses_automatic_title(identity),
+            ),
+            revision=0, running=False, records=tuple(records),
             truncated=omitted,
         )
 
@@ -169,6 +179,7 @@ class CodingRealHostedSessionV1:
         self._interrupted = False
         self._revision = 0
         self._close_task: asyncio.Task[None] | None = None
+        self._title_task: asyncio.Task[None] | None = None
         self._execution_claimed = False
         session.set_approval_presenter(
             self._present_approval, dismisser=self._dismiss_approval
@@ -231,8 +242,10 @@ class CodingRealHostedSessionV1:
                 ),
             )
         return CodingHostedSnapshotProjectionV1(
-            title=_bounded(
-                (self._session.session_name or "").strip() or "Coding", limit=256
+            title=_session_title(
+                self._session.session_name,
+                _title_messages(self._session),
+                automatic=_uses_automatic_title(self.identity),
             ),
             revision=self._revision,
             running=self._session.is_streaming,
@@ -248,6 +261,9 @@ class CodingRealHostedSessionV1:
         if payload is None:
             return None
         kind = payload.get("type")
+        if kind == "session_info_changed":
+            # Notify snapshot readers without appending a transcript row.
+            return CodingHostedEventProjectionV1(SessionEventKindV1.STATUS)
         if kind == "agent_start":
             self._interrupted = False
             return CodingHostedEventProjectionV1(SessionEventKindV1.TURN_STARTED)
@@ -364,6 +380,9 @@ class CodingRealHostedSessionV1:
 
     async def _close_once(self) -> None:
         self._approval.end_session()
+        if self._title_task is not None:
+            self._title_task.cancel()
+            await asyncio.gather(self._title_task, return_exceptions=True)
         await self._session.dispose()
         self._interactions.clear()
 
@@ -376,7 +395,34 @@ class CodingRealHostedSessionV1:
     ) -> ExecutionWorkV1:
         from ._hosted_execution_work import CodingExecutionWorkV1
 
-        return CodingExecutionWorkV1(self._session, text, cancel_requested)
+        return CodingExecutionWorkV1(
+            self._session, text, cancel_requested,
+            start_title=self.start_title_if_unnamed,
+            wait_for_title=self.wait_for_title,
+        )
+
+    async def wait_for_title(self) -> None:
+        # The title and the conversation share the durable Model Input writer.
+        task = self._title_task
+        if task is not None and not task.done():
+            await asyncio.shield(task)
+
+    def start_title_if_unnamed(self) -> None:
+        if (
+            self._close_task is not None or self._session.session_name
+            or not _uses_automatic_title(self.identity)
+            or (self._title_task is not None and not self._title_task.done())
+        ):
+            return
+        question = next((
+            text for message in _title_messages(self._session)
+            if isinstance(message, UserMessage) and (text := _message_text(message).strip())
+        ), None)
+        if question is None:
+            return
+        from ._hosted_execution_work import set_first_turn_title
+
+        self._title_task = asyncio.create_task(set_first_turn_title(self._session, question))
 
 
 class CodingRealHostedSessionFactoryV1:
@@ -523,6 +569,38 @@ class CodingRealHostedSessionFactoryV1:
 def _bounded(text: str, *, limit: int = _TEXT_LIMIT) -> str:
     marker = " … [truncated]"
     return text if len(text) <= limit else text[: limit - len(marker)] + marker
+
+
+def _uses_automatic_title(identity: SessionIdentityV1) -> bool:
+    return identity.continuity_id.startswith(("gui-new-", "gui-default-"))
+
+
+def _title_messages(session: AgentSession) -> Iterable[object]:
+    manager = getattr(session, "session_manager", None)
+    if isinstance(manager, SessionManager):
+        return (entry.payload for entry in manager.entries)
+    return session.messages
+
+
+def _session_title(
+    name: str | None, messages: Iterable[object], *, automatic: bool,
+) -> str:
+    if name and name.strip():
+        return _bounded(name.strip(), limit=256)
+    if automatic:
+        return "New Session"
+    # Read the first prompt from the full transcript, including turns omitted
+    # by the display window or by context compaction.
+    for message in messages:
+        if isinstance(message, UserMessage) and (title := " ".join(_message_text(message).split())):
+            if len(title) <= 48:
+                return title
+            prefix = title[:47].rstrip()
+            word_boundary = prefix.rfind(" ")
+            if word_boundary >= 30:
+                prefix = prefix[:word_boundary]
+            return f"{prefix}…"
+    return "New Session"
 
 
 def _message_record(message: object) -> TranscriptRecordV1 | None:
