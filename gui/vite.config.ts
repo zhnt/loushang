@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { hostBridge } from "./hostBridge";
+import { hostBridge } from "./hostBridge.ts";
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 
