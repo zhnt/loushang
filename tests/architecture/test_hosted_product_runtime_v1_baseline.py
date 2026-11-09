@@ -505,6 +505,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "__init__.py",
         "_ownership.py",
         "catalog.py",
+        "client_preferences.py",
         "contracts.py",
         "errors.py",
         "integrations/__init__.py",
@@ -663,6 +664,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         if any(imported.startswith("loushang.apphost") for imported in _imports(path))
     }
     assert reverse_apphost_consumers == {
+        Path("src/loushang/coding/client_settings.py"),
         # G1: desktop composition over the existing managed lifecycle owners.
         Path("src/loushang/coding/gui_local_host.py"),
         Path("src/loushang/coding/apphost_canary.py"),

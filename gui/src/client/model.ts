@@ -156,8 +156,10 @@ export interface CapabilitySummary {
 
 export type ClientSource =
   | { readonly kind: "fixture"; readonly label: string }
+  | { readonly kind: "disconnected"; readonly label: string }
   | {
       readonly kind: "live";
+      readonly connectionId?: string;
       readonly serviceInstanceId: string;
       readonly muxSpaceId: string;
       readonly muxName?: string;

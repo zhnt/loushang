@@ -12,15 +12,15 @@ import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { isTauri } from "@tauri-apps/api/core";
 import { useSessionHistory } from "./useSessionHistory";
-import { readSidebarPreferences, saveSidebarPreferences, sidebarPreferencesKey } from "./client/sidebarPreferences";
+import { readSidebarPreferences, saveSidebarPreferences, updateSidebarPreferences, sidebarPreferencesKey } from "./client/sidebarPreferences";
 import { liveSelectionKey, rememberSessionSelection, restoreSessionSelection } from "./client/sessionSelection";
-import { createMockAppClient } from "./client/mockAppClient";
-import { createNativeLiveClient, nativeLiveAvailable } from "./client/nativeLiveClient";
+import { createNativeLiveClient } from "./client/nativeLiveClient";
 import { probeFixtureBridge, type BridgeProbe } from "./client/nativeFixtureBridge";
 import type {
   AgentRunProjection,
   ChangeSetProjection,
   ClientEvent,
+  ClientSnapshot,
   ConnectionState,
   FixturePlaybackPort,
   HarnessClientUiPort,
@@ -111,7 +111,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     }
   }, [sidebarOpen]);
   const [sidebarWidth, setSidebarWidth] = useState(280);
-  const [environmentOpen, setEnvironmentOpen] = useState(!hostSettings);
+  const [environmentOpen, setEnvironmentOpen] = useState(true);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
   const [contentMetrics, setContentMetrics] = useState({ gutter: 24, scrollbar: 0 });
   const conversationRef = useRef<HTMLElement | null>(null);
@@ -164,18 +164,23 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     let pending = false;
     let buffered: ClientEvent[] = [];
     let overflow = false;
+    let latestSnapshot: ClientSnapshot | null = null;
     async function refresh(): Promise<void> {
       if (!active || pending) return;
       pending = true;
       syncPendingRef.current = true;
       buffered = [];
       overflow = false;
+      latestSnapshot = null;
       setSyncing(true);
       try {
         const snapshot = await client.snapshot();
+        if (snapshot.source.kind === "live") {
+          await updateSidebarPreferences(sidebarPreferencesKey(snapshot.source)).catch(() => {});
+        }
         if (!active) return;
         if (overflow) throw new Error("Snapshot event buffer exceeded its limit.");
-        dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(snapshot) });
+        dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(latestSnapshot ?? snapshot) });
         // The reducer ignores cursors already covered by the snapshot and freezes
         // on any remaining gap. Never infer continuity from arrival timing.
         for (const event of buffered) dispatch({ type: "event.received", event });
@@ -210,6 +215,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     });
     const unsubscribeSnapshots = client.subscribeSnapshots?.((snapshot) => {
       if (!active) return;
+      latestSnapshot = snapshot;
       dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(snapshot) });
       const createdSessionId = createdSessionRef.current;
       if (createdSessionId && snapshot.sessions.some((session) => session.id === createdSessionId)) {
@@ -778,8 +784,26 @@ function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace 
   }, [selectedSessionId, stale]);
 
   useEffect(() => {
-    saveSidebarPreferences(preferencesKey, preferences);
+    if (preferencesKey === "fixture") { saveSidebarPreferences(preferencesKey, preferences); return; }
   }, [preferencesKey, preferences]);
+
+  useEffect(() => {
+    if (preferencesKey === "fixture") return;
+    let active = true;
+    let pending = false;
+    const refresh = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const value = await updateSidebarPreferences(preferencesKey);
+        if (active) setPreferences(value);
+      } catch { /* Keep the last confirmed records while disconnected. */ }
+      finally { pending = false; }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 1000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [preferencesKey]);
 
   useLayoutEffect(() => {
     const id = restorePinFocus.current;
@@ -816,10 +840,13 @@ function SessionNavigation({ state, preferencesKey, onSelect, onToggleWorkspace 
         if (isPinned && workspaceIds.has(session.workspaceId) && state.local.expandedWorkspaces[session.workspaceId] === false) {
           onToggleWorkspace(session.workspaceId);
         }
-        setPreferences((current) => ({
-          ...current,
-          pinned: isPinned ? current.pinned.filter((id) => id !== session.id) : [session.id, ...current.pinned],
-        }));
+        if (preferencesKey !== "fixture") {
+          void updateSidebarPreferences(preferencesKey, isPinned ? "unpin" : "pin", session.id)
+            .then(setPreferences).catch(() => {});
+        } else {
+          setPreferences((current) => ({ ...current,
+            pinned: isPinned ? current.pinned.filter((id) => id !== session.id) : [session.id, ...current.pinned] }));
+        }
       }} />;
   }
 
@@ -1382,21 +1409,8 @@ function connectionLabel(connection: ConnectionState | "connecting"): string {
 }
 
 function App({ account }: { account?: OfflineAccount | null }) {
-  const { t } = useTranslation(["session", "workspace", "panels", "common"]);
-  const fixture = useMemo(() => createMockAppClient(), []);
-  const [client, setClient] = useState<HarnessClientUiPort | FixturePlaybackPort | null>(null);
-  useEffect(() => {
-    let active = true;
-    void nativeLiveAvailable()
-      .then((available) => {
-        if (active) setClient(available ? createNativeLiveClient() : fixture);
-      })
-      .catch(() => {
-        if (active) setClient(fixture);
-      });
-    return () => { active = false; };
-  }, [fixture]);
-  return client ? <HarnessGui client={client} account={account} /> : <div className="empty-state">{t("session:opening")}</div>;
+  const client = useMemo(() => createNativeLiveClient(), []);
+  return <HarnessGui client={client} account={account} />;
 }
 
 export default App;

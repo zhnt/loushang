@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { HarnessGui } from "../../src/App";
-import { createMockAppClient } from "../../src/client/mockAppClient";
+import { createMockAppClient } from "../support/mockAppClient";
 import type { ClientSnapshot, FixturePlaybackPort, SessionModels, ThinkingLevel } from "../../src/client/model";
 
 function withSnapshot(client: FixturePlaybackPort, snapshot: ClientSnapshot): FixturePlaybackPort {

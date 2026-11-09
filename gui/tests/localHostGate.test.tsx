@@ -43,10 +43,24 @@ function openHostSettings() {
   return settings;
 }
 
+function installMock(implementation: (command: string, args?: any) => Promise<unknown>) {
+  native.invoke.mockImplementation(async (command, args) => {
+    if (command === "client_settings") {
+      if (args.request.operation === "connections/list") return { selectedId: "local", connections: [
+        { id: "local", name: "Local", kind: "local", selected: true, workspace: "/workspace", webUrl: null },
+      ] };
+      if (args.request.operation === "environment") return implementation("local_host_environment", args);
+      if (args.request.operation === "remember-workspace") return {};
+    }
+    return implementation(command, args);
+  });
+}
+
 beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  HTMLDialogElement.prototype.close = function () { this.open = false; };
   native.invoke.mockReset(); native.create.mockClear(); native.listeners.clear();
-  native.invoke.mockImplementation(async (command, args) => {
+  installMock(async (command, args) => {
     if (command === "offline_account") return { name: "desktop-user", id: "local-test-id" };
     if (command === "sync_tray") return;
     if (command === "local_host_environment") return { supported: true, workspace: "/workspace" };
@@ -67,7 +81,7 @@ describe("local managed Host presentation", () => {
     expect(projection().userName).toBe("desktop-user");
     expect(projection().webUrl).toBeNull();
     const click = (revision: number, action: string) => act(() => native.listeners.get("gui://tray-host-action")?.({
-      payload: { revision, hostId: "/workspace", action },
+      payload: { revision, hostId: "local", action },
     }));
     click(projection().revision - 1, "start");
     expect(native.invoke.mock.calls.some(([, args]) => args?.request?.action === "start")).toBe(false);
@@ -76,7 +90,7 @@ describe("local managed Host presentation", () => {
     expect(projection().currentLabel).toContain("Connecting");
     click(projection().revision, "stop");
     expect(await screen.findByRole("alertdialog")).toBeVisible();
-    expect(screen.getByRole("region", { name: "Host information" })).toBeVisible();
+    expect(within(screen.getByRole("alertdialog")).getByText("instance-1", { exact: true })).toBeVisible();
     expect(native.invoke.mock.calls.some(([, args]) => args?.request?.action === "stop")).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Confirm shutdown" }));
     await waitFor(() => expect(native.invoke).toHaveBeenCalledWith("local_host_action", {
@@ -115,10 +129,9 @@ describe("local managed Host presentation", () => {
   });
 
   it("automatically enters a running Host without starting a process or opening Settings", async () => {
-    localStorage.setItem("loushang.gui.local-workspace.v1", "/previous");
-    native.invoke.mockImplementation(async (command) => {
+    installMock(async (command) => {
       if (command === "offline_account") return null;
-      if (command === "local_host_environment") return { supported: true, workspace: "/workspace" };
+      if (command === "local_host_environment") return { supported: true, workspace: "/previous" };
       return { state: "running", errorCode: null, workspace: "/previous", instanceId: "instance-1" };
     });
     render(<StrictMode><LocalHostGate /></StrictMode>);
@@ -151,7 +164,7 @@ describe("local managed Host presentation", () => {
   });
 
   it("refuses to offer another start when identity is unconfirmed", async () => {
-    native.invoke.mockImplementation(async (command) => command === "local_host_environment"
+    installMock(async (command) => command === "local_host_environment"
       ? { supported: true, workspace: "/workspace" }
       : { state: "unknown", errorCode: "authentication_failed" });
     render(<LocalHostGate />);
@@ -161,7 +174,7 @@ describe("local managed Host presentation", () => {
   });
 
   it("shows unsupported platforms without attempting managed effects", async () => {
-    native.invoke.mockResolvedValue({ supported: false, workspace: "/workspace" });
+    installMock(async () => ({ supported: false, workspace: "/workspace" }));
     render(<LocalHostGate />);
     openHostSettings();
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Linux only"));

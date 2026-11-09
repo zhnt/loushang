@@ -33,6 +33,16 @@ the root menu. Windows and macOS native interactions remain unverified here.
 The corrected English submenu title and all window actions passed the repeat
 native check after this change.
 
+After integrating the shared Web adapter, a second native run used a dynamic
+loopback port and a saved remote-kind alias of that isolated adapter. The real
+menu discovered the saved entry, Enable updated both the current Host row and
+the persisted default connection, and Open Web invoked the selected address.
+The window lifecycle checks passed again. This verifies the real configuration
+and native menu path; it is not an external-machine/network acceptance test.
+The isolated adapter received shutdown after the test; no execution Host was
+started. Final combined `check:full`: 116 tests, web build, formatting, Clippy,
+and Rust checks passed in normal and fixture-bridge configurations.
+
 ## Shared Host configuration integration
 
 The directory adapter consumes `connections/list`, `connections/select`, and

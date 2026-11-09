@@ -7,19 +7,12 @@ import { useOfflineAccount } from "./client/offlineAccount";
 import { createNativeLiveClient, nativeLiveAvailable } from "./client/nativeLiveClient";
 import type { ConnectionState, HarnessClientUiPort } from "./client/model";
 import { useSystemTray, type TrayConnection } from "./client/systemTray";
+import { sharedSettings, webRequest } from "./client/hostApi";
+import { createWebLiveClient } from "./client/webLiveClient";
+import { useTrayHosts, selectTrayHost, type HostStatus, type HostAction as Action } from "./client/trayHosts";
+import { TrayHostDialog } from "./TrayHostDialog";
 import "./LocalHostGate.css";
 
-type HostState = "unknown" | "not_running" | "starting" | "running" | "stopping" | "exited";
-type Action = "status" | "start" | "connect" | "stop" | "restart";
-interface HostStatus {
-  state: HostState;
-  errorCode: string | null;
-  workspace?: string;
-  instanceId?: string;
-  serviceInstanceId?: string;
-  pid?: number;
-}
-const WORKSPACE_KEY = "loushang.gui.local-workspace.v1";
 const states = {
   unknown: "localHost.states.unknown", not_running: "localHost.states.notRunning",
   starting: "localHost.states.starting", running: "localHost.states.running",
@@ -37,11 +30,11 @@ const errors = {
   instance_changed: "localHost.errors.instance",
 } as const;
 
-/** Management remains native. The conversation stays mounted during reconnect. */
+/** Shared Host management; conversations stay mounted during reconnect and selection. */
 export default function LocalHostGate() {
   const { t, i18n } = useTranslation("workspace");
   const account = useOfflineAccount();
-  const [legacy, setLegacy] = useState(!isTauri());
+  const [legacy, setLegacy] = useState(false);
   const [supported, setSupported] = useState<boolean | null>(null);
   const [workspace, setWorkspace] = useState("");
   const [host, setHost] = useState<HostStatus>({ state: "unknown", errorCode: null });
@@ -50,36 +43,44 @@ export default function LocalHostGate() {
   const [client, setClient] = useState<HarnessClientUiPort | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connection, setConnection] = useState<ConnectionState | "connecting">("disconnected");
-  const [webUrl, setWebUrl] = useState<string | undefined>();
+  const [selectedId, setSelectedId] = useState("");
   const [hostSettingsRequest, requestHostSettings] = useState(0);
   const [trayError, setTrayError] = useState<string | null>(null);
   const clientRef = useRef<HarnessClientUiPort | null>(null);
   const generation = useRef(0);
   const pending = useRef(false);
+  const pendingAction = useRef<Action>("status");
+  const remote = useRef(false);
+  const connectionId = useRef<string | undefined>(undefined);
 
-  async function perform(action: Action, path = workspace, expected = host.instanceId) {
-    if (pending.current || !path) return;
+  async function perform(action: Action, path = workspace, expected: string | null | undefined = host.instanceId) {
+    if (!path || (pending.current && (action === "status" || pendingAction.current !== "status"))) return;
     const serial = ++generation.current;
     pending.current = true;
-    setBusy(true);
+    pendingAction.current = action;
+    setBusy(action !== "status");
     if (["connect", "start", "restart"].includes(action)) setConnection("connecting");
     if (action === "start" || action === "restart") setHost((current) => ({ ...current, state: "starting", errorCode: null }));
     if (action === "stop") setHost((current) => ({ ...current, state: "stopping", errorCode: null }));
     try {
-      const result = await invoke<HostStatus>("local_host_action", {
-        request: { action, workspace: path, ...(expected ? { instanceId: expected } : {}) },
-      });
+      const request = { action, workspace: path, ...(expected ? { instanceId: expected } : {}) };
+      const result = isTauri() && !remote.current ? await invoke<HostStatus>("local_host_action", { request })
+        : await webRequest<HostStatus>({ operation: "manage", ...request }, connectionId.current);
       if (serial !== generation.current) return;
       if (!(result.state in states)) throw new Error("management_response_invalid");
       setHost(result);
       if (result.state !== "running" || result.errorCode) setConnection("disconnected");
       if (result.workspace) {
         setWorkspace(result.workspace);
-        try { localStorage.setItem(WORKSPACE_KEY, result.workspace); } catch { /* Optional UI preference. */ }
+        if (result.state === "running" && !result.errorCode) {
+          if (remote.current) await webRequest({ operation: "remember-workspace", workspace: result.workspace }, connectionId.current);
+          else await sharedSettings({ operation: "remember-workspace", workspace: result.workspace });
+        }
       }
+      if (serial !== generation.current) return;
       if (["connect", "start", "restart"].includes(action) && result.state === "running" && !result.errorCode) {
         setConnectionError(null);
-        clientRef.current ??= createNativeLiveClient();
+        clientRef.current ??= isTauri() && !remote.current ? createNativeLiveClient() : createWebLiveClient(path, connectionId.current);
         setClient(clientRef.current);
       }
     } catch (error) {
@@ -92,20 +93,61 @@ export default function LocalHostGate() {
     }
   }
 
+  async function activateHost(id: string, select = true) {
+    if (pending.current && pendingAction.current !== "status") throw new Error("management_busy");
+    const previous = { client: clientRef.current, id: connectionId.current, remote: remote.current, connection };
+    ++generation.current;
+    pending.current = true;
+    pendingAction.current = "connect";
+    setBusy(true);
+    clientRef.current = null;
+    setClient(null);
+    setConnection("connecting");
+    try {
+      if (select) await selectTrayHost(id);
+    } catch (error) {
+      clientRef.current = previous.client;
+      connectionId.current = previous.id;
+      remote.current = previous.remote;
+      setClient(previous.client);
+      setConnection(previous.connection);
+      pending.current = false; setBusy(false);
+      throw error;
+    }
+    connectionId.current = id;
+    remote.current = true;
+    setSelectedId(id);
+    setHost({ state: "unknown", errorCode: null });
+    setConnectionError(null);
+    try {
+      const environment = await webRequest<{ supported: boolean; workspace: string }>({ operation: "environment" }, id);
+      setWorkspace(environment.workspace);
+      setSupported(environment.supported);
+      pending.current = false;
+      if (environment.supported) await perform("connect", environment.workspace, null);
+      else setConnection("disconnected");
+    } catch (error) {
+      setHost({ state: "unknown", errorCode: "connection_failed" });
+      setConnection("disconnected");
+      throw error;
+    } finally { pending.current = false; setBusy(false); }
+  }
+
   useEffect(() => {
-    if (!isTauri()) return;
     let active = true;
+    const initialGeneration = generation.current;
     void (async () => {
       if (await nativeLiveAvailable()) { if (active) setLegacy(true); return; }
-      const environment = await invoke<{ supported: boolean; workspace: string; webUrl?: string }>("local_host_environment");
-      if (!active) return;
+      const environment = await sharedSettings<{ supported: boolean; workspace: string; remote?: boolean; connectionId?: string }>({ operation: "environment" });
+      if (!active || initialGeneration !== generation.current) return;
+      remote.current = environment.remote ?? !isTauri();
+      connectionId.current = environment.connectionId;
+      setSelectedId(environment.connectionId ?? "local");
       setSupported(environment.supported);
-      setWebUrl(environment.webUrl);
-      let selected = environment.workspace;
-      try { selected = localStorage.getItem(WORKSPACE_KEY) ?? selected; } catch { /* Optional preference. */ }
+      const selected = environment.workspace;
       setWorkspace(selected);
       if (environment.supported) await perform("connect", selected, undefined);
-    })().catch(() => { if (active) setHost({ state: "unknown", errorCode: "management_unavailable" }); });
+    })().catch(() => { if (active && initialGeneration === generation.current) setHost({ state: "unknown", errorCode: "management_unavailable" }); });
     return () => { active = false; };
     // Native setup is process-local; workspace edits are explicit selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -127,20 +169,18 @@ export default function LocalHostGate() {
     return () => window.clearInterval(timer);
   });
 
-  const trayConnection: TrayConnection = connection === "connected" ? "connected"
+  const trayConnection: TrayConnection = busy && ["connect", "start", "restart"].includes(pendingAction.current) ? "connecting"
+    : connection === "connected" ? "connected"
     : connection === "connecting" || connection === "resync-required" ? "connecting" : "disconnected";
-  useSystemTray({
-    userName: account?.name ?? "", language: i18n.resolvedLanguage ?? "en-US",
-    hosts: !legacy && workspace ? [{
-      id: workspace, name: i18n.t("shell:tray.localHost"), selected: true,
-      connection: trayConnection, service: host.state === "not_running" || host.state === "exited" ? "stopped" : host.state,
-      busy, manageable: supported === true, webUrl,
-    }] : [],
-  }, (_id, action) => {
-    if (action === "info" || action === "stop") requestHostSettings((value) => value + 1);
-    if (action === "stop") setConfirmation({ action: "stop", workspace, instanceId: host.instanceId });
-    else if (action !== "info") void perform(action === "start" ? "start" : "connect");
-  }, (error) => { setTrayError(error); requestHostSettings((value) => value + 1); });
+  const trayHosts = useTrayHosts({
+    enabled: !legacy, selectedId, localName: i18n.t("shell:tray.localHost"),
+    workspace, host, supported: supported === true, busy, connection: trayConnection,
+    onSelect: (id) => activateHost(id),
+    onManage: (action, path, instanceId) => action === "connect" && connectionId.current
+      ? activateHost(connectionId.current, false) : perform(action, path, instanceId),
+  });
+  useSystemTray({ userName: account?.name ?? "", language: i18n.resolvedLanguage ?? "en-US", hosts: trayHosts.hosts },
+    trayHosts.action, (error) => { setTrayError(error); requestHostSettings((value) => value + 1); });
 
   if (legacy) return <App account={account} />;
   const reason = host.errorCode ?? (host.state === "running" ? connectionError : null);
@@ -196,6 +236,9 @@ export default function LocalHostGate() {
       </div>
     </div> : null}
   </>;
-  return <HarnessGui client={client} account={account} hostSettings={hostSettings}
-    hostSettingsRequest={hostSettingsRequest} onConnectionChange={setConnection} />;
+  return <><HarnessGui client={client} account={account} hostSettings={hostSettings}
+    hostSettingsRequest={hostSettingsRequest} onConnectionChange={setConnection} />
+    <TrayHostDialog details={trayHosts.details} error={trayHosts.error}
+      onClose={() => { trayHosts.closeDetails(); trayHosts.clearError(); }} onConfirm={trayHosts.confirmStop} />
+  </>;
 }

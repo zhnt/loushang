@@ -44,15 +44,11 @@ pub(crate) struct LocalHostStatus {
 pub(crate) struct LocalHostEnvironment {
     supported: bool,
     workspace: String,
-    web_url: Option<String>,
 }
 
 #[tauri::command]
 pub(crate) fn local_host_environment() -> LocalHostEnvironment {
     LocalHostEnvironment {
-        web_url: std::env::var("LOUSHANG_GUI_WEB_URL")
-            .ok()
-            .filter(|value| crate::web_link::safe_web_url(value)),
         supported: cfg!(target_os = "linux"),
         workspace: std::env::current_dir()
             .ok()
@@ -173,4 +169,41 @@ mod tests {
         };
         assert!(run(&request).is_err());
     }
+}
+
+/// Shared client configuration and Host navigation state, owned by Python.
+#[tauri::command]
+pub(crate) async fn client_settings(
+    request: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let python = std::env::var_os("LOUSHANG_GUI_PYTHON").unwrap_or_else(|| "python3".into());
+        let mut child = Command::new(python)
+            .args(["-m", "loushang.coding.client_settings"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|_| "settings_unavailable".to_owned())?;
+        let payload = serde_json::to_vec(&request).map_err(|_| "invalid_request".to_owned())?;
+        let sent = child
+            .stdin
+            .take()
+            .ok_or_else(|| "settings_unavailable".to_owned())?
+            .write_all(&payload);
+        let output = child
+            .wait_with_output()
+            .map_err(|_| "settings_unavailable".to_owned())?;
+        if sent.is_err() || !output.status.success() || output.stdout.len() > 16777216 {
+            return Err("settings_unavailable".to_owned());
+        }
+        let value: serde_json::Value = serde_json::from_slice(&output.stdout)
+            .map_err(|_| "settings_unavailable".to_owned())?;
+        value
+            .get("result")
+            .cloned()
+            .ok_or_else(|| "settings_unavailable".to_owned())
+    })
+    .await
+    .map_err(|_| "settings_unavailable".to_owned())?
 }

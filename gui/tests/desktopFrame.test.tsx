@@ -14,7 +14,7 @@ import { i18n } from "../src/i18n";
 import { act } from "@testing-library/react";
 import { DesktopFrame } from "../src/DesktopFrame";
 import { HarnessGui } from "../src/App";
-import { createMockAppClient } from "../src/client/mockAppClient";
+import { createMockAppClient } from "./support/mockAppClient";
 
 it("labels disconnected execution snapshots and never waits on an empty completed record", async () => {
   const fixture = createMockAppClient();
