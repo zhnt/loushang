@@ -256,15 +256,12 @@ class CodingDeferredHostedSessionV1:
         self, text: str, cancel_requested: Callable[[], bool],
     ) -> ExecutionWorkV1:
         from ._hosted_execution_work import (
-            CodingExecutionWorkV1,
             current_coding_hosted_resume_subject,
             current_coding_hosted_resume_submission_id,
         )
 
         if self._active is not None:
-            return CodingExecutionWorkV1(
-                cast(AgentSession, self._active.control), text, cancel_requested
-            )
+            return self._active.create_execution_work(text, cancel_requested)
         scope, control, subject_digest = current_coding_hosted_resume_subject()
         submission_id = current_coding_hosted_resume_submission_id()
         if submission_id is None:
@@ -273,6 +270,14 @@ class CodingDeferredHostedSessionV1:
             self, text, cancel_requested, scope, control, subject_digest,
             submission_id,
         )
+
+    async def wait_for_title(self) -> None:
+        if self._active is not None:
+            await self._active.wait_for_title()
+
+    def start_title_if_unnamed(self) -> None:
+        if self._active is not None:
+            self._active.start_title_if_unnamed()
 
     def project_snapshot(self) -> CodingHostedSnapshotProjectionV1:
         if self._close_task is not None:
@@ -735,6 +740,11 @@ class _HostedResumeExecutionWorkV1:
         if self._unsubscribe is not None:
             self._unsubscribe()
             self._unsubscribe = None
+        if (
+            not self._cancel_requested() and self._outcome is not None
+            and self._outcome.status is ExecutionStatusV1.SUCCEEDED
+        ):
+            self._binding.start_title_if_unnamed()
 
 
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import replace
 from unicodedata import category
@@ -12,12 +12,12 @@ from loushang.agent import AbortSignal, Agent
 from loushang.agent.types import AgentEvent
 from loushang.ai.model import OpenAIResponsesConfig
 from loushang.ai.options import RetryOptions
-from loushang.ai.types import AssistantMessage, UserMessage
+from loushang.ai.types import AssistantMessage
 from loushang.appserver.protocol import SessionSnapshotRequestV1
 from loushang.appservice.client_scope import AppClientScopeV1
 from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
 from loushang.appservice.execution_guard import ExecutionControlV1
-from loushang.harness.transcript import assistant_message_text, user_message_text
+from loushang.harness.transcript import assistant_message_text
 
 from .resume_activation_attempt import CodingActivationAttemptV1
 from .session.agent_session import AgentSession
@@ -61,44 +61,36 @@ def _require_current_coding_hosted_resume_subject(
 class CodingExecutionWorkV1:
     def __init__(
         self, session: AgentSession, text: str, cancel_requested: Callable[[], bool],
-        *, start_title: Callable[[str], None] | None = None,
+        *,
+        start_title: Callable[[], None] | None = None,
+        wait_for_title: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self.session = session
         self.text = text
         self._cancel_requested = cancel_requested
         self._interrupted = False
         self._start_title = start_title
+        self._wait_for_title = wait_for_title
         self._agent_outcome: ExecutionOutcomeV1 | None = None
         self._unsubscribe: Callable[[], None] | None = None
         self._unbind_turn: Callable[[], None] | None = None
 
     async def run(self, control: ExecutionControlV1) -> ExecutionOutcomeV1:
-        start_title = self._start_title
-        if start_title is not None and any(
-            isinstance(message, UserMessage) for message in self.session.messages
-        ):
-            start_title = None
-
         def observe(event: AgentEvent, _signal: AbortSignal) -> None:
-            nonlocal start_title
-            if event["type"] == "message_end" and start_title is not None:
-                message = event["message"]
-                if isinstance(message, UserMessage):
-                    question = user_message_text(message)
-                    if question.strip() and not self._cancel_requested():
-                        start_title(question)
-                    start_title = None
-            elif event["type"] == "agent_end":
+            if event["type"] == "agent_end":
                 for message in reversed(event["messages"]):
                     if isinstance(message, AssistantMessage):
                         self._agent_outcome = _assistant_outcome(message)
                         break
 
-        self._unsubscribe = self.session.agent.subscribe(observe)
-        self._unbind_turn = control.bind_turn_interrupt(
-            lambda: self.session.abort() if self.session.is_streaming else False
-        )
         try:
+            if self._wait_for_title is not None:
+                await self._wait_for_title()
+            self._checkpoint()
+            self._unsubscribe = self.session.agent.subscribe(observe)
+            self._unbind_turn = control.bind_turn_interrupt(
+                lambda: self.session.abort() if self.session.is_streaming else False
+            )
             result = await self.session.execute_prompt(
                 self.text, source="appservice", check_cancelled=self._checkpoint
             )
@@ -133,6 +125,13 @@ class CodingExecutionWorkV1:
         if self._unsubscribe is not None:
             self._unsubscribe()
             self._unsubscribe = None
+        if (
+            self._start_title is not None and not self._cancel_requested()
+            and self._agent_outcome is not None
+            and self._agent_outcome.status is ExecutionStatusV1.SUCCEEDED
+        ):
+            start_title, self._start_title = self._start_title, None
+            start_title()
 
     def _clear_turn(self) -> None:
         if self._unbind_turn is not None:

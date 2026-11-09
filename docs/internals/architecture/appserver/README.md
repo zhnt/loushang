@@ -86,23 +86,27 @@ deterministic model transport.
 ## Automatic GUI Session Titles
 
 Internal acceptance by the implementation agent (Codex), 2026-11-09.
-Reviewed the follow-up in `feature/gui-settings-reasoning` across
-HarnessGUI and Coding. GUI-created sessions are identified by the
-`gui-new-` and `gui-default-` continuity prefixes. On the first
-model turn of an unnamed session, Coding starts an isolated title Agent
-after observing the first user message. It uses a bounded excerpt of that
-message, the selected model and the existing model-call preparation.
-The title task runs alongside the reply, without tools, and the Hosted
-Session cancels and joins it on close. The existing Session metadata
-writer persists the title, and a status event without text signals
-snapshot readers to refresh it without adding a transcript row.
+Reviewed `feature/gui-session-title` based on `6ec51010b` across Coding's
+Hosted Session and the existing Model Input boundary. GUI-created sessions
+use the `gui-new-` and `gui-default-` continuity prefixes. After a successful
+execution settles, an unnamed session can schedule a background title request
+using a bounded excerpt of the original first user message. The request uses
+the selected model and the existing prepared-request barrier, with an
+eight-second budget and no tools.
 
-The primary execution can finish before the title task. Until the title
-is stored, active and historical snapshots display `New Session`.
-An unsuccessful title request leaves that label and the execution result
-in place. The title request has an eight-second time budget.
-The [hosted-session regression](../../../../tests/coding/test_hosted_session.py)
-covers both completion orders, fallback and transcript isolation.
+Both requests write Model Input evidence to the same transcript. The
+implementation starts title preparation after the primary execution settles
+and lets the primary execution publish its outcome immediately. Follow-up
+execution and model selection wait for any in-flight title request so their
+transcript writes remain ordered. The Hosted Session cancels and joins the
+title task on close. The existing metadata writer persists the title and
+signals snapshot readers through a status event without adding a transcript row.
+
+Until a title is stored, snapshots display `New Session`. After a failed
+title attempt, the next successful execution can try again with the original
+first message. The [hosted-session regression](../../../../tests/coding/test_hosted_session.py)
+exercises the prepared-request barrier with a deterministic transport and
+covers the primary outcome, background title publication and history restoration.
 
 ## Accepted Resume Contract
 

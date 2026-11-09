@@ -241,16 +241,10 @@ class CodingRealHostedSessionV1:
                     "Earlier messages omitted from this bounded snapshot; the canonical transcript is unchanged.",
                 ),
             )
-        manager = getattr(self._session, "session_manager", None)
-        title_messages = (
-            (entry.payload for entry in manager.entries)
-            if isinstance(manager, SessionManager)
-            else self._session.messages
-        )
         return CodingHostedSnapshotProjectionV1(
             title=_session_title(
                 self._session.session_name,
-                title_messages,
+                _title_messages(self._session),
                 automatic=_uses_automatic_title(self.identity),
             ),
             revision=self._revision,
@@ -403,11 +397,28 @@ class CodingRealHostedSessionV1:
 
         return CodingExecutionWorkV1(
             self._session, text, cancel_requested,
-            start_title=self._start_title if _uses_automatic_title(self.identity) else None,
+            start_title=self.start_title_if_unnamed,
+            wait_for_title=self.wait_for_title,
         )
 
-    def _start_title(self, question: str) -> None:
-        if self._title_task is not None or self._close_task is not None or self._session.session_name:
+    async def wait_for_title(self) -> None:
+        # The title and the conversation share the durable Model Input writer.
+        task = self._title_task
+        if task is not None and not task.done():
+            await asyncio.shield(task)
+
+    def start_title_if_unnamed(self) -> None:
+        if (
+            self._close_task is not None or self._session.session_name
+            or not _uses_automatic_title(self.identity)
+            or (self._title_task is not None and not self._title_task.done())
+        ):
+            return
+        question = next((
+            text for message in _title_messages(self._session)
+            if isinstance(message, UserMessage) and (text := _message_text(message).strip())
+        ), None)
+        if question is None:
             return
         from ._hosted_execution_work import set_first_turn_title
 
@@ -562,6 +573,13 @@ def _bounded(text: str, *, limit: int = _TEXT_LIMIT) -> str:
 
 def _uses_automatic_title(identity: SessionIdentityV1) -> bool:
     return identity.continuity_id.startswith(("gui-new-", "gui-default-"))
+
+
+def _title_messages(session: AgentSession) -> Iterable[object]:
+    manager = getattr(session, "session_manager", None)
+    if isinstance(manager, SessionManager):
+        return (entry.payload for entry in manager.entries)
+    return session.messages
 
 
 def _session_title(
