@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { UiIcon } from "./UiIcon";
 import type { ModelChoice, SessionModels, ThinkingLevel } from "./client/model";
 
 export function ModelPicker({ models, disabled, busy, onSelect }: {
@@ -94,7 +95,7 @@ export function ModelPicker({ models, disabled, busy, onSelect }: {
         <span>{current ? label(current) : t("models.none")}</span>
         {thinking ? <span className="thinking-badge">{t(`models.levels.${thinking.currentLevel}`)}</span> : null}
       </span>
-      {!disabled ? <span className="model-chevron" aria-hidden="true">⌄</span> : null}
+      {!disabled ? <UiIcon name="chevron-down" /> : null}
     </button>
     {open ? <div ref={menu} id={menuId} className="model-menu" role="menu"
       aria-label={t(stage === "thinking" ? "models.thinking" : "models.label")} aria-busy={busy} onKeyDown={navigate}>

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const columns = ["Workspace", "Session", "Runtime", "Model", "Access", "Result", "Notes", "Updated"];
+const longPrompt = "请用中文介绍北京的四季气候和出行建议。".repeat(7);
 const markdown = [
   "# 阅读主题预览",
   "",
@@ -34,17 +35,31 @@ async function showSample(page: Page) {
       export function createMockAppClient() {
         const client = original();
         const snapshot = client.snapshot.bind(client);
+        const models = {
+          currentId: "preview",
+          models: [{ id: "preview", provider: "preview", endpointId: "local", modelId: "sample-model", label: "Sample model", supportsThinking: true }],
+          thinking: { currentLevel: "medium", availableLevels: ["low", "medium"] },
+        };
+        client.sessionModels = async () => models;
+        client.selectModel = async () => models;
         client.snapshot = async () => {
           const value = await snapshot();
           return {
             ...value,
+            connection: "connected",
+            source: { kind: "live", muxSpaceId: "preview-mux", serviceInstanceId: "preview-host", connectionEpoch: "1" },
             sessions: value.sessions.map((session) => session.id === value.selectedSessionId ? {
               ...session,
+              status: "idle",
               run: null,
               changeSet: null,
-              messages: session.messages.map((message) => message.role === "assistant"
-                ? { ...message, content: ${JSON.stringify(markdown)}, phase: "complete" }
-                : message),
+              messages: [
+                { id: "preview-short", role: "user", content: "介绍北京天气", phase: "complete" },
+                { id: "preview-long", role: "user", content: ${JSON.stringify(longPrompt)}, phase: "complete" },
+                ...session.messages.filter((message) => message.role === "assistant").map((message) => ({
+                  ...message, content: ${JSON.stringify(markdown)}, phase: "complete",
+                })),
+              ],
             } : session),
           };
         };
@@ -70,7 +85,33 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   const body = page.locator(".markdown-body");
   const reading = page.locator(".markdown-reading");
   const composer = page.locator(".composer");
+  const pane = page.locator(".conversation-pane");
   const sidebar = page.locator(".session-rail");
+  const input = composer.getByRole("textbox");
+  const model = composer.getByRole("button", { name: "Session model" });
+  await expect(pane).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(reading).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  const border = await composer.evaluate((element) => getComputedStyle(element).borderColor);
+  await input.click();
+  await expect(input).toBeFocused();
+  await expect(composer).toHaveCSS("border-color", border);
+  await expect(model).toBeEnabled();
+  await expect(model).toHaveCSS("font-weight", "600");
+  await expect(model.locator("[data-icon=chevron-down]")).toBeVisible();
+  await model.click();
+  await expect(page.getByRole("menuitemradio", { name: /sample-model/ })).toBeChecked();
+  await page.keyboard.press("Escape");
+  const shortBubble = page.getByRole("article", { name: "user message" }).filter({
+    has: page.getByText("介绍北京天气", { exact: true }),
+  });
+  const longBubble = page.getByRole("article", { name: "user message" }).filter({ hasText: longPrompt });
+  const [shortBox, longBox, composerBox] = await Promise.all([shortBubble.boundingBox(), longBubble.boundingBox(), composer.boundingBox()]);
+  expect(shortBox!.width).toBeLessThan(200);
+  expect(longBox!.width).toBeLessThanOrEqual(composerBox!.width * 0.74 + 1);
+  expect(longBox!.height).toBeGreaterThan(shortBox!.height);
+  for (const box of [shortBox!, longBox!]) {
+    expect(Math.abs(box.x + box.width - (composerBox!.x + composerBox!.width))).toBeLessThanOrEqual(1);
+  }
   await expect(body).toHaveCSS("color", "rgb(36, 36, 36)");
   await expect(body).toHaveCSS("font-size", "15px");
   await expect(body.getByRole("heading", { level: 1 })).toHaveCSS("font-size", "22px");
@@ -107,7 +148,8 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   await expect(theme).toHaveText("Loushang Minimal");
   await page.screenshot({ path: info.outputPath("dark-settings.png"), fullPage: true });
   await page.keyboard.press("Escape");
-  await expect(reading).toHaveCSS("background-color", "rgb(25, 25, 24)");
+  await expect(reading).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(pane).toHaveCSS("background-color", "rgb(32, 32, 31)");
   await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
   await expect(composer).toHaveCSS("background-color", "rgb(32, 32, 31)");
   await expect(sidebar).toHaveCSS("background-color", "rgb(37, 37, 37)");
