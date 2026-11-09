@@ -1,17 +1,23 @@
 .local-host-panel { display: grid; gap: 12px; }
 .local-host-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .local-host-heading h3 { margin: 0; }
-.local-host-status { padding: 4px 8px; border-radius: 999px; color: #53565b; background: #f0f0f2; font-size: 12px; }
-.local-host-status[data-state="running"] { color: #16613c; background: var(--green-soft); }
+.local-host-status { padding: 4px 8px; border-radius: 999px; color: var(--ink-secondary); background: var(--control-hover); font-size: 12px; }
+.local-host-status[data-state="running"] { color: var(--green); background: var(--green-soft); }
 .local-host-card { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
 .local-host-panel label { display: grid; gap: 6px; }
-.local-host-panel input { min-width: 0; width: 100%; padding: 7px; border: 1px solid var(--line-strong); border-radius: 6px; }
+.local-host-panel input { min-width: 0; width: 100%; padding: 7px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink); background: var(--paper); }
 .local-host-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .local-host-actions button, .local-host-confirm button { padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: transparent; color: inherit; }
 .local-host-panel p { margin: 4px 0; }
-.local-host-panel [role="alert"] { color: #a13d12; }
+.local-host-panel [role="alert"] { color: var(--red); }
 .local-host-panel code { overflow-wrap: anywhere; font-size: 12px; }
+.local-host-info { gap: 0; }
+.local-host-info h4 { margin: 0; font-size: 13px; }
+.local-host-info .detail-list { gap: 0; margin-top: 4px; }
+.local-host-info .detail-list div { grid-template-columns: minmax(0, 120px) minmax(0, 1fr); padding: 8px 0; }
+.local-host-info .detail-list div:last-child { padding-bottom: 0; border-bottom: 0; }
+.local-host-info p { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
 
-.local-host-confirm { position: fixed; inset: 0; z-index: 1; display: grid; place-items: center; background: #0005; }
+.local-host-confirm { position: fixed; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--dialog-backdrop); }
 .local-host-confirm > div { max-width: 480px; margin: 24px; padding: 24px; border-radius: 12px; background: var(--paper); overflow-wrap: anywhere; }
 .local-host-confirm button { margin-right: 12px; }

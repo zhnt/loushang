@@ -1,29 +1,3 @@
-.transcript.markdown-reading {
-  color-scheme: light dark;
-  background: var(--md-canvas);
-  padding-block-end: 40px;
-}
-.markdown-reading[data-markdown-scheme="light"] { color-scheme: light; }
-.markdown-reading[data-markdown-scheme="dark"] { color-scheme: dark; }
-
-/* Keep the surrounding transcript legible in either reading scheme. */
-.markdown-reading .message.user { background: var(--md-user-bg); }
-.markdown-reading .message > p,
-.markdown-reading .execution-detail { color: var(--md-fg); }
-.markdown-reading .transcript-status {
-  background: var(--md-surface);
-  color: var(--md-muted);
-}
-.markdown-reading :is(.execution-detail, .run-activity) { border-color: var(--md-border); }
-.markdown-reading :is(.execution-detail dt, .execution-disclosure, .activity-summary,
-  .activity-summary small, .activity-list li, .activity-list button, .activity-list code, .activity-kind) {
-  color: var(--md-muted);
-}
-.markdown-reading .activity-summary strong { color: var(--md-fg); }
-.markdown-reading :is(.execution-detail summary, .activity-summary, .activity-list button):hover {
-  background: var(--md-surface);
-}
-
 .markdown-body {
   min-inline-size: 0;
   color: var(--md-fg);

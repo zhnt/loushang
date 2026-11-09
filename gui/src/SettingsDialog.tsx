@@ -1,14 +1,13 @@
 import { useState, type ReactNode, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { LanguageSelect } from "./i18n/LanguageSelect";
+import { AppearanceSetting } from "./AppearanceSetting";
 import { MarkdownThemeSettings } from "./markdown/MarkdownThemeSettings";
 import type { MarkdownPreferences } from "./markdown/preferences";
 import { UiIcon } from "./UiIcon";
-import type { OfflineAccount } from "./client/offlineAccount";
 
-export function SettingsDialog({ dialogRef, account, hostSettings, markdown, onMarkdownChange }: {
+export function SettingsDialog({ dialogRef, hostSettings, markdown, onMarkdownChange }: {
   dialogRef: Ref<HTMLDialogElement>;
-  account?: OfflineAccount | null;
   hostSettings?: ReactNode;
   markdown: MarkdownPreferences;
   onMarkdownChange: (next: MarkdownPreferences) => void;
@@ -34,15 +33,11 @@ export function SettingsDialog({ dialogRef, account, hostSettings, markdown, onM
       </nav>
       <section className="settings-content" aria-labelledby="settings-general" hidden={hostPage}>
         <h3 id="settings-general">{t("generalSettings")}</h3>
-        <LanguageSelect />
-        <MarkdownThemeSettings preferences={markdown} onChange={onMarkdownChange} />
-        {account ? <section className="settings-card" aria-labelledby="settings-account">
-          <h4 id="settings-account">{t("offlineAccount")}</h4>
-          <dl className="detail-list">
-            <div><dt>{t("accountName")}</dt><dd>{account.name}</dd></div>
-            {account.id ? <div><dt>{t("accountId")}</dt><dd>{account.id}</dd></div> : null}
-          </dl>
-        </section> : null}
+        <div className="settings-preferences">
+          <LanguageSelect />
+          <AppearanceSetting />
+          <MarkdownThemeSettings preferences={markdown} onChange={onMarkdownChange} />
+        </div>
       </section>
       {hostSettings ? <section className="settings-content" aria-label={t("hostSettings")} hidden={!hostPage}>
         {hostSettings}

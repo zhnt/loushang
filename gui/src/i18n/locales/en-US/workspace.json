@@ -71,8 +71,11 @@
     "reconnect": "Reconnect",
     "stop": "Stop Host",
     "restart": "Restart Host",
-    "identity": "Host identity",
+    "identity": "Host information",
+    "identityUnavailable": "Host details are available once its identity is confirmed.",
     "pid": "Process ID",
+    "instanceId": "Host instance ID",
+    "serviceInstanceId": "Service instance ID",
     "intro": "Select a local workspace and check its Host. Start and connect when it is not running. Closing this window does not stop the Host.",
     "confirmStop": "Stopping or restarting this Host interrupts all running tasks in this workspace. Session history is retained. Continue?",
     "states": {

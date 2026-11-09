@@ -479,7 +479,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
   }
 
   return (
-    <div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}>
+    <div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}
+      onPointerDownCapture={(event) => { event.currentTarget.dataset.inputModality = "pointer"; }}
+      onKeyDownCapture={(event) => { event.currentTarget.dataset.inputModality = "keyboard"; }}>
       <DesktopFrame sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((open) => !open)}
         {...history}
         onSettings={openSettings}
@@ -540,7 +542,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
             <>
 
               <div key={selected.id} className="transcript markdown-reading"
-                data-markdown-theme={markdown.theme} data-markdown-scheme={markdown.scheme}
+                data-markdown-theme={markdown.theme}
                 aria-label={t("session:transcript.label")} aria-live="polite" ref={transcriptRef}
                 onScroll={(event) => {
                   const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
@@ -697,7 +699,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
           />
         ) : null}
       </main>
-      <SettingsDialog dialogRef={settingsDialog} account={account} hostSettings={hostSettings}
+      <SettingsDialog dialogRef={settingsDialog} hostSettings={hostSettings}
         markdown={markdown} onMarkdownChange={setMarkdown} />
     </div>
   );

@@ -2,6 +2,7 @@ import { StrictMode, useRef, type ReactNode } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OfflineAccount } from "../src/client/offlineAccount";
+import { AccountMenu } from "../src/AccountMenu";
 import { SettingsDialog } from "../src/SettingsDialog";
 import { readMarkdownPreferences } from "../src/markdown/preferences";
 import LocalHostGate from "../src/LocalHostGate";
@@ -22,14 +23,15 @@ vi.mock("../src/App", () => ({
     const dialog = useRef<HTMLDialogElement>(null);
     return <>
       {client ? <textarea aria-label="Draft" /> : <p>Disconnected workspace</p>}
-      <button onClick={() => dialog.current?.showModal()}>Settings</button>
-      <SettingsDialog dialogRef={dialog} hostSettings={hostSettings} account={account}
+      <AccountMenu account={account} onSettings={() => dialog.current?.showModal()} />
+      <SettingsDialog dialogRef={dialog} hostSettings={hostSettings}
         markdown={readMarkdownPreferences()} onMarkdownChange={() => {}} />
     </>;
   },
 }));
 
 function openSettings() {
+  fireEvent.click(screen.getByRole("button", { name: "Account menu" }));
   fireEvent.click(screen.getByRole("button", { name: "Settings" }));
   return within(screen.getByRole("dialog", { name: "Settings" }));
 }
@@ -48,7 +50,7 @@ beforeEach(() => {
     if (command === "local_host_environment") return { supported: true, workspace: "/workspace" };
     return ["connect", "status", "stop"].includes(args.request.action)
       ? { state: "not_running", errorCode: null, workspace: "/workspace" }
-      : { state: "running", errorCode: null, workspace: "/workspace", instanceId: "instance-1" };
+      : { state: "running", errorCode: null, workspace: "/workspace", instanceId: "instance-1", serviceInstanceId: "service-1", pid: 123 };
   });
 });
 
@@ -58,9 +60,13 @@ describe("local managed Host presentation", () => {
     expect(screen.getByText("Disconnected workspace")).toBeVisible();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Workspace" })).not.toBeInTheDocument();
-    const settings = openSettings();
-    expect(await settings.findByText("desktop-user")).toBeVisible();
-    expect(settings.getByText("local-test-id")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Account menu" }));
+    const profile = within(await screen.findByRole("region", { name: "Offline account" }));
+    expect(profile.getByText("desktop-user")).toBeVisible();
+    expect(profile.getByText("local-test-id")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const settings = within(screen.getByRole("dialog", { name: "Settings" }));
+    expect(settings.queryByText("local-test-id")).toBeNull();
     expect(settings.getByRole("combobox", { name: "Interface language" })).toBeVisible();
     expect(settings.queryByRole("textbox", { name: "Workspace" })).not.toBeInTheDocument();
     fireEvent.click(settings.getByRole("button", { name: "Host" }));
@@ -71,6 +77,10 @@ describe("local managed Host presentation", () => {
     expect(native.invoke.mock.calls.filter(([, args]) => args?.request?.action === "start")).toHaveLength(0);
     fireEvent.click(start);
     await screen.findByLabelText("Draft");
+    const hostInfo = within(settings.getByRole("region", { name: "Host information" }));
+    expect(hostInfo.getByText("123")).toBeVisible();
+    expect(hostInfo.getByText("instance-1", { exact: true })).toBeVisible();
+    expect(hostInfo.getByText("service-1", { exact: true })).toBeVisible();
     expect(native.create).toHaveBeenCalledTimes(1);
     expect(native.invoke).toHaveBeenCalledWith("local_host_action", { request: { action: "start", workspace: "/workspace" } });
   });

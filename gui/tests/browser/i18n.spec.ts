@@ -1,4 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+
+const languageLabels = { "zh-CN": "简体中文", "en-US": "English", system: /^(Follow system|跟随系统)$/ } as const;
 
 async function openSettings(page: Page) {
   await page.getByRole("button", { name: /^(Account menu|用户菜单)$/ }).click();
@@ -6,10 +8,15 @@ async function openSettings(page: Page) {
   return page.getByRole("dialog").getByRole("combobox", { name: /^(Interface language|界面语言)$/ });
 }
 
-async function changeLanguage(page: Page, language: string) {
-  const selector = await openSettings(page);
-  await selector.selectOption(language);
-  await expect(selector).toHaveValue(language);
+async function selectLanguage(page: Page, selector: Locator, language: keyof typeof languageLabels) {
+  const label = languageLabels[language];
+  await selector.click();
+  await page.getByRole("option", { name: label, exact: true }).click();
+  await expect(selector).toHaveText(label);
+}
+
+async function changeLanguage(page: Page, language: keyof typeof languageLabels) {
+  await selectLanguage(page, await openSettings(page), language);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 }
@@ -45,7 +52,7 @@ for (const width of [700, 1100, 1440]) {
     await expect(input).toHaveValue("Draft remains unchanged 世界");
     await checkBounds();
     await page.reload();
-    await expect(await openSettings(page)).toHaveValue("en-US");
+    await expect(await openSettings(page)).toHaveText("English");
     await page.keyboard.press("Escape");
     await changeLanguage(page, "zh-CN");
     await page.reload();
@@ -94,7 +101,7 @@ for (const [locale, language] of [["zh-CN", "zh-CN"], ["zh-SG", "zh-CN"], ["zh-T
       const page = await context.newPage();
       await page.goto("/");
       await expect(page.locator("html")).toHaveAttribute("lang", language);
-      await expect(await openSettings(page)).toHaveValue("system");
+      await expect(await openSettings(page)).toHaveText(languageLabels.system);
       await page.keyboard.press("Escape");
       await expect(page.getByRole("button", { name: language === "zh-CN" ? "中断" : "Interrupt", exact: true })).toBeEnabled();
       await changeLanguage(page, language === "zh-CN" ? "en-US" : "zh-CN");
@@ -175,7 +182,7 @@ test("language updates preserve editor focus, selection and transcript scroll", 
   }
   const selector = await openSettings(page);
   await selector.focus();
-  await selector.selectOption("zh-CN");
+  await selectLanguage(page, selector, "zh-CN");
   await expect(selector).toBeEnabled();
   await expect(selector).toBeFocused();
   expect(Math.abs(await transcript.evaluate((element) => element.scrollTop) - before)).toBeLessThanOrEqual(1);

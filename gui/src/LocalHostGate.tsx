@@ -148,7 +148,14 @@ export default function LocalHostGate() {
         </div>
       </div>
       {reason ? <p role="alert">{errorLabel} <code>{reason}</code></p> : null}
-      {host.instanceId ? <details><summary>{t("localHost.identity")}</summary><p>{t("localHost.pid")}: {host.pid ?? "—"}</p><code>{host.instanceId}</code><br /><code>{host.serviceInstanceId}</code></details> : null}
+      <section className="local-host-card local-host-info" aria-labelledby="local-host-info-title">
+        <h4 id="local-host-info-title">{t("localHost.identity")}</h4>
+        {host.instanceId || host.serviceInstanceId || host.pid != null ? <dl className="detail-list">
+          {host.pid != null ? <div><dt>{t("localHost.pid")}</dt><dd>{host.pid}</dd></div> : null}
+          {host.instanceId ? <div><dt>{t("localHost.instanceId")}</dt><dd>{host.instanceId}</dd></div> : null}
+          {host.serviceInstanceId ? <div><dt>{t("localHost.serviceInstanceId")}</dt><dd>{host.serviceInstanceId}</dd></div> : null}
+        </dl> : <p>{t("localHost.identityUnavailable")}</p>}
+      </section>
     </section>
     {confirmation ? <div className="local-host-confirm" role="alertdialog" aria-modal="true" aria-label={t("localHost.confirmTitle")} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setConfirmation(null); } }}>
       <div><strong>{t("localHost.confirmTitle")}</strong><p>{t("localHost.confirmStop")}</p>

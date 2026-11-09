@@ -62,7 +62,7 @@ async function openSettings(page: Page) {
   return page.getByRole("dialog", { name: "Settings", exact: true });
 }
 
-test("Markdown preferences persist, honor system appearance, and stay within the reading surface", async ({ page }, info) => {
+test("app appearance includes the shell, settings, and Markdown while preserving the reading layout", async ({ page }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.emulateMedia({ colorScheme: "light" });
   await showSample(page);
@@ -70,9 +70,7 @@ test("Markdown preferences persist, honor system appearance, and stay within the
   const body = page.locator(".markdown-body");
   const reading = page.locator(".markdown-reading");
   const composer = page.locator(".composer");
-  const composerBackground = await composer.evaluate((element) => getComputedStyle(element).backgroundColor);
   const sidebar = page.locator(".session-rail");
-  const sidebarBackground = await sidebar.evaluate((element) => getComputedStyle(element).backgroundColor);
   await expect(body).toHaveCSS("color", "rgb(36, 36, 36)");
   await expect(body).toHaveCSS("font-size", "15px");
   await expect(body.getByRole("heading", { level: 1 })).toHaveCSS("font-size", "22px");
@@ -86,28 +84,46 @@ test("Markdown preferences persist, honor system appearance, and stay within the
 
   const settings = await openSettings(page);
   const theme = settings.getByRole("combobox", { name: "Markdown theme" });
-  const appearance = settings.getByRole("combobox", { name: "Markdown appearance" });
-  await expect(theme).toHaveValue("loushang-minimal");
-  await expect(appearance).toHaveValue("system");
-  await appearance.selectOption("dark");
+  const appearance = settings.getByRole("combobox", { name: "Appearance", exact: true });
+  const options = settings.getByRole("listbox", { name: "Appearance" });
+  async function selectAppearance(name: string) {
+    await appearance.click();
+    await options.getByRole("option", { name, exact: true }).click();
+  }
+  await expect(theme).toHaveText("Loushang Minimal");
+  await expect(appearance).toHaveText("Follow system");
+  await appearance.click();
+  await expect(options.getByRole("option", { name: "Follow system", selected: true })).toBeVisible();
+  await expect(appearance).toHaveCSS("outline-style", "none");
+  expect(await options.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true);
+  await page.screenshot({ path: info.outputPath("appearance-dropdown.png"), fullPage: true });
+  await appearance.press("Escape");
+  await expect(options).toHaveCount(0);
+  await expect(settings).toBeVisible();
+  await appearance.press("ArrowDown");
+  await appearance.press("End");
+  await appearance.press("Enter");
+  await expect(settings).toHaveCSS("background-color", "rgb(32, 32, 31)");
+  await expect(theme).toHaveText("Loushang Minimal");
+  await page.screenshot({ path: info.outputPath("dark-settings.png"), fullPage: true });
   await page.keyboard.press("Escape");
   await expect(reading).toHaveCSS("background-color", "rgb(25, 25, 24)");
   await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
-  await expect(composer).toHaveCSS("background-color", composerBackground);
-  await expect(sidebar).toHaveCSS("background-color", sidebarBackground);
+  await expect(composer).toHaveCSS("background-color", "rgb(32, 32, 31)");
+  await expect(sidebar).toHaveCSS("background-color", "rgb(37, 37, 37)");
   await page.reload();
   await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
   await openSettings(page);
-  await expect(appearance).toHaveValue("dark");
-  await appearance.selectOption("system");
+  await expect(appearance).toHaveText("Dark");
+  await selectAppearance("Follow system");
   await page.keyboard.press("Escape");
   await expect(body).toHaveCSS("color", "rgb(36, 36, 36)");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
   await openSettings(page);
-  await appearance.selectOption("light");
+  await selectAppearance("Light");
   await expect(body).toHaveCSS("color", "rgb(36, 36, 36)");
-  await appearance.selectOption("system");
+  await selectAppearance("Follow system");
   await page.keyboard.press("Escape");
 
   await page.setViewportSize({ width: 700, height: 900 });
@@ -124,8 +140,12 @@ test("Markdown preferences persist, honor system appearance, and stay within the
   await reading.evaluate((element) => { element.scrollTop = 0; });
   await page.screenshot({ path: info.outputPath("loushang-minimal-dark-narrow.png"), fullPage: true });
 
-  await page.evaluate(() => localStorage.setItem("loushang.gui.markdown", '{"theme":"removed","scheme":"unknown"}'));
+  await page.evaluate(() => {
+    localStorage.removeItem("loushang.gui.appearance");
+    localStorage.setItem("loushang.gui.markdown", '{"theme":"removed","scheme":"light"}');
+  });
   await page.reload();
   await expect(reading).toHaveAttribute("data-markdown-theme", "loushang-minimal");
-  await expect(reading).toHaveAttribute("data-markdown-scheme", "system");
+  await expect(page.locator("html")).toHaveAttribute("data-appearance", "system");
+  await expect(body).toHaveCSS("color", "rgb(237, 237, 235)");
 });

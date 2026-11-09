@@ -37,7 +37,7 @@ export function AccountMenu({ compact = false, account, onSettings }: {
 
   return <div ref={root} className={compact ? "account-menu account-menu-compact" : "account-menu"}
     onBlur={(event) => {
-      if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setOpen(false);
     }}
     onKeyDown={(event) => {
       if (open && event.key === "Escape") {
@@ -56,7 +56,12 @@ export function AccountMenu({ compact = false, account, onSettings }: {
       </>}
     </button>
     {open ? <div id={id} className="account-popover">
-      {account ? <div className="account-popover-status">{account.name}</div> : null}
+      {account ? <section className="account-popover-profile" aria-label={t("offlineAccount")}>
+        <div className="account-label"><strong>{account.name}</strong><small>{t("offlineAccount")}</small></div>
+        {account.id ? <dl>
+          <dt>{t("accountId")}</dt><dd><code>{account.id}</code></dd>
+        </dl> : null}
+      </section> : null}
       <button ref={settings} type="button" onClick={() => { dismiss(); onSettings(); }}>
         <UiIcon name="settings" />
         {t("settings")}
