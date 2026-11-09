@@ -53,6 +53,7 @@
     "you": "你",
     "harness": "Harness",
     "waiting": "正在等待输出…",
+    "noText": "未记录文本输出。",
     "message": "{{role}}消息"
   },
   "fixture": {

@@ -161,17 +161,31 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         for node in ast.walk(bootstrap)
         if isinstance(node, ast.ImportFrom) and node.module == "hosted_execution"
     }
-    bootstrap_guarded_imports = {
-        imported
-        for node in ast.walk(bootstrap)
-        if isinstance(node, ast.If) and ast.unparse(node.test) == "not managed_selection"
-        for statement in node.body
-        for imported in ast.walk(statement)
-        if isinstance(imported, ast.ImportFrom)
-        and imported.module == "hosted_execution"
-    }
     assert len(bootstrap_execution_imports) == 1
-    assert bootstrap_execution_imports == bootstrap_guarded_imports
+    # Stage 1A: managed and ordinary bootstrap select one configuration;
+    # the original AppService still owns construction of its Registry.
+    request_factory = next(node for node in bootstrap.body
+                           if isinstance(node, ast.FunctionDef)
+                           and node.name == "_coding_foreground_request")
+    factory_calls = [node for node in ast.walk(bootstrap)
+                     if isinstance(node, ast.Call)
+                     and ast.unparse(node.func) == "create_coding_execution_service_binding"]
+    assert len(factory_calls) == 1
+    assert any(isinstance(node, ast.Assign) and node.value is factory_calls[0]
+               and [ast.unparse(target) for target in node.targets] == ["execution"]
+               for node in request_factory.body)
+    request_return = next(node for node in request_factory.body
+                          if isinstance(node, ast.Return))
+    assert isinstance(request_return.value, ast.Call)
+    assert ast.unparse(request_return.value.func) == "CodingForegroundHostedApplicationRequestV1"
+    assert [ast.unparse(item.value) for item in request_return.value.keywords
+            if item.arg == "execution"] == ["execution"]
+    execution_source = ast.parse(_read(Path("src/loushang/coding/hosted_execution.py")))
+    apphost_imports = [node for node in ast.walk(execution_source)
+                       if isinstance(node, ast.ImportFrom)
+                       and node.module and node.module.startswith("loushang.apphost")]
+    assert [(node.module, [alias.name for alias in node.names])
+            for node in apphost_imports] == [("loushang.apphost", ["SessionBindingKeyV1"])]
     # The foreground owner may select the optional adapter, but only within
     # its explicit execution branch. Default construction must not import it.
     composition = ast.parse(_read(Path("src/loushang/coding/hosted_application.py")))
@@ -181,11 +195,17 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
     }
     guarded_imports = {
         imported for node in ast.walk(composition)
-        if isinstance(node, ast.If) and ast.unparse(node.test) == "self._execution"
+        if isinstance(node, ast.If) and ast.unparse(node.test) in {
+            "self._execution", "self.managed_selection and self.execution is not None",
+        }
         for statement in node.body for imported in ast.walk(statement)
         if isinstance(imported, ast.ImportFrom) and imported.module == "hosted_execution"
     }
-    assert len(execution_imports) == 1
+    assert {tuple(alias.name for alias in node.names) for node in execution_imports} == {
+        ("_select_coding_execution_port",),
+        ("_admit_execution_projection", "create_leased_coding_execution_session"),
+    }
+    assert len(execution_imports) == 2
     assert execution_imports == guarded_imports
 
 

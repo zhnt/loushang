@@ -539,17 +539,13 @@ def _message_record(message: object) -> TranscriptRecordV1 | None:
 def _message_text(message: object) -> str:
     if not isinstance(message, UserMessage | AssistantMessage):
         return ""
-    content = message.content
-    text = (
-        content
-        if isinstance(content, str)
-        else "".join(
-            getattr(part, "text", "")
-            for part in content
-            if getattr(part, "type", None) == "text"
-        )
+    if isinstance(message.content, str):
+        return message.content
+    return "".join(
+        getattr(part, "text", "")
+        for part in message.content
+        if getattr(part, "type", None) == "text"
     )
-    return text
 
 
 def _observe_close(task: asyncio.Task[None]) -> None:

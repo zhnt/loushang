@@ -151,6 +151,8 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
         )
     }
     assert apphost_consumers == {
+        # G1: desktop composition over the existing managed lifecycle owners.
+        Path("src/loushang/coding/gui_local_host.py"),
         Path("src/loushang/coding/apphost_canary.py"),
         Path("src/loushang/coding/apphost_composition.py"),
         Path("src/loushang/coding/apphost_product.py"),
@@ -163,6 +165,8 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
         Path("src/loushang/coding/hosted_continuity.py"),
         Path("src/loushang/coding/hosted_catalog.py"),
         Path("src/loushang/coding/hosted_session.py"),
+        # Stage 1A: validate the original managed lease binding key.
+        Path("src/loushang/coding/hosted_execution.py"),
         Path("src/loushang/coding/cli/hosted.py"),
         Path("src/loushang/coding/cli/hosted_client.py"),
         Path("src/loushang/coding/hosted_bootstrap.py"),

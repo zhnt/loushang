@@ -147,7 +147,12 @@ class CodingForegroundHostedApplicationRequestV1:
         if self.managed_selection and self.session_owner is not self.sessions:
             raise ValueError("managed Session catalog must retain its shutdown owner")
         if self.managed_selection and self.execution is not None:
-            raise ValueError("managed selection execution adapter is not admitted")
+            from .hosted_execution import _select_coding_execution_port
+
+            if (type(self.execution) is not HostedExecutionServiceBindingV1
+                    or self.execution.select_port is not _select_coding_execution_port
+                    or self.method is not None or self.goal is not None):
+                raise ValueError("managed selection requires the Coding execution adapter")
         if self.managed_mux is not None and (type(self.managed_mux) is not ManagedMuxServiceBindingV1
                                             or not self.managed_selection):
             raise ValueError("managed Mux requires managed Coding selection")
@@ -431,6 +436,7 @@ class _LeasedCodingHostedBinding:
         "_runtime",
         "_runtime_closed",
         "_identity",
+        "_execution_projection",
     )
 
     def __init__(
@@ -445,6 +451,7 @@ class _LeasedCodingHostedBinding:
         self._lease = lease
         self._binding = binding
         self._identity = identity
+        self._execution_projection: tuple[object, ...] | None = None
         self._lease_closed = False
         self._runtime_closed = False
         self._close_lock = asyncio.Lock()
@@ -514,8 +521,6 @@ class CodingAppHostHostedSessionResolverV1:
         self._managed_selection = managed_selection
         if type(execution) is not bool:
             raise TypeError("invalid Coding execution activation")
-        if managed_selection and execution:
-            raise ValueError("managed selection execution adapter is not admitted")
         if method is not None and (type(method) is not CodingHostedMethodV1 or not execution):
             raise ValueError("invalid hosted Method resolver configuration")
         self._goal = goal
@@ -592,8 +597,13 @@ class CodingAppHostHostedSessionResolverV1:
                     raise TypeError("hosted Method requires a fresh Coding Session")
                 return CodingHostedMethodSessionV1(binding, self._method, owner=wrapper)
             if self._execution:
-                from .hosted_execution import create_leased_coding_execution_session
+                from .hosted_execution import (
+                    _admit_execution_projection,
+                    create_leased_coding_execution_session,
+                )
 
+                if self._managed_selection:
+                    _admit_execution_projection(wrapper, self, request)
                 return create_leased_coding_execution_session(binding, wrapper)
             return CodingHostedSessionV1(wrapper)
         except BaseException:

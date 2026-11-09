@@ -966,6 +966,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         )
     }
     assert hosting_consumers == {
+        CODING_ROOT / "gui_local_host.py",
         CODING_APPHOST_CANARY,
         CODING_ROOT / "package_product_worker_cleanup_evidence.py",
         CODING_ROOT / "package_product_worker_operator_query.py",
@@ -996,6 +997,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
     # LMUX composition consumes public Hosting contracts only. Keep the reviewed
     # module and symbol edges exact rather than exempting the managed package.
     managed_edges = {
+        CODING_ROOT / "gui_local_host.py": {"errors": {"HostingError"}},
         APPHOST_ROOT / "managed/starter.py": {
             "contracts": {"ProcessLaunchRequest"},
             "service_process": {"LinuxServiceProcessV1"},

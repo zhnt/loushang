@@ -124,7 +124,7 @@ async def _offline_stream_fn(model, context, options=None):
     )
 
 
-def main() -> None:
+async def main() -> None:
     print("=== Session Store Check ===")
     print_event("message.start", {"step": "prepare"})
 
@@ -160,102 +160,110 @@ def main() -> None:
             persist=True,
             stream_fn=_offline_stream_fn,
         )
-        session = asyncio.run(runtime.create_session(cwd=str(Path(workspace))))  # type: ignore[call-arg]
-        print_event("tool.start", {"name": "session_create"})
-        session_file = session.session_manager.get_session_file()
-        if session_file is None:
-            raise RuntimeError("persisted session file is missing")
-        print(
-            f"session_created: id={session.session_manager.get_header().conversation_id}"
-        )
-        print(f"session_file: {session_file}")
-        print_event(
-            "tool.end",
-            {
-                "name": "session_create",
-                "status": "ok",
-                "session_file": str(session_file),
-            },
-        )
+        try:
+            session = await runtime.create_session(cwd=str(Path(workspace)))
+            print_event("tool.start", {"name": "session_create"})
+            session_file = session.session_manager.get_session_file()
+            if session_file is None:
+                raise RuntimeError("persisted session file is missing")
+            print(
+                f"session_created: id={session.session_manager.get_header().conversation_id}"
+            )
+            print(f"session_file: {session_file}")
+            print_event(
+                "tool.end",
+                {
+                    "name": "session_create",
+                    "status": "ok",
+                    "session_file": str(session_file),
+                },
+            )
 
-        print_event(
-            "message.start",
-            {
-                "step": "round-1",
-                "session_id": session.session_manager.get_header().conversation_id,
-            },
-        )
-        asyncio.run(
-            _prompt(
+            print_event(
+                "message.start",
+                {
+                    "step": "round-1",
+                    "session_id": session.session_manager.get_header().conversation_id,
+                },
+            )
+            await _prompt(
                 session,
                 "请确认会话已创建，并写入一条用户状态记录。",
                 timeout_seconds=6.0,
             )
-        )
 
-        print_event(
-            "message.end", {"step": "round-1", "count_after": _message_count(session)}
-        )
+            print_event(
+                "message.end", {"step": "round-1", "count_after": _message_count(session)}
+            )
 
-        before_count = _message_count(session)
-        print(f"messages_before_restore={before_count}")
-        print(f"session_file_exists={session_file.exists()}")
+            before_count = _message_count(session)
+            print(f"messages_before_restore={before_count}")
+            print(f"session_file_exists={session_file.exists()}")
 
-        restored = asyncio.run(runtime.restore_session(session_file))
-        print_event("message.start", {"step": "restore"})
-        print(
-            f"restored_session_id={restored.session_manager.get_header().conversation_id}"
-        )
-        print(f"messages_after_restore={_message_count(restored)}")
-        print(
-            f"restore_ok="
-            f"{str(_message_count(restored) == before_count and restored.session_manager.get_header().conversation_id == session.session_manager.get_header().conversation_id).lower()}"
-        )
-        print_event("message.end", {"step": "restore", "restore_ok": True})
+            # Release the original writer before reopening its persisted history.
+            await runtime.dispose()
+            runtime = create_agent_session_runtime(
+                session_dir=Path(session_dir),
+                model=model,
+                system_prompt="Session persistence check in offline mode.",
+                persist=True,
+                stream_fn=_offline_stream_fn,
+            )
+            restored = await runtime.restore_session(session_file)
+            print_event("message.start", {"step": "restore"})
+            print(
+                f"restored_session_id={restored.session_manager.get_header().conversation_id}"
+            )
+            print(f"messages_after_restore={_message_count(restored)}")
+            print(
+                f"restore_ok="
+                f"{str(_message_count(restored) == before_count and restored.session_manager.get_header().conversation_id == session.session_manager.get_header().conversation_id).lower()}"
+            )
+            print_event("message.end", {"step": "restore", "restore_ok": True})
 
-        print_event(
-            "message.start",
-            {
-                "step": "round-2",
-                "session_id": restored.session_manager.get_header().conversation_id,
-            },
-        )
-        asyncio.run(
-            _prompt(
+            print_event(
+                "message.start",
+                {
+                    "step": "round-2",
+                    "session_id": restored.session_manager.get_header().conversation_id,
+                },
+            )
+            await _prompt(
                 restored, "请继续刚才会话，说明落盘与恢复一致。", timeout_seconds=6.0
             )
-        )
-        after_count = _message_count(restored)
-        print(f"messages_after_round_2={after_count}")
-        print_event("message.end", {"step": "round-2", "count_after": after_count})
+            after_count = _message_count(restored)
+            print(f"messages_after_round_2={after_count}")
+            print_event("message.end", {"step": "round-2", "count_after": after_count})
 
-        sessions = runtime.list_sessions()
-        print(f"runtime_session_list_count={len(sessions)}")
-        ids = [record.session_id for record in sessions]
-        print(f"runtime_session_ids={ids}")
-        print_event(
-            "model.end",
-            {
-                "step": "session_list",
-                "count": len(sessions),
-                "contains_current": session.session_manager.get_header().conversation_id
-                in ids,
-            },
-        )
+            sessions = runtime.list_sessions()
+            print(f"runtime_session_list_count={len(sessions)}")
+            ids = [record.session_id for record in sessions]
+            print(f"runtime_session_ids={ids}")
+            print_event(
+                "model.end",
+                {
+                    "step": "session_list",
+                    "count": len(sessions),
+                    "contains_current": session.session_manager.get_header().conversation_id
+                    in ids,
+                },
+            )
 
-        print_event("message.end", {"result": "pass", "status": "done"})
+            print_event("message.end", {"result": "pass", "status": "done"})
 
-        print("=== offline expected sample ===")
-        print("session_dir: <tmp>/.loushang/sessions")
-        print("session_file_exists=True")
-        print("messages_before_restore=2")
-        print("messages_after_restore=2")
-        print("restore_ok=True")
-        print("runtime_session_list_count=1")
+            print("=== offline expected sample ===")
+            print("session_dir: <tmp>/.loushang/sessions")
+            print("session_file_exists=True")
+            print("messages_before_restore=2")
+            print("messages_after_restore=2")
+            print("restore_ok=True")
+            print("runtime_session_list_count=1")
+        finally:
+            await runtime.dispose()
 
 
 if __name__ == "__main__":
     try:
-        main()
+        asyncio.run(main())
     except KeyboardInterrupt:
         raise SystemExit(130)

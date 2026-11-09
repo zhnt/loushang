@@ -229,3 +229,114 @@ def test_scope_and_endpoint_fields_keep_existing_closed_record_validation(tmp_pa
     for changes in ({"session_discovery": 1}, {"endpoint": "../other"}, {"connection_root": Path("relative")}):
         with pytest.raises((TypeError, ValueError)):
             replace(launch, **changes)
+
+
+def test_managed_execution_registry_is_shared_and_shutdown_settles_original_owner(tmp_path, monkeypatch):
+    from loushang.agent import synthetic_model_transport
+    from loushang.apphost import AppHostRuntimeV1
+    from loushang.appserver.local import LocalAppClientConnectionV1
+    from loushang.appserver.local_record import LocalConnectionDirectoryV1
+    from loushang.appserver.protocol import (
+        MuxAttachV1,
+        MuxCreateV1,
+        MuxMemberOpenV1,
+        MuxSelectorV1,
+        SessionOpenSpecV1,
+        SessionSnapshotRequestV1,
+    )
+    from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
+    from loushang.appservice import runtime as service_module
+    from loushang.appservice.execution_contract import ExecutionStatusV1
+
+    from .test_hosted_local import _model
+
+    async def scenario():
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+        (tmp_path / "sessions").mkdir(mode=0o700)
+        entered, cleaning, release = (asyncio.Event() for _ in range(3))
+        registries, events = [], []
+        original_registry = service_module.ExecutionRegistryV1
+
+        def registry(**kwargs):
+            value = original_registry(**kwargs)
+            registries.append(value)
+            return value
+
+        monkeypatch.setattr(service_module, "ExecutionRegistryV1", registry)
+
+        @synthetic_model_transport
+        async def held_stream(*args, **kwargs):
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleaning.set()
+                await release.wait()
+                events.append("execution-cleaned")
+
+        launch = CodingManagedLocalLaunchV1(
+            CodingManagedApplicationLaunchV1(tmp_path, tmp_path / "application", "coding.managed", tmp_path / "sessions"),
+            tmp_path / "connection", "workspace", session_discovery=True,
+        )
+        command = CodingManagedLocalCommandV1(launch, model=_model(), stream_fn=held_stream, tools=[])
+        directory = LocalConnectionDirectoryV1(launch.connection_root)
+        first, second = (LocalAppClientConnectionV1(directory, "workspace") for _ in range(2))
+        closing = None
+        try:
+            config = command._attempt._request.foreground.execution
+            assert config is not None and registries == []
+            await command.start()
+            assert len(registries) == 1
+            shared = registries[0]
+            assert shared.service_instance_id == config.service_instance_id
+            assert directory.read("workspace").semantic_profile is AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION
+            await first.start()
+            await second.start()
+            assert len(registries) == 1
+            assert first.execution_client.service_instance_id == second.execution_client.service_instance_id == config.service_instance_id
+            mux = await first.client.create_mux(MuxCreateV1("dev"))
+            selector = MuxSelectorV1(mux_space_id=mux.mux_space_id)
+            await first.client.attach_mux(MuxAttachV1(selector))
+            scope = launch.application.scopes[0]
+            mux = await first.client.open_member(MuxMemberOpenV1(selector, SessionOpenSpecV1(
+                "coding", "managed-execution", scope.scope, scope.fingerprint, "managed",
+            )))
+            attachment = await first.client.attach_mux(MuxAttachV1(selector))
+            control = SessionSnapshotRequestV1(attachment.attachment_id, attachment.controller_generation, mux.members[0].member_id)
+            accepted = await first.execution_client.submit_execution(control, config.service_instance_id, "submission", "wait")
+            await entered.wait()
+            service = command._local._application._application._service
+            adapter = service._sessions[accepted.identity.session_id]._port
+            leased = adapter._binding
+            assert adapter._product_binding is leased._lease.profile_binding
+            assert shared.active_count == 1
+            assert shared.find(accepted.identity, "submission").identity == adapter.identity
+            close_session = AppHostRuntimeV1.close_session
+
+            async def observe_close(runtime, key):
+                assert leased._lease_closed
+                assert shared.active_count == 0
+                events.append("runtime-close")
+                await close_session(runtime, key)
+
+            monkeypatch.setattr(AppHostRuntimeV1, "close_session", observe_close)
+            closing = asyncio.create_task(command.close())
+            await cleaning.wait()
+            assert not closing.done() and not leased._lease_closed
+            assert shared.active_count == 1
+            release.set()
+            await closing
+            assert events == ["execution-cleaned", "runtime-close"]
+            assert leased._runtime_closed and not command.cleanup_pending
+            assert shared.find(accepted.identity, "submission").state.status is ExecutionStatusV1.INTERRUPTED
+            assert len(registries) == 1
+        finally:
+            release.set()
+            if closing is not None:
+                await closing
+            await first.close()
+            await second.close()
+            await command.close()
+            directory.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), 30))

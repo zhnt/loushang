@@ -711,6 +711,10 @@ impl ControlAuthority {
         decode_model_result(&response.result_type, &response.result)
     }
 
+    pub(crate) fn service_instance_id(&self) -> &str {
+        &self.instance
+    }
+
     fn payload(&self, session_id: &str) -> Result<Value, ()> {
         let member_id = self.members.get(session_id).ok_or(())?;
         let generation: Value =

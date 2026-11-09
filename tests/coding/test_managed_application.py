@@ -148,6 +148,10 @@ def test_managed_real_product_scope_projection_reconnect_and_continuity(tmp_path
         owner = create_coding_managed_attempt(
             launch(tmp_path), model=_model(), stream_fn=gated_stream, tools=[], session_discovery=True,
         )
+        from loushang.coding.hosted_execution import (
+            CodingHostedExecutionSessionV1,
+        )
+
         runtime = await owner.open()
         controller = None
         submitting = None
@@ -161,6 +165,13 @@ def test_managed_real_product_scope_projection_reconnect_and_continuity(tmp_path
             state = await controller.open_member(spec)
             assert len(state.windows) == 1 and state.windows[0].session_id == envelope.session_id
             assert len(products) == 1
+            service = runtime._application._service
+            hosted = service._sessions[envelope.session_id]._port
+            assert type(hosted) is CodingHostedExecutionSessionV1
+            assert hosted._product_binding is products[0]
+            assert hosted._binding.control is products[0].control
+            assert hosted.identity.scope is selected.scope
+            assert hosted.identity.scope_fingerprint == selected.fingerprint
             assert products[0].identity.scope is not selected.scope
             assert products[0].identity.continuity_id == envelope.continuity_id
             assert path.read_bytes() == original
@@ -227,12 +238,17 @@ def test_unadmitted_scope_rejected_before_factory_or_session_writes(tmp_path, mo
             scope = owner._request.foreground.sessions.scopes[0]
             before = tree(tmp_path)
             foreground = owner._request.foreground
-            with pytest.raises(ValueError, match="execution adapter"):
-                CodingAppHostHostedSessionResolverV1(
-                    runtime=owner._runtime, sessions=foreground.sessions,
-                    profile_id=foreground.profile_id, operation_id_factory=lambda: "unused",
-                    admitted_scopes=foreground.admitted_scopes, managed_selection=True, execution=True,
-                )
+            resolver = CodingAppHostHostedSessionResolverV1(
+                runtime=owner._runtime, sessions=foreground.sessions,
+                profile_id=foreground.profile_id, operation_id_factory=lambda: "unused",
+                admitted_scopes=foreground.admitted_scopes, managed_selection=True, execution=True,
+            )
+            from loushang.appservice.ports import HostedSessionResolutionErrorV1
+
+            with pytest.raises(HostedSessionResolutionErrorV1):
+                await resolver.open_session(SessionOpenSpecV1(
+                    "coding", "rejected", scope.scope, "f" * 64, title="invalid scope",
+                ))
             with pytest.raises(AppServiceError):
                 await view.open_member(SessionOpenSpecV1(
                     "coding", "rejected", scope.scope, "f" * 64, title="invalid scope",
@@ -273,3 +289,140 @@ def test_managed_application_cannot_overlap_session_data(tmp_path, target):
     (tmp_path / target).parent.mkdir(mode=0o700, exist_ok=True)
     with pytest.raises(ValueError, match="separate"):
         CodingManagedApplicationLaunchV1(tmp_path, tmp_path / target, "coding.managed", tmp_path / "sessions")
+
+
+@pytest.mark.parametrize("fault", [
+    "fingerprint", "scope", "lease", "runtime", "binding", "owner", "copied_owner", "unsealed_owner",
+])
+def test_execution_projection_rejects_substituted_owner_before_claim(tmp_path, monkeypatch, fault):
+    from types import SimpleNamespace
+
+    from loushang.appserver.protocol import SessionScopeV1
+    from loushang.coding import hosted_execution
+
+    async def scenario():
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+        (tmp_path / "sessions").mkdir(mode=0o700)
+        owner = attempt(tmp_path)
+        request = owner._request
+        runtime = await owner.open()
+        create = hosted_execution.create_leased_coding_execution_session
+        checked = []
+
+        def inspect(binding, leased):
+            assert hosted_execution._owns_execution_projection(leased, binding)
+            assert not binding.execution_claimed
+            original_identity, original_lease = leased._identity, leased._lease
+            original_runtime, original_binding = leased._runtime, leased._binding
+            candidate = leased
+            if fault == "fingerprint":
+                leased._identity = replace(leased.identity, scope_fingerprint="f" * 64)
+            elif fault == "scope":
+                leased._identity = replace(leased.identity, scope=SessionScopeV1.USER_HOME)
+            elif fault == "lease":
+                # Even a different lease reporting the same key and binding is not the sealed owner.
+                leased._lease = SimpleNamespace(binding_key=original_lease.binding_key,
+                    profile_binding=binding, profile_id=original_lease.profile_id)
+            elif fault == "runtime":
+                leased._runtime = object()
+            elif fault == "binding":
+                leased._binding = SimpleNamespace(identity=binding.identity, control=object())
+            elif fault in {"copied_owner", "unsealed_owner"}:
+                from loushang.coding.hosted_application import (
+                    _LeasedCodingHostedBinding,
+                )
+
+                candidate = _LeasedCodingHostedBinding(runtime=original_runtime, lease=original_lease,
+                    binding=binding, identity=leased.identity)
+                if fault == "copied_owner":
+                    candidate._execution_projection = leased._execution_projection
+            else:
+                candidate = SimpleNamespace(identity=replace(leased.identity, scope_fingerprint="f" * 64),
+                                            control=binding.control)
+            try:
+                with pytest.raises(ValueError, match="exact Product binding"):
+                    create(binding, candidate)
+                assert not binding.execution_claimed
+            finally:
+                leased._identity, leased._lease = original_identity, original_lease
+                leased._runtime, leased._binding = original_runtime, original_binding
+            checked.append(binding)
+            return create(binding, leased)
+
+        monkeypatch.setattr(hosted_execution, "create_leased_coding_execution_session", inspect)
+        view = None
+        try:
+            await runtime.client.create_mux(MuxCreateV1("dev"))
+            view = await open_hosted_mux_profile(runtime.client, selector=MuxSelectorV1(name="dev"))
+            scope = request.foreground.sessions.scopes[0]
+            await view.open_member(SessionOpenSpecV1("coding", "projection", scope.scope, scope.fingerprint, "projection"))
+            assert len(checked) == 1 and checked[0].execution_claimed
+            await view.submit("still usable")
+        finally:
+            if view is not None:
+                await view.close()
+            assert (await runtime.shutdown()).completed
+            await owner.close()
+
+    asyncio.run(scenario())
+
+
+def test_managed_adapter_construction_failure_releases_claim_and_original_lease(tmp_path, monkeypatch):
+    from loushang.apphost import AppHostRuntimeV1
+    from loushang.coding import hosted_execution
+    from loushang.coding.appservice_adapter import CodingHostedSessionV1
+
+    async def scenario():
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+        (tmp_path / "sessions").mkdir(mode=0o700)
+        owner = attempt(tmp_path)
+        runtime = await owner.open()
+        service = runtime._application._service
+        observed, events = [], []
+        create = hosted_execution.create_leased_coding_execution_session
+        close_session = AppHostRuntimeV1.close_session
+
+        def fail_adapter(self, *args, **kwargs):
+            raise RuntimeError("injected adapter construction failure")
+
+        def inspect(binding, leased):
+            observed.append((binding, leased))
+            try:
+                return create(binding, leased)
+            finally:
+                assert not binding.execution_claimed
+
+        async def close_original(selected, key):
+            binding, leased = observed[0]
+            assert selected is owner._runtime and key == leased._lease.binding_key
+            assert leased._lease_closed
+            events.append("runtime-after-lease")
+            await close_session(selected, key)
+
+        try:
+            scope = owner._request.foreground.sessions.scopes[0]
+            with monkeypatch.context() as patch:
+                patch.setattr(CodingHostedSessionV1, "__init__", fail_adapter)
+                patch.setattr(hosted_execution, "create_leased_coding_execution_session", inspect)
+                patch.setattr(AppHostRuntimeV1, "close_session", close_original)
+                with pytest.raises(RuntimeError, match="injected adapter"):
+                    await service._resolver.open_session(SessionOpenSpecV1(
+                        "coding", "failed-construction", scope.scope, scope.fingerprint, "failure",
+                    ))
+            binding, leased = observed[0]
+            assert leased._runtime_closed and events == ["runtime-after-lease"]
+            # Reacquire the original canonical history: failed construction left no writer/Runtime owner.
+            port = await service._resolver.open_session(SessionOpenSpecV1(
+                "coding", binding.identity.continuity_id, scope.scope, scope.fingerprint,
+                "retry", binding.identity.session_id,
+            ))
+            try:
+                assert port._product_binding is not binding
+                assert port._product_binding.execution_claimed
+            finally:
+                await port.close()
+        finally:
+            assert (await runtime.shutdown()).completed
+            await owner.close()
+
+    asyncio.run(scenario())

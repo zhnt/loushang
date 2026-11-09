@@ -15,6 +15,26 @@ import { DesktopFrame } from "../src/DesktopFrame";
 import { HarnessGui } from "../src/App";
 import { createMockAppClient } from "../src/client/mockAppClient";
 
+it("labels disconnected execution snapshots and never waits on an empty completed record", async () => {
+  const fixture = createMockAppClient();
+  const snapshot = await fixture.snapshot();
+  render(<HarnessGui client={{
+    snapshot: async () => ({ ...snapshot, connection: "disconnected", source: {
+      kind: "live", serviceInstanceId: "stopped-service", muxSpaceId: "mux", connectionEpoch: "1",
+    }, sessions: snapshot.sessions.map((session) => ({ ...session,
+      messages: [{ id: "empty-history", role: "assistant", content: "", phase: "complete" }],
+      execution: { id: "old-execution", status: "running", revision: 1,
+        interruptRequested: false, sourceStatus: "running", finalCursor: null, truncated: false },
+    })) }),
+    subscribe: () => () => {},
+    submitText: fixture.submitText,
+    interrupt: fixture.interrupt,
+  }} />);
+  expect(await screen.findByText("No text output was recorded.")).toBeVisible();
+  expect(screen.getByText("Last known execution state: Running (disconnected)")).toBeVisible();
+  expect(screen.queryByText("Waiting for output…")).toBeNull();
+});
+
 it("omits the entire desktop frame on the web", () => {
   native.enabled = false;
   try {

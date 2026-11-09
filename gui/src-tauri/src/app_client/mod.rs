@@ -1,6 +1,10 @@
 //! Blocking, read-only AppHost adapter. The desktop owns its worker and stop.
 mod attachment;
 mod connection_epoch;
+#[cfg(not(target_os = "linux"))]
+mod record_native;
+#[cfg(target_os = "linux")]
+#[path = "record_linux.rs"]
 mod record_native;
 mod request_deadline;
 mod transport_auth;
@@ -10,6 +14,7 @@ pub(crate) use attachment::{
 
 use request_deadline::RequestDeadline;
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddr, TcpStream};
 use std::path::Path;
@@ -93,6 +98,31 @@ impl Write for DeadlineStream {
     }
 }
 
+fn validate_hello(bytes: &[u8], profile: &str) -> Result<Hello, ()> {
+    let hello: Hello = serde_json::from_slice(bytes).map_err(|_| ())?;
+    let instance = &hello.service_instance_id;
+    if hello.profile != profile
+        || hello.protocol_version != "loushang.app/v1"
+        || hello.execution_version != "loushang.execution/v1"
+        || hello.restart_recovery
+        || hello.submission_retention != "service_instance_lifetime"
+        || instance.is_empty()
+        || instance.len() > 128
+        || !instance.as_bytes()[0].is_ascii_alphanumeric()
+        || !instance
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._~-".contains(&byte))
+    {
+        return Err(());
+    }
+    let canonical =
+        serde_json::to_vec(&serde_json::to_value(&hello).map_err(|_| ())?).map_err(|_| ())?;
+    if bytes != canonical {
+        return Err(());
+    }
+    Ok(hello)
+}
+
 struct CancelOwner {
     finish: Option<Sender<()>>,
     worker: Option<JoinHandle<()>>,
@@ -133,7 +163,7 @@ pub(crate) struct ConnectionOptions<'a> {
 }
 
 fn run_attempt(
-    owner: &connection_epoch::ConnectionOwner,
+    client: &AppClient,
     options: ConnectionOptions<'_>,
     connection_epoch: u64,
     publish_initial: &mut dyn FnMut(LiveInitialSnapshot) -> Result<(), ()>,
@@ -141,6 +171,8 @@ fn run_attempt(
     publish_control: &mut dyn FnMut(Option<attachment::ControlAuthority>) -> Result<(), ()>,
     continue_reading: &mut dyn FnMut() -> Result<bool, ()>,
 ) -> Result<String, ()> {
+    let owner = &client.0;
+    client.1.set("record_invalid");
     let ConnectionOptions {
         root,
         timeout,
@@ -155,11 +187,16 @@ fn run_attempt(
     let attempt = owner.begin()?;
     let name = transport_auth::record_value::Record::filename("workspace")?;
     let record = transport_auth::record_value::Record::decode(&record_native::read(root, &name)?)?;
-    let profile = "local-detachable-execution/v1";
-    record.selected("workspace", profile)?;
+    client.1.set("protocol_incompatible");
+    let profile = record.semantic_profile()?;
+    record.selected("workspace", &profile)?;
+    if !record.supports_execution() {
+        return Err(());
+    }
     if cancel == Some(Duration::ZERO) {
         return Err(());
     }
+    client.1.set("connection_failed");
     let address = SocketAddr::from((Ipv4Addr::LOCALHOST, record.port()));
     let stream = TcpStream::connect_timeout(&address, deadline.remaining().map_err(|_| ())?)
         .map_err(|_| ())?;
@@ -193,37 +230,22 @@ fn run_attempt(
         stream: stream.try_clone().map_err(|_| ())?,
         deadline: deadline.clone(),
     };
+    client.1.set("authentication_failed");
     let mut channel = transport_auth::Channel::authenticate(
         transport_auth::Frames::new(reader, writer),
         &record,
     )?;
     let send_deadline = deadline.clone();
     channel.before_send(move || send_deadline.before_send());
+    client.1.set("connection_failed");
     channel.send(b"app")?;
     let bytes = channel.receive()?;
-    let hello: Hello = serde_json::from_slice(&bytes).map_err(|_| ())?;
+    client.1.set("protocol_incompatible");
+    let hello = validate_hello(&bytes, &profile)?;
     let instance = &hello.service_instance_id;
-    if hello.profile != profile
-        || hello.protocol_version != "loushang.app/v1"
-        || hello.execution_version != "loushang.execution/v1"
-        || hello.restart_recovery
-        || hello.submission_retention != "service_instance_lifetime"
-        || instance.is_empty()
-        || instance.len() > 128
-        || !instance.as_bytes()[0].is_ascii_alphanumeric()
-        || !instance
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"._~-".contains(&byte))
-    {
-        return Err(());
-    }
-    let canonical =
-        serde_json::to_vec(&serde_json::to_value(&hello).map_err(|_| ())?).map_err(|_| ())?;
-    if bytes != canonical {
-        return Err(());
-    }
     channel.send(&bytes)?;
     if attach {
+        client.1.set("attachment_unavailable");
         let mut session =
             attachment::ReadSession::attach(&mut channel, instance, mux_name, &attempt, &record)?;
         let outcome = (|| {
@@ -246,6 +268,7 @@ fn run_attempt(
                     sessions: initial.sessions,
                 })
             })?;
+            client.1.set("client_disconnected");
             deadline.enter_session()?;
             let mut sequence = 0_u64;
             if let Some(stop) = stop.as_ref() {
@@ -298,9 +321,13 @@ fn run_attempt(
 }
 
 #[derive(Default)]
-pub(crate) struct AppClient(connection_epoch::ConnectionOwner);
+pub(crate) struct AppClient(connection_epoch::ConnectionOwner, Cell<&'static str>);
 
 impl AppClient {
+    pub(crate) fn failure_code(&self) -> &'static str {
+        self.1.get()
+    }
+
     #[allow(dead_code)] // One-shot contract probes do not use reconnect streaming.
     pub(crate) fn run(
         &self,
@@ -308,7 +335,7 @@ impl AppClient {
         publish: &mut dyn FnMut(LiveInitialSnapshot) -> Result<(), ()>,
     ) -> Result<String, ()> {
         run_attempt(
-            &self.0,
+            self,
             options,
             1,
             publish,
@@ -329,7 +356,7 @@ impl AppClient {
         continue_reading: &mut dyn FnMut() -> Result<bool, ()>,
     ) -> Result<String, ()> {
         run_attempt(
-            &self.0,
+            self,
             options,
             connection_epoch,
             publish_initial,
@@ -430,6 +457,36 @@ fn process_controls<R: Read, W: Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn execution_hello_requires_exact_profile_version_and_lifetime() {
+        let profile = "local-detachable-discovery-execution-managed/v2";
+        let value = serde_json::json!({"profile":profile,"protocolVersion":"loushang.app/v1",
+            "executionVersion":"loushang.execution/v1","serviceInstanceId":"host-1",
+            "restartRecovery":false,"submissionRetention":"service_instance_lifetime"});
+        assert!(validate_hello(&serde_json::to_vec(&value).unwrap(), profile).is_ok());
+        for (field, bad) in [
+            (
+                "profile",
+                serde_json::json!("local-detachable-execution/v1"),
+            ),
+            ("protocolVersion", serde_json::json!("loushang.app/v2")),
+            (
+                "executionVersion",
+                serde_json::json!("loushang.execution/v2"),
+            ),
+            ("restartRecovery", serde_json::json!(true)),
+            ("serviceInstanceId", serde_json::json!("")),
+            ("submissionRetention", serde_json::json!("persistent")),
+        ] {
+            let mut changed = value.clone();
+            changed[field] = bad;
+            assert!(validate_hello(&serde_json::to_vec(&changed).unwrap(), profile).is_err());
+        }
+        let mut bytes = serde_json::to_vec(&value).unwrap();
+        bytes.push(b' ');
+        assert!(validate_hello(&bytes, profile).is_err());
+    }
 
     #[test]
     fn initial_snapshot_never_serializes_attachment_authority() {

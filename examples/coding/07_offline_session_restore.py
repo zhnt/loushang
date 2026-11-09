@@ -119,7 +119,9 @@ def _print_messages(session) -> None:
 
 
 async def main() -> None:
-    with TemporaryDirectory(prefix="loushang-session-restore-") as session_dir:
+    with TemporaryDirectory(prefix="loushang-session-restore-") as workspace:
+        # Both transcript and blob storage stay under this private data root.
+        session_dir = Path(workspace) / "sessions"
         runtime = create_agent_session_runtime(
             session_dir=Path(session_dir),
             model=_model(),
@@ -128,34 +130,46 @@ async def main() -> None:
             persist=True,
         )
 
-        session = await runtime.create_session(cwd=str(Path.cwd()))
-        await session.prompt("第一轮：请记录这是一个离线 session restore 示例。")
+        try:
+            session = await runtime.create_session(cwd=str(Path.cwd()))
+            await session.prompt("第一轮：请记录这是一个离线 session restore 示例。")
 
-        session_file = session.session_manager.get_session_file()
-        if session_file is None:
-            raise RuntimeError("Expected a persisted session file")
+            session_file = session.session_manager.get_session_file()
+            if session_file is None:
+                raise RuntimeError("Expected a persisted session file")
 
-        print("=== Offline Session Restore Roundtrip ===")
-        print(f"Session dir: {session_dir}")
-        print(f"Session file: {session_file}")
-        print(f"Session id: {session.session_manager.get_header().conversation_id}")
-        print()
-        print("Messages after first prompt:")
-        _print_messages(session)
-        print()
+            print("=== Offline Session Restore Roundtrip ===")
+            print(f"Session dir: {session_dir}")
+            print(f"Session file: {session_file}")
+            print(f"Session id: {session.session_manager.get_header().conversation_id}")
+            print()
+            print("Messages after first prompt:")
+            _print_messages(session)
+            print()
 
-        restored = await runtime.restore_session(session_file)
-        print("Messages immediately after restore:")
-        _print_messages(restored)
-        print()
+            # Release the original writer before reopening its persisted history.
+            await runtime.dispose()
+            runtime = create_agent_session_runtime(
+                session_dir=Path(session_dir),
+                model=_model(),
+                stream_fn=_stream_fn,
+                system_prompt="Offline session restore demo.",
+                persist=True,
+            )
+            restored = await runtime.restore_session(session_file)
+            print("Messages immediately after restore:")
+            _print_messages(restored)
+            print()
 
-        await restored.prompt(
-            "第二轮：请继续这个已经恢复的会话，并确认你看到了前一轮消息。"
-        )
-        print("Messages after continuing restored session:")
-        _print_messages(restored)
-        print()
-        print(f"Known sessions in runtime: {len(runtime.list_sessions())}")
+            await restored.prompt(
+                "第二轮：请继续这个已经恢复的会话，并确认你看到了前一轮消息。"
+            )
+            print("Messages after continuing restored session:")
+            _print_messages(restored)
+            print()
+            print(f"Known sessions in runtime: {len(runtime.list_sessions())}")
+        finally:
+            await runtime.dispose()
 
 
 if __name__ == "__main__":

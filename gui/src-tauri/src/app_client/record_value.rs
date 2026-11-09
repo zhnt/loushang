@@ -115,21 +115,42 @@ impl Record {
         value.semantic_profile()?;
         Ok(value)
     }
-    pub fn semantic_profile(&self) -> Result<&'static str, ()> {
+    pub fn semantic_profile(&self) -> Result<String, ()> {
+        // Match the Python closed capability algebra, including its canonical order.
         let caps: Vec<_> = self.capabilities.iter().map(String::as_str).collect();
-        match caps.as_slice() {
-            ["named_mux", "text_turns", "approvals"] => Ok("local-detachable/v1"),
-            ["named_mux", "text_turns", "approvals", "session_discovery"] => {
-                Ok("local-detachable-discovery/v1")
-            }
-            ["named_mux", "text_turns", "approvals", "session_execution"] => {
-                Ok("local-detachable-execution/v1")
-            }
-            ["named_mux", "text_turns", "approvals", "session_discovery", "session_execution"] => {
-                Ok("local-detachable-discovery-execution/v1")
-            }
-            _ => Err(()),
+        if !caps.starts_with(&["named_mux", "text_turns", "approvals"]) {
+            return Err(());
         }
+        let mut index = 3;
+        let mut take = |name: &str| {
+            if caps.get(index) == Some(&name) {
+                index += 1;
+                true
+            } else {
+                false
+            }
+        };
+        let discovery = take("session_discovery");
+        let execution = take("session_execution");
+        let managed = take("mux_management");
+        let closure = take("mux_closure");
+        let resume = take("resume_input_lookup");
+        if index != caps.len() || (closure && !managed) || (resume && !execution) {
+            return Err(());
+        }
+        Ok(format!(
+            "local-detachable{}{}{}{}{version}",
+            if discovery { "-discovery" } else { "" },
+            if resume { "-resume" } else { "" },
+            if execution { "-execution" } else { "" },
+            if managed { "-managed" } else { "" },
+            version = if closure { "/v2" } else { "/v1" }
+        ))
+    }
+    pub fn supports_execution(&self) -> bool {
+        self.capabilities
+            .iter()
+            .any(|cap| cap == "session_execution")
     }
     pub fn public(&self) -> Value {
         json!({"schemaVersion": self.schema_version, "profile": self.profile,

@@ -110,7 +110,7 @@ class CodingManagedLocalCommandV1(CodingLocalCommandV1):
         return self._launch.managed_mux is not None
 
     def _session_execution(self) -> bool:
-        return False
+        return True
 
     def _prepare_session_roots(self) -> None:
         # Managed installation/startup owns preparation of its admitted store.

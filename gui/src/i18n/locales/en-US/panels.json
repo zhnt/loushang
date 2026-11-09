@@ -12,6 +12,7 @@
     "truncated": "truncated",
     "completeSnapshot": "complete snapshot",
     "status": "Execution {{status}}",
+    "lastKnownStatus": "Last known execution state: {{status}} (disconnected)",
     "revision": "Execution state version"
   },
   "header": {

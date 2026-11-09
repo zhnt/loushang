@@ -53,6 +53,7 @@
     "you": "You",
     "harness": "Harness",
     "waiting": "Waiting for output…",
+    "noText": "No text output was recorded.",
     "message": "{{role}} message"
   },
   "fixture": {

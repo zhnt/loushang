@@ -90,6 +90,7 @@ version = "0.1.0"
 dependencies = [
  "getrandom",
  "hmac",
+ "libc",
  "rustix",
  "serde",
  "serde_json",

@@ -23,6 +23,8 @@ def test_preparation_hint_never_replaces_running_and_clears_on_completion(monkey
         await release.wait()
 
     monkeypatch.setattr(sdk_warmup, "_current_builtin_sdk", lambda _session: ("anthropic-messages", "anthropic"))
+    # These scenarios exercise cold loading independently of prior SDK imports.
+    monkeypatch.setattr(sdk_warmup, "_sdk_loaded", lambda _package: False)
     monkeypatch.setattr(sdk_warmup, "load_sdk_symbols", load)
     app = _app()
     renders: list[str] = []
@@ -59,6 +61,8 @@ def test_old_model_completion_cannot_clear_new_model_hint(monkeypatch) -> None:
         await releases[api].wait()
 
     monkeypatch.setattr(sdk_warmup, "_current_builtin_sdk", lambda _session: tuple(selected))
+    # These scenarios exercise cold loading independently of prior SDK imports.
+    monkeypatch.setattr(sdk_warmup, "_sdk_loaded", lambda _package: False)
     monkeypatch.setattr(sdk_warmup, "load_sdk_symbols", load)
     app = _app()
     warmer = sdk_warmup.CodingSdkWarmup(app=app, session_provider=object)
@@ -116,3 +120,27 @@ def test_partially_imported_sdk_still_needs_preparation(monkeypatch) -> None:
     assert not sdk_warmup._sdk_loaded("anthropic")
     module.__spec__._initializing = False
     assert sdk_warmup._sdk_loaded("anthropic")
+
+
+def test_loaded_sdk_does_not_start_preparation(monkeypatch) -> None:
+    monkeypatch.setattr(sdk_warmup, "_current_builtin_sdk", lambda _session: ("anthropic-messages", "anthropic"))
+    monkeypatch.setattr(sdk_warmup, "_sdk_loaded", lambda _package: True)
+    calls: list[str] = []
+
+    async def load(api: str) -> None:
+        calls.append(api)
+
+    monkeypatch.setattr(sdk_warmup, "load_sdk_symbols", load)
+    app = _app()
+    warmer = sdk_warmup.CodingSdkWarmup(app=app, session_provider=object)
+
+    async def run() -> None:
+        try:
+            warmer.observe_current()
+            await asyncio.sleep(0)
+            assert not app.state.sdk_preparing
+            assert calls == []
+        finally:
+            warmer.close()
+
+    asyncio.run(run())

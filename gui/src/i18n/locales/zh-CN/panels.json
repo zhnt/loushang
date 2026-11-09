@@ -12,6 +12,7 @@
     "truncated": "已截断",
     "completeSnapshot": "完整快照",
     "status": "执行{{status}}",
+    "lastKnownStatus": "执行的最后已知状态：{{status}}（连接已断开）",
     "revision": "执行状态版本"
   },
   "header": {

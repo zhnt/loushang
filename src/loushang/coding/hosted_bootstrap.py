@@ -251,11 +251,9 @@ def _coding_foreground_request(
         )
         else catalog
     )
-    execution = None
-    if not managed_selection:
-        from .hosted_execution import create_coding_execution_service_binding
+    from .hosted_execution import create_coding_execution_service_binding
 
-        execution = create_coding_execution_service_binding(application_id)
+    execution = create_coding_execution_service_binding(application_id)
     return CodingForegroundHostedApplicationRequestV1(
         activation=HostedApplicationActivationV1(),
         generation_id=generation,

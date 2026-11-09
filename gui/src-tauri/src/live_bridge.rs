@@ -24,13 +24,14 @@ struct LiveLaunch {
 }
 
 pub(crate) struct LiveLaunchState {
-    launch: Result<Option<LiveLaunch>, ()>,
+    launch: Arc<RwLock<Result<Option<LiveLaunch>, ()>>>,
     resync: Arc<AtomicU64>,
     control: Arc<RwLock<Option<LiveControl>>>,
 }
 
 #[derive(Clone)]
 struct LiveControl {
+    service_instance_id: String,
     connection_epoch: u64,
     sender: mpsc::Sender<ControlCommand>,
 }
@@ -38,7 +39,7 @@ struct LiveControl {
 impl LiveLaunchState {
     pub(crate) fn from_process() -> Self {
         Self {
-            launch: parse_launch(std::env::args_os().skip(1)),
+            launch: Arc::new(RwLock::new(parse_launch(std::env::args_os().skip(1)))),
             resync: Arc::new(AtomicU64::new(0)),
             control: Arc::new(RwLock::new(None)),
         }
@@ -50,6 +51,7 @@ impl LiveLaunchState {
 struct ConnectionState {
     state: &'static str,
     connection_epoch: String,
+    reason: Option<&'static str>,
 }
 
 #[derive(Deserialize)]
@@ -108,7 +110,10 @@ enum Publication {
 
 #[tauri::command]
 pub(crate) fn live_readonly_available(app: tauri::AppHandle) -> bool {
-    matches!(app.state::<LiveLaunchState>().launch, Ok(Some(_)))
+    app.state::<LiveLaunchState>()
+        .launch
+        .read()
+        .is_ok_and(|launch| matches!(*launch, Ok(Some(_))))
 }
 
 fn parse_launch(arguments: impl IntoIterator<Item = OsString>) -> Result<Option<LiveLaunch>, ()> {
@@ -141,15 +146,35 @@ fn parse_launch(arguments: impl IntoIterator<Item = OsString>) -> Result<Option<
     }
 }
 
+pub(crate) fn configure_local_connection(
+    app: &tauri::AppHandle,
+    record_root: PathBuf,
+    mux_name: String,
+) -> Result<(), String> {
+    if !record_root.is_absolute() || mux_name.is_empty() || mux_name.len() > 256 {
+        return Err("invalid_local_connection".into());
+    }
+    let state = app.state::<LiveLaunchState>();
+    *state
+        .launch
+        .write()
+        .map_err(|_| "connection_state_unavailable")? = Ok(Some(LiveLaunch {
+        record_root,
+        mux_name,
+    }));
+    resync_live_readonly(app.clone())
+}
+
 #[tauri::command]
 pub(crate) fn start_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<LiveLaunchState>();
-    let launch = state
-        .launch
-        .as_ref()
-        .map_err(|_| "invalid native launch configuration".to_owned())?
-        .clone()
-        .ok_or_else(|| "live AppHost launch configuration is unavailable".to_owned())?;
+    let launch = state.launch.clone();
+    if !matches!(
+        *launch.read().map_err(|_| "connection_state_unavailable")?,
+        Ok(Some(_))
+    ) {
+        return Err("live AppHost launch configuration is unavailable".to_owned());
+    }
     let resync = state.resync.clone();
     let control = state.control.clone();
     let owner = app.state::<Arc<ConnectionLifecycle>>().inner().clone();
@@ -160,6 +185,13 @@ pub(crate) fn start_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
             let mut epoch = 0_u64;
             let mut backoff = Duration::from_millis(250);
             while !stop.requested()? {
+                let selected = launch.read().map_err(|_| ())?.clone()?;
+                let Some(launch) = selected else {
+                    if stop.wait(Duration::from_millis(250))? {
+                        break;
+                    }
+                    continue;
+                };
                 epoch = epoch.checked_add(1).ok_or(())?;
                 let token = resync.load(Ordering::Acquire);
                 let (control_sender, control_receiver) = mpsc::channel();
@@ -167,6 +199,7 @@ pub(crate) fn start_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
                 publish
                     .send(Publication::State(ConnectionState {
                         state: "connecting",
+                        reason: None,
                         connection_epoch: epoch.to_string(),
                     }))
                     .map_err(|_| ())?;
@@ -189,10 +222,12 @@ pub(crate) fn start_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
                     },
                     &mut |round| publish.send(Publication::Round(round)).map_err(|_| ()),
                     &mut |authority| {
-                        *control.write().map_err(|_| ())? = authority.map(|_| LiveControl {
-                            connection_epoch: epoch,
-                            sender: control_sender.clone(),
-                        });
+                        *control.write().map_err(|_| ())? =
+                            authority.map(|authority| LiveControl {
+                                service_instance_id: authority.service_instance_id().to_owned(),
+                                connection_epoch: epoch,
+                                sender: control_sender.clone(),
+                            });
                         Ok(())
                     },
                     &mut || Ok(resync.load(Ordering::Acquire) == token),
@@ -204,6 +239,7 @@ pub(crate) fn start_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
                 publish
                     .send(Publication::State(ConnectionState {
                         state: "disconnected",
+                        reason: outcome.as_ref().err().map(|_| client.failure_code()),
                         connection_epoch: epoch.to_string(),
                     }))
                     .map_err(|_| ())?;
@@ -258,11 +294,15 @@ pub(crate) async fn live_submit_text(
             .map_err(|_| "live control connection changed".to_owned())?;
         let result = receive
             .recv_timeout(Duration::from_secs(6))
-            .map_err(|_| "live submit response timed out".to_owned())?;
+            .unwrap_or(Err(()));
         match result {
             Ok(result) => control_receipt(Ok(result), true),
             Err(()) => {
-                let recovered = wait_for_reconnected_control(&controls, control.connection_epoch)?;
+                let recovered = wait_for_reconnected_control(
+                    &controls,
+                    control.connection_epoch,
+                    &control.service_instance_id,
+                )?;
                 let (reply, receive) = mpsc::sync_channel(1);
                 recovered
                     .sender
@@ -421,6 +461,7 @@ fn current_control(state: &LiveLaunchState) -> Result<LiveControl, String> {
 fn wait_for_reconnected_control(
     controls: &Arc<RwLock<Option<LiveControl>>>,
     previous_epoch: u64,
+    expected_instance: &str,
 ) -> Result<LiveControl, String> {
     let deadline = std::time::Instant::now()
         .checked_add(Duration::from_secs(6))
@@ -432,6 +473,9 @@ fn wait_for_reconnected_control(
             .clone();
         if let Some(control) = current {
             if control.connection_epoch > previous_epoch {
+                if control.service_instance_id != expected_instance {
+                    return Err("submission outcome unknown: Host instance changed".to_owned());
+                }
                 return Ok(control);
             }
         }
@@ -489,6 +533,18 @@ pub(crate) fn stop_live_readonly(app: tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn submission_recovery_rejects_a_replacement_host() {
+        let (sender, _) = mpsc::channel();
+        let controls = Arc::new(RwLock::new(Some(LiveControl {
+            service_instance_id: "replacement".into(),
+            connection_epoch: 2,
+            sender,
+        })));
+        assert!(wait_for_reconnected_control(&controls, 1, "original").is_err());
+        assert!(wait_for_reconnected_control(&controls, 1, "replacement").is_ok());
+    }
 
     #[test]
     fn launch_is_all_or_nothing_and_rejects_duplicates() {

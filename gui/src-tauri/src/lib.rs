@@ -2,6 +2,7 @@
 mod app_client;
 mod connection_lifecycle;
 mod live_bridge;
+mod local_host;
 // Exit joins run on the blocking pool.
 #[allow(dead_code)]
 mod read_stop;
@@ -43,11 +44,14 @@ fn fixture_bridge_handshake(app: tauri::AppHandle) -> Result<FixtureBridgeReceip
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
-        .manage(Arc::new(ConnectionLifecycle::default()));
+        .manage(Arc::new(ConnectionLifecycle::default()))
+        .manage(local_host::LocalHostState::default());
     let builder = builder.manage(live_bridge::LiveLaunchState::from_process());
     #[cfg(feature = "fixture-bridge")]
     let builder = builder.invoke_handler(tauri::generate_handler![
         fixture_bridge_handshake,
+        local_host::local_host_environment,
+        local_host::local_host_action,
         live_bridge::live_readonly_available,
         live_bridge::live_submit_text,
         live_bridge::live_interrupt,
@@ -60,6 +64,8 @@ pub fn run() {
     ]);
     #[cfg(not(feature = "fixture-bridge"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        local_host::local_host_environment,
+        local_host::local_host_action,
         live_bridge::live_readonly_available,
         live_bridge::live_submit_text,
         live_bridge::live_interrupt,

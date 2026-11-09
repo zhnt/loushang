@@ -77,13 +77,60 @@ is absent from the default native build.
 ## Controlled live launch
 
 The AppHost/desktop launcher may start the built executable with both native
-arguments below. Omitting both keeps the offline fixture. Partial, duplicate or
+arguments below. Omitting both opens local Host management in the native app
+(browser development retains the offline fixture). Partial, duplicate or
 unknown arguments disable live availability rather than falling back with
 ambiguous authority.
 
 ```text
 gui/src-tauri/target/release/harness-gui.exe --loushang-app-record-root C:\path\to\admitted\connection --loushang-mux-name GUI-work
 ```
+
+Linux also supports the same explicit connection arguments:
+
+```sh
+gui/src-tauri/target/debug/harness-gui \
+  --loushang-app-record-root /absolute/path/to/admitted/connection \
+  --loushang-mux-name main
+```
+
+For a debug build, start `npm run dev:web` in `gui/` first; its configured
+WebView URL is `http://localhost:1420`. A standalone packaged build uses the
+embedded frontend. With explicit connection arguments, the Host and Mux must
+already exist through the managed management entry. Reconnect attaches the
+original Mux and reads its existing members.
+
+Without explicit connection arguments, Linux native launch offers local Host
+management. Select an existing absolute Workspace directory, then choose
+**Start and connect** or connect to its running Host. Startup uses the existing
+managed coordinator and admitted Mux creation; an empty Mux receives the existing
+default Session initialization. Closing the GUI only disconnects the client.
+Stop and restart require confirmation because they interrupt active executions;
+restart preserves Session history but does not resume an interrupted execution.
+An unconfirmed instance is never automatically replaced.
+
+`npm run dev` selects this checkout's `.venv` Python when available. Native
+launchers can set `LOUSHANG_GUI_PYTHON` to an interpreter containing this checkout
+or an installed Loushang package; the fallback is `python3`. The short-lived
+Product management entrypoint is `loushang.coding.gui_local_host`. Python and Rust
+must come from compatible builds. Managed storage retains its existing private
+directory and trusted-ancestor requirements; do not place its roots under
+group-writable shared directories. Windows and macOS local lifecycle management
+remain unsupported; explicit valid connection modes retain their own platform
+support boundaries.
+
+Linux record admission uses no-follow directory/file descriptors, current-user
+ownership, private 0700/0600 modes, single-link regular files, bounded reads and
+identity/version revalidation. Windows retains its existing handle/DACL checks.
+The connection selects the validated record's semantic Execution profile,
+including `local-detachable-discovery-execution-managed/v2`; capability order,
+managed closure prerequisites, authentication digest and exact hello are checked.
+Legacy valid record decoding remains available, but a live GUI requires Execution.
+Unknown submit receipts are queried without replay only on the same service
+instance; a replacement Host is reported as an unknown outcome.
+
+Linux evidence and the remaining graphical acceptance limits are recorded in
+[stage 1D delivery](../docs/internals/architecture/appservice/execution-service-delivery.md#managed-gui-adaptation--stage-1d).
 
 The record root and Mux selection are parsed and retained by Rust; the WebView
 cannot provide or read them. Native admission still validates the private record
