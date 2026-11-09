@@ -83,6 +83,14 @@ strict legacy decoders. Evidence includes the
 and a Linux native build against an isolated managed AppHost with a
 deterministic model transport.
 
+Reviewability budget reconciliation by the implementation agent (Codex),
+2026-11-09, against the integrated GUI revision `39efc0910`. The G11 check
+accounts for 63 net lines in AppServer protocol values, exports and codecs,
+five in AppService's existing model selection authority, and 28 in the Coding
+adapter. The counted files and remaining headroom stay the same. The
+[G11 architecture test](../../../../tests/architecture/test_hosted_application_g11.py)
+continues to check those boundaries.
+
 ## Automatic GUI Session Titles
 
 Internal acceptance by the implementation agent (Codex), 2026-11-09.
