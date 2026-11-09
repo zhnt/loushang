@@ -74,6 +74,8 @@ from loushang.harness.worker.payload._storage import PayloadStorage
 
 class GatedReview(Protocol):
     @property
+    def native_closure_current(self) -> bool: ...
+    @property
     def gate_record(self) -> _StartGateRecordMethods | None: ...
     @property
     def attempt_record(self) -> WorkerAttemptRecordV1 | None: ...
@@ -125,6 +127,39 @@ _HISTORY_STEMS = (
     "worker-supervisor",
     "worker-history-checkpoints",
 )
+
+
+_PUBLIC_ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
+
+
+def review_history(
+    bindings: HistoryProofBindings[ReviewT],
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+) -> ReviewT:
+    """Join fresh Product facts while runtime and GC owner locks are held."""
+    if (
+        not isinstance(product, PosixLocalWheelProductSessionOwner)
+        or product.policy.product_id != bindings.product_id
+        or type(attempt_id) is not str
+        or (_PUBLIC_ATTEMPT.fullmatch(attempt_id) is None)
+    ):
+        raise ValueError(
+            f"{bindings.product_label} Worker history review requires an exact Product attempt"
+        )
+    registry = product.epoch_runtime.registry
+    with registry.exclusive_runtime_quiescence(
+        store_id=registry.store_id, read_only=True
+    ) as quiescence:
+        with product.gc_gate.read_snapshot_guard() as gc_snapshot:
+            return review_history_under_guard(
+                bindings,
+                product,
+                attempt_id=attempt_id,
+                active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
+                gc_snapshot=gc_snapshot,
+            )
 
 
 def review_gated_offline(

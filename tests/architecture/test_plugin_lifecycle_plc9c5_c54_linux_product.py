@@ -105,10 +105,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package_product_worker_crash_c5_settlement.py": {
         "loushang.harness.worker.product_activation",
     },
-    CODING_ROOT / "package_product_worker_history_retention.py": {
-        "loushang.harness.worker.gated_start",
-        "loushang.harness.worker.journal",
-    },
+    CODING_ROOT / "package_product_worker_history_retention.py": {"loushang.harness.worker.history._retention", "loushang.harness.worker.journal"},
     CODING_ROOT / "package_product_worker_history_prepared_v2.py": {
         "loushang.harness.worker.history._prepared"
     },
@@ -116,18 +113,9 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._no_effect",
         "loushang.harness.worker.journal",
     },
-    CODING_ROOT / "package_product_worker_registered_c5_settlement.py": {
-        "loushang.harness.worker.product_activation",
-    },
-    CODING_ROOT / "package_product_worker_registered_payload_repair.py": {
-        "loushang.harness.worker.journal",
-        "loushang.harness.worker.payload._repair",
-    },
+    CODING_ROOT / "package_product_worker_registered_payload_repair.py": {"loushang.harness.worker.history._retention", "loushang.harness.worker.journal", "loushang.harness.worker.payload._repair"},
     CODING_ROOT / "package_product_worker_registered_recovery.py": {
         "loushang.harness.worker.journal",
-    },
-    CODING_ROOT / "package_product_worker_posix_gc_history.py": {
-        "loushang.harness.worker.gated_start"
     },
     CODING_ROOT / "package_product_worker_start_gate.py": {
         "loushang.harness.worker._native_profile_bridge",
@@ -153,10 +141,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._windows_supervisor_base",
         "loushang.harness.worker.journal",
     },
-    CODING_ROOT / "package_product_worker_start_gate_recovery.py": {
-        "loushang.harness.worker.gated_start",
-        "loushang.harness.worker.journal",
-    },
+    CODING_ROOT / "package_product_worker_start_gate_recovery.py": {"loushang.harness.worker.journal"},
     CODING_ROOT / "package_product_worker_native_release.py": {
         "loushang.harness.worker._linux_native_release"
     },
@@ -347,6 +332,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / 'package_product_worker_windows_reserved_review.py': {
         'loushang.harness.worker.history._windows_stage_review_wire',
     },
+    CODING_ROOT / "package_product_worker_gc_references.py": {"loushang.harness.worker.history._retention"},
 }
 BEHAVIOR = Path("tests/harness/worker/test_coding_product_worker_canary.py")
 DOCUMENT = Path(

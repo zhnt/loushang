@@ -1,0 +1,1818 @@
+{
+  "observations": {
+    "api": {
+      "error": null,
+      "value": {
+        "loushang.coding.package_product_worker_activation_state": {
+          "CodingProductWorkerActivationStateStore": {
+            "annotations": {},
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "product": "PosixLocalWheelProductSessionOwner",
+                  "return": "None"
+                },
+                "module": "loushang.coding.package_product_worker_activation_state",
+                "qualname": "CodingProductWorkerActivationStateStore.__init__",
+                "signature": "(self, product: 'PosixLocalWheelProductSessionOwner') -> 'None'"
+              },
+              "compare_and_swap": {
+                "annotations": {
+                  "document": "Mapping[str, object]",
+                  "expected_revision": "int",
+                  "return": "bool"
+                },
+                "module": "loushang.coding.package_product_worker_activation_state",
+                "qualname": "CodingProductWorkerActivationStateStore.compare_and_swap",
+                "signature": "(self, *, expected_revision: 'int', document: 'Mapping[str, object]') -> 'bool'"
+              },
+              "load": {
+                "annotations": {
+                  "return": "Mapping[str, object] | None"
+                },
+                "module": "loushang.coding.package_product_worker_activation_state",
+                "qualname": "CodingProductWorkerActivationStateStore.load",
+                "signature": "(self) -> 'Mapping[str, object] | None'"
+              },
+              "path": {
+                "annotations": {
+                  "return": "Path"
+                },
+                "module": "loushang.coding.package_product_worker_activation_state",
+                "qualname": "CodingProductWorkerActivationStateStore.path",
+                "signature": "(self) -> 'Path'"
+              }
+            },
+            "module": "loushang.coding.package_product_worker_activation_state",
+            "qualname": "CodingProductWorkerActivationStateStore",
+            "signature": "(product: 'PosixLocalWheelProductSessionOwner') -> 'None'",
+            "slots": []
+          },
+          "CodingWindowsWorkerActivationStateStore": {
+            "annotations": {},
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "product": "WindowsLocalWheelProductSessionOwner",
+                  "return": "None"
+                },
+                "module": "loushang.coding.package_product_worker_activation_state",
+                "qualname": "CodingWindowsWorkerActivationStateStore.__init__",
+                "signature": "(self, product: 'WindowsLocalWheelProductSessionOwner') -> 'None'"
+              },
+              "compare_and_swap": {
+                "annotations": {
+                  "document": "Mapping[str, object]",
+                  "expected_revision": "int",
+                  "return": "bool"
+                },
+                "module": "loushang.coding.package_product_worker_activation_state",
+                "qualname": "CodingWindowsWorkerActivationStateStore.compare_and_swap",
+                "signature": "(self, *, expected_revision: 'int', document: 'Mapping[str, object]') -> 'bool'"
+              },
+              "load": {
+                "annotations": {
+                  "return": "Mapping[str, object] | None"
+                },
+                "module": "loushang.coding.package_product_worker_activation_state",
+                "qualname": "CodingWindowsWorkerActivationStateStore.load",
+                "signature": "(self) -> 'Mapping[str, object] | None'"
+              }
+            },
+            "module": "loushang.coding.package_product_worker_activation_state",
+            "qualname": "CodingWindowsWorkerActivationStateStore",
+            "signature": "(product: 'WindowsLocalWheelProductSessionOwner') -> 'None'",
+            "slots": []
+          },
+          "open_coding_product_worker_activation_state_store": {
+            "annotations": {
+              "product": "PosixLocalWheelProductSessionOwner",
+              "return": "CodingProductWorkerActivationStateStore"
+            },
+            "module": "loushang.coding.package_product_worker_activation_state",
+            "qualname": "open_coding_product_worker_activation_state_store",
+            "signature": "(product: 'PosixLocalWheelProductSessionOwner') -> 'CodingProductWorkerActivationStateStore'"
+          },
+          "open_coding_windows_product_worker_activation_state_store": {
+            "annotations": {
+              "product": "WindowsLocalWheelProductSessionOwner",
+              "return": "CodingWindowsWorkerActivationStateStore"
+            },
+            "module": "loushang.coding.package_product_worker_activation_state",
+            "qualname": "open_coding_windows_product_worker_activation_state_store",
+            "signature": "(product: 'WindowsLocalWheelProductSessionOwner') -> 'CodingWindowsWorkerActivationStateStore'"
+          }
+        },
+        "loushang.coding.package_product_worker_cleanup_evidence": {
+          "CodingPosixWorkerCleanupEvidenceAuthority": {
+            "annotations": {},
+            "authority_fingerprint": "52b7c1436585b1f70b6afee9e8f5f9e39f4a6b7dc73d68974376e32860bd4de7",
+            "authority_id": "coding.posix-worker.cleanup-evidence.v1",
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "product": "PosixLocalWheelProductSessionOwner",
+                  "return": "None"
+                },
+                "module": "loushang.coding.package_product_worker_cleanup_evidence",
+                "qualname": "CodingPosixWorkerCleanupEvidenceAuthority.__init__",
+                "signature": "(self, product: 'PosixLocalWheelProductSessionOwner') -> 'None'"
+              },
+              "boot_identity": {
+                "annotations": {
+                  "return": "str"
+                },
+                "module": "loushang.coding.package_product_worker_cleanup_evidence",
+                "qualname": "CodingPosixWorkerCleanupEvidenceAuthority.boot_identity",
+                "signature": "(self) -> 'str'"
+              },
+              "current_tree_witness": {
+                "annotations": {
+                  "attempt_id": "str",
+                  "return": "CodingWorkerHistoryRetentionReviewV1"
+                },
+                "module": "loushang.coding.package_product_worker_cleanup_evidence",
+                "qualname": "CodingPosixWorkerCleanupEvidenceAuthority.current_tree_witness",
+                "signature": "(self, *, attempt_id: 'str') -> 'CodingWorkerHistoryRetentionReviewV1'"
+              },
+              "host_identity": {
+                "annotations": {
+                  "return": "str"
+                },
+                "module": "loushang.coding.package_product_worker_cleanup_evidence",
+                "qualname": "CodingPosixWorkerCleanupEvidenceAuthority.host_identity",
+                "signature": "(self) -> 'str'"
+              },
+              "verify_changed_boot_absence": {
+                "annotations": {
+                  "attempt_id": "str",
+                  "boot_identity": "str",
+                  "current_boot_identity": "str",
+                  "evidence_authority_fingerprint": "str",
+                  "evidence_authority_id": "str",
+                  "host_identity": "str",
+                  "owner_generation": "int",
+                  "receipt_fingerprint": "str",
+                  "return": "bool",
+                  "witness": "object"
+                },
+                "module": "loushang.coding.package_product_worker_cleanup_evidence",
+                "qualname": "CodingPosixWorkerCleanupEvidenceAuthority.verify_changed_boot_absence",
+                "signature": "(self, *, receipt_fingerprint: 'str', attempt_id: 'str', owner_generation: 'int', host_identity: 'str', boot_identity: 'str', current_boot_identity: 'str', witness: 'object', evidence_authority_id: 'str', evidence_authority_fingerprint: 'str') -> 'bool'"
+              },
+              "verify_registered_lease_expired": {
+                "annotations": {
+                  "_arguments": "object",
+                  "return": "bool"
+                },
+                "module": "loushang.coding.package_product_worker_cleanup_evidence",
+                "qualname": "CodingPosixWorkerCleanupEvidenceAuthority.verify_registered_lease_expired",
+                "signature": "(self, **_arguments: 'object') -> 'bool'"
+              },
+              "verify_tree_settlement": {
+                "annotations": {
+                  "attempt_id": "str",
+                  "boot_identity": "str",
+                  "evidence_authority_fingerprint": "str",
+                  "evidence_authority_id": "str",
+                  "host_identity": "str",
+                  "owner_generation": "int",
+                  "receipt_fingerprint": "str",
+                  "return": "bool",
+                  "witness": "object"
+                },
+                "module": "loushang.coding.package_product_worker_cleanup_evidence",
+                "qualname": "CodingPosixWorkerCleanupEvidenceAuthority.verify_tree_settlement",
+                "signature": "(self, *, receipt_fingerprint: 'str', attempt_id: 'str', owner_generation: 'int', host_identity: 'str', boot_identity: 'str', witness: 'object', evidence_authority_id: 'str', evidence_authority_fingerprint: 'str') -> 'bool'"
+              }
+            },
+            "module": "loushang.coding.package_product_worker_cleanup_evidence",
+            "qualname": "CodingPosixWorkerCleanupEvidenceAuthority",
+            "signature": "(product: 'PosixLocalWheelProductSessionOwner') -> 'None'",
+            "slots": []
+          }
+        },
+        "loushang.coding.package_product_worker_crash_c5_settlement": {
+          "CodingWorkerCrashC5SettlementError": {
+            "annotations": {},
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "code": "str",
+                  "return": "None"
+                },
+                "module": "loushang.coding.package_product_worker_crash_c5_settlement",
+                "qualname": "CodingWorkerCrashC5SettlementError.__init__",
+                "signature": "(self, code: 'str') -> 'None'"
+              }
+            },
+            "module": "loushang.coding.package_product_worker_crash_c5_settlement",
+            "qualname": "CodingWorkerCrashC5SettlementError",
+            "signature": "(code: 'str') -> 'None'",
+            "slots": []
+          },
+          "settle_coding_product_worker_crash_c5": {
+            "annotations": {
+              "attempt_id": "str",
+              "product": "PosixLocalWheelProductSessionOwner",
+              "return": "CodingProductWorkerRetainedAttemptV1"
+            },
+            "module": "loushang.coding.package_product_worker_crash_c5_settlement",
+            "qualname": "settle_coding_product_worker_crash_c5",
+            "signature": "(product: 'PosixLocalWheelProductSessionOwner', *, attempt_id: 'str') -> 'CodingProductWorkerRetainedAttemptV1'"
+          }
+        },
+        "loushang.coding.package_product_worker_registered_c5_settlement": {
+          "CodingWorkerRegisteredC5SettlementError": {
+            "annotations": {},
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "code": "str",
+                  "return": "None"
+                },
+                "module": "loushang.coding.package_product_worker_registered_c5_settlement",
+                "qualname": "CodingWorkerRegisteredC5SettlementError.__init__",
+                "signature": "(self, code: 'str') -> 'None'"
+              }
+            },
+            "module": "loushang.coding.package_product_worker_registered_c5_settlement",
+            "qualname": "CodingWorkerRegisteredC5SettlementError",
+            "signature": "(code: 'str') -> 'None'",
+            "slots": []
+          },
+          "settle_coding_product_worker_registered_c5": {
+            "annotations": {
+              "attempt_id": "str",
+              "product": "PosixLocalWheelProductSessionOwner",
+              "return": "CodingProductWorkerRetainedAttemptV1"
+            },
+            "module": "loushang.coding.package_product_worker_registered_c5_settlement",
+            "qualname": "settle_coding_product_worker_registered_c5",
+            "signature": "(product: 'PosixLocalWheelProductSessionOwner', *, attempt_id: 'str') -> 'CodingProductWorkerRetainedAttemptV1'"
+          }
+        },
+        "loushang.coding.package_product_worker_registered_payload_repair": {
+          "CodingWorkerRegisteredPayloadRepairError": {
+            "annotations": {},
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "code": "str",
+                  "return": "None"
+                },
+                "module": "loushang.coding.package_product_worker_registered_payload_repair",
+                "qualname": "CodingWorkerRegisteredPayloadRepairError.__init__",
+                "signature": "(self, code: 'str') -> 'None'"
+              }
+            },
+            "module": "loushang.coding.package_product_worker_registered_payload_repair",
+            "qualname": "CodingWorkerRegisteredPayloadRepairError",
+            "signature": "(code: 'str') -> 'None'",
+            "slots": []
+          },
+          "CodingWorkerRegisteredPayloadRepairIntentV1": {
+            "annotations": {
+              "boot_identity": "str",
+              "gate_record_digest": "str",
+              "host_identity": "str",
+              "lease_id": "str",
+              "owner_generation": "int",
+              "plan": "CodingWorkerPayloadDebtPlanV1",
+              "policy_fingerprint": "str",
+              "receipt_record_digest": "str"
+            },
+            "fields": [
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "plan",
+                "repr": true,
+                "type": "CodingWorkerPayloadDebtPlanV1"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "gate_record_digest",
+                "repr": true,
+                "type": "str"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "receipt_record_digest",
+                "repr": true,
+                "type": "str"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "policy_fingerprint",
+                "repr": true,
+                "type": "str"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "lease_id",
+                "repr": true,
+                "type": "str"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "host_identity",
+                "repr": true,
+                "type": "str"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "boot_identity",
+                "repr": true,
+                "type": "str"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "owner_generation",
+                "repr": true,
+                "type": "int"
+              }
+            ],
+            "frozen": true,
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "boot_identity": "str",
+                  "gate_record_digest": "str",
+                  "host_identity": "str",
+                  "lease_id": "str",
+                  "owner_generation": "int",
+                  "plan": "CodingWorkerPayloadDebtPlanV1",
+                  "policy_fingerprint": "str",
+                  "receipt_record_digest": "str",
+                  "return": null
+                },
+                "module": "loushang.coding.package_product_worker_registered_payload_repair",
+                "qualname": "CodingWorkerRegisteredPayloadRepairIntentV1.__init__",
+                "signature": "(self, plan: 'CodingWorkerPayloadDebtPlanV1', gate_record_digest: 'str', receipt_record_digest: 'str', policy_fingerprint: 'str', lease_id: 'str', host_identity: 'str', boot_identity: 'str', owner_generation: 'int') -> None"
+              },
+              "attempt_id": {
+                "annotations": {
+                  "return": "str"
+                },
+                "module": "loushang.coding.package_product_worker_registered_payload_repair",
+                "qualname": "CodingWorkerRegisteredPayloadRepairIntentV1.attempt_id",
+                "signature": "(self) -> 'str'"
+              },
+              "from_dict": {
+                "annotations": {
+                  "return": "CodingWorkerRegisteredPayloadRepairIntentV1",
+                  "value": "object"
+                },
+                "module": "loushang.coding.package_product_worker_registered_payload_repair",
+                "qualname": "CodingWorkerRegisteredPayloadRepairIntentV1.from_dict",
+                "signature": "(value: 'object') -> 'CodingWorkerRegisteredPayloadRepairIntentV1'"
+              },
+              "to_dict": {
+                "annotations": {
+                  "return": "dict[str, object]"
+                },
+                "module": "loushang.coding.package_product_worker_registered_payload_repair",
+                "qualname": "CodingWorkerRegisteredPayloadRepairIntentV1.to_dict",
+                "signature": "(self) -> 'dict[str, object]'"
+              }
+            },
+            "module": "loushang.coding.package_product_worker_registered_payload_repair",
+            "qualname": "CodingWorkerRegisteredPayloadRepairIntentV1",
+            "signature": "(plan: 'CodingWorkerPayloadDebtPlanV1', gate_record_digest: 'str', receipt_record_digest: 'str', policy_fingerprint: 'str', lease_id: 'str', host_identity: 'str', boot_identity: 'str', owner_generation: 'int') -> None",
+            "slots": [
+              "plan",
+              "gate_record_digest",
+              "receipt_record_digest",
+              "policy_fingerprint",
+              "lease_id",
+              "host_identity",
+              "boot_identity",
+              "owner_generation"
+            ]
+          },
+          "read_coding_product_worker_registered_payload_repair_intent": {
+            "annotations": {
+              "attempt_id": "str",
+              "product": "PosixLocalWheelProductSessionOwner",
+              "return": "CodingWorkerRegisteredPayloadRepairIntentV1 | None"
+            },
+            "module": "loushang.coding.package_product_worker_registered_payload_repair",
+            "qualname": "read_coding_product_worker_registered_payload_repair_intent",
+            "signature": "(product: 'PosixLocalWheelProductSessionOwner', *, attempt_id: 'str') -> 'CodingWorkerRegisteredPayloadRepairIntentV1 | None'"
+          },
+          "registered_payload_repair_matches_no_effect_closure": {
+            "annotations": {
+              "activation": "CodingProductWorkerRetainedAttemptV1 | None",
+              "gate": "CodingWorkerStartGateRecordV1 | None",
+              "intent": "CodingWorkerRegisteredPayloadRepairIntentV1",
+              "receipt": "CodingWorkerReceiptRecordV1 | None",
+              "return": "bool",
+              "supervisor": "WorkerAttemptRecordV1 | None"
+            },
+            "module": "loushang.coding.package_product_worker_registered_payload_repair",
+            "qualname": "registered_payload_repair_matches_no_effect_closure",
+            "signature": "(intent: 'CodingWorkerRegisteredPayloadRepairIntentV1', *, gate: 'CodingWorkerStartGateRecordV1 | None', receipt: 'CodingWorkerReceiptRecordV1 | None', activation: 'CodingProductWorkerRetainedAttemptV1 | None', supervisor: 'WorkerAttemptRecordV1 | None') -> 'bool'"
+          },
+          "repair_coding_product_worker_registered_payload_debt": {
+            "annotations": {
+              "expected_review": "CodingWorkerRegisteredOrphanReviewV1",
+              "product": "PosixLocalWheelProductSessionOwner",
+              "return": "CodingWorkerRegisteredPayloadRepairIntentV1"
+            },
+            "module": "loushang.coding.package_product_worker_registered_payload_repair",
+            "qualname": "repair_coding_product_worker_registered_payload_debt",
+            "signature": "(product: 'PosixLocalWheelProductSessionOwner', *, expected_review: 'CodingWorkerRegisteredOrphanReviewV1') -> 'CodingWorkerRegisteredPayloadRepairIntentV1'"
+          }
+        },
+        "loushang.coding.package_product_worker_registered_recovery": {
+          "CodingWorkerRegisteredOrphanReviewV1": {
+            "annotations": {
+              "activation_attempt": "CodingProductWorkerRetainedAttemptV1 | None",
+              "attempt_id": "str",
+              "current_boot_identity": "str",
+              "gate_record": "CodingWorkerStartGateRecordV1 | None",
+              "host_identity": "str",
+              "orphan_lease": "PackageEpochRuntimeLeaseV1 | None",
+              "payload_plan": "CodingWorkerPayloadDebtPlanV1 | None",
+              "receipt_record": "CodingWorkerReceiptRecordV1 | None",
+              "repaired_orphan_lease": "PackageEpochRuntimeLeaseV1 | None",
+              "repaired_owner_revision": "int | None",
+              "runtime_epoch": "int",
+              "store_root_identity": "str",
+              "supervisor_attempt": "WorkerAttemptRecordV1 | None",
+              "unrecognized_worker_state_names": "tuple[str, ...]"
+            },
+            "fields": [
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "attempt_id",
+                "repr": true,
+                "type": "str"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "gate_record",
+                "repr": true,
+                "type": "CodingWorkerStartGateRecordV1 | None"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "activation_attempt",
+                "repr": true,
+                "type": "CodingProductWorkerRetainedAttemptV1 | None"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "supervisor_attempt",
+                "repr": true,
+                "type": "WorkerAttemptRecordV1 | None"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "receipt_record",
+                "repr": true,
+                "type": "CodingWorkerReceiptRecordV1 | None"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "orphan_lease",
+                "repr": true,
+                "type": "PackageEpochRuntimeLeaseV1 | None"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "payload_plan",
+                "repr": true,
+                "type": "CodingWorkerPayloadDebtPlanV1 | None"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "host_identity",
+                "repr": true,
+                "type": "str"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "current_boot_identity",
+                "repr": true,
+                "type": "str"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "runtime_epoch",
+                "repr": true,
+                "type": "int"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "store_root_identity",
+                "repr": true,
+                "type": "str"
+              },
+              {
+                "compare": true,
+                "default": "<MISSING>",
+                "init": true,
+                "name": "unrecognized_worker_state_names",
+                "repr": true,
+                "type": "tuple[str, ...]"
+              },
+              {
+                "compare": true,
+                "default": null,
+                "init": true,
+                "name": "repaired_orphan_lease",
+                "repr": true,
+                "type": "PackageEpochRuntimeLeaseV1 | None"
+              },
+              {
+                "compare": true,
+                "default": null,
+                "init": true,
+                "name": "repaired_owner_revision",
+                "repr": true,
+                "type": "int | None"
+              }
+            ],
+            "frozen": true,
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "activation_attempt": "CodingProductWorkerRetainedAttemptV1 | None",
+                  "attempt_id": "str",
+                  "current_boot_identity": "str",
+                  "gate_record": "CodingWorkerStartGateRecordV1 | None",
+                  "host_identity": "str",
+                  "orphan_lease": "PackageEpochRuntimeLeaseV1 | None",
+                  "payload_plan": "CodingWorkerPayloadDebtPlanV1 | None",
+                  "receipt_record": "CodingWorkerReceiptRecordV1 | None",
+                  "repaired_orphan_lease": "PackageEpochRuntimeLeaseV1 | None",
+                  "repaired_owner_revision": "int | None",
+                  "return": null,
+                  "runtime_epoch": "int",
+                  "store_root_identity": "str",
+                  "supervisor_attempt": "WorkerAttemptRecordV1 | None",
+                  "unrecognized_worker_state_names": "tuple[str, ...]"
+                },
+                "module": "loushang.coding.package_product_worker_registered_recovery",
+                "qualname": "CodingWorkerRegisteredOrphanReviewV1.__init__",
+                "signature": "(self, attempt_id: 'str', gate_record: 'CodingWorkerStartGateRecordV1 | None', activation_attempt: 'CodingProductWorkerRetainedAttemptV1 | None', supervisor_attempt: 'WorkerAttemptRecordV1 | None', receipt_record: 'CodingWorkerReceiptRecordV1 | None', orphan_lease: 'PackageEpochRuntimeLeaseV1 | None', payload_plan: 'CodingWorkerPayloadDebtPlanV1 | None', host_identity: 'str', current_boot_identity: 'str', runtime_epoch: 'int', store_root_identity: 'str', unrecognized_worker_state_names: 'tuple[str, ...]', repaired_orphan_lease: 'PackageEpochRuntimeLeaseV1 | None' = None, repaired_owner_revision: 'int | None' = None) -> None"
+              },
+              "payload_repair_candidate": {
+                "annotations": {
+                  "return": "bool"
+                },
+                "module": "loushang.coding.package_product_worker_registered_recovery",
+                "qualname": "CodingWorkerRegisteredOrphanReviewV1.payload_repair_candidate",
+                "signature": "(self) -> 'bool'"
+              },
+              "registered_candidate": {
+                "annotations": {
+                  "return": "bool"
+                },
+                "module": "loushang.coding.package_product_worker_registered_recovery",
+                "qualname": "CodingWorkerRegisteredOrphanReviewV1.registered_candidate",
+                "signature": "(self) -> 'bool'"
+              },
+              "repair_candidate": {
+                "annotations": {
+                  "return": "bool"
+                },
+                "module": "loushang.coding.package_product_worker_registered_recovery",
+                "qualname": "CodingWorkerRegisteredOrphanReviewV1.repair_candidate",
+                "signature": "(self) -> 'bool'"
+              }
+            },
+            "module": "loushang.coding.package_product_worker_registered_recovery",
+            "qualname": "CodingWorkerRegisteredOrphanReviewV1",
+            "signature": "(attempt_id: 'str', gate_record: 'CodingWorkerStartGateRecordV1 | None', activation_attempt: 'CodingProductWorkerRetainedAttemptV1 | None', supervisor_attempt: 'WorkerAttemptRecordV1 | None', receipt_record: 'CodingWorkerReceiptRecordV1 | None', orphan_lease: 'PackageEpochRuntimeLeaseV1 | None', payload_plan: 'CodingWorkerPayloadDebtPlanV1 | None', host_identity: 'str', current_boot_identity: 'str', runtime_epoch: 'int', store_root_identity: 'str', unrecognized_worker_state_names: 'tuple[str, ...]', repaired_orphan_lease: 'PackageEpochRuntimeLeaseV1 | None' = None, repaired_owner_revision: 'int | None' = None) -> None",
+            "slots": [
+              "attempt_id",
+              "gate_record",
+              "activation_attempt",
+              "supervisor_attempt",
+              "receipt_record",
+              "orphan_lease",
+              "payload_plan",
+              "host_identity",
+              "current_boot_identity",
+              "runtime_epoch",
+              "store_root_identity",
+              "unrecognized_worker_state_names",
+              "repaired_orphan_lease",
+              "repaired_owner_revision"
+            ]
+          },
+          "CodingWorkerRegisteredRecoveryError": {
+            "annotations": {},
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "code": "str",
+                  "return": "None"
+                },
+                "module": "loushang.coding.package_product_worker_registered_recovery",
+                "qualname": "CodingWorkerRegisteredRecoveryError.__init__",
+                "signature": "(self, code: 'str') -> 'None'"
+              }
+            },
+            "module": "loushang.coding.package_product_worker_registered_recovery",
+            "qualname": "CodingWorkerRegisteredRecoveryError",
+            "signature": "(code: 'str') -> 'None'",
+            "slots": []
+          },
+          "recover_coding_product_worker_registered_no_effect": {
+            "annotations": {
+              "attempt_id": "str",
+              "product": "PosixLocalWheelProductSessionOwner",
+              "return": "CodingProductWorkerRetainedAttemptV1"
+            },
+            "module": "loushang.coding.package_product_worker_registered_recovery",
+            "qualname": "recover_coding_product_worker_registered_no_effect",
+            "signature": "(product: 'PosixLocalWheelProductSessionOwner', *, attempt_id: 'str') -> 'CodingProductWorkerRetainedAttemptV1'"
+          },
+          "repair_coding_product_worker_registered_orphan": {
+            "annotations": {
+              "expected_review": "CodingWorkerRegisteredOrphanReviewV1",
+              "product": "PosixLocalWheelProductSessionOwner",
+              "return": "PackageEpochRuntimeLeaseV1"
+            },
+            "module": "loushang.coding.package_product_worker_registered_recovery",
+            "qualname": "repair_coding_product_worker_registered_orphan",
+            "signature": "(product: 'PosixLocalWheelProductSessionOwner', *, expected_review: 'CodingWorkerRegisteredOrphanReviewV1') -> 'PackageEpochRuntimeLeaseV1'"
+          },
+          "review_coding_product_worker_registered_orphan": {
+            "annotations": {
+              "attempt_id": "str",
+              "product": "PosixLocalWheelProductSessionOwner",
+              "return": "CodingWorkerRegisteredOrphanReviewV1"
+            },
+            "module": "loushang.coding.package_product_worker_registered_recovery",
+            "qualname": "review_coding_product_worker_registered_orphan",
+            "signature": "(product: 'PosixLocalWheelProductSessionOwner', *, attempt_id: 'str') -> 'CodingWorkerRegisteredOrphanReviewV1'"
+          }
+        }
+      }
+    },
+    "authority-closed": {
+      "error": null,
+      "value": [
+        false,
+        false
+      ]
+    },
+    "codec": {
+      "error": null,
+      "value": {
+        "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dict": {
+          "bootIdentity": "old-boot",
+          "gateRecordDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "hostIdentity": "host",
+          "leaseId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "ownerGeneration": 1,
+          "plan": {
+            "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "entrypoint": "bin/worker",
+            "payloadDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "payloadSize": 4,
+            "receiptFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "stageDevice": 3,
+            "stageInode": 7,
+            "version": 1
+          },
+          "policyFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "receiptRecordDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "version": 1
+        },
+        "pickle_type_identity": true,
+        "pickle_value_equal": true,
+        "type": "loushang.coding.package_product_worker_registered_payload_repair.CodingWorkerRegisteredPayloadRepairIntentV1",
+        "wire_hex": "7b22626f6f744964656e74697479223a226f6c642d626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a312c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "codec-extra": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair fields are invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair fields are invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "codec-inner-float": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair changed"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair changed",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "codec-inner-true": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair changed"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair changed",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "codec-json-error": {
+      "error": {
+        "args": [
+          "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+        "notes": [],
+        "suppress": false,
+        "type": "json.decoder.JSONDecodeError"
+      },
+      "value": null
+    },
+    "codec-list": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair fields are invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair fields are invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "codec-no-lf": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair changed"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair changed",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "codec-outer-float": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair changed"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair changed",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "codec-outer-true": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair changed"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair changed",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "codec-reordered": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair changed"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair changed",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "codec-space": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair changed"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair changed",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "codec-two-lf": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair changed"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair changed",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "codec-wrong-attempt": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair changed"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair changed",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict": {
+      "error": null,
+      "value": {
+        "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dict": {
+          "bootIdentity": "old-boot",
+          "gateRecordDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "hostIdentity": "host",
+          "leaseId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "ownerGeneration": 1,
+          "plan": {
+            "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "entrypoint": "bin/worker",
+            "payloadDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "payloadSize": 4,
+            "receiptFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "stageDevice": 3,
+            "stageInode": 7,
+            "version": 1
+          },
+          "policyFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "receiptRecordDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "version": 1
+        },
+        "pickle_type_identity": true,
+        "pickle_value_equal": true,
+        "type": "loushang.coding.package_product_worker_registered_payload_repair.CodingWorkerRegisteredPayloadRepairIntentV1",
+        "wire_hex": "7b22626f6f744964656e74697479223a226f6c642d626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a312c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "dict-bool-device": {
+      "error": {
+        "args": [
+          "Coding Worker payload debt plan is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker payload debt plan is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-bool-generation": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair intent is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair intent is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-bool-size": {
+      "error": {
+        "args": [
+          "Coding Worker payload debt plan is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker payload debt plan is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-both-true": {
+      "error": null,
+      "value": {
+        "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dict": {
+          "bootIdentity": "old-boot",
+          "gateRecordDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "hostIdentity": "host",
+          "leaseId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "ownerGeneration": 1,
+          "plan": {
+            "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "entrypoint": "bin/worker",
+            "payloadDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "payloadSize": 4,
+            "receiptFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "stageDevice": 3,
+            "stageInode": 7,
+            "version": 1
+          },
+          "policyFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "receiptRecordDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "version": 1
+        },
+        "pickle_type_identity": true,
+        "pickle_value_equal": true,
+        "type": "loushang.coding.package_product_worker_registered_payload_repair.CodingWorkerRegisteredPayloadRepairIntentV1",
+        "wire_hex": "7b22626f6f744964656e74697479223a226f6c642d626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a312c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "dict-extra": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair fields are invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair fields are invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-float-generation": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair intent is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair intent is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-inner-extra": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair plan is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair plan is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-inner-float": {
+      "error": null,
+      "value": {
+        "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dict": {
+          "bootIdentity": "old-boot",
+          "gateRecordDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "hostIdentity": "host",
+          "leaseId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "ownerGeneration": 1,
+          "plan": {
+            "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "entrypoint": "bin/worker",
+            "payloadDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "payloadSize": 4,
+            "receiptFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "stageDevice": 3,
+            "stageInode": 7,
+            "version": 1
+          },
+          "policyFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "receiptRecordDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "version": 1
+        },
+        "pickle_type_identity": true,
+        "pickle_value_equal": true,
+        "type": "loushang.coding.package_product_worker_registered_payload_repair.CodingWorkerRegisteredPayloadRepairIntentV1",
+        "wire_hex": "7b22626f6f744964656e74697479223a226f6c642d626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a312c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "dict-inner-list": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair plan is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair plan is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-inner-missing": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair plan is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair plan is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-inner-true": {
+      "error": null,
+      "value": {
+        "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dict": {
+          "bootIdentity": "old-boot",
+          "gateRecordDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "hostIdentity": "host",
+          "leaseId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "ownerGeneration": 1,
+          "plan": {
+            "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "entrypoint": "bin/worker",
+            "payloadDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "payloadSize": 4,
+            "receiptFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "stageDevice": 3,
+            "stageInode": 7,
+            "version": 1
+          },
+          "policyFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "receiptRecordDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "version": 1
+        },
+        "pickle_type_identity": true,
+        "pickle_value_equal": true,
+        "type": "loushang.coding.package_product_worker_registered_payload_repair.CodingWorkerRegisteredPayloadRepairIntentV1",
+        "wire_hex": "7b22626f6f744964656e74697479223a226f6c642d626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a312c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "dict-inner-zero": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair plan is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair plan is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-list": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair fields are invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair fields are invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-missing": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair fields are invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair fields are invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-noncanonical-path": {
+      "error": {
+        "args": [
+          "Plugin path must be a canonical contained relative path"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Plugin path must be a canonical contained relative path",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-outer-float": {
+      "error": null,
+      "value": {
+        "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dict": {
+          "bootIdentity": "old-boot",
+          "gateRecordDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "hostIdentity": "host",
+          "leaseId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "ownerGeneration": 1,
+          "plan": {
+            "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "entrypoint": "bin/worker",
+            "payloadDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "payloadSize": 4,
+            "receiptFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "stageDevice": 3,
+            "stageInode": 7,
+            "version": 1
+          },
+          "policyFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "receiptRecordDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "version": 1
+        },
+        "pickle_type_identity": true,
+        "pickle_value_equal": true,
+        "type": "loushang.coding.package_product_worker_registered_payload_repair.CodingWorkerRegisteredPayloadRepairIntentV1",
+        "wire_hex": "7b22626f6f744964656e74697479223a226f6c642d626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a312c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "dict-outer-true": {
+      "error": null,
+      "value": {
+        "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dict": {
+          "bootIdentity": "old-boot",
+          "gateRecordDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "hostIdentity": "host",
+          "leaseId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "ownerGeneration": 1,
+          "plan": {
+            "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "entrypoint": "bin/worker",
+            "payloadDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "payloadSize": 4,
+            "receiptFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "stageDevice": 3,
+            "stageInode": 7,
+            "version": 1
+          },
+          "policyFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "receiptRecordDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "version": 1
+        },
+        "pickle_type_identity": true,
+        "pickle_value_equal": true,
+        "type": "loushang.coding.package_product_worker_registered_payload_repair.CodingWorkerRegisteredPayloadRepairIntentV1",
+        "wire_hex": "7b22626f6f744964656e74697479223a226f6c642d626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a312c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "dict-outer-zero": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair fields are invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair fields are invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-subclass": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair fields are invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair fields are invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-zero-inode": {
+      "error": {
+        "args": [
+          "Coding Worker payload debt plan is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker payload debt plan is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "dict-zero-size": {
+      "error": {
+        "args": [
+          "Coding Worker payload debt plan is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding Worker payload debt plan is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "errors": {
+      "error": null,
+      "value": [
+        {
+          "error": {
+            "args": [
+              "fixed-code"
+            ],
+            "cause": null,
+            "code": "fixed-code",
+            "context": null,
+            "id": 0,
+            "message": "fixed-code",
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.package_product_worker_registered_recovery.CodingWorkerRegisteredRecoveryError"
+          },
+          "pickle_args": [
+            "fixed-code"
+          ],
+          "pickle_code": "fixed-code",
+          "pickle_identity": true,
+          "repr": "CodingWorkerRegisteredRecoveryError('fixed-code')"
+        },
+        {
+          "error": {
+            "args": [
+              "fixed-code"
+            ],
+            "cause": null,
+            "code": "fixed-code",
+            "context": null,
+            "id": 0,
+            "message": "fixed-code",
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.package_product_worker_registered_payload_repair.CodingWorkerRegisteredPayloadRepairError"
+          },
+          "pickle_args": [
+            "fixed-code"
+          ],
+          "pickle_code": "fixed-code",
+          "pickle_identity": true,
+          "repr": "CodingWorkerRegisteredPayloadRepairError('fixed-code')"
+        },
+        {
+          "error": {
+            "args": [
+              "fixed-code"
+            ],
+            "cause": null,
+            "code": "fixed-code",
+            "context": null,
+            "id": 0,
+            "message": "fixed-code",
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.package_product_worker_registered_c5_settlement.CodingWorkerRegisteredC5SettlementError"
+          },
+          "pickle_args": [
+            "fixed-code"
+          ],
+          "pickle_code": "fixed-code",
+          "pickle_identity": true,
+          "repr": "CodingWorkerRegisteredC5SettlementError('fixed-code')"
+        },
+        {
+          "error": {
+            "args": [
+              "fixed-code"
+            ],
+            "cause": null,
+            "code": "fixed-code",
+            "context": null,
+            "id": 0,
+            "message": "fixed-code",
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.package_product_worker_crash_c5_settlement.CodingWorkerCrashC5SettlementError"
+          },
+          "pickle_args": [
+            "fixed-code"
+          ],
+          "pickle_code": "fixed-code",
+          "pickle_identity": true,
+          "repr": "CodingWorkerCrashC5SettlementError('fixed-code')"
+        }
+      ]
+    },
+    "intent": {
+      "error": null,
+      "value": {
+        "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dict": {
+          "bootIdentity": "old-boot",
+          "gateRecordDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "hostIdentity": "host",
+          "leaseId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "ownerGeneration": 1,
+          "plan": {
+            "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "entrypoint": "bin/worker",
+            "payloadDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "payloadSize": 4,
+            "receiptFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "stageDevice": 3,
+            "stageInode": 7,
+            "version": 1
+          },
+          "policyFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "receiptRecordDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "version": 1
+        },
+        "pickle_type_identity": true,
+        "pickle_value_equal": true,
+        "type": "loushang.coding.package_product_worker_registered_payload_repair.CodingWorkerRegisteredPayloadRepairIntentV1",
+        "wire_hex": "7b22626f6f744964656e74697479223a226f6c642d626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a312c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "intent-bad-digest": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair intent is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair intent is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "intent-bad-plan": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair intent is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair intent is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "intent-bool-generation": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair intent is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair intent is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "intent-empty-boot": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair intent is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair intent is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "intent-empty-host": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair intent is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair intent is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "intent-float-generation": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair intent is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair intent is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "intent-negative-generation": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair intent is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair intent is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "intent-plan-subclass": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair intent is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair intent is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "intent-string-subclass": {
+      "error": {
+        "args": [
+          "Registered Worker payload repair intent is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker payload repair intent is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "intent-unicode": {
+      "error": null,
+      "value": {
+        "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dict": {
+          "bootIdentity": "old-boot",
+          "gateRecordDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "hostIdentity": "主机",
+          "leaseId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "ownerGeneration": 1,
+          "plan": {
+            "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "entrypoint": "bin/worker",
+            "payloadDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "payloadSize": 4,
+            "receiptFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "stageDevice": 3,
+            "stageInode": 7,
+            "version": 1
+          },
+          "policyFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "receiptRecordDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "version": 1
+        },
+        "pickle_type_identity": true,
+        "pickle_value_equal": true,
+        "type": "loushang.coding.package_product_worker_registered_payload_repair.CodingWorkerRegisteredPayloadRepairIntentV1",
+        "wire_hex": "7b22626f6f744964656e74697479223a226f6c642d626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22e4b8bbe69cba222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a312c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "intent-zero-generation": {
+      "error": null,
+      "value": {
+        "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dict": {
+          "bootIdentity": "old-boot",
+          "gateRecordDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "hostIdentity": "host",
+          "leaseId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "ownerGeneration": 0,
+          "plan": {
+            "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "entrypoint": "bin/worker",
+            "payloadDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "payloadSize": 4,
+            "receiptFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "stageDevice": 3,
+            "stageInode": 7,
+            "version": 1
+          },
+          "policyFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "receiptRecordDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "version": 1
+        },
+        "pickle_type_identity": true,
+        "pickle_value_equal": true,
+        "type": "loushang.coding.package_product_worker_registered_payload_repair.CodingWorkerRegisteredPayloadRepairIntentV1",
+        "wire_hex": "7b22626f6f744964656e74697479223a226f6c642d626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a302c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "names": {
+      "error": null,
+      "value": [
+        "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json",
+        ".worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage"
+      ]
+    },
+    "names-empty": {
+      "error": {
+        "args": [
+          "Registered Worker attempt identity is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker attempt identity is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "names-int": {
+      "error": {
+        "args": [
+          "Registered Worker attempt identity is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker attempt identity is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "names-subclass": {
+      "error": {
+        "args": [
+          "Registered Worker attempt identity is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker attempt identity is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "names-uppercase": {
+      "error": {
+        "args": [
+          "Registered Worker attempt identity is invalid"
+        ],
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Registered Worker attempt identity is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      },
+      "value": null
+    },
+    "review": {
+      "error": null,
+      "value": {
+        "dict": {
+          "activation_attempt": null,
+          "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "current_boot_identity": "boot",
+          "gate_record": null,
+          "host_identity": "host",
+          "orphan_lease": null,
+          "payload_plan": null,
+          "receipt_record": null,
+          "repaired_orphan_lease": null,
+          "repaired_owner_revision": null,
+          "runtime_epoch": 1,
+          "store_root_identity": "root",
+          "supervisor_attempt": null,
+          "unrecognized_worker_state_names": []
+        },
+        "payload_repair_candidate": false,
+        "pickle_equal": true,
+        "pickle_identity": true,
+        "registered_candidate": false,
+        "repair_candidate": false,
+        "type": "loushang.coding.package_product_worker_registered_recovery.CodingWorkerRegisteredOrphanReviewV1"
+      }
+    },
+    "review-permissive": {
+      "error": null,
+      "value": {
+        "dict": {
+          "activation_attempt": null,
+          "attempt_id": "invalid",
+          "current_boot_identity": "boot",
+          "gate_record": null,
+          "host_identity": "host",
+          "orphan_lease": null,
+          "payload_plan": null,
+          "receipt_record": null,
+          "repaired_orphan_lease": null,
+          "repaired_owner_revision": null,
+          "runtime_epoch": true,
+          "store_root_identity": "root",
+          "supervisor_attempt": null,
+          "unrecognized_worker_state_names": []
+        },
+        "payload_repair_candidate": false,
+        "pickle_equal": true,
+        "pickle_identity": true,
+        "registered_candidate": false,
+        "repair_candidate": false,
+        "type": "loushang.coding.package_product_worker_registered_recovery.CodingWorkerRegisteredOrphanReviewV1"
+      }
+    }
+  },
+  "original_head": "9756a965df7cbd4c25b0c8ff783ecc6b34b76502",
+  "original_sources": {
+    "src/loushang/coding/package_product_worker_activation_state.py": "2313329e19acfd15d2853bf411094e12b8e65de37cb4b7b4a32c926824c4b992",
+    "src/loushang/coding/package_product_worker_cleanup_evidence.py": "4c30a41c6675c36b49b55ef9a0e9689e7b6057c0e84d64afbbddebd24123fb3b",
+    "src/loushang/coding/package_product_worker_crash_c5_settlement.py": "0abac69de136e03f417e6e5d7071a329b15947cbe591fd4cb42f12c73004dc52",
+    "src/loushang/coding/package_product_worker_registered_c5_settlement.py": "4e651980106b368fa0277609cbadae940d913f5c565c2545c80b214e9e1deffa",
+    "src/loushang/coding/package_product_worker_registered_payload_repair.py": "1c9a00483d69ba2fce97ea409749ffb94250d7c45dc8a94c50f4c4db4523de8a",
+    "src/loushang/coding/package_product_worker_registered_recovery.py": "a4f687231e216b4c9e46731f673b2ee6df071f8cbd1c909d5fe6b2d76d0f64b7"
+  }
+}

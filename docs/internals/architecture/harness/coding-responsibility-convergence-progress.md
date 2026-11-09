@@ -2,11 +2,39 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P1/A1–A71指定路径及A74三类payload恢复、A77完整Linux history proof、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口及A76备份拓扑存储）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P1/A78完整Linux恢复/evidence及A1–A71指定路径、A74三类payload恢复、A77完整Linux history proof、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口及A76备份拓扑存储）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A77完整Linux history proof）
+## 当前状态（2026-11-09，A78完整Linux恢复与cleanup evidence）
+
+从A77 `9756a965d`接续；registered review/lease repair、payload repair、registered
+C5与settled重开、顺序恢复driver、ordinary crash C5、cleanup evidence及POSIX C5
+Store寿命整体归原PackageProduct。直接复用原Registry、Storage/RepairJournal、
+C5 Coordinator及A77 proof/strict GC。Code保14/8字段真实DTO、公开Evidence/Store、
+静态authority身份、wire政策和薄入口；不保扫描/修复/结清厚回调或第二状态机。
+
+当前Coding430文件115144行，系统1963源646757行：Code−829、Core+1437、系统
+净+608；其余1954原source SHA同。全部类型/绑定/薄外观/格式成本计入，是职责迁移，
+不是系统净去重；距15K仍100144，完整P1–P4/Goal保持partial/active。
+
+旧85 IO观察加reflection共86先过（36.73s），完整树外候选同86过（37.42s）；
+另57原API/codec固定加9源origin guard共58过（2.60s），原A77固定121对候选通过。
+原消费者迁前128过（279.24s）；实际143本片固定+121原history固定+128原消费者
+共392过（502.63s），15原selector排除；相邻owner/import/V2/Windows原消费者
+200过（355.40s），1原排除。UID夹具固定后143观察加真实Storage故障hook共144过
+（20.65s），旧源同hook按原alias定位另1过；原392/200不因夹具修正重复计数。
+原架构迁前24过3旧owner事实失败保留；仅修既有枚举，27节点/208assert/scanner
+保持，原native测试唯一hook归实际Storage，1171assert/raises及selector均保持。
+实际9源mypy、15目标Ruff、11源format、文档9项/links/freshness/plan/diff通过。
+三独立方向/原型/实际代码视角有界接受，完整来源与验证限制见
+[本片交付](key-designs/linux-worker-recovery-convergence.md)。
+
+后续继续P1普通Worker整体路径、P2启动/Plugin/Session、P3托管/Continuity及P4
+入口/存量的剩余职责；直接复用已有机制，不重复计本片或原引擎收益。KD003仍未
+实施，KD011/A33待用户且不采用；本片不代表全Goal完成。
+
+## A77历史交付（2026-11-09，完整Linux history proof）
 
 从A76 `f2c7a6fe7`接续；retention、gated offline、committed V2与strict GC完整
 程序归原PackageProduct，纯join/Review派生归Worker.history。直接复用原Journal、

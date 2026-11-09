@@ -840,9 +840,8 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
     }
     assert outside_worker == {
         CODING_CANARY,
-        CODING_ROOT / "package_product_worker_operator_query.py",
-        CODING_ROOT / "package_product_worker_pending_host.py",
-        CODING_ROOT / "package_product_worker_windows_pending_host.py",
+        Path("src/loushang/harness/session/_worker_operator_query.py"),
+        Path("src/loushang/harness/session/_worker_provider.py"),
     }
 
     worker_consumers = {
@@ -858,6 +857,12 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
         SANDBOX_RUNTIME,
         HARNESS_ROOT / "package_product/product_worker_candidate.py",
         HARNESS_ROOT / "package_product/product_worker_wheel_admission.py",
+        Path("src/loushang/harness/package_product/_linux_worker_history.py"),
+        Path("src/loushang/harness/package_product/_linux_worker_native_release.py"),
+        Path("src/loushang/harness/package_product/_linux_worker_recovery.py"),
+        Path("src/loushang/harness/package_product/_worker_windows_attempt.py"),
+        Path("src/loushang/harness/session/_worker_operator_query.py"),
+        Path("src/loushang/harness/session/_worker_provider.py"),
     }
     assert _literal_string_collection(WORKER_PUBLIC, "__all__") == (
         CURRENT_WORKER_PUBLIC_EXPORTS
@@ -914,11 +919,8 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package_product_worker_history_retention.py",
         CODING_ROOT / "package_product_worker_history_segments.py",
         CODING_ROOT / "package_product_worker_no_effect_closure.py",
-        CODING_ROOT / "package_product_worker_posix_gc_history.py",
-        CODING_ROOT / "package_product_worker_registered_c5_settlement.py",
         CODING_ROOT / "package_product_worker_registered_payload_repair.py",
         CODING_ROOT / "package_product_worker_registered_recovery.py",
-        CODING_ROOT / "package_product_worker_installed_native.py",
         CODING_ROOT / "package_product_worker_native_release.py",
         CODING_ROOT / "package_product_worker_payload.py",
         CODING_ROOT / "package_product_worker_policy.py",
@@ -988,6 +990,10 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package_product_worker_windows_partial_stage_review.py",
         CODING_ROOT / "package_product_worker_windows_history_cutover_record.py",
         CODING_ROOT / "package_product_worker_windows_checkpoint.py",
+        Path("src/loushang/coding/_worker_preparation_inputs.py"),
+        Path("src/loushang/coding/package_product_worker_gc_references.py"),
+        Path("src/loushang/coding/package_product_worker_native_approval.py"),
+        Path("src/loushang/coding/package_product_worker_windows_payload_inventory.py"),
     }
     hosting_consumers = {
         path
@@ -1000,10 +1006,6 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
     assert hosting_consumers == {
         CODING_ROOT / "gui_local_host.py",
         CODING_APPHOST_CANARY,
-        CODING_ROOT / "package_product_worker_cleanup_evidence.py",
-        CODING_ROOT / "package_product_worker_operator_query.py",
-        CODING_ROOT / "package_product_worker_pending_host.py",
-        CODING_ROOT / "package_product_worker_windows_pending_host.py",
         CODING_ROOT / "package_product_worker_windows_backend_release.py",
         CODING_ROOT / "package_product_worker_windows_installed_backend.py",
         CODING_ROOT / "package_product_worker_windows_receipt.py",

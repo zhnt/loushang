@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-import os
 import re
-import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
+from typing import cast
 
+from loushang.harness.package_product._linux_worker_recovery import (
+    RecoveryBindings,
+    recover_registered_no_effect,
+    repair_registered_orphan,
+    review_registered_orphan,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -18,26 +23,16 @@ from loushang.harness.worker.journal import WorkerAttemptRecordV1
 from .package_product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
 )
-from .package_product_worker_activation_state_journal import (
-    CodingProductWorkerActivationStateJournal,
+from .package_product_worker_history_retention import (
+    CodingWorkerHistoryRetentionReviewV1,
 )
-from .package_product_worker_cleanup_evidence import (
-    CodingPosixWorkerCleanupEvidenceAuthority,
-)
-from .package_product_worker_history_retention import _known_worker_state_name
 from .package_product_worker_payload import (
     CodingWorkerPayloadDebtPlanV1,
-    _require_private_visible_root,
-    _stage_exists,
-    _verify_debt,
-    open_coding_product_worker_supervisor_journal,
 )
 from .package_product_worker_receipt import (
     CodingWorkerReceiptRecordV1,
-    read_coding_product_worker_receipt_record,
 )
 from .package_product_worker_start_gate_journal import (
-    CodingWorkerStartGateJournal,
     CodingWorkerStartGateRecordV1,
 )
 
@@ -126,108 +121,9 @@ def review_coding_product_worker_registered_orphan(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerRegisteredOrphanReviewV1:
     """Join exact C5, gate, payload, and orphan lease without changing them."""
-
-    if (
-        not sys.platform.startswith("linux")
-        or type(product) is not PosixLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-        or type(attempt_id) is not str
-        or _ATTEMPT.fullmatch(attempt_id) is None
-    ):
-        raise CodingWorkerRegisteredRecoveryError(
-            "coding_worker_registered_product_unsupported"
-        )
-    registry = product.epoch_runtime.registry
-    orphans = registry.review_orphans(store_id=registry.store_id)
-    with product.gc_gate.guard():
-        product.assert_root_gc_authority_current()
-        gate = CodingWorkerStartGateJournal(product).current(attempt_id)
-        supervisor = open_coding_product_worker_supervisor_journal(product).status(
-            attempt_id
-        )
-        journal = CodingProductWorkerActivationStateJournal(
-            product.state_root / "worker-activation-state.jsonl",
-            scope_id=product.policy.project_scope_id,
-            store_id=registry.store_id,
-        )
-        matching = tuple(
-            item
-            for item in journal.retained_attempts_read_only()
-            if item.attempt_id == attempt_id
-        )
-        c5 = matching[0] if len(matching) == 1 else None
-        receipt = (
-            None
-            if gate is None
-            else read_coding_product_worker_receipt_record(
-                product, receipt_fingerprint=gate.receipt_fingerprint
-            )
-        )
-        matching_orphans = (
-            ()
-            if receipt is None
-            else tuple(
-                item
-                for item in orphans
-                if item.runtime_id == receipt.receipt.policy.product_runtime_id
-            )
-        )
-        with product.pinned_state_root_gc_read() as root_fd:
-            from .package_product_worker_registered_payload_repair import _read_intent
-
-            _require_private_visible_root(product.state_root, root_fd)
-            state_names = tuple(os.listdir(root_fd))
-            unrecognized = tuple(
-                sorted(
-                    name
-                    for name in state_names
-                    if name.casefold().startswith(("worker-", ".worker-"))
-                    and not _known_worker_state_name(name)
-                )
-            )
-            prior_repair = _read_intent(root_fd, attempt_id)
-            plan = (
-                prior_repair.plan
-                if prior_repair is not None
-                else (
-                    _verify_debt(root_fd, attempt_id)
-                    if _stage_exists(root_fd, attempt_id)
-                    else None
-                )
-            )
-        fence = product.epoch_runtime.cutover_result.fence
-        if fence is None:
-            raise CodingWorkerRegisteredRecoveryError(
-                "coding_worker_registered_fence_unavailable"
-            )
-        evidence = CodingPosixWorkerCleanupEvidenceAuthority(product)
-        product.assert_root_gc_authority_current()
-        review = CodingWorkerRegisteredOrphanReviewV1(
-            attempt_id=attempt_id,
-            gate_record=gate,
-            activation_attempt=c5,
-            supervisor_attempt=supervisor,
-            receipt_record=receipt,
-            orphan_lease=(matching_orphans[0] if len(matching_orphans) == 1 else None),
-            payload_plan=plan,
-            host_identity=evidence.host_identity,
-            current_boot_identity=evidence.boot_identity,
-            runtime_epoch=fence.epoch,
-            store_root_identity=fence.fenced_root_identity,
-            unrecognized_worker_state_names=unrecognized,
-        )
-    repaired = (
-        None
-        if receipt is None
-        else registry.repaired_orphan_for_runtime(
-            store_id=registry.store_id,
-            runtime_id=receipt.receipt.policy.product_runtime_id,
-        )
-    )
-    return replace(
-        review,
-        repaired_orphan_lease=None if repaired is None else repaired[1],
-        repaired_owner_revision=None if repaired is None else repaired[0],
+    return cast(
+        CodingWorkerRegisteredOrphanReviewV1,
+        review_registered_orphan(_recovery_bindings(), product, attempt_id=attempt_id),
     )
 
 
@@ -237,54 +133,20 @@ def repair_coding_product_worker_registered_orphan(
     expected_review: CodingWorkerRegisteredOrphanReviewV1,
 ) -> PackageEpochRuntimeLeaseV1:
     """Repair only the dead runtime lease; payload and C5 remain separate."""
-
-    if type(expected_review) is not CodingWorkerRegisteredOrphanReviewV1:
-        raise TypeError("Registered Worker orphan review must be exact")
-    current = review_coding_product_worker_registered_orphan(
-        product, attempt_id=expected_review.attempt_id
+    return repair_registered_orphan(
+        _recovery_bindings(), product, expected_review=expected_review
     )
-    if current != expected_review:
-        raise CodingWorkerRegisteredRecoveryError(
-            "coding_worker_registered_review_stale"
-        )
-    if not current.repair_candidate or current.orphan_lease is None:
-        raise CodingWorkerRegisteredRecoveryError(
-            "coding_worker_registered_orphan_unproven"
-        )
-    product.epoch_runtime.registry.repair_orphan(
-        current.orphan_lease.lease_id, require_exclusive_active=True
-    )
-    return current.orphan_lease
 
 
 def recover_coding_product_worker_registered_no_effect(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingProductWorkerRetainedAttemptV1:
     """Run exact, independently retryable lease, payload, and C5 owners."""
-
-    from .package_product_worker_registered_c5_settlement import (
-        settle_coding_product_worker_registered_c5,
-    )
-    from .package_product_worker_registered_payload_repair import (
-        repair_coding_product_worker_registered_payload_debt,
-    )
-
-    review = review_coding_product_worker_registered_orphan(
-        product, attempt_id=attempt_id
-    )
-    if review.repair_candidate:
-        repair_coding_product_worker_registered_orphan(
-            product, expected_review=review
-        )
-        review = review_coding_product_worker_registered_orphan(
-            product, attempt_id=attempt_id
-        )
-    if review.payload_repair_candidate:
-        repair_coding_product_worker_registered_payload_debt(
-            product, expected_review=review
-        )
-    return settle_coding_product_worker_registered_c5(
-        product, attempt_id=attempt_id
+    return cast(
+        CodingProductWorkerRetainedAttemptV1,
+        recover_registered_no_effect(
+            _recovery_bindings(), product, attempt_id=attempt_id
+        ),
     )
 
 
@@ -295,3 +157,43 @@ __all__ = [
     "recover_coding_product_worker_registered_no_effect",
     "review_coding_product_worker_registered_orphan",
 ]
+
+
+def _recovery_bindings() -> RecoveryBindings[CodingWorkerHistoryRetentionReviewV1]:
+    """Bind actual owner/DTO classes and product data; perform no IO."""
+    from .package_product_worker_activation_state import (
+        CodingProductWorkerActivationStateStore,
+    )
+    from .package_product_worker_cleanup_evidence import (
+        _HOST_DOMAIN,
+        CodingPosixWorkerCleanupEvidenceAuthority,
+    )
+    from .package_product_worker_crash_c5_settlement import (
+        CodingWorkerCrashC5SettlementError,
+        _UnderGuardCleanupEvidenceAuthority,
+    )
+    from .package_product_worker_history_retention import _history_proof_bindings
+    from .package_product_worker_registered_c5_settlement import (
+        CodingWorkerRegisteredC5SettlementError,
+        _UnderGuardRegisteredCleanupEvidenceAuthority,
+    )
+    from .package_product_worker_registered_payload_repair import (
+        CodingWorkerRegisteredPayloadRepairError,
+        CodingWorkerRegisteredPayloadRepairIntentV1,
+    )
+
+    return RecoveryBindings(
+        history=_history_proof_bindings(),
+        registered_review=CodingWorkerRegisteredOrphanReviewV1,
+        intent=CodingWorkerRegisteredPayloadRepairIntentV1,
+        recovery_error=CodingWorkerRegisteredRecoveryError,
+        payload_error=CodingWorkerRegisteredPayloadRepairError,
+        registered_c5_error=CodingWorkerRegisteredC5SettlementError,
+        crash_c5_error=CodingWorkerCrashC5SettlementError,
+        cleanup_type=CodingPosixWorkerCleanupEvidenceAuthority,
+        under_guard_type=_UnderGuardCleanupEvidenceAuthority,
+        registered_cleanup_type=_UnderGuardRegisteredCleanupEvidenceAuthority,
+        state_store_type=CodingProductWorkerActivationStateStore,
+        host_domain=_HOST_DOMAIN,
+        cleanup_owner_message="Coding Worker cleanup requires its Linux Product owner",
+    )

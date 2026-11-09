@@ -781,3 +781,18 @@ Coding keeps actual DTOs, original public getter signatures and Product policy/
 admission with thin entries. There is no Code history/scan/verify callback or
 second manager. [Bounded proof evidence](key-designs/linux-worker-history-proof-convergence.md)
 records original bytes, failures, source origin, counters and execution limits.
+
+
+## Complete Linux Worker recovery and cleanup evidence (A78)
+
+Package Product owns registered lease/payload/C5 recovery and retries, ordinary
+crash C5 settlement, cleanup evidence and POSIX C5 Store GC/epoch custody. Public
+history locking also lives with A77's existing proof owner. Registry, Storage/
+RepairJournal, journals and ProductWorkerActivationCoordinator remain the sole
+lease, payload, history and C5 state engines. Code keeps real public DTOs and
+Evidence/Store classes, static Product authority identities, codec/policy and
+thin construction/compatibility entries. Ordinary evidence remains closed to
+registered recovery; the specialized under-guard owner retains its exact review.
+No Code scan/verify/repair/settle callback or second recovery transaction is added.
+[Bounded recovery evidence](key-designs/linux-worker-recovery-convergence.md)
+records independent durable steps, actual source/oracle evidence and limits.

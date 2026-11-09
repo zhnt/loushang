@@ -39,7 +39,6 @@ import loushang.coding.package_product_worker_history_retention as history_reten
 import loushang.coding.package_product_worker_opt_in as opt_in_journal_module
 import loushang.coding.package_product_worker_payload as worker_payload_module
 import loushang.coding.package_product_worker_receipt as receipt_journal_module
-import loushang.coding.package_product_worker_registered_payload_repair as registered_payload_module
 import loushang.coding.package_product_worker_start_gate_journal as gate_journal_module
 import loushang.coding.package_product_worker_start_gate_recovery as gated_recovery_module
 import loushang.coding.session.agent_session as coding_agent_session_module
@@ -7025,9 +7024,9 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
 
         with patch.object(service_group_module, "_read_file", changed_boot_read):
             with patch.object(
-                registered_payload_module,
+                type(worker_payload_module._STORAGE),
                 "_remove_verified_stage",
-                crash_after_first_payload_unlink,
+                staticmethod(crash_after_first_payload_unlink),
             ):
                 with pytest.raises(OSError, match="injected registered payload"):
                     repair_coding_product_worker_registered_payload_debt(

@@ -13,6 +13,7 @@ from typing import Literal
 
 from loushang.harness.package_product._linux_worker_history import (
     HistoryProofBindings,
+    review_history,
     review_history_under_guard,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -231,27 +232,7 @@ def review_coding_product_worker_history_retention(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerHistoryRetentionReviewV1:
     """Join fresh Product facts while runtime and GC owner locks are held."""
-
-    if (
-        not isinstance(product, PosixLocalWheelProductSessionOwner)
-        or product.policy.product_id != "coding"
-        or type(attempt_id) is not str
-        or _ATTEMPT.fullmatch(attempt_id) is None
-    ):
-        raise ValueError(
-            "Coding Worker history review requires an exact Product attempt"
-        )
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id, read_only=True
-    ) as quiescence:
-        with product.gc_gate.read_snapshot_guard() as gc_snapshot:
-            return _review_coding_product_worker_history_under_guard(
-                product,
-                attempt_id=attempt_id,
-                active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
-                gc_snapshot=gc_snapshot,
-            )
+    return review_history(_history_proof_bindings(), product, attempt_id=attempt_id)
 
 
 def _review_coding_product_worker_history_under_guard(
