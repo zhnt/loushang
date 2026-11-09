@@ -6,11 +6,18 @@ files on failure. They do not grant Source admission or replace staged Sources.
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 import os
 import stat
+import zipfile
+from base64 import urlsafe_b64encode
 from collections.abc import Callable
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from typing import Protocol
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.journal._io_loops import write_all
@@ -22,6 +29,37 @@ from .windows_quarantine import (
     windows_flush_directory,
     windows_flush_file,
 )
+
+
+class InstalledProductWheelSpec(Protocol):
+    @property
+    def plugin_id(self) -> str: ...
+    @property
+    def package_name(self) -> str: ...
+    @property
+    def members(self) -> tuple[str, ...]: ...
+    @property
+    def dist_info(self) -> str: ...
+    @property
+    def distribution_name(self) -> str: ...
+
+
+@dataclass(frozen=True, slots=True)
+class InstalledProductWheelRecipe:
+    module_file: Callable[[], str]
+    package_directory: str
+    version: str
+    metadata_version: str
+    wheel_metadata: bytes
+    maximum_member_bytes: Callable[[], int]
+
+
+def resolve_installed_product_root(module_file: str, parts: tuple[str, ...]) -> Path:
+    """Keep the original module resolution and independent strict root lookup."""
+    root = Path(module_file).resolve().parent
+    for part in parts:
+        root = root / part
+    return root.resolve(strict=True)
 
 
 class ExactProductSourceFiles:
@@ -218,3 +256,101 @@ class ExactProductSourceFiles:
             or os.read(descriptor, len(body) + 1) != body
         ):
             raise ValueError(f"{self._product} {label} Product Wheel changed on disk")
+
+    def build_installed_wheel(
+        self, spec: InstalledProductWheelSpec, *, recipe: InstalledProductWheelRecipe
+    ) -> bytes:
+        root = resolve_installed_product_root(
+            recipe.module_file(), (recipe.package_directory, spec.package_name)
+        )
+        files = {
+            f"{spec.package_name}/{relative}": self.read_installed_member(
+                root, relative, maximum_bytes=recipe.maximum_member_bytes
+            )
+            for relative in spec.members
+        }
+        manifest = json.loads(files[f"{spec.package_name}/plugin.json"])
+        if not isinstance(manifest, dict) or (
+            manifest.get("name"),
+            manifest.get("version"),
+        ) != (spec.plugin_id, recipe.version):
+            raise ValueError(f"Installed {spec.plugin_id} Product manifest changed")
+        files[f"{spec.dist_info}/METADATA"] = (
+            f"Metadata-Version: {recipe.metadata_version}\nName: {spec.distribution_name}\nVersion: {recipe.version}\n\n".encode(
+                "utf-8"
+            )
+        )
+        files[f"{spec.dist_info}/WHEEL"] = recipe.wheel_metadata
+        record = io.StringIO(newline="")
+        writer = csv.writer(record, lineterminator="\n")
+        for name, body in sorted(files.items()):
+            digest = (
+                urlsafe_b64encode(sha256(body).digest()).rstrip(b"=").decode("ascii")
+            )
+            writer.writerow((name, f"sha256={digest}", str(len(body))))
+        record_name = f"{spec.dist_info}/RECORD"
+        writer.writerow((record_name, "", ""))
+        files[record_name] = record.getvalue().encode("utf-8")
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
+            for name, body in sorted(files.items()):
+                member = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                member.create_system = 3
+                member.external_attr = (stat.S_IFREG | 420) << 16
+                member.compress_type = zipfile.ZIP_STORED
+                archive.writestr(member, body)
+        return output.getvalue()
+
+    def read_installed_member(
+        self, root: Path, relative: str, *, maximum_bytes: Callable[[], int]
+    ) -> bytes:
+        path = root / relative
+        current = path.parent
+        while current != root:
+            directory = current.lstat()
+            if not stat.S_ISDIR(directory.st_mode) or _installed_member_is_reparse(
+                directory
+            ):
+                raise ValueError(
+                    f"Installed {self._product} base Product directory is unsafe"
+                )
+            current = current.parent
+        before = path.lstat()
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or _installed_member_is_reparse(before)
+            or before.st_size > maximum_bytes()
+        ):
+            raise ValueError(f"Installed {self._product} base Product member is unsafe")
+        body = path.read_bytes()
+        after = path.lstat()
+        if (
+            len(body) > maximum_bytes()
+            or _installed_member_is_reparse(after)
+            or (
+                before.st_dev,
+                before.st_ino,
+                before.st_nlink,
+                before.st_size,
+                before.st_mtime_ns,
+            )
+            != (
+                after.st_dev,
+                after.st_ino,
+                after.st_nlink,
+                after.st_size,
+                after.st_mtime_ns,
+            )
+        ):
+            raise ValueError(
+                f"Installed {self._product} base Product member changed during read"
+            )
+        return body
+
+
+def _installed_member_is_reparse(metadata: os.stat_result) -> bool:
+    return os.name == "nt" and bool(
+        getattr(metadata, "st_reparse_tag", 0)
+        or getattr(metadata, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    )

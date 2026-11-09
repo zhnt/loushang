@@ -2,19 +2,14 @@
 
 from __future__ import annotations
 
-import csv
-import io
-import json
 import os
-import stat
-import zipfile
-from base64 import urlsafe_b64encode
 from dataclasses import dataclass, replace
-from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source import (
     ExactProductSourceFiles,
+    InstalledProductWheelRecipe,
+    _installed_member_is_reparse,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
@@ -334,6 +329,21 @@ _inspect_posix_product_wheel = _product_source_files.inspect_posix
 _publish_posix_product_wheel = _product_source_files.publish_posix
 
 
+_PRODUCT_WHEEL_RECIPE = InstalledProductWheelRecipe(
+    module_file=lambda: __file__,
+    package_directory="_plugins",
+    version="1",
+    metadata_version="2.1",
+    wheel_metadata=(
+        b"Wheel-Version: 1.0\n"
+        b"Generator: loushang-coding-product\n"
+        b"Root-Is-Purelib: true\n"
+        b"Tag: py3-none-any\n\n"
+    ),
+    maximum_member_bytes=lambda: _MAX_MEMBER_BYTES,
+)
+
+
 def build_coding_base_product_wheel() -> bytes:
     """Freeze only the installed Product-owned files into a repeatable Wheel."""
 
@@ -351,94 +361,19 @@ def build_coding_capability_product_wheel(plugin_id: str) -> bytes:
 
 
 def _build_coding_product_wheel(spec: _BuiltinWheelSpec) -> bytes:
-    root = (Path(__file__).resolve().parent / "_plugins" / spec.package_name).resolve(
-        strict=True
+    return _product_source_files.build_installed_wheel(
+        spec, recipe=_PRODUCT_WHEEL_RECIPE
     )
-    files = {
-        f"{spec.package_name}/{relative}": _read_member(root, relative)
-        for relative in spec.members
-    }
-    manifest = json.loads(files[f"{spec.package_name}/plugin.json"])
-    if not isinstance(manifest, dict) or (
-        manifest.get("name"),
-        manifest.get("version"),
-    ) != (spec.plugin_id, "1"):
-        raise ValueError(f"Installed {spec.plugin_id} Product manifest changed")
-    files[f"{spec.dist_info}/METADATA"] = (
-        f"Metadata-Version: 2.1\nName: {spec.distribution_name}\nVersion: 1\n\n"
-    ).encode("utf-8")
-    files[f"{spec.dist_info}/WHEEL"] = (
-        b"Wheel-Version: 1.0\n"
-        b"Generator: loushang-coding-product\n"
-        b"Root-Is-Purelib: true\n"
-        b"Tag: py3-none-any\n\n"
-    )
-    record = io.StringIO(newline="")
-    writer = csv.writer(record, lineterminator="\n")
-    for name, body in sorted(files.items()):
-        digest = urlsafe_b64encode(sha256(body).digest()).rstrip(b"=").decode("ascii")
-        writer.writerow((name, f"sha256={digest}", str(len(body))))
-    record_name = f"{spec.dist_info}/RECORD"
-    writer.writerow((record_name, "", ""))
-    files[record_name] = record.getvalue().encode("utf-8")
-    output = io.BytesIO()
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
-        for name, body in sorted(files.items()):
-            member = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
-            member.create_system = 3
-            member.external_attr = (stat.S_IFREG | 0o644) << 16
-            member.compress_type = zipfile.ZIP_STORED
-            archive.writestr(member, body)
-    return output.getvalue()
 
 
 def _read_member(root: Path, relative: str) -> bytes:
-    path = root / relative
-    current = path.parent
-    while current != root:
-        directory = current.lstat()
-        if not stat.S_ISDIR(directory.st_mode) or _is_windows_reparse(directory):
-            raise ValueError("Installed Coding base Product directory is unsafe")
-        current = current.parent
-    before = path.lstat()
-    # Wheel installers may hardlink package members to their download cache.
-    # Read bytes are copied into the generated Wheel after the identity recheck.
-    if (
-        not stat.S_ISREG(before.st_mode)
-        or _is_windows_reparse(before)
-        or before.st_size > _MAX_MEMBER_BYTES
-    ):
-        raise ValueError("Installed Coding base Product member is unsafe")
-    body = path.read_bytes()
-    after = path.lstat()
-    if (
-        len(body) > _MAX_MEMBER_BYTES
-        or _is_windows_reparse(after)
-        or (
-            before.st_dev,
-            before.st_ino,
-            before.st_nlink,
-            before.st_size,
-            before.st_mtime_ns,
-        )
-        != (
-            after.st_dev,
-            after.st_ino,
-            after.st_nlink,
-            after.st_size,
-            after.st_mtime_ns,
-        )
-    ):
-        raise ValueError("Installed Coding base Product member changed during read")
-    return body
+    return _product_source_files.read_installed_member(
+        root, relative, maximum_bytes=lambda: _MAX_MEMBER_BYTES
+    )
 
 
 def _is_windows_reparse(metadata: os.stat_result) -> bool:
-    return os.name == "nt" and bool(
-        getattr(metadata, "st_reparse_tag", 0)
-        or getattr(metadata, "st_file_attributes", 0)
-        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-    )
+    return _installed_member_is_reparse(metadata)
 
 
 __all__ = [

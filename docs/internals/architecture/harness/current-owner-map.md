@@ -796,3 +796,18 @@ registered recovery; the specialized under-guard owner retains its exact review.
 No Code scan/verify/repair/settle callback or second recovery transaction is added.
 [Bounded recovery evidence](key-designs/linux-worker-recovery-convergence.md)
 records independent durable steps, actual source/oracle evidence and limits.
+
+## Product selected revision input custody (A79)
+
+Package Product owns immutable selected snapshot handles, live currentness checks,
+builtin/external validation, actual distribution evidence, package/binding/plugin
+and resolution construction, and original current/prefix failure cleanup. Existing
+ExactProductSourceFiles owns installed source-root resolution, member capture and
+complete deterministic Wheel bytes; its prior native publication/inspection is
+unchanged. Coding keeps actual Artifact/spec classes, Product policy/member lists,
+metadata/Generator, module-file/relative location data, budgets, original public
+signatures and thin adapters. Core performs every path resolve, read and ZIP
+operation at the original point, without a Code IO callback or duplicate manager.
+The original Plugin DTO/parser, resolver, currentness and later approval/Graph
+owners remain sole mechanisms. [Bounded input evidence](key-designs/product-selected-revision-custody-convergence.md)
+records source identities, exact bytes, cleanup asymmetries and full cost.

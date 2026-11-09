@@ -153,3 +153,17 @@ write-or-match retries and getter/enter/constructor/events/close/exit failures.
 No current capture path, native Windows proof or default gate expansion is claimed.
 
 Explicit local path: [probe_windows_installation_root_lineage_compatibility.py](../../../tests/coding/probe_windows_installation_root_lineage_compatibility.py).
+
+
+The Product selected revision probes compare33 immutable values/byte observations
+and48 complete input-construction/failure observations captured from original
+sources. They retain complete three-Wheel bytes, actual public DTO identities,
+handle/path/currentness behavior, real selected/parser/package DTOs, actual
+metadata-reader distribution resolution, ordered cleanup and ZIP failures. Product
+Store capture/authority and metadata inputs are controlled. Raised cancellation is
+synchronous; native Windows and full Store/Session publication are not established.
+Expected values and input Wheel bytes are copied from source-guarded originals,
+with no current recapture entry or expansion of default discovery/PR coverage.
+
+Explicit local paths: [probe_product_selected_revision_values.py](../../../tests/coding/probe_product_selected_revision_values.py)
+and [probe_product_selected_revision_custody.py](../../../tests/coding/probe_product_selected_revision_custody.py).

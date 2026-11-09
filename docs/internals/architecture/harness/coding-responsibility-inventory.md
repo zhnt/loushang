@@ -7,6 +7,7 @@
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
 当前430个Python文件均重新计量并核SHA；原审计列与候选处置保留供追溯。当前行数包括已接通但尚待最终切片验证的源码；各批接受范围以执行记录为准。
+A79完整Product selected revision输入与Wheel bytes已接通，政策/实际DTO留Code；见[本片交付](key-designs/product-selected-revision-custody-convergence.md)。
 A78完整Linux registered/crash恢复与cleanup evidence已接通；见[本片交付](key-designs/linux-worker-recovery-convergence.md)。
 A77完整Linux history proof已接通，实际DTO/政策留Code；见[本片交付](key-designs/linux-worker-history-proof-convergence.md)。
 A76完整备份拓扑存储归原PackageProduct，政策/实际DTO留Code；见[本片交付](key-designs/backup-topology-custody-convergence.md)。
@@ -191,7 +192,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [model_selection_tui.py](../../../../src/loushang/coding/model_selection_tui.py) | C06 | 90 | R/M | C06 其余根目录入口与策略 | ce44a3b0da1c | 90 | ce44a3b0da1c |
 | [multiagent.py](../../../../src/loushang/coding/multiagent.py) | C06 | 504 | R/M | C06 其余根目录入口与策略 | a0763bed7060 | 504 | a0763bed7060 |
 | [package_arch_private_cache.py](../../../../src/loushang/coding/package_arch_private_cache.py) | C08 | 55 | M | C08 插件私有数据生命周期 | 9561cb995b7a | 20 | 0b03cd6d9e3a |
-| [package_builtin_wheel.py](../../../../src/loushang/coding/package_builtin_wheel.py) | C10 | 676 | M | C10 包分发与 Product 管理 | 622f4c2d40a0 | 460 | 8a3e912d0580 |
+| [package_builtin_wheel.py](../../../../src/loushang/coding/package_builtin_wheel.py) | C10 | 676 | M | C10 包分发与 Product 管理 | 622f4c2d40a0 | 395 | 9304ae4b9634 |
 | [package_cutover_backup.py](../../../../src/loushang/coding/package_cutover_backup.py) | C09 | 147 | E | C09 历史兼容、迁移与快照证据 | d723f57d2696 | 147 | d723f57d2696 |
 | [package_epoch_layout.py](../../../../src/loushang/coding/package_epoch_layout.py) | C09 | 301 | E | C09 历史兼容、迁移与快照证据 | 7f63c4dc5354 | 301 | 7f63c4dc5354 |
 | [package_external_data_wheel.py](../../../../src/loushang/coding/package_external_data_wheel.py) | C10 | 462 | M | C10 包分发与 Product 管理 | ab860fc3d3c3 | 229 | 1df2fa2e71df |
@@ -264,7 +265,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_repair.py](../../../../src/loushang/coding/package_product_repair.py) | C10 | 321 | M | C10 包分发与 Product 管理 | 2c060b56dfaf | 321 | 2c060b56dfaf |
 | [package_product_repair_rpc.py](../../../../src/loushang/coding/package_product_repair_rpc.py) | C10 | 49 | M | C10 包分发与 Product 管理 | 74413ce3f304 | 49 | 74413ce3f304 |
 | [package_product_repair_ui.py](../../../../src/loushang/coding/package_product_repair_ui.py) | C10 | 86 | M | C10 包分发与 Product 管理 | f38309028385 | 86 | f38309028385 |
-| [package_product_revisions.py](../../../../src/loushang/coding/package_product_revisions.py) | C10 | 442 | M | C10 包分发与 Product 管理 | 30e7ae99295b | 442 | 30e7ae99295b |
+| [package_product_revisions.py](../../../../src/loushang/coding/package_product_revisions.py) | C10 | 442 | M | C10 包分发与 Product 管理 | 30e7ae99295b | 219 | 9818e5b9c3e5 |
 | [package_product_runtime.py](../../../../src/loushang/coding/package_product_runtime.py) | C10 | 1,996 | M | C10 包分发与 Product 管理 | 952f0b207e63 | 1,820 | 610687ddff85 |
 | [package_product_worker_activation_base_v2.py](../../../../src/loushang/coding/package_product_worker_activation_base_v2.py) | C07 | 235 | M | C07 插件 Worker 执行/持久化/恢复 | b3f853b2bbd9 | 40 | 292f936dd640 |
 | [package_product_worker_activation_history.py](../../../../src/loushang/coding/package_product_worker_activation_history.py) | C07 | 220 | M | C07 插件 Worker 执行/持久化/恢复 | 3e6790b5e95c | 53 | 099d09070547 |
@@ -380,7 +381,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [platform/__init__.py](../../../../src/loushang/coding/platform/__init__.py) | C27 | 5 | K | C27 版本检查 Product 绑定 | 6af5d273482a | 5 | 6af5d273482a |
 | [platform/version_check.py](../../../../src/loushang/coding/platform/version_check.py) | C27 | 45 | K | C27 版本检查 Product 绑定 | 564c53288c45 | 45 | 564c53288c45 |
 | [plugin_author_smoke.py](../../../../src/loushang/coding/plugin_author_smoke.py) | C05 | 740 | V | C05 显式 canary 与作者验证入口 | 1f7948784509 | 740 | 1f7948784509 |
-| [plugin_dependency_grants.py](../../../../src/loushang/coding/plugin_dependency_grants.py) | C01 | 98 | K | C01 启动、Plugin 与资源装配 | 2a98643f66b4 | 98 | 2a98643f66b4 |
+| [plugin_dependency_grants.py](../../../../src/loushang/coding/plugin_dependency_grants.py) | C01 | 98 | K | C01 启动、Plugin 与资源装配 | 2a98643f66b4 | 106 | 08d6d2e724ea |
 | [plugin_enablement_compatibility.py](../../../../src/loushang/coding/plugin_enablement_compatibility.py) | C01 | 317 | M | C01 启动、Plugin 与资源装配 | c4be279ad128 | 317 | c4be279ad128 |
 | [plugin_local_discovery.py](../../../../src/loushang/coding/plugin_local_discovery.py) | C01 | 669 | M | C01 启动、Plugin 与资源装配 | 6d30b2520bb1 | 669 | 6d30b2520bb1 |
 | [plugin_management_cli.py](../../../../src/loushang/coding/plugin_management_cli.py) | C06 | 282 | R/M | C06 其余根目录入口与策略 | b59458d089c7 | 282 | b59458d089c7 |
@@ -460,7 +461,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 
 | 组 | 当前文件 | 当前物理行 |
 | --- | ---: | ---: |
-| C01 | 22 | 12,958 |
+| C01 | 22 | 12,966 |
 | C02 | 28 | 8,413 |
 | C03 | 15 | 4,132 |
 | C04 | 2 | 2,968 |
@@ -469,7 +470,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C07 | 112 | 22,728 |
 | C08 | 31 | 6,743 |
 | C09 | 34 | 9,711 |
-| C10 | 12 | 5,834 |
+| C10 | 12 | 5,546 |
 | C11 | 25 | 9,310 |
 | C12 | 25 | 7,517 |
 | C13 | 21 | 5,668 |
@@ -488,4 +489,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 115,144 |
+| 合计 | 430 | 114,864 |

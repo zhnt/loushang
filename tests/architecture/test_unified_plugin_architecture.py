@@ -77,7 +77,7 @@ EXPECTED_PLUGIN_JSON_STATIC_SITES = {
     # Builtin publication and selected Product Wheel verification name an exact
     # member; the shared PluginManifestParser remains the only parser owner.
     Path("src/loushang/coding/package_builtin_wheel.py"),
-    Path("src/loushang/coding/package_product_revisions.py"),
+    Path("src/loushang/harness/package_product/_selected_plugin_revisions.py"),
     Path("src/loushang/harness/package_product/product_local_wheel_runtime.py"),
     Path("src/loushang/harness/package_product/product_worker_candidate.py"),
     Path("src/loushang/harness/resources/packages/product_local_wheel_policy.py"),
@@ -610,36 +610,6 @@ PLC9_CLOSURE_BOUNDARY_SINKS = (
         {"json_decode": 1},
     ),
     (
-        "plugin_management/package_gc_binding.py",
-        "_assert_no_duplicate_json_keys",
-        "PluginPackageGcBindingJournal",
-        {"json_decode": 1, "path_read": 1},
-    ),
-    (
-        "plugin_management/package_gc_dependency_repair.py",
-        "PackageDependencyGcRepairJournal._load",
-        "PackageDependencyGcRepairJournal",
-        {"json_decode": 1, "path_read": 1},
-    ),
-    (
-        "plugin_management/package_gc_dependency_review.py",
-        "PackageDependencyGcRepairReviewJournal._load",
-        "PackageDependencyGcRepairReviewJournal",
-        {"json_decode": 1, "path_read": 1},
-    ),
-    (
-        "plugin_management/package_gc_results.py",
-        "_assert_no_duplicate_json_keys",
-        "PluginPackageGcResultJournal",
-        {"json_decode": 1, "path_read": 1},
-    ),
-    (
-        "plugin_management/private_data_confirmation.py",
-        "PluginPrivateDataConfirmationJournal._load_unlocked",
-        "PluginPrivateDataConfirmationJournal",
-        {"json_decode": 1, "path_read": 1},
-    ),
-    (
         "plugin_management/retirement.py",
         "decode_plugin_retirement_intent_capture",
         "PluginRetirementIntentLedger",
@@ -674,12 +644,6 @@ PLC9_CLOSURE_BOUNDARY_SINKS = (
         "open_regular_no_follow",
         "package-pinned-local-wheel-source-boundary",
         {"path_read": 4},
-    ),
-    (
-        "resources/packages/plugin_lifecycle/posix_epoch_cutover.py",
-        "PackagePosixEpochCutoverOwner.reopen_fenced",
-        "package-posix-epoch-cutover-owner",
-        {"path_read": 1},
     ),
     (
         "resources/packages/plugin_lifecycle/posix_epoch_snapshot.py",
@@ -739,12 +703,6 @@ PLC9_CLOSURE_BOUNDARY_SINKS = (
         "resources/packages/plugin_lifecycle/posix_pre_fence_registration.py",
         "PackagePosixPreFenceRegistrationOwner._open",
         "PackagePosixPreFenceRegistrationOwner",
-        {"path_read": 1},
-    ),
-    (
-        "resources/packages/plugin_lifecycle/windows_epoch_cutover.py",
-        "PackageWindowsEpochCutoverOwner.reopen_fenced",
-        "package-windows-epoch-cutover-owner",
         {"path_read": 1},
     ),
     (
@@ -855,11 +813,93 @@ PLC9_CLOSURE_BOUNDARY_SINKS = (
         "verified-revision-boundary",
         {"path_read": 2},
     ),
+    # Current accepted owner locations; A79 adds only the final two sinks.
+    (
+        "plugin_management/_installation_root_windows.py",
+        "_WindowsInstallationRootLineage._read_generation",
+        "_WindowsInstallationRootLineage",
+        {"json_decode": 1},
+    ),
+    (
+        "resources/packages/_private_directory.py",
+        "_open_existing_private_state_root",
+        "package-private-directory-boundary",
+        {"path_read": 2},
+    ),
+    (
+        "resources/packages/_private_tree_posix.py",
+        "PrivatePosixTreeIO.read_manifest_bytes",
+        "PrivatePosixTreeIO",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/_private_tree_posix.py",
+        "PrivatePosixTreeIO.restore_verified_tree",
+        "PrivatePosixTreeIO",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/_controlled_source_io.py",
+        "publish_controlled_source",
+        "package-controlled-source-boundary",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/_controlled_source_io.py",
+        "verify_private_controlled_source",
+        "package-controlled-source-boundary",
+        {"path_read": 2},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/_exact_product_source.py",
+        "ExactProductSourceFiles._open_posix",
+        "ExactProductSourceFiles",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/_exact_product_source.py",
+        "ExactProductSourceFiles.inspect_posix",
+        "ExactProductSourceFiles",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/_exact_product_source.py",
+        "ExactProductSourceFiles.inspect_windows",
+        "ExactProductSourceFiles",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/_exact_product_source.py",
+        "ExactProductSourceFiles.publish_posix",
+        "ExactProductSourceFiles",
+        {"path_read": 2},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/_exact_product_source.py",
+        "ExactProductSourceFiles.publish_windows",
+        "ExactProductSourceFiles",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/_exact_product_source.py",
+        "ExactProductSourceFiles.build_installed_wheel",
+        "ExactProductSourceFiles",
+        {"json_decode": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/_exact_product_source.py",
+        "ExactProductSourceFiles.read_installed_member",
+        "ExactProductSourceFiles",
+        {"path_read": 1},
+    ),
 )
 PLC9_CLOSURE_BOUNDARY_OWNERS = {
+    "_WindowsInstallationRootLineage",
+    "PrivatePosixTreeIO",
+    "ExactProductSourceFiles",
+    "package-private-directory-boundary",
+    "package-controlled-source-boundary",
     "product-admission-binding-journal",
-    "PackageDependencyGcRepairJournal",
-    "PackageDependencyGcRepairReviewJournal",
     "PackageEpochRuntimeLeaseRegistry",
     "PackagePosixEpochSnapshotEvidenceStore",
     "PackagePosixEpochSnapshotOwner",
@@ -873,9 +913,6 @@ PLC9_CLOSURE_BOUNDARY_OWNERS = {
     "PackageWindowsPreFenceRegistrationOwner",
     "PluginInstanceRuntimeLedger",
     "PluginManagementService",
-    "PluginPackageGcBindingJournal",
-    "PluginPackageGcResultJournal",
-    "PluginPrivateDataConfirmationJournal",
     "PluginRetirementIntentLedger",
     "PluginRetirementSetLedger",
     "package-pinned-local-wheel-source-boundary",
@@ -4100,6 +4137,13 @@ def test_plc2_instance_runtime_is_host_gated_and_not_package_cleanup() -> None:
                 )
             }
             if host_only_call == "release_family"
+            else {
+                (
+                    Path("src/loushang/harness/plugin_management/assembly.py"),
+                    "_complete_settled_host_retirement",
+                )
+            }
+            if host_only_call == "complete_retirement"
             else set()
         )
         assert _call_sites(management_sources, host_only_call) == expected_callers
@@ -4136,7 +4180,12 @@ def test_plc2_package_cleanup_is_write_ahead_inert_and_gc_rechecked() -> None:
     assert "PLUGIN_PACKAGE_LIFECYCLE_EVENT_CODEC" in package_records
     assert "PluginInstanceRuntimeEventV1" in package_lifecycle
     assert "recheck_gc_candidate" in package_lifecycle
-    assert _call_sites(management_sources, "handoff_cleanup_and_release") == set()
+    assert _call_sites(management_sources, "handoff_cleanup_and_release") == {
+        (
+            Path("src/loushang/harness/plugin_management/assembly.py"),
+            "_complete_settled_host_retirement",
+        )
+    }
     for forbidden_call in (
         ".dispose(",
         ".deactivate(",

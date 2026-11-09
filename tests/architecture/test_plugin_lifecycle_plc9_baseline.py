@@ -94,7 +94,7 @@ MANIFEST_ENABLED_FILES = {
     Path("src/loushang/coding/_base_plugin.py"),
     Path("src/loushang/coding/_capability_plugin_composition.py"),
     Path("src/loushang/coding/_product_capability_plugin_composition.py"),
-    Path("src/loushang/coding/package_product_revisions.py"),
+    Path("src/loushang/harness/package_product/_selected_plugin_revisions.py"),
     Path("src/loushang/coding/continuity_bootstrap.py"),
     Path("src/loushang/harness/plugin_management/configured_sources.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
@@ -380,7 +380,7 @@ MANIFEST_ENABLED_SCOPE_COUNTS = Counter(
             "_validate_product_lineage",
         ): 1,
         (
-            Path("src/loushang/coding/package_product_revisions.py"),
+            Path("src/loushang/harness/package_product/_selected_plugin_revisions.py"),
             "_validate_builtin_selection",
         ): 2,
         (
