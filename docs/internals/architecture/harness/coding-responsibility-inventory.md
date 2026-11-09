@@ -7,6 +7,7 @@
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
 当前430个Python文件均重新计量并核SHA；原审计列与候选处置保留供追溯。当前行数包括已接通但尚待最终切片验证的源码；各批接受范围以执行记录为准。
+A76完整备份拓扑存储归原PackageProduct，政策/实际DTO留Code；见[本片交付](key-designs/backup-topology-custody-convergence.md)。
 A75 prepared-operation任务寿命归原Lifecycle，Code保领域准入与薄入口；见[本片交付](key-designs/prepared-operation-task-custody-convergence.md)。
 A74三类payload恢复原接受范围见[交付记录](key-designs/worker-payload-recovery-convergence.md)。
 A73审批协调原接受范围见[交付记录](key-designs/product-approval-closure-convergence.md)。
@@ -254,7 +255,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_private_data_windows_restore_journal.py](../../../../src/loushang/coding/package_private_data_windows_restore_journal.py) | C08 | 835 | M | C08 插件私有数据生命周期 | 4e8b33f4c7f3 | 353 | 8630a14cd662 |
 | [package_private_data_windows_restore_owner.py](../../../../src/loushang/coding/package_private_data_windows_restore_owner.py) | C08 | 356 | M | C08 插件私有数据生命周期 | 82a4b6a69415 | 79 | 036ae65f6ea7 |
 | [package_private_data_windows_restore_preview.py](../../../../src/loushang/coding/package_private_data_windows_restore_preview.py) | C08 | 180 | M | C08 插件私有数据生命周期 | e4845513e143 | 143 | 6b6f42f0070b |
-| [package_product_backup_types.py](../../../../src/loushang/coding/package_product_backup_types.py) | C08 | 259 | M | C08 插件私有数据生命周期 | 6ddc9d882c1c | 257 | 22eaf5619777 |
+| [package_product_backup_types.py](../../../../src/loushang/coding/package_product_backup_types.py) | C08 | 259 | M | C08 插件私有数据生命周期 | 6ddc9d882c1c | 207 | d2dd305ee9f8 |
 | [package_product_cli.py](../../../../src/loushang/coding/package_product_cli.py) | C10 | 467 | M | C10 包分发与 Product 管理 | 99e20c686e5f | 467 | 99e20c686e5f |
 | [package_product_management_cli.py](../../../../src/loushang/coding/package_product_management_cli.py) | C10 | 548 | M | C10 包分发与 Product 管理 | fa812374945e | 548 | fa812374945e |
 | [package_product_preview.py](../../../../src/loushang/coding/package_product_preview.py) | C10 | 668 | M | C10 包分发与 Product 管理 | 9a98648bd20d | 668 | 9a98648bd20d |
@@ -464,7 +465,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
 | C07 | 112 | 24,325 |
-| C08 | 31 | 6,793 |
+| C08 | 31 | 6,743 |
 | C09 | 34 | 9,711 |
 | C10 | 12 | 5,834 |
 | C11 | 25 | 9,310 |
@@ -485,4 +486,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 116,791 |
+| 合计 | 430 | 116,741 |

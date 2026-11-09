@@ -83,6 +83,10 @@ flowchart TB
 逻辑子组件沿用上表六类原组件及其内部模块，不新建 `PrivateDataManager`、`PrivateDataStore`、Profile Resolver 或能力注册中心。确认、数据操作、日志三者不合成一个 owner，也不在确认之外授予额外目录访问权。资源 lease/guard/句柄由获取者释放；外层作用域在所有内层句柄和事务关闭后退出。
 
 Product backup topology 的判断也仍属于 Coding：闭集仅允许 `arch_private_data`；已有 Worker history 时不补造缺失 topology；owner revision/kind admission 与“Worker 无备份引用”的含义由产品给出。共享层只负责受权记录/枚举/IO，不硬编码 Coding 的 Worker-history 规则；这不扩大 Worker 重构范围。
+A76沿此政策边界把完整topology存储custody归既有PackageProduct，三个原入口共用；
+动态wire/kinds、hash与实际observation仍在Coding，历史prefix/诊断只作产品数据绑定。
+原RootedIO/WindowsReceiptIO直接执行，无Code扫描/读写回借；见[有界交付](backup-topology-custody-convergence.md)。
+
 
 ## 4. 精确合同与交互
 

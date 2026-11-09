@@ -1,0 +1,427 @@
+{
+  "observations": {
+    "posix:bad-scope": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "506f86302f0843cf8f66a3c2da8a9a0e3be281995296926c5c8b2226d4825d6c"
+    },
+    "posix:body-and-cleanup": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "87aa89be18f81abcd51585aa35610ad5ce18d67fefee8726051a03161354b873"
+    },
+    "posix:cancel-exception": {
+      "first_error": "CancelledError",
+      "retry_error": null,
+      "sha256": "18805393e06430564aa0000db0c5e64a17ac6ade78c381c77076d8b7d31670b9"
+    },
+    "posix:changed-kinds": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "b75ff7e4de59478f57ba2bf73adb1dc42f3304d72a9e47445e0d00712515dfd2"
+    },
+    "posix:cleanup-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "e876b94298007df6e13ddaecc902d57d5638d0c9ebf7faa3b8778d156c9fd4f5"
+    },
+    "posix:close-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "f9c31e108cd48f3c8d952604b35b7de9c8aa2df35b429d88a9516de03c086657"
+    },
+    "posix:create-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "c98e66caef7603ae546ba5c2d41191a9f97bad0fcae34674a3bd00f2d6c2f9c2"
+    },
+    "posix:create-before": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "ac0156d45defa23326a6c7152b5275671c222c657f19e9804a516aa3c9b7f6ce"
+    },
+    "posix:create-race": {
+      "first_error": "FileExistsError",
+      "retry_error": null,
+      "sha256": "49821025583c972c1b03d24c8a62f3cf158e944f9427f8b9cf07d451f7c17d54"
+    },
+    "posix:exact": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "ade40ee5cc594b6f377aaaa18afee7647dd9a7210829da4d01573c6162002798"
+    },
+    "posix:existing-worker": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "736457f5bf49bb208c8c97a9ebb564093c510335add624ee0bef6f0ff638a8bb"
+    },
+    "posix:file-mode": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "9dc64f1c71ce0fa0e503ff0aedd09bf1c722c2f1cd4d65382fb300fa2bb2c163"
+    },
+    "posix:file-symlink": {
+      "first_error": "OSError",
+      "retry_error": "OSError",
+      "sha256": "a52fcbb4c060da1d7b38d471b69468d180c47fb1ce8b80f04088ea725d61988a"
+    },
+    "posix:fsync-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "96271f6c2ac9d33c7f35e76c6b7f6d067dba2868832d7795b76173b33da6fe1b"
+    },
+    "posix:interrupt": {
+      "first_error": "KeyboardInterrupt",
+      "retry_error": null,
+      "sha256": "bef0ccb694c40b554aef1811b5d9bb5cc1a24af31d1745e25a93d6e09036b47a"
+    },
+    "posix:new": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "0b7dfb86f145f881ca5a52da2395a1a688ad1af166400836f724ee9bdfde52f7"
+    },
+    "posix:newline": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "9be2e10cfd75540632e9715f59ab2ed3f9036d14a877146b8afb889de8f74247"
+    },
+    "posix:parent-identity": {
+      "first_error": "ValueError",
+      "retry_error": null,
+      "sha256": "4aa4f72da87ce56952608f2605c6ea66ce7b1c63a67180d5b0a957742e7cee27"
+    },
+    "posix:parent-missing": {
+      "first_error": "FileNotFoundError",
+      "retry_error": "FileNotFoundError",
+      "sha256": "1236dcb9c9697d4a4c4d91ee9a5d6374b30144c2358fd8949bc834218255dafd"
+    },
+    "posix:parent-mode": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "5cc3dda7146831716ca10d7499acdc2285e9353dc7aee526add56711e85abb34"
+    },
+    "posix:parent-open": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "8f5c288ca0c608ecbce2833f00e63ea75cf10d87f23ce5fc73ac4fe49a471296"
+    },
+    "posix:parent-owner": {
+      "first_error": "ValueError",
+      "retry_error": null,
+      "sha256": "4aa4f72da87ce56952608f2605c6ea66ce7b1c63a67180d5b0a957742e7cee27"
+    },
+    "posix:parent-type": {
+      "first_error": "ValueError",
+      "retry_error": null,
+      "sha256": "4aa4f72da87ce56952608f2605c6ea66ce7b1c63a67180d5b0a957742e7cee27"
+    },
+    "posix:read-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "9f35f7a0b668960f7be7085b129f1f577d1603c11f5afd8de1300d00b8b34a7b"
+    },
+    "posix:read-error": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "ae4ef0e7bc5ad8effd63b139a5f3c11d184f1c3b0db9e707db9a16589546806a"
+    },
+    "posix:readonly-exact": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "ade40ee5cc594b6f377aaaa18afee7647dd9a7210829da4d01573c6162002798"
+    },
+    "posix:readonly-missing": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "ea4978e15b4983354e9b05bf6e0a211ad5e593a5a48af1a25da54c03ca5bcd77"
+    },
+    "posix:scan-error": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "9666ac47c37536a4b44cb1912d9860cd74ef66c10dcf6c8d1da9ffa498a752fc"
+    },
+    "posix:scan-incomplete": {
+      "first_error": "ValueError",
+      "retry_error": null,
+      "sha256": "0295811de347ad47f4229436fc66868d1cc3b80cf2f45b593ad117a339cca9d6"
+    },
+    "posix:stale-first": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "3fc172d7467fd3f63d642cad97f202d6e243c7363f630e800c9be51af941e87a"
+    },
+    "posix:stale-last": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "92f4bb4ea5c23cf969c1e4ac8ec2f348c8f72f023cb64f276100496668a2a071"
+    },
+    "posix:too-large": {
+      "first_error": "OSError",
+      "retry_error": "OSError",
+      "sha256": "813218922e55c5bea213723f59097b201c498d67ef24725f16b6249c11d0633f"
+    },
+    "posix:unknown": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "010baf59ce0c5e955899a38d5f1efcd019eed581da94c0b0e577eba4eb28c0e1"
+    },
+    "posix:worker-lower": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "42a445d14c6fc76ebe6329e20ea64cd6539867dff3bf34d6b74c7e4099936eb0"
+    },
+    "posix:worker-upper": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "d821987c0d590a5c3445bd04609cbd320852ad025da22c20e2576cecf63cd57a"
+    },
+    "posix:write-short": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "351a7486794be7939bcf63fc622eed92f26d3f98c01512f9e57139a1bfd22b40"
+    },
+    "posix:write-zero": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "4be19c8b3e91ce18f70ee9aee3e80c876261d53877ef5bc553198e6a9e8dc21f"
+    },
+    "posix:wrong-bytes": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "bd1fbafc7cd7442d2ef1d5484b4208389632dcfa665b0da8363de2c31e897c42"
+    },
+    "posix:wrong-epoch": {
+      "first_error": "TypeError",
+      "retry_error": "TypeError",
+      "sha256": "4a1daf4d1b96c423d9afcbd0eb6740ca326e1213f2f5c782bf6a62d398cb4ce5"
+    },
+    "public:arch": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "d7864af0d5c98210494aec3d6c362abd853a1f7bfbfce10e5b4f6198b5d28463"
+    },
+    "public:arch-denied": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "f249e2dc8b66734f68197d3e7f3b99adac7dcc9eb0a0697dc6194a62738cd8b3"
+    },
+    "public:ensure-admission-first": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "e4a0b12733826c0f7c995998452cde2e39db1b08c4b44923b20f20fd47e665ae"
+    },
+    "public:ensure-admission-second": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "58b178268b3c72eb141943ad6748757db78ec1e1c75516535f5923df7e4c205b"
+    },
+    "public:ensure-before-load": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "093cec378c5ba0fca5906275ce6648b2ab6e641657d9de1f6d7f72c71d4f7aab"
+    },
+    "public:ensure-gate-type": {
+      "first_error": "TypeError",
+      "retry_error": "TypeError",
+      "sha256": "3f901d0ca8b8edb90fa0b0683ea154a0cafcc76c411edf8cac61763e21e80851"
+    },
+    "public:ensure-guard-exit": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "e18fb282df162e7ff2fab3942618a15a41a6767936d71190bd7bd9ef5b1b150a"
+    },
+    "public:ensure-new": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "74694fb171a05fd72819607773bb848a3f9565dff6ff8d46b1810865a4f7bde5"
+    },
+    "public:worker": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "ca5b97e8b34629eb1e61c0c8d6bcfb53970195e64fcd09a1f982f059a19b7037"
+    },
+    "public:worker-attempt": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "c9a6f1eaece58286362068c7562999075a780e6054150d0d123595cf54598b80"
+    },
+    "public:worker-current": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "73cb8fd3b9228a9fd2ee7182c0dfdd1e424482a84de697ac7debc1be270a57c0"
+    },
+    "public:worker-kind": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "ba16460bf5bdc4e03629d5d3b6f8918a81e723f3aac278eed3be3dd7f5a64463"
+    },
+    "public:worker-product": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "65b79fdc645ab963b62a741a8289d18564b7e70e4620f1f7ceaef6ba2e8f13b7"
+    },
+    "public:worker-readonly": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "2b459ca40467db80f635eb93093742470a716daa006b88e75503c5960cffd179"
+    },
+    "windows:bad-scope": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "506f86302f0843cf8f66a3c2da8a9a0e3be281995296926c5c8b2226d4825d6c"
+    },
+    "windows:body-and-exit": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "e22cd79b06467aca4b35a94ae855d6d0b9436555441a79d3e462c42903914943"
+    },
+    "windows:borrow-enter": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "7498baf54103e3055d65d3118e79dd672e6a54e05179121cd74af6ccb3433b3e"
+    },
+    "windows:borrow-exit": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "e8283d21f18361257301501d27d04228d77028f3bd42d5eaa4d725263aec96fb"
+    },
+    "windows:cancel-exception": {
+      "first_error": "CancelledError",
+      "retry_error": null,
+      "sha256": "38af30708c897c500181cd52f260f98b29c233d4b6b2733fb4a9846291dfed63"
+    },
+    "windows:changed-kinds": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "60816e5ab11e20f40f12e974bc28494f57f7dcdcc67cd740f83dea1c36b90e40"
+    },
+    "windows:exact": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "dce79aae7ea72eb303be0703b90711ffeca92b04eacdb79f4d29b8a1e360229f"
+    },
+    "windows:existing-worker": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "3ff76b932c8e418ba9e92df334d226df72317f72d157be4ad7db969753832bcb"
+    },
+    "windows:interrupt": {
+      "first_error": "KeyboardInterrupt",
+      "retry_error": null,
+      "sha256": "ce9852cb559b891a186405b7d21708e295757a4a100e1421db341d3707adf2d0"
+    },
+    "windows:new": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "c876a3d0eb5c30935d35959be3f2f177d8c365ab4cc1ef8b0edf78a5f630f4d1"
+    },
+    "windows:newline": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "90fce0b1c370de7ddd9022959041c4a46714606c174d8351faf43eb8381f4f97"
+    },
+    "windows:read-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "ea13b61c5af2bc564b55c3fb5f8d56b055ccacb6a70f2b623d7a58ee755884ef"
+    },
+    "windows:read-error": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "4aeb47973c3bcfa18fc64cff55cafd0009a11b6e7254bfa2ecd1df5151518e8f"
+    },
+    "windows:readonly-missing": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "77292d7e5d5cf7fe3cf423010e4e46aae36a52d4b2b19df6941808931bf9cc69"
+    },
+    "windows:stage-conflict": {
+      "first_error": "CodingWindowsPrivateReceiptError",
+      "retry_error": "CodingWindowsPrivateReceiptError",
+      "sha256": "f426e2803fee7ad73084630a7bf438929947924ced9ae3686958f7c33193a62d"
+    },
+    "windows:stage-exact": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "c876a3d0eb5c30935d35959be3f2f177d8c365ab4cc1ef8b0edf78a5f630f4d1"
+    },
+    "windows:stale-first": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "561d29db30b1f4554b5143f7429e507a6b99b4ce8469f15b8ab7ad32e88a0a17"
+    },
+    "windows:stale-last": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "9a91231022fb2e52f9c720e09f3f9061f0307ad0a4014707330b1e122bc05e1e"
+    },
+    "windows:too-large": {
+      "first_error": "CodingWindowsPrivateReceiptError",
+      "retry_error": "CodingWindowsPrivateReceiptError",
+      "sha256": "cc58703477b1cba03a8d38fbd5ca6e4cc97e4a07d15a0dd4dd752f94090b820f"
+    },
+    "windows:unknown": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "2c6f6260b26cd797301066e2b51c469b8dea059347aab95167e4f49711377816"
+    },
+    "windows:worker-lower": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "f34594f55da01395ec4db49d31f40230835d7ee4752b1212a460265d873e380d"
+    },
+    "windows:worker-upper": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "5414533c4766f99bb5d80ffef04be825b4dafca91ee7751865f9622da780a39c"
+    },
+    "windows:write-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "b8cfa37876070da7970d4bf8d413eb7ddf79b4f8e5e53a49a26a81299fbb5ab5"
+    },
+    "windows:write-error": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "d76d3eeb67ec1d1dcf7311e65c80314598de488b06b0d891913547cbdd6c889b"
+    },
+    "windows:wrong-bytes": {
+      "first_error": "ValueError",
+      "retry_error": "ValueError",
+      "sha256": "2704fefc5440355b060c1046949aa98d907750e7051be21c7b0d5e111edfe7eb"
+    }
+  },
+  "original_coding_sha256": "22eaf5619777b6448804ceeaa3cbbd482cef40351213ce78faa5f5d175c9a956",
+  "original_head": "8e5a5222918b0449d9ef982dd5c51783eec87b19",
+  "reflection": {
+    "annotations": {
+      "attempt_id": "str",
+      "owner_revision": "str",
+      "references": "tuple[()]",
+      "worker_backup_supported": "Literal[False]"
+    },
+    "fields": [
+      "attempt_id",
+      "owner_revision",
+      "worker_backup_supported",
+      "references"
+    ],
+    "module": "loushang.coding.package_product_backup_types",
+    "pickle_identity": true,
+    "qualname": "CodingWorkerBackupReferenceObservationV1",
+    "repr": "CodingWorkerBackupReferenceObservationV1(attempt_id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', owner_revision='coding-product-backup-types:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', worker_backup_supported=False, references=())",
+    "signature": "(attempt_id: 'str', owner_revision: 'str', worker_backup_supported: 'Literal[False]', references: 'tuple[()]') -> None",
+    "slots": [
+      "attempt_id",
+      "owner_revision",
+      "worker_backup_supported",
+      "references"
+    ],
+    "value": {
+      "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "owner_revision": "coding-product-backup-types:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "references": [],
+      "worker_backup_supported": false
+    }
+  }
+}

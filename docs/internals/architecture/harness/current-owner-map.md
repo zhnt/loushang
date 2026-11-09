@@ -758,3 +758,14 @@ and thin Root adapters; no second closed fact or manager is added. Ordinary
 restore/import/dispose does not automatically enroll or drain this custody.
 [Bounded custody evidence](key-designs/prepared-operation-task-custody-convergence.md)
 records original task/operation/debt identities and distinct cancellation programs.
+
+## Closed backup topology storage custody (A76)
+
+The existing Package Product component owns the complete topology read/create/
+reopen program shared by bootstrap, Arch writer verification and Worker backup
+attestation. It directly reuses RootedFileIO, the original fenced epochs and the
+actual WindowsPrivateReceiptIO. Coding supplies wire/history-fence/diagnostic
+values and retains closed kinds, hash identity, Product/GC admission and actual
+observation DTO. No new manager, store or Code IO callback is introduced.
+[Bounded topology evidence](key-designs/backup-topology-custody-convergence.md)
+records the platform asymmetries, original observations and complete cost.

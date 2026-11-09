@@ -2,11 +2,31 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P1/A1–A71指定路径及A74三类payload恢复、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P1/A1–A71指定路径及A74三类payload恢复、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口及A76备份拓扑存储）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A75 prepared-operation任务寿命）
+## 当前状态（2026-11-09，A76备份拓扑完整存储custody）
+
+从A75 `8e5a52229`接续；bootstrap、Arch writer与Worker无引用attestation共同使用
+的完整topology read/create/reopen程序已归原PackageProduct。直接复用原RootedIO、
+epoch与实际WindowsReceiptIO，无Code扫描/写入厚回调、新manager或重复存储体。
+Code保closed kinds、动态wire、hash、准入/GC scope和实际4字段DTO。
+
+Coding430文件116741行，系统1960源645685行：Code−50、Core+103、系统净+53，
+其余1958旧源SHA同。全部接收/适配成本计入，是职责迁移；距15K仍101741，完整
+P1–P4/Goal保持partial/active。A51同类managed候选继续暂缓，没有换包装重启。
+
+固定79先在旧源全过（3.12s）；迁后同79加原33消费者共112过（19.08s）。POSIX
+实际RootedIO/文件/FD；Windows receipt/epoch及GC准入端口受控，取消为同步异常，
+close故障在真实关闭之后。三实际视角有界接受；两源mypy及Ruff/format3源通过。
+补充原architecture/Product/GC回归终态与全部来源见[本片交付](key-designs/backup-topology-custody-convergence.md)。
+
+下一步继续registered恢复的完整history proof/GC revalidation及驱动闭包，不把
+backup这一条依赖关闭当全部恢复完成。剩余P2/P3/P4仍按全量账推进，不重复计已有
+机制。KD003未实施；KD011/A33原待用户边界与本片无依赖，保持不采用。
+
+## A75历史交付（2026-11-09）
 
 从A74 `20033880e`接续；准备Task/交付Task/未交付operation/cleanup debt/loop五份
 状态及prepare/consume/abort/drain完整custody归同一原SessionLifecycleRuntime。
