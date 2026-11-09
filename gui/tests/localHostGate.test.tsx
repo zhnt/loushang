@@ -1,5 +1,5 @@
-import { StrictMode, useRef, type ReactNode } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode, useEffect, useRef, type ReactNode } from "react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OfflineAccount } from "../src/client/offlineAccount";
 import { AccountMenu } from "../src/AccountMenu";
@@ -19,12 +19,13 @@ vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: async ()
 vi.mock("../src/DesktopFrame", () => ({ DesktopFrame: () => <header>Desktop</header> }));
 vi.mock("../src/App", () => ({
   default: () => <p>Fixture</p>,
-  HarnessGui: ({ client, account, hostSettings }: { client: unknown; account: OfflineAccount | null; hostSettings: ReactNode }) => {
+  HarnessGui: ({ client, account, hostSettings, hostSettingsRequest = 0 }: { client: unknown; account: OfflineAccount | null; hostSettings: ReactNode; hostSettingsRequest?: number }) => {
     const dialog = useRef<HTMLDialogElement>(null);
+    useEffect(() => { if (hostSettingsRequest) dialog.current?.showModal(); }, [hostSettingsRequest]);
     return <>
       {client ? <textarea aria-label="Draft" /> : <p>Disconnected workspace</p>}
       <AccountMenu account={account} onSettings={() => dialog.current?.showModal()} />
-      <SettingsDialog dialogRef={dialog} hostSettings={hostSettings}
+      <SettingsDialog dialogRef={dialog} hostSettings={hostSettings} hostRequest={hostSettingsRequest}
         markdown={readMarkdownPreferences()} onMarkdownChange={() => {}} />
     </>;
   },
@@ -47,6 +48,7 @@ beforeEach(() => {
   native.invoke.mockReset(); native.create.mockClear(); native.listeners.clear();
   native.invoke.mockImplementation(async (command, args) => {
     if (command === "offline_account") return { name: "desktop-user", id: "local-test-id" };
+    if (command === "sync_tray") return;
     if (command === "local_host_environment") return { supported: true, workspace: "/workspace" };
     return ["connect", "status", "stop"].includes(args.request.action)
       ? { state: "not_running", errorCode: null, workspace: "/workspace" }
@@ -55,6 +57,33 @@ beforeEach(() => {
 });
 
 describe("local managed Host presentation", () => {
+  it("routes tray start and stop through management and the existing shutdown confirmation", async () => {
+    render(<LocalHostGate />);
+    const projection = () => {
+      const calls = native.invoke.mock.calls.filter(([name]) => name === "sync_tray");
+      return calls[calls.length - 1]?.[1].projection;
+    };
+    await waitFor(() => expect(projection()?.hosts[0]?.start).toBe(true));
+    expect(projection().userName).toBe("desktop-user");
+    expect(projection().webUrl).toBeNull();
+    const click = (revision: number, action: string) => act(() => native.listeners.get("gui://tray-host-action")?.({
+      payload: { revision, hostId: "/workspace", action },
+    }));
+    click(projection().revision - 1, "start");
+    expect(native.invoke.mock.calls.some(([, args]) => args?.request?.action === "start")).toBe(false);
+    click(projection().revision, "start");
+    await waitFor(() => expect(projection()?.hosts[0]?.stop).toBe(true));
+    expect(projection().currentLabel).toContain("Connecting");
+    click(projection().revision, "stop");
+    expect(await screen.findByRole("alertdialog")).toBeVisible();
+    expect(screen.getByRole("region", { name: "Host information" })).toBeVisible();
+    expect(native.invoke.mock.calls.some(([, args]) => args?.request?.action === "stop")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm shutdown" }));
+    await waitFor(() => expect(native.invoke).toHaveBeenCalledWith("local_host_action", {
+      request: { action: "stop", workspace: "/workspace", instanceId: "instance-1" },
+    }));
+  });
+
   it("opens the shell, tries to reconnect and waits for an explicit start if offline", async () => {
     render(<StrictMode><LocalHostGate /></StrictMode>);
     expect(screen.getByText("Disconnected workspace")).toBeVisible();
@@ -136,6 +165,6 @@ describe("local managed Host presentation", () => {
     render(<LocalHostGate />);
     openHostSettings();
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Linux only"));
-    expect(native.invoke.mock.calls.every(([name]) => name === "local_host_environment" || name === "offline_account")).toBe(true);
+    expect(native.invoke.mock.calls.some(([name]) => name === "local_host_action")).toBe(false);
   });
 });

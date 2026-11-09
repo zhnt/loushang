@@ -6,6 +6,7 @@ mod local_host;
 mod offline_account;
 #[cfg(desktop)]
 mod tray;
+mod web_link;
 // Exit joins run on the blocking pool.
 #[allow(dead_code)]
 mod read_stop;
@@ -15,6 +16,17 @@ mod read_worker;
 use connection_lifecycle::{ConnectionLifecycle, ExitAction};
 use std::sync::Arc;
 use tauri::Manager;
+
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
+fn show_tray_window(app: tauri::AppHandle) {
+    #[cfg(desktop)]
+    tray::show_main_window(&app);
+}
 
 #[cfg(feature = "fixture-bridge")]
 use serde::Serialize;
@@ -52,6 +64,9 @@ pub fn run() {
     let builder = builder.manage(live_bridge::LiveLaunchState::from_process());
     #[cfg(feature = "fixture-bridge")]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        tray::sync_tray,
+        quit_app,
+        show_tray_window,
         fixture_bridge_handshake,
         local_host::local_host_environment,
         offline_account::offline_account,
@@ -68,6 +83,9 @@ pub fn run() {
     ]);
     #[cfg(not(feature = "fixture-bridge"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        tray::sync_tray,
+        quit_app,
+        show_tray_window,
         local_host::local_host_environment,
         offline_account::offline_account,
         local_host::local_host_action,

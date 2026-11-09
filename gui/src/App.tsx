@@ -56,6 +56,8 @@ interface HarnessGuiProps {
   readonly client: HarnessClientUiPort | FixturePlaybackPort | null;
   readonly account?: OfflineAccount | null;
   readonly hostSettings?: ReactNode;
+  readonly hostSettingsRequest?: number;
+  readonly onConnectionChange?: (connection: ConnectionState | "connecting") => void;
 }
 
 const offlineClient: HarnessClientUiPort = {
@@ -87,7 +89,7 @@ const dockTabs = [
   { id: "review", label: "panels:changes.review", glyph: "▣" },
 ] as const;
 
-export function HarnessGui({ client: attachedClient, account, hostSettings }: HarnessGuiProps) {
+export function HarnessGui({ client: attachedClient, account, hostSettings, hostSettingsRequest = 0, onConnectionChange }: HarnessGuiProps) {
   const client = attachedClient ?? offlineClient;
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const fixture = fixturePlayback(client);
@@ -99,6 +101,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
     const dialog = settingsDialog.current;
     if (dialog && !dialog.open) dialog.showModal();
   }
+  useEffect(() => { if (hostSettingsRequest > 0) openSettings(); }, [hostSettingsRequest]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const previousSidebarOpen = useRef(true);
   useEffect(() => {
@@ -271,6 +274,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
   const selectionKey = liveSelectionKey(state.remote.source);
   const connected = state.remote.connection === "connected";
   const liveConnecting = Boolean(attachedClient && !fixture && syncing);
+  useEffect(() => {
+    onConnectionChange?.(liveConnecting ? "connecting" : state.remote.connection);
+  }, [liveConnecting, state.remote, onConnectionChange]);
   useEffect(() => {
     if (connected && selectionKey && selectedId) rememberSessionSelection(selectionKey, selectedId);
   }, [connected, selectionKey, selectedId]);
@@ -699,7 +705,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings }: Ha
           />
         ) : null}
       </main>
-      <SettingsDialog dialogRef={settingsDialog} hostSettings={hostSettings}
+      <SettingsDialog dialogRef={settingsDialog} hostSettings={hostSettings} hostRequest={hostSettingsRequest}
         markdown={markdown} onMarkdownChange={setMarkdown} />
     </div>
   );

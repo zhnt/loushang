@@ -92,5 +92,30 @@
   "systemStatus": "System status",
   "feedback": "Feedback",
   "taskManager": "Task manager",
-  "performanceTrace": "Start performance trace"
+  "performanceTrace": "Start performance trace",
+  "tray": {
+    "showLabel": "Show window",
+    "webLabel": "Open Web",
+    "manageLabel": "Manage Hosts",
+    "quitLabel": "Quit",
+    "enableLabel": "Enable",
+    "infoLabel": "Information",
+    "reconnectLabel": "Reconnect",
+    "startLabel": "Start",
+    "stopLabel": "Stop",
+    "none": "No Host selected",
+    "current": "Current Host",
+    "service": "Service",
+    "connected": "Connected",
+    "connecting": "Connecting…",
+    "disconnected": "Disconnected",
+    "unknown": "Unknown",
+    "running": "Running",
+    "stopped": "Stopped",
+    "starting": "Starting…",
+    "stopping": "Stopping…",
+    "user": "User",
+    "localHost": "Local Host",
+    "webError": "Unable to open the Web page. Check your default browser."
+  }
 }

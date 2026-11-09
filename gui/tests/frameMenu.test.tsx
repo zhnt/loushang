@@ -108,10 +108,10 @@ it("groups the reference menu entries and keeps unimplemented actions disabled",
 });
 
 it("connects advertised application shortcuts to existing actions", () => {
-  const create = vi.fn(), close = vi.fn(), dock = vi.fn(), back = vi.fn(), forward = vi.fn();
-  render(<FrameMenu sidebarOpen onToggleSidebar={() => {}} onNewSession={create} onClose={close} onToggleDock={dock} onBack={back} onForward={forward} />);
+  const create = vi.fn(), close = vi.fn(), quit = vi.fn(), dock = vi.fn(), back = vi.fn(), forward = vi.fn();
+  render(<FrameMenu sidebarOpen onToggleSidebar={() => {}} onNewSession={create} onClose={close} onQuit={quit} onToggleDock={dock} onBack={back} onForward={forward} />);
   for (const key of ["n", "j", "[", "]", "w", "q"]) fireEvent.keyDown(window, { key, ctrlKey: true });
-  expect(create).toHaveBeenCalledOnce(); expect(dock).toHaveBeenCalledOnce(); expect(back).toHaveBeenCalledOnce(); expect(forward).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledTimes(2);
+  expect(create).toHaveBeenCalledOnce(); expect(dock).toHaveBeenCalledOnce(); expect(back).toHaveBeenCalledOnce(); expect(forward).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledOnce(); expect(quit).toHaveBeenCalledOnce();
   fireEvent.keyDown(window, { key: "n", ctrlKey: true, isComposing: true });
   expect(create).toHaveBeenCalledOnce();
 });

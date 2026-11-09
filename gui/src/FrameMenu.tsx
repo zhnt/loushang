@@ -14,12 +14,13 @@ export interface FrameActions {
   sidebarOpen: boolean;
   environmentOpen?: boolean;
   onClose?: () => void;
+  onQuit?: () => void;
   onSettings?: () => void;
 }
 
 type MenuName = "file" | "edit" | "view" | "help";
 const names: MenuName[] = ["file", "edit", "view", "help"];
-type Label = keyof Resources["shell"];
+type Label = { [Key in keyof Resources["shell"]]: Resources["shell"][Key] extends string ? Key : never }[keyof Resources["shell"]];
 interface MenuEntry { label: Label; action?: () => void; shortcut?: string; checked?: boolean; submenu?: boolean }
 
 export function FrameMenu(actions: FrameActions) {
@@ -44,7 +45,8 @@ export function FrameMenu(actions: FrameActions) {
         return;
       }
       const action = key === "n" ? actions.onNewSession
-        : key === "w" || key === "q" ? actions.onClose
+        : key === "w" ? actions.onClose
+          : key === "q" ? actions.onQuit
           : key === "j" ? actions.onToggleDock
             : key === "[" ? actions.onBack : key === "]" ? actions.onForward
               : key === "/" ? () => { setOpen(null); returnFocus.current = root.current?.querySelector<HTMLButtonElement>('[data-menu="help"]') ?? null; setHelp("shortcuts"); } : undefined;
@@ -52,7 +54,7 @@ export function FrameMenu(actions: FrameActions) {
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
-  }, [actions.onNewSession, actions.onClose, actions.onToggleDock, actions.onBack, actions.onForward, actions.onSettings]);
+  }, [actions.onNewSession, actions.onClose, actions.onQuit, actions.onToggleDock, actions.onBack, actions.onForward, actions.onSettings]);
 
   useEffect(() => {
     const capture = (event: FocusEvent) => {
@@ -119,7 +121,7 @@ export function FrameMenu(actions: FrameActions) {
       [entry("newWindow"), entry("newSession", actions.onNewSession, "Ctrl+N"), entry("temporarySession", undefined, "Ctrl+Shift+N"), entry("newProject")],
       [entry("openFolder", undefined, "Ctrl+O"), entry("focusComposer", actions.onFocusComposer), entry("close", actions.onClose, "Ctrl+W")],
       [entry("settings", actions.onSettings, "Ctrl+,")],
-      [entry("signOut"), entry("quitApp", actions.onClose, "Ctrl+Q")],
+      [entry("signOut"), entry("quitApp", actions.onQuit, "Ctrl+Q")],
     ],
     edit: [
       [entry("undo", undefined, "Ctrl+Z"), entry("redo", undefined, "Ctrl+Shift+Z")],

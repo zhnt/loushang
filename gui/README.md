@@ -64,13 +64,18 @@ npm --prefix gui run build
 ```
 
 `dev:web` starts only the browser shell. `dev` starts the native Tauri window.
-The native desktop app creates a system tray icon with Show window and Quit
-menu items. Show window restores and focuses the main window; left-clicking
-the icon does the same on platforms that deliver tray click events. On Linux,
-use the tray menu (the desktop must provide an AppIndicator-compatible host).
-Quit uses the normal connection cleanup path. Closing the main window retains
-the existing exit behavior. Tray initialization failure is logged without
-preventing the app from opening. The browser shell has no system tray.
+The native desktop tray groups the user name, Show window / Open Web, current
+Host connection status, Host management, and Quit. Show window restores and
+focuses the existing window. Closing the window hides it to the tray;
+minimizing retains normal OS behavior. Quit (including File > Quit / Ctrl+Q)
+uses the normal connection cleanup path. On Linux, use the tray menu (the
+desktop must provide an AppIndicator-compatible host). If tray initialization
+fails, normal window closing remains available. The browser has no system tray.
+Host connection colors and service lifecycle are separate: green means
+connected, yellow connecting, red disconnected, and grey unknown. A checkmark
+identifies the selected Host. The Open Web action is disabled without a usable
+address and never appends credentials. Menu text follows the interface language.
+See [tray acceptance](tests/playback/tray-acceptance.md) for validation scope.
 `test` runs reducer and React playback checks. During rapid B1 development,
 `check` runs only TypeScript type checking and these offline tests, without
 requiring Rust or building assets. Use `check:full` for Rust/native/toolchain
@@ -430,9 +435,9 @@ lint exceptions. New required PR checks are not added by these local commands.
 Terminology: Session = 会话; Workspace = 工作区; Task = 任务;
 Run = 运行; Agent = 智能体; Subagent = 子智能体; Review = 审阅.
 The current File/Edit/View/Help row is React-rendered, not a Rust native menu.
-No duplicate Rust dictionary or new menu/tray system is introduced. Future
-native surfaces must reuse the same translation data with a mechanism suitable
-for their initialization timing.
+The native tray receives a presentation projection using the same translation
+resources. Rust uses temporary bilingual startup labels until that projection
+arrives; it does not maintain a duplicate translation dictionary.
 
 See [i18n delivery evidence](tests/playback/i18n-acceptance.md) for the observed
 validation scope and native limitations.

@@ -92,5 +92,30 @@
   "systemStatus": "系统状态",
   "feedback": "反馈",
   "taskManager": "任务管理器",
-  "performanceTrace": "开始性能跟踪"
+  "performanceTrace": "开始性能跟踪",
+  "tray": {
+    "showLabel": "显示窗口",
+    "webLabel": "打开 Web",
+    "manageLabel": "管理 Host",
+    "quitLabel": "退出",
+    "enableLabel": "启用",
+    "infoLabel": "信息",
+    "reconnectLabel": "重新连接",
+    "startLabel": "启动",
+    "stopLabel": "停止",
+    "none": "未选择 Host",
+    "current": "当前 Host",
+    "service": "服务",
+    "connected": "已连接",
+    "connecting": "正在连接…",
+    "disconnected": "已断开",
+    "unknown": "未知",
+    "running": "运行中",
+    "stopped": "已停止",
+    "starting": "启动中…",
+    "stopping": "停止中…",
+    "user": "用户",
+    "localHost": "本机",
+    "webError": "无法打开 Web 页面，请检查系统默认浏览器。"
+  }
 }

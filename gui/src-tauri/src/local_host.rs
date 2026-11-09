@@ -44,11 +44,15 @@ pub(crate) struct LocalHostStatus {
 pub(crate) struct LocalHostEnvironment {
     supported: bool,
     workspace: String,
+    web_url: Option<String>,
 }
 
 #[tauri::command]
 pub(crate) fn local_host_environment() -> LocalHostEnvironment {
     LocalHostEnvironment {
+        web_url: std::env::var("LOUSHANG_GUI_WEB_URL")
+            .ok()
+            .filter(|value| crate::web_link::safe_web_url(value)),
         supported: cfg!(target_os = "linux"),
         workspace: std::env::current_dir()
             .ok()
