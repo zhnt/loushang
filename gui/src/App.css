@@ -147,9 +147,9 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .connection-chip.connected { color: var(--green); background: var(--green-soft); }
 .connection-chip.resync-required { color: var(--red); background: var(--red-soft); }
 .diagnostic { position: absolute; z-index: 9; top: 10px; right: 24px; left: 24px; padding: 8px 10px; border: 1px solid var(--red); border-radius: 8px; color: var(--red); background: var(--red-soft); font-size: 13px; box-shadow: 0 8px 20px rgba(75, 30, 25, 0.08); }
-.transcript { min-height: 0; overflow-y: auto; background: var(--reading-surface); padding: 28px max(28px, calc((100% - 760px) / 2)) 40px; overscroll-behavior-y: contain; }
+.transcript { min-height: 0; overflow-y: auto; padding: 28px max(28px, calc((100% - 760px) / 2)) 40px; overscroll-behavior-y: contain; }
 .message { max-width: 760px; margin: 0 auto 25px; }
-.message.user { width: min(74%, 590px); margin-right: 0; padding: 11px 14px; border-radius: 16px; background: var(--control-hover); }
+.message.user { inline-size: fit-content; max-inline-size: min(74%, 590px); margin-inline-end: 0; padding: 10px 14px; border-radius: 16px; background: var(--control-hover); }
 .message-meta { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px; color: var(--faint); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
 .message.user .message-meta { color: var(--muted); }
 .message-meta strong { color: var(--muted); }
@@ -302,19 +302,18 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .composer-stack, .playback-strip { min-width: 0; }
 .composer { border-radius: 20px; padding: 12px; }
 .composer textarea { padding: 3px 0 10px; }
-.composer:focus-within { border-color: var(--control-focus); }
 .composer .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .composer-permissions { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .composer-permissions .icon-button { flex: 0 0 25px; }
 .composer-permissions .permission-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-picker { justify-self: end; min-width: 0; max-width: 100%; }
-.model-trigger { display: flex; align-items: center; gap: 7px; min-height: 30px; max-width: 100%; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--control-hover); font-size: 12px; }
+.model-trigger { display: flex; align-items: center; gap: 8px; min-height: 30px; max-width: 100%; padding: 4px 8px 4px 10px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink); background: var(--paper); font-size: 12px; font-weight: 600; }
 .model-current-label { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .model-current-label > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.thinking-badge { flex-shrink: 0; padding: 2px 6px; border-radius: 5px; background: var(--accent-soft); color: var(--accent-ink); font-size: 11px; white-space: nowrap; }
-.model-trigger:disabled { color: var(--muted); }
+.thinking-badge { flex-shrink: 0; padding: 2px 6px; border-radius: 5px; background: var(--panel); color: var(--ink-secondary); font-size: 11px; font-weight: 400; white-space: nowrap; }
+.model-trigger:disabled { color: var(--muted); background: var(--panel); }
 .model-trigger[aria-expanded="true"] { background: var(--control-hover); }
-.model-chevron { line-height: 1; }
+.model-trigger > .ui-icon { flex-basis: 14px; width: 14px; height: 14px; color: var(--ink-secondary); }
 .model-menu { position: absolute; z-index: 10; inset-inline-end: 37px; bottom: calc(100% + 5px); width: min(320px, calc(100% - 37px)); max-height: min(330px, 52vh); display: flex; flex-direction: column; padding: 8px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink); background: var(--paper); box-shadow: 0 8px 24px #0002; }
 .model-menu button { display: grid; grid-template-columns: 13px minmax(0, 1fr); align-items: center; gap: 2px 6px; width: 100%; padding: 6px 8px; border: 0; border-radius: 5px; color: inherit; background: transparent; text-align: start; font-size: 12px; overflow-wrap: anywhere; }
 .model-menu-heading { flex-shrink: 0; padding: 4px 8px 8px; color: var(--muted); font-size: 11px; font-weight: 600; }
