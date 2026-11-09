@@ -151,6 +151,8 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
         )
     }
     assert apphost_consumers == {
+        # G1: desktop composition over the existing managed lifecycle owners.
+        Path("src/loushang/coding/gui_local_host.py"),
         Path("src/loushang/coding/apphost_canary.py"),
         Path("src/loushang/coding/apphost_composition.py"),
         Path("src/loushang/coding/apphost_product.py"),

@@ -822,3 +822,117 @@ sealed objects and preserves exclusive execution claims. Existing managed
 identity rejection and execution settlement tests remain the behavioral
 acceptance criteria. This bookkeeping correction does not assert that tests
 have passed; their actual results are recorded separately.
+
+
+## G1 local desktop management composition review — 2026-11-09
+
+The implementation agent accepts the following scope under the authorized G1
+task, based on checkpoint `73a5e97e4`: the desktop invokes one short-lived Coding
+management entrypoint; this entrypoint composes existing managed namespace and
+service admission, coordinator, connection lease, Mux creation and stopper.
+It does not construct AppHostRuntime, AgentSession, ExecutionRegistry or an
+Execution Adapter. AppService/Execution protocols, authentication and canonical
+Session storage are unchanged. The exact new reverse consumer is registered in
+the architecture inventories; its sole direct Hosting edge is the public
+HostingError category, not a process-launch or private platform primitive.
+
+Read-only status does not initialize storage. Readiness requires the recorded
+instance, native identity, authenticated record and Execution handshake.
+Unconfirmed state cannot authorize a replacement. Mux allocation uses the
+original ManagedMuxCreateOperationV1 and reconciles the original reservation
+after contention. Stop/restart targets a confirmed instance ID and uses the
+existing graceful stopper; restart follows confirmed clean settlement only.
+Native lock waits use the existing settled-native receipt and all owners are
+retained before IO, then closed in reverse order. Cleanup errors override a
+success response. No user acceptance or final graphical acceptance is implied
+by this internal composition review.
+
+Rust retains connection record paths outside the WebView and uses the existing
+AppClient for Session/Execution operations. Connection configuration may change
+only at a resynchronization boundary; the client and React conversation remain
+owned across disconnect/reconnect. Host shutdown is a distinct, confirmed native
+action. GUI exit still closes client delivery only. Linux managed lifecycle is
+supported; other platforms explicitly report unavailable management capability.
+
+### G1 Linux graphical acceptance
+
+On 2026-11-09 the operator exercised the real embedded Tauri/React GUI with the
+production managed owners and a deterministic model transport. Native window
+interaction was manual; a separate observer collected process identities,
+authenticated status, model gates, execution receipts and lifecycle events.
+The test-only provider shim calls the production management entrypoint and
+changes only the Host's synthetic provider entry; it never submits GUI work.
+
+| Operation | Process evidence | Result |
+| --- | --- | --- |
+| Cold Start and connect | GUI A 37868, Host 41461 | Mux and Session created through existing admission; task succeeded |
+| Close GUI during task 2 | GUI A exited 0 at monotonic 2804.221; Host authenticated at 2806.656 | Same Host; model progressed at 2806.692 and original execution succeeded |
+| Open and connect GUI B | GUI B 42885, Host 41461 | Original Session, execution and output restored; no replay |
+| Confirm Host stop during task 3 | Host 41461 | Model cancelled, execution interrupted, clean stop |
+| Start after stop | Host 48239 | New service identity, original Session/history; new request succeeded |
+| Confirm Restart Host | Host 51441 | Clean replacement, original Session/history; new request succeeded |
+| Display correction recheck | GUI C 53212, Host 53853 | Operator confirmed historical empty-output and disconnected-state labels; held task interrupted by Host stop |
+
+All six submissions produced exactly six model entries and six distinct
+execution IDs. There was one AgentSession construction per Host lifetime;
+reconnecting GUI B did not construct another. The common Session ID was
+`42ca2238fa7937861edfe69e96e5b54bdc43fa2ccae97d8f7dabe153e7fcbf18`.
+The initial Execution serviceInstanceId was `de8ffa4e73e072cb9a132f48288cf3ff`; task 2 retained
+submission `gui-d0174128-c7c8-4e6c-821c-2b7d384b0310` and execution
+`exec-743af495ccff2e24f13a7894-2` after GUI exit. Each Host instance recorded
+starting/ready/stopping/stopped. OS observation confirmed all recorded Host
+PIDs and process groups had exited. GUI A/B closed normally; after operator
+agreement the remaining GUI C was terminated for cleanup, after its Host had
+already stopped cleanly. This last cleanup is not counted as a normal-window
+close test.
+
+The operator's screenshots exposed two presentation defects, fixed without
+changing execution semantics: a disconnected execution is labelled as its
+last known state, and an empty completed history record no longer says it is
+waiting for output. No historical execution terminal is invented after Host
+replacement. The operator confirmed both fixes in the rebuilt native GUI.
+
+Local evidence is retained under `.artifacts/g1/desktop-evidence/`, with the
+two pre-fix screenshots alongside it. The original isolated run directory is
+`/tmp/loushang-g1-desktop-lwg27cnp`. No connection keys are copied to the evidence
+bundle. The initial attempt to use repository-local managed storage was
+correctly rejected because its ancestors were group-writable; the observer now
+uses a private temporary directory without weakening admission or changing
+workspace permissions.
+
+Validation commands include `npm --prefix gui run check:full`, pinned-toolchain
+`cargo test --offline --locked --manifest-path src-tauri/Cargo.toml --lib`
+(from `gui/`), and `uv run --no-sync --offline python -m pytest` over
+`test_gui_local_host.py`, `test_managed_execution_process.py`,
+`test_managed_stop_execution.py`, and `test_managed_gui_client.py` in
+`tests/coding/`. React has 97 passing tests, Rust 31; the process regression
+passed 11 tests, followed by 2 passing management tests after adding a real
+missing-executable failure case. Internationalization checks pass. Use
+`python -m pytest` in copied local environments: an earlier direct pytest
+script retained the previous worktree's shebang and could not import the new
+module; its failure is retained separately from the corrected run. The copied
+virtualenv script shebangs were subsequently repaired in this task environment;
+no dependencies or other worktree environments were changed.
+
+The change-aware runner (`python scripts/ci/check_changed.py --base 73a5e97e4`)
+completed the selected primary checks: Coding 4199 passed / 22 skipped / 73
+deselected, Harness 6357 passed / 108 skipped, Hosting 517 passed / 53 skipped,
+AppHost 3115 passed / 13 skipped, and the AppHost Product follow-ups 19, 16 and
+15 passed (the last excludes 12 tests). Lint, type checks, dependency inventory
+and documentation checks passed. Harness emitted 36 explicit tool-denial
+warnings from its existing contract tests.
+
+The aggregate command was then deliberately interrupted (exit 130) during its
+automatically appended duplicate `unit_coding` route; it is **not** recorded as
+a successful aggregate exit. Command comparison showed that this route only
+adds `not e2e_smoke` to the already passing Coding selection, and `unit_hosting`
+is a subset of the passing Hosting suite. The two additional example files in
+`unit_harness` were run separately with the original safety selectors: 3 passed.
+No CI selector or required gate was modified. Raw command output and the
+interruption remain in `.artifacts/g1/check-changed-g1.log`.
+
+This establishes Linux development-environment acceptance with a synthetic
+provider, not installed-package, Windows/macOS lifecycle or external-model
+acceptance. The graphical clicks were not automated. Submission recovery remains
+in-process and service-instance scoped. Offline approval behavior, TUI migration,
+tray, remote Hosts and crash recovery remain outside G1.

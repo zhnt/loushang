@@ -65,6 +65,7 @@ export default interface Resources {
       "completeSnapshot": "complete snapshot",
       "details": "Live execution details",
       "finalCursor": "Final cursor",
+      "lastKnownStatus": "Last known execution state: {{status}} (disconnected)",
       "notObserved": "not observed",
       "notRequested": "not requested",
       "notTerminal": "not terminal",
@@ -194,6 +195,7 @@ export default interface Resources {
       "harness": "Harness",
       "label": "Session transcript",
       "message": "{{role}} message",
+      "noText": "No text output was recorded.",
       "waiting": "Waiting for output…",
       "you": "You"
     }
@@ -316,6 +318,46 @@ export default interface Resources {
       "product": "Product",
       "scope": "Scope",
       "service": "Service"
+    },
+    "localHost": {
+      "cancel": "Cancel",
+      "confirm": "Confirm shutdown",
+      "confirmStop": "Stopping or restarting this Host interrupts all running tasks in this workspace. Session history is retained. Continue?",
+      "confirmTitle": "Confirm Host shutdown",
+      "connect": "Connect",
+      "errors": {
+        "attachment": "Unable to attach the Session.",
+        "authentication": "Host authentication failed.",
+        "connection": "Host connection failed.",
+        "disconnected": "Client disconnected; recovering without resubmitting.",
+        "instance": "Host identity changed. Check status before stopping.",
+        "protocol": "Host protocol is incompatible.",
+        "record": "Host connection record is invalid.",
+        "start": "Host startup failed. Check status before retrying.",
+        "stop": "Host cleanup is not confirmed. Do not start a replacement instance.",
+        "unavailable": "Local management entrypoint is unavailable. Check the installed Python environment.",
+        "unknown": "The operation could not be confirmed. Check status before trying another lifecycle operation."
+      },
+      "identity": "Host identity",
+      "intro": "Select a local workspace and check its Host. Start and connect when it is not running. Closing this window does not stop the Host.",
+      "pathHint": "Absolute local directory",
+      "pid": "Process ID",
+      "reconnect": "Reconnect",
+      "refresh": "Check status",
+      "restart": "Restart Host",
+      "start": "Start and connect",
+      "states": {
+        "exited": "Host exited unexpectedly",
+        "notRunning": "Host not running",
+        "running": "Host ready",
+        "starting": "Host starting",
+        "stopping": "Host stopping",
+        "unknown": "Status unconfirmed"
+      },
+      "stop": "Stop Host",
+      "title": "Local AppHost",
+      "unsupported": "Local managed Host is currently supported on Linux only.",
+      "workspace": "Workspace"
     },
     "sidebar": {
       "attached": "Attached AppHost sessions",

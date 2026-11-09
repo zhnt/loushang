@@ -14,6 +14,7 @@ pub(crate) use attachment::{
 
 use request_deadline::RequestDeadline;
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddr, TcpStream};
 use std::path::Path;
@@ -162,7 +163,7 @@ pub(crate) struct ConnectionOptions<'a> {
 }
 
 fn run_attempt(
-    owner: &connection_epoch::ConnectionOwner,
+    client: &AppClient,
     options: ConnectionOptions<'_>,
     connection_epoch: u64,
     publish_initial: &mut dyn FnMut(LiveInitialSnapshot) -> Result<(), ()>,
@@ -170,6 +171,8 @@ fn run_attempt(
     publish_control: &mut dyn FnMut(Option<attachment::ControlAuthority>) -> Result<(), ()>,
     continue_reading: &mut dyn FnMut() -> Result<bool, ()>,
 ) -> Result<String, ()> {
+    let owner = &client.0;
+    client.1.set("record_invalid");
     let ConnectionOptions {
         root,
         timeout,
@@ -184,6 +187,7 @@ fn run_attempt(
     let attempt = owner.begin()?;
     let name = transport_auth::record_value::Record::filename("workspace")?;
     let record = transport_auth::record_value::Record::decode(&record_native::read(root, &name)?)?;
+    client.1.set("protocol_incompatible");
     let profile = record.semantic_profile()?;
     record.selected("workspace", &profile)?;
     if !record.supports_execution() {
@@ -192,6 +196,7 @@ fn run_attempt(
     if cancel == Some(Duration::ZERO) {
         return Err(());
     }
+    client.1.set("connection_failed");
     let address = SocketAddr::from((Ipv4Addr::LOCALHOST, record.port()));
     let stream = TcpStream::connect_timeout(&address, deadline.remaining().map_err(|_| ())?)
         .map_err(|_| ())?;
@@ -225,18 +230,22 @@ fn run_attempt(
         stream: stream.try_clone().map_err(|_| ())?,
         deadline: deadline.clone(),
     };
+    client.1.set("authentication_failed");
     let mut channel = transport_auth::Channel::authenticate(
         transport_auth::Frames::new(reader, writer),
         &record,
     )?;
     let send_deadline = deadline.clone();
     channel.before_send(move || send_deadline.before_send());
+    client.1.set("connection_failed");
     channel.send(b"app")?;
     let bytes = channel.receive()?;
+    client.1.set("protocol_incompatible");
     let hello = validate_hello(&bytes, &profile)?;
     let instance = &hello.service_instance_id;
     channel.send(&bytes)?;
     if attach {
+        client.1.set("attachment_unavailable");
         let mut session =
             attachment::ReadSession::attach(&mut channel, instance, mux_name, &attempt, &record)?;
         let outcome = (|| {
@@ -259,6 +268,7 @@ fn run_attempt(
                     sessions: initial.sessions,
                 })
             })?;
+            client.1.set("client_disconnected");
             deadline.enter_session()?;
             let mut sequence = 0_u64;
             if let Some(stop) = stop.as_ref() {
@@ -311,9 +321,13 @@ fn run_attempt(
 }
 
 #[derive(Default)]
-pub(crate) struct AppClient(connection_epoch::ConnectionOwner);
+pub(crate) struct AppClient(connection_epoch::ConnectionOwner, Cell<&'static str>);
 
 impl AppClient {
+    pub(crate) fn failure_code(&self) -> &'static str {
+        self.1.get()
+    }
+
     #[allow(dead_code)] // One-shot contract probes do not use reconnect streaming.
     pub(crate) fn run(
         &self,
@@ -321,7 +335,7 @@ impl AppClient {
         publish: &mut dyn FnMut(LiveInitialSnapshot) -> Result<(), ()>,
     ) -> Result<String, ()> {
         run_attempt(
-            &self.0,
+            self,
             options,
             1,
             publish,
@@ -342,7 +356,7 @@ impl AppClient {
         continue_reading: &mut dyn FnMut() -> Result<bool, ()>,
     ) -> Result<String, ()> {
         run_attempt(
-            &self.0,
+            self,
             options,
             connection_epoch,
             publish_initial,

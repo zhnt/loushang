@@ -496,10 +496,10 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                       <strong>{message.role === "user" ? t("session:transcript.you") : t("session:transcript.harness")}</strong>
                       <span>{valueLabel(message.phase)}</span>
                     </div>
-                    <p>{message.content || t("session:transcript.waiting")}</p>
+                    <p>{message.content || t(message.phase === "streaming" ? "session:transcript.waiting" : "session:transcript.noText")}</p>
                   </article>
                 ))}
-                {selected.execution ? <ExecutionDetail execution={selected.execution} /> : null}
+                {selected.execution ? <ExecutionDetail execution={selected.execution} stale={!fixture && !connected} /> : null}
                 {selected.run && tasksAvailable ? (
                   <RunActivity
                     run={selected.run}
@@ -805,15 +805,16 @@ function isStale(state: GuiState): boolean {
   return state.remote.connection === "disconnected" || state.remote.connection === "resync-required";
 }
 
-function ExecutionDetail({ execution }: {
+function ExecutionDetail({ execution, stale }: {
   readonly execution: NonNullable<SessionSnapshot["execution"]>;
+  readonly stale: boolean;
 }) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   return (
     <details className="execution-detail" aria-label={t("panels:execution.details")}>
       <summary>
-        <span className={`run-indicator ${execution.status}`} aria-hidden="true">◌</span>
-        <strong>{t("panels:execution.status", { status: valueLabel(execution.status) })}</strong>
+        <span className={`run-indicator ${stale ? "unknown" : execution.status}`} aria-hidden="true">◌</span>
+        <strong>{t(stale ? "panels:execution.lastKnownStatus" : "panels:execution.status", { status: valueLabel(execution.status) })}</strong>
         <span className="execution-disclosure" aria-hidden="true">⌄</span>
       </summary>
       <dl>

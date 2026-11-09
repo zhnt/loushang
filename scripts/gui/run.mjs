@@ -16,6 +16,13 @@ const childEnv = path.isAbsolute(cargo)
     }
   : process.env;
 
+// Development uses this checkout's existing Python environment; installed
+// desktop launches may explicitly select their installed interpreter.
+const localPython = path.resolve(guiDir, "..", ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+if (!childEnv.LOUSHANG_GUI_PYTHON && existsSync(localPython)) {
+  childEnv.LOUSHANG_GUI_PYTHON = localPython;
+}
+
 function rustTool(name) {
   const executable = process.platform === "win32" ? `${name}.exe` : name;
   const userRoot = process.platform === "win32"

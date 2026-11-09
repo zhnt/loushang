@@ -59,5 +59,45 @@
     "fingerprint": "Scope fingerprint",
     "mux": "Mux",
     "service": "Service"
+  },
+  "localHost": {
+    "title": "Local AppHost",
+    "workspace": "Workspace",
+    "pathHint": "Absolute local directory",
+    "unsupported": "Local managed Host is currently supported on Linux only.",
+    "refresh": "Check status",
+    "start": "Start and connect",
+    "connect": "Connect",
+    "reconnect": "Reconnect",
+    "stop": "Stop Host",
+    "restart": "Restart Host",
+    "identity": "Host identity",
+    "pid": "Process ID",
+    "intro": "Select a local workspace and check its Host. Start and connect when it is not running. Closing this window does not stop the Host.",
+    "confirmStop": "Stopping or restarting this Host interrupts all running tasks in this workspace. Session history is retained. Continue?",
+    "states": {
+      "unknown": "Status unconfirmed",
+      "notRunning": "Host not running",
+      "starting": "Host starting",
+      "running": "Host ready",
+      "stopping": "Host stopping",
+      "exited": "Host exited unexpectedly"
+    },
+    "errors": {
+      "authentication": "Host authentication failed.",
+      "protocol": "Host protocol is incompatible.",
+      "connection": "Host connection failed.",
+      "disconnected": "Client disconnected; recovering without resubmitting.",
+      "attachment": "Unable to attach the Session.",
+      "unavailable": "Local management entrypoint is unavailable. Check the installed Python environment.",
+      "record": "Host connection record is invalid.",
+      "instance": "Host identity changed. Check status before stopping.",
+      "unknown": "The operation could not be confirmed. Check status before trying another lifecycle operation.",
+      "start": "Host startup failed. Check status before retrying.",
+      "stop": "Host cleanup is not confirmed. Do not start a replacement instance."
+    },
+    "confirmTitle": "Confirm Host shutdown",
+    "cancel": "Cancel",
+    "confirm": "Confirm shutdown"
   }
 }

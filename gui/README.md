@@ -77,7 +77,8 @@ is absent from the default native build.
 ## Controlled live launch
 
 The AppHost/desktop launcher may start the built executable with both native
-arguments below. Omitting both keeps the offline fixture. Partial, duplicate or
+arguments below. Omitting both opens local Host management in the native app
+(browser development retains the offline fixture). Partial, duplicate or
 unknown arguments disable live availability rather than falling back with
 ambiguous authority.
 
@@ -95,10 +96,28 @@ gui/src-tauri/target/debug/harness-gui \
 
 For a debug build, start `npm run dev:web` in `gui/` first; its configured
 WebView URL is `http://localhost:1420`. A standalone packaged build uses the
-embedded frontend. The Host and Mux must already exist through the managed
-management entry; GUI launch does not start/stop a Host or create a Mux. Prepare
-at least one Session for the existing GUI's source-Session-based New Session
-operation. Reconnect attaches the original Mux and reads its existing members.
+embedded frontend. With explicit connection arguments, the Host and Mux must
+already exist through the managed management entry. Reconnect attaches the
+original Mux and reads its existing members.
+
+Without explicit connection arguments, Linux native launch offers local Host
+management. Select an existing absolute Workspace directory, then choose
+**Start and connect** or connect to its running Host. Startup uses the existing
+managed coordinator and admitted Mux creation; an empty Mux receives the existing
+default Session initialization. Closing the GUI only disconnects the client.
+Stop and restart require confirmation because they interrupt active executions;
+restart preserves Session history but does not resume an interrupted execution.
+An unconfirmed instance is never automatically replaced.
+
+`npm run dev` selects this checkout's `.venv` Python when available. Native
+launchers can set `LOUSHANG_GUI_PYTHON` to an interpreter containing this checkout
+or an installed Loushang package; the fallback is `python3`. The short-lived
+Product management entrypoint is `loushang.coding.gui_local_host`. Python and Rust
+must come from compatible builds. Managed storage retains its existing private
+directory and trusted-ancestor requirements; do not place its roots under
+group-writable shared directories. Windows and macOS local lifecycle management
+remain unsupported; explicit valid connection modes retain their own platform
+support boundaries.
 
 Linux record admission uses no-follow directory/file descriptors, current-user
 ownership, private 0700/0600 modes, single-link regular files, bounded reads and

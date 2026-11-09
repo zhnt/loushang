@@ -24,7 +24,7 @@ struct LiveLaunch {
 }
 
 pub(crate) struct LiveLaunchState {
-    launch: Result<Option<LiveLaunch>, ()>,
+    launch: Arc<RwLock<Result<Option<LiveLaunch>, ()>>>,
     resync: Arc<AtomicU64>,
     control: Arc<RwLock<Option<LiveControl>>>,
 }
@@ -39,7 +39,7 @@ struct LiveControl {
 impl LiveLaunchState {
     pub(crate) fn from_process() -> Self {
         Self {
-            launch: parse_launch(std::env::args_os().skip(1)),
+            launch: Arc::new(RwLock::new(parse_launch(std::env::args_os().skip(1)))),
             resync: Arc::new(AtomicU64::new(0)),
             control: Arc::new(RwLock::new(None)),
         }
@@ -51,6 +51,7 @@ impl LiveLaunchState {
 struct ConnectionState {
     state: &'static str,
     connection_epoch: String,
+    reason: Option<&'static str>,
 }
 
 #[derive(Deserialize)]
@@ -109,7 +110,10 @@ enum Publication {
 
 #[tauri::command]
 pub(crate) fn live_readonly_available(app: tauri::AppHandle) -> bool {
-    matches!(app.state::<LiveLaunchState>().launch, Ok(Some(_)))
+    app.state::<LiveLaunchState>()
+        .launch
+        .read()
+        .is_ok_and(|launch| matches!(*launch, Ok(Some(_))))
 }
 
 fn parse_launch(arguments: impl IntoIterator<Item = OsString>) -> Result<Option<LiveLaunch>, ()> {
@@ -142,15 +146,35 @@ fn parse_launch(arguments: impl IntoIterator<Item = OsString>) -> Result<Option<
     }
 }
 
+pub(crate) fn configure_local_connection(
+    app: &tauri::AppHandle,
+    record_root: PathBuf,
+    mux_name: String,
+) -> Result<(), String> {
+    if !record_root.is_absolute() || mux_name.is_empty() || mux_name.len() > 256 {
+        return Err("invalid_local_connection".into());
+    }
+    let state = app.state::<LiveLaunchState>();
+    *state
+        .launch
+        .write()
+        .map_err(|_| "connection_state_unavailable")? = Ok(Some(LiveLaunch {
+        record_root,
+        mux_name,
+    }));
+    resync_live_readonly(app.clone())
+}
+
 #[tauri::command]
 pub(crate) fn start_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<LiveLaunchState>();
-    let launch = state
-        .launch
-        .as_ref()
-        .map_err(|_| "invalid native launch configuration".to_owned())?
-        .clone()
-        .ok_or_else(|| "live AppHost launch configuration is unavailable".to_owned())?;
+    let launch = state.launch.clone();
+    if !matches!(
+        *launch.read().map_err(|_| "connection_state_unavailable")?,
+        Ok(Some(_))
+    ) {
+        return Err("live AppHost launch configuration is unavailable".to_owned());
+    }
     let resync = state.resync.clone();
     let control = state.control.clone();
     let owner = app.state::<Arc<ConnectionLifecycle>>().inner().clone();
@@ -161,6 +185,13 @@ pub(crate) fn start_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
             let mut epoch = 0_u64;
             let mut backoff = Duration::from_millis(250);
             while !stop.requested()? {
+                let selected = launch.read().map_err(|_| ())?.clone()?;
+                let Some(launch) = selected else {
+                    if stop.wait(Duration::from_millis(250))? {
+                        break;
+                    }
+                    continue;
+                };
                 epoch = epoch.checked_add(1).ok_or(())?;
                 let token = resync.load(Ordering::Acquire);
                 let (control_sender, control_receiver) = mpsc::channel();
@@ -168,6 +199,7 @@ pub(crate) fn start_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
                 publish
                     .send(Publication::State(ConnectionState {
                         state: "connecting",
+                        reason: None,
                         connection_epoch: epoch.to_string(),
                     }))
                     .map_err(|_| ())?;
@@ -207,6 +239,7 @@ pub(crate) fn start_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
                 publish
                     .send(Publication::State(ConnectionState {
                         state: "disconnected",
+                        reason: outcome.as_ref().err().map(|_| client.failure_code()),
                         connection_epoch: epoch.to_string(),
                     }))
                     .map_err(|_| ())?;
