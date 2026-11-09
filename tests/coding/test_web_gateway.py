@@ -13,6 +13,58 @@ from loushang.apphost.client_preferences import ClientPreferences
 from loushang.coding.client_settings import connections, remember_workspace
 
 
+@pytest.mark.requires_host_runtime
+def test_local_web_process_needs_no_token_and_persists_preferences(
+    tmp_path, monkeypatch
+):
+    import time
+
+    import httpx
+
+    from loushang.coding.web_endpoint import local_endpoint
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path))
+    assets = tmp_path / "web"
+    assets.mkdir()
+    (assets / "index.html").write_text("<main>Local Loushang</main>")
+    (tmp_path / "host.json").write_text(
+        json.dumps({"web": {"port": 0, "dist": str(assets)}})
+    )
+    for attempt in range(2):
+        url = local_endpoint()
+        with httpx.Client(base_url=url, trust_env=False, timeout=5) as browser:
+            try:
+                page = browser.get("/")
+                assert page.status_code == 200
+                assert page.text == "<main>Local Loushang</main>"
+                assert "set-cookie" not in page.headers
+                request = {"operation": "preferences", "scope": "mux:local"}
+                if attempt == 0:
+                    request.update(action="pin", session="session-one")
+                result = browser.post(
+                    "/api/loushang",
+                    json=request,
+                    headers={"X-Loushang-Client": "1"},
+                )
+                assert result.json()["result"]["pinned"] == ["session-one"]
+                assert (tmp_path / "data/client-preferences.sqlite3").is_file()
+                assert not (tmp_path / "auth").exists()
+            finally:
+                browser.post(
+                    "/api/loushang",
+                    json={"operation": "shutdown-adapter"},
+                    headers={"X-Loushang-Client": "1"},
+                ).raise_for_status()
+                for _ in range(100):
+                    try:
+                        browser.get("/")
+                    except httpx.TransportError:
+                        break
+                    time.sleep(0.05)
+                else:
+                    pytest.fail("local Web adapter did not stop")
+
+
 def test_preferences_merge_across_clients_and_restart(tmp_path):
     def pin(index):
         ClientPreferences(tmp_path).apply("mux:one", "pin", f"session-{index}")
@@ -115,7 +167,8 @@ def test_web_gateway_real_host_snapshot_create_and_shared_state(tmp_path, monkey
     asyncio.run(run())
 
 
-def test_web_server_auth_origin_and_remote_client(tmp_path, monkeypatch):
+def test_web_server_direct_local_access_and_origin(tmp_path, monkeypatch):
+    bind = "127.0.0.1"
     import threading
 
     import httpx
@@ -134,18 +187,23 @@ def test_web_server_auth_origin_and_remote_client(tmp_path, monkeypatch):
     loop = asyncio.new_event_loop()
     runner = threading.Thread(target=loop.run_forever)
     runner.start()
-    token = "a" * 43
-    server = WebServer(("127.0.0.1", 0), Gateway(), loop, token, tmp_path)
+    (tmp_path / "index.html").write_text("<main>Loushang</main>")
+    server = WebServer((bind, 0), Gateway(), loop, tmp_path)
     listener = threading.Thread(target=server.serve_forever)
     listener.start()
     url = f"http://127.0.0.1:{server.server_port}"
     try:
         with httpx.Client(base_url=url, trust_env=False) as browser:
             request = {"operation": "environment"}
+            page = browser.get("/")
+            assert page.text == "<main>Loushang</main>"
+            assert "set-cookie" not in page.headers
             assert browser.post("/api/loushang", json=request).status_code == 403
-            login = browser.post("/login", data={"token": token})
-            assert login.status_code == 200
-            assert "HttpOnly" in login.headers["set-cookie"]
+            if bind == "127.0.0.1":
+                assert (
+                    browser.get("/", headers={"Host": "attacker.invalid"}).status_code
+                    == 403
+                )
             headers = {"X-Loushang-Client": "1", "Origin": url}
             assert (
                 browser.post("/api/loushang", json=request, headers=headers).json()[
@@ -172,13 +230,10 @@ def test_web_server_auth_origin_and_remote_client(tmp_path, monkeypatch):
                 }
             )
         )
-        credentials = tmp_path / "auth/connections"
-        credentials.mkdir(parents=True)
-        (credentials / "server.json").write_text(json.dumps({"token": token}))
         result = settings_request({"operation": "environment"})
         assert result["remote"] is True
         assert result["workspace"] == "/server/workspace"
-        assert token not in json.dumps(result)
+        assert not (tmp_path / "auth").exists()
     finally:
         server.shutdown()
         listener.join()
@@ -195,7 +250,9 @@ def test_connection_listing_selection_and_secret_rejection(tmp_path, monkeypatch
     saved = {
         "version": 1,
         "defaultWorkspace": "/work",
-        "servers": [{"id": "office", "name": "Office", "url": "https://host.example"}],
+        "servers": [
+            {"id": "office", "name": "Office", "url": "http://192.0.2.10:1422"}
+        ],
     }
     (tmp_path / "connections.json").write_text(json.dumps(saved))
     listing = settings_request({"operation": "connections/list"})

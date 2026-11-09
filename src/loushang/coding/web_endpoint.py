@@ -14,18 +14,20 @@ import httpx
 from loushang.foundation.platform_paths import resolve_platform_home
 
 
-def local_endpoint() -> tuple[str, str]:
+def local_endpoint() -> str:
     home = resolve_platform_home()
     home.mkdir(mode=0o700, parents=True, exist_ok=True)
     (home / "state").mkdir(mode=0o700, exist_ok=True)
     state = home / "state" / "web"
     state.mkdir(mode=0o700, parents=True, exist_ok=True)
-    token_path = home / "auth" / "server" / "web-token"
+    config_path = home / "host.json"
+    config = json.loads(config_path.read_text()) if config_path.exists() else {}
+    bind = config.get("web", {}).get("bind", "127.0.0.1")
+    expected_host = "127.0.0.1" if bind in {"localhost", "0.0.0.0"} else bind
 
     def existing():
         try:
             endpoint = json.loads((state / "endpoint.json").read_text())
-            token = token_path.read_text().strip()
         except FileNotFoundError:
             return None
         url = endpoint["url"]
@@ -34,7 +36,7 @@ def local_endpoint() -> tuple[str, str]:
 
         parsed = urlsplit(url)
         if (
-            parsed.hostname not in {"localhost", "127.0.0.1"}
+            parsed.hostname != expected_host
             or parsed.scheme != "http"
             or parsed.username
             or parsed.password
@@ -49,7 +51,6 @@ def local_endpoint() -> tuple[str, str]:
                     url + "/api/loushang",
                     json={"operation": "environment"},
                     headers={
-                        "Authorization": "Bearer " + token,
                         "X-Loushang-Client": "1",
                     },
                 )
@@ -58,7 +59,7 @@ def local_endpoint() -> tuple[str, str]:
                     raise ValueError("invalid_adapter")
         except httpx.ConnectError:
             return None
-        return url, token
+        return url
 
     found = existing()
     if found:

@@ -51,12 +51,6 @@ def connections() -> dict:
             or parsed.scheme not in {"http", "https"}
         ):
             raise ValueError("invalid_server_url")
-        if parsed.scheme == "http" and parsed.hostname not in {
-            "localhost",
-            "127.0.0.1",
-            "::1",
-        }:
-            raise ValueError("https_required")
     if value.get("defaultConnection") and value["defaultConnection"] not in ids:
         raise ValueError("unknown_connection")
     return value
@@ -128,36 +122,17 @@ def remote_request(request: dict, connection_id: str | None = None):
     if server is None:
         from .web_endpoint import local_endpoint
 
-        url, token = local_endpoint()
+        url = local_endpoint()
     else:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", server["id"]):
             raise ValueError("invalid_connection")
         url = server["url"].rstrip("/")
-        parsed = urlsplit(url)
-        if (
-            (
-                parsed.scheme != "https"
-                and not (
-                    parsed.scheme == "http"
-                    and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
-                )
-            )
-            or parsed.username
-            or parsed.password
-            or parsed.query
-            or parsed.fragment
-        ):
-            raise ValueError("invalid_server_url")
-        credential = (
-            resolve_platform_home() / "auth" / "connections" / (server["id"] + ".json")
-        )
-        token = json.loads(credential.read_text())["token"]
     with httpx.Client(timeout=80, follow_redirects=False, trust_env=False) as client:
         with client.stream(
             "POST",
             url + "/api/loushang",
             json=request,
-            headers={"Authorization": "Bearer " + token, "X-Loushang-Client": "1"},
+            headers={"X-Loushang-Client": "1"},
         ) as response:
             response.raise_for_status()
             payload = bytearray()
@@ -179,7 +154,9 @@ def connection_list() -> dict:
     web = json.loads(host_path.read_text()).get("web", {}) if host_path.exists() else {}
     port = web.get("port", 1422)
     scheme = "https" if web.get("certificate") else "http"
-    web_url = f"{scheme}://127.0.0.1:{port}" if port else None
+    bind = web.get("bind", "127.0.0.1")
+    address = "127.0.0.1" if bind in {"localhost", "0.0.0.0"} else bind
+    web_url = f"{scheme}://{address}:{port}" if port else None
     endpoint = home / "state" / "web" / "endpoint.json"
     if endpoint.exists():
         web_url = json.loads(endpoint.read_text())["url"]
@@ -189,7 +166,7 @@ def connection_list() -> dict:
         parsed = urlsplit(web_url)
         if (
             parsed.scheme not in {"http", "https"}
-            or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+            or parsed.hostname != address
             or parsed.username
             or parsed.password
             or parsed.query

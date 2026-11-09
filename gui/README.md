@@ -33,8 +33,6 @@ Storage below `LOUSHANG_HOME` (default `~/.loushang`) follows existing ownership
 | `coding/settings.json` | Existing Coding settings; unchanged |
 | `connections.json` | Client connection targets and last local workspace |
 | `host.json` | Standalone Web listener configuration |
-| `auth/connections/<id>.json` | Client credential for a configured remote server |
-| `auth/server/web-token` | Standalone server access token; separate from model auth |
 | `state/web/` | Shared adapter discovery, ownership locks and logs |
 | `data/client-preferences.sqlite3` | Host-side pins, recent visits and selected-session recovery, scoped by mux |
 | `data/`, `state/`, `lmux/` | Existing business, internal and managed-service storage |
@@ -43,10 +41,10 @@ Language, appearance and Markdown theme remain independent localStorage
 preferences. Navigation changes use atomic operations so concurrent windows do
 not overwrite each other's pins. Other windows observe changes on the next
 one-second refresh; each open window keeps its own current selection and drafts.
-The current access token identifies one local user profile, not a multi-user
-account system. Workspace/user scope expansion remains future contract work.
+Account authentication is not implemented yet. A future Host-managed login can
+serve GUI, TUI and browser sessions without exposing credential files to JavaScript.
 
-### Standalone server and remote desktop
+### Local Web access
 
 Build the Web assets, then run the server without a desktop:
 
@@ -55,12 +53,12 @@ npm --prefix gui run build:web
 uv run python -m loushang.coding.web_server --dist gui/dist
 ```
 
-The default listener is `127.0.0.1:1422`. On first launch it creates a restricted
-`auth/server/web-token` file. Enter its contents in the browser login page;
-the token is never printed in logs or stored in browser localStorage. Provider
+The default listener is `127.0.0.1:1422`, accessible only from this machine.
+Open it directly; no login or token is required. The browser reads and writes
+shared configuration through the Host API. Files are stored in the Host machine's
+`~/.loushang`. Provider
 credentials and private AppHost records never enter the browser. Closing the
-server releases its connections without stopping managed Hosts. The authenticated
-`shutdown-adapter` API stops only this adapter; a later client can restart it.
+server releases its connections without stopping managed Hosts.
 
 Optional `host.json`:
 
@@ -68,22 +66,8 @@ Optional `host.json`:
 {"web":{"bind":"127.0.0.1","port":1422,"dist":"/absolute/path/to/gui/dist"}}
 ```
 
-A non-loopback listener requires `web.certificate` and `web.privateKey` paths
-for TLS. This server grants the authenticated operator local Host management;
-it is not a multi-tenant service.
-
-For a desktop-only installation, configure `connections.json`:
-
-```json
-{"version":1,"defaultConnection":"office","servers":[{"id":"office","url":"https://host.example:1422"}]}
-```
-
-Store `{"token":"<server access token>"}` in
-`auth/connections/office.json` with user-only permissions. The native helper
-performs authenticated remote requests; React never receives the credential.
-The selected remote server supplies workspace, navigation and session data.
-Omit `defaultConnection` to use the shared local adapter. This task
-provides file-based connection setup; it does not add an account management UI.
+The current delivery covers local Web access. Remote deployment and account
+login are deferred; see the [open design questions](../docs/internals/architecture/gui-web-config-open-questions.md).
 
 ## Application icons
 
