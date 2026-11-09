@@ -103,8 +103,9 @@ or a universal Product command result schema.
 
 ## Coding Binding
 
-Coding `AgentSession` inherits and initializes the Facade directly rather than
-owning a private forwarding Facade. It binds its existing transcript, tool,
+Coding `AgentSession` inherits the optional `_ResumeContinuationSession` profile,
+which inherits the same `AgentProductSession` and Facade. It initializes that
+shared surface without owning a private forwarding Facade. It binds its existing transcript, tool,
 command, command-execution, inspection, retry, identity, maintenance, and
 resource-refresh runtimes to that shared surface, together with its diagnostics
 bridge and Coding package controller. The shared facade owns only the

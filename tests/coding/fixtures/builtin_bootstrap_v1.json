@@ -1,0 +1,5840 @@
+{
+  "False-absent": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.base",
+            "pluginId": "coding.base",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.base",
+              "pluginId": "coding.base",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 2,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "enable:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      }
+    ],
+    "result": true,
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "route",
+        "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+        "install",
+        "source",
+        {
+          "entrypoint": "startup"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "dispose"
+      ],
+      [
+        "snapshot",
+        2
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "transitions"
+      ],
+      [
+        "submit",
+        "enable",
+        {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "coding-builtin-bootstrap-enable:1c7d653a192d4ce71fcc6e43e69496740c2e3afe7e78cf0214c9904c02521110",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:1c7d653a192d4ce71fcc6e43e69496740c2e3afe7e78cf0214c9904c02521110",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        }
+      ]
+    ]
+  },
+  "False-activate-error": {
+    "records": [],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "injected-activate",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "dispose"
+      ]
+    ]
+  },
+  "False-create-error": {
+    "records": [],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "injected-create",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "unbound"
+      ]
+    ]
+  },
+  "False-create-error+unbound-error": {
+    "records": [],
+    "result": {
+      "cause": null,
+      "context": {
+        "cause": null,
+        "context": null,
+        "id": 1,
+        "message": "injected-create",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "id": 0,
+      "message": "injected-unbound",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "unbound"
+      ]
+    ]
+  },
+  "False-disabled": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.base",
+            "pluginId": "coding.base",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.base",
+              "pluginId": "coding.base",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 2,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "enable:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      }
+    ],
+    "result": true,
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "transitions"
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "dispose"
+      ],
+      [
+        "snapshot",
+        2
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "transitions"
+      ],
+      [
+        "submit",
+        "enable",
+        {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "coding-builtin-bootstrap-enable:1c7d653a192d4ce71fcc6e43e69496740c2e3afe7e78cf0214c9904c02521110",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:1c7d653a192d4ce71fcc6e43e69496740c2e3afe7e78cf0214c9904c02521110",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        }
+      ]
+    ]
+  },
+  "False-disabled-no-enable": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      }
+    ],
+    "result": false,
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "dispose"
+      ],
+      [
+        "snapshot",
+        2
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "transitions"
+      ]
+    ]
+  },
+  "False-dispose-error": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      }
+    ],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "injected-dispose",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "route",
+        "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+        "install",
+        "source",
+        {
+          "entrypoint": "startup"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "dispose"
+      ]
+    ]
+  },
+  "False-enable-refused": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      }
+    ],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "Coding builtin Product bootstrap enable refused",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "route",
+        "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+        "install",
+        "source",
+        {
+          "entrypoint": "startup"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "dispose"
+      ],
+      [
+        "snapshot",
+        2
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "transitions"
+      ],
+      [
+        "submit",
+        "enable",
+        {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "coding-builtin-bootstrap-enable:1c7d653a192d4ce71fcc6e43e69496740c2e3afe7e78cf0214c9904c02521110",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:1c7d653a192d4ce71fcc6e43e69496740c2e3afe7e78cf0214c9904c02521110",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        }
+      ]
+    ]
+  },
+  "False-enabled": {
+    "records": [],
+    "result": false,
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ]
+    ]
+  },
+  "False-factory-error": {
+    "records": [],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "injected-factory",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ]
+    ]
+  },
+  "False-install-refused": {
+    "records": [],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "Coding builtin Product bootstrap install refused: refused",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "route",
+        "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+        "install",
+        "source",
+        {
+          "entrypoint": "startup"
+        }
+      ],
+      [
+        "dispose"
+      ]
+    ]
+  },
+  "False-lookup-error": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      }
+    ],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "injected-lookup",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "route",
+        "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+        "install",
+        "source",
+        {
+          "entrypoint": "startup"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "dispose"
+      ]
+    ]
+  },
+  "False-missing-handoff": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      }
+    ],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "Coding builtin Product bootstrap handoff is missing",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "route",
+        "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+        "install",
+        "source",
+        {
+          "entrypoint": "startup"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "dispose"
+      ]
+    ]
+  },
+  "False-no-enable": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      }
+    ],
+    "result": true,
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "route",
+        "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+        "install",
+        "source",
+        {
+          "entrypoint": "startup"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "dispose"
+      ],
+      [
+        "snapshot",
+        2
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "transitions"
+      ]
+    ]
+  },
+  "False-operator-disabled": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.base",
+            "pluginId": "coding.base",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.base",
+              "pluginId": "coding.base",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 2,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "enable:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      }
+    ],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "Coding builtin Product bootstrap was superseded",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "transitions"
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ]
+    ]
+  },
+  "False-removed": {
+    "records": [],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "Coding builtin Product bootstrap was removed",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ]
+    ]
+  },
+  "False-route-error": {
+    "records": [],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "injected-route",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "route",
+        "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+        "install",
+        "source",
+        {
+          "entrypoint": "startup"
+        }
+      ],
+      [
+        "dispose"
+      ]
+    ]
+  },
+  "False-route-error+dispose-error": {
+    "records": [],
+    "result": {
+      "cause": null,
+      "context": {
+        "cause": null,
+        "context": null,
+        "id": 1,
+        "message": "injected-route",
+        "notes": [],
+        "suppress": false,
+        "type": "RuntimeError"
+      },
+      "id": 0,
+      "message": "injected-dispose",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "route",
+        "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+        "install",
+        "source",
+        {
+          "entrypoint": "startup"
+        }
+      ],
+      [
+        "dispose"
+      ]
+    ]
+  },
+  "False-selection-changed": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      }
+    ],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "Coding builtin Product bootstrap selection changed",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "route",
+        "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+        "install",
+        "source",
+        {
+          "entrypoint": "startup"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "dispose"
+      ],
+      [
+        "snapshot",
+        2
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ]
+    ]
+  },
+  "False-snapshot-error": {
+    "records": [],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "injected-snapshot",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ]
+    ]
+  },
+  "False-submit-error": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      }
+    ],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "injected-submit",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "route",
+        "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+        "install",
+        "source",
+        {
+          "entrypoint": "startup"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "dispose"
+      ],
+      [
+        "snapshot",
+        2
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "transitions"
+      ],
+      [
+        "submit",
+        "enable",
+        {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "coding-builtin-bootstrap-enable:1c7d653a192d4ce71fcc6e43e69496740c2e3afe7e78cf0214c9904c02521110",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:1c7d653a192d4ce71fcc6e43e69496740c2e3afe7e78cf0214c9904c02521110",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        }
+      ]
+    ]
+  },
+  "False-transitions-error": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      }
+    ],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "injected-transitions",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "route",
+        "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+        "install",
+        "source",
+        {
+          "entrypoint": "startup"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "dispose"
+      ],
+      [
+        "snapshot",
+        2
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "transitions"
+      ]
+    ]
+  },
+  "False-wrong-actor": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "operator",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      }
+    ],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "Coding builtin Product bootstrap was superseded",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "transitions"
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "dispose"
+      ],
+      [
+        "snapshot",
+        2
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "transitions"
+      ]
+    ]
+  },
+  "False-wrong-command": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      }
+    ],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "Coding builtin Product bootstrap was superseded",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "snapshot",
+        1
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "transitions"
+      ],
+      [
+        "factory",
+        {
+          "cwd": "/workspace",
+          "runtime_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+          "session_id": "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff"
+        }
+      ],
+      [
+        "create",
+        "coding",
+        "coding-builtin-bootstrap:ffffffffffffffffffffffffffffffff",
+        "/workspace"
+      ],
+      [
+        "activate"
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "dispose"
+      ],
+      [
+        "snapshot",
+        2
+      ],
+      [
+        "installation",
+        {
+          "installationScope": "workspace",
+          "pluginId": "coding.base",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        }
+      ],
+      [
+        "transitions"
+      ]
+    ]
+  },
+  "True-completed": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.base",
+            "pluginId": "coding.base",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.base",
+              "pluginId": "coding.base",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 2,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "enable:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 3,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 2,
+          "idempotencyKey": "install:coding.lsp.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.lsp.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.lsp.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.lsp.default",
+            "pluginId": "coding.lsp.default",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.lsp.default",
+              "pluginId": "coding.lsp.default",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 4,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 3,
+          "idempotencyKey": "enable:coding.lsp.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 5,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 4,
+          "idempotencyKey": "install:coding.arch.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.arch.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.arch.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.arch.default",
+            "pluginId": "coding.arch.default",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.arch.default",
+              "pluginId": "coding.arch.default",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 6,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 5,
+          "idempotencyKey": "enable:coding.arch.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      }
+    ],
+    "result": true,
+    "trace": [
+      [
+        "transitions"
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:e14bdbbad27d056522f850c07a53e3f6621f49a4bedb2186e6c24683fd1b9c92",
+          "plugin_id": "coding.lsp.default"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:984adeb74a9f7eac67cc0c48eee30c17acf4ed46976399fba41ae536b548a6a3",
+          "plugin_id": "coding.arch.default"
+        }
+      ]
+    ]
+  },
+  "True-incomplete": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 2,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "install:coding.lsp.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.lsp.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.lsp.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 3,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 2,
+          "idempotencyKey": "install:coding.arch.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.arch.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.arch.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      }
+    ],
+    "result": false,
+    "trace": [
+      [
+        "transitions"
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ]
+    ]
+  },
+  "True-lookup-error": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.base",
+            "pluginId": "coding.base",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.base",
+              "pluginId": "coding.base",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 2,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "enable:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 3,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 2,
+          "idempotencyKey": "install:coding.lsp.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.lsp.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.lsp.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.lsp.default",
+            "pluginId": "coding.lsp.default",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.lsp.default",
+              "pluginId": "coding.lsp.default",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 4,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 3,
+          "idempotencyKey": "enable:coding.lsp.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 5,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 4,
+          "idempotencyKey": "install:coding.arch.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.arch.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.arch.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.arch.default",
+            "pluginId": "coding.arch.default",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.arch.default",
+              "pluginId": "coding.arch.default",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 6,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 5,
+          "idempotencyKey": "enable:coding.arch.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      }
+    ],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "injected-lookup",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "transitions"
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ]
+    ]
+  },
+  "True-operator-disabled": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.base",
+            "pluginId": "coding.base",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.base",
+              "pluginId": "coding.base",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 2,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "enable:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 3,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 2,
+          "idempotencyKey": "install:coding.lsp.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.lsp.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.lsp.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.lsp.default",
+            "pluginId": "coding.lsp.default",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.lsp.default",
+              "pluginId": "coding.lsp.default",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 4,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 3,
+          "idempotencyKey": "enable:coding.lsp.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 5,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 4,
+          "idempotencyKey": "install:coding.arch.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.arch.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.arch.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.arch.default",
+            "pluginId": "coding.arch.default",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.arch.default",
+              "pluginId": "coding.arch.default",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 6,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 5,
+          "idempotencyKey": "enable:coding.arch.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      }
+    ],
+    "result": true,
+    "trace": [
+      [
+        "transitions"
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:e14bdbbad27d056522f850c07a53e3f6621f49a4bedb2186e6c24683fd1b9c92",
+          "plugin_id": "coding.lsp.default"
+        }
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:984adeb74a9f7eac67cc0c48eee30c17acf4ed46976399fba41ae536b548a6a3",
+          "plugin_id": "coding.arch.default"
+        }
+      ]
+    ]
+  },
+  "True-transitions-error": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.base",
+            "pluginId": "coding.base",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.base",
+              "pluginId": "coding.base",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 2,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "enable:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 3,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 2,
+          "idempotencyKey": "install:coding.lsp.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.lsp.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.lsp.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.lsp.default",
+            "pluginId": "coding.lsp.default",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.lsp.default",
+              "pluginId": "coding.lsp.default",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 4,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 3,
+          "idempotencyKey": "enable:coding.lsp.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 5,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 4,
+          "idempotencyKey": "install:coding.arch.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.arch.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.arch.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.arch.default",
+            "pluginId": "coding.arch.default",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.arch.default",
+              "pluginId": "coding.arch.default",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 6,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 5,
+          "idempotencyKey": "enable:coding.arch.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      }
+    ],
+    "result": {
+      "cause": null,
+      "context": null,
+      "id": 0,
+      "message": "injected-transitions",
+      "notes": [],
+      "suppress": false,
+      "type": "RuntimeError"
+    },
+    "trace": [
+      [
+        "transitions"
+      ]
+    ]
+  },
+  "True-wrong-actor": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "operator",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.base",
+            "pluginId": "coding.base",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.base",
+              "pluginId": "coding.base",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 2,
+        "mutation": {
+          "actorId": "operator",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "enable:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 3,
+        "mutation": {
+          "actorId": "operator",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 2,
+          "idempotencyKey": "install:coding.lsp.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.lsp.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.lsp.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.lsp.default",
+            "pluginId": "coding.lsp.default",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.lsp.default",
+              "pluginId": "coding.lsp.default",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 4,
+        "mutation": {
+          "actorId": "operator",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 3,
+          "idempotencyKey": "enable:coding.lsp.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 5,
+        "mutation": {
+          "actorId": "operator",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 4,
+          "idempotencyKey": "install:coding.arch.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.arch.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.arch.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.arch.default",
+            "pluginId": "coding.arch.default",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.arch.default",
+              "pluginId": "coding.arch.default",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 6,
+        "mutation": {
+          "actorId": "operator",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 5,
+          "idempotencyKey": "enable:coding.arch.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      }
+    ],
+    "result": false,
+    "trace": [
+      [
+        "transitions"
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ]
+    ]
+  },
+  "True-wrong-command": {
+    "records": [
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 1,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 0,
+          "idempotencyKey": "install:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.base",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.base",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.base",
+            "pluginId": "coding.base",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.base",
+              "pluginId": "coding.base",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 2,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 1,
+          "idempotencyKey": "enable:coding.base",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.base",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.base",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 3,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 2,
+          "idempotencyKey": "install:coding.lsp.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.lsp.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.lsp.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.lsp.default",
+            "pluginId": "coding.lsp.default",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.lsp.default",
+              "pluginId": "coding.lsp.default",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 4,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 3,
+          "idempotencyKey": "enable:coding.lsp.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.lsp.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.lsp.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 5,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_disabled",
+          "expectedInventoryRevision": 4,
+          "idempotencyKey": "install:coding.arch.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "command:coding.arch.default",
+          "packageRevision": {
+            "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "packageSourceIdentity": "source",
+            "pluginId": "coding.arch.default",
+            "pluginVersion": "1.0",
+            "schemaVersion": 1
+          },
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "absent",
+            "instanceRevisionRef": null,
+            "packageRevision": null,
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "install"
+      },
+      {
+        "committedState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": {
+            "instanceId": "instance:coding.arch.default",
+            "pluginId": "coding.arch.default",
+            "revision": 1
+          },
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_enabled",
+            "instanceRevisionRef": {
+              "instanceId": "instance:coding.arch.default",
+              "pluginId": "coding.arch.default",
+              "revision": 1
+            },
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "inventoryRevision": 6,
+        "mutation": {
+          "actorId": "actor",
+          "approvalReference": null,
+          "desiredState": "installed_enabled",
+          "expectedInventoryRevision": 5,
+          "idempotencyKey": "enable:coding.arch.default",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "operationId": "coding-builtin-bootstrap-enable:old",
+          "packageRevision": null,
+          "policyRevision": "policy",
+          "schemaVersion": 1
+        },
+        "previousState": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "scope"
+          },
+          "latestInstanceRevisionRef": null,
+          "schemaVersion": 1,
+          "selection": {
+            "desiredState": "installed_disabled",
+            "instanceRevisionRef": null,
+            "packageRevision": {
+              "dependencyLockDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "packageSourceIdentity": "source",
+              "pluginId": "coding.arch.default",
+              "pluginVersion": "1.0",
+              "schemaVersion": 1
+            },
+            "schemaVersion": 1
+          }
+        },
+        "recordVersion": 1,
+        "transitionKind": "enable"
+      }
+    ],
+    "result": false,
+    "trace": [
+      [
+        "transitions"
+      ],
+      [
+        "lookup",
+        {
+          "operation_id": "coding-builtin-bootstrap:a368054624a0d77b053f84cbf15176552297f2c4d8f51455ebe7d458dc41f1e4",
+          "plugin_id": "coding.base"
+        }
+      ]
+    ]
+  }
+}

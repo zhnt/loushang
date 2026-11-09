@@ -7,6 +7,7 @@ from pathlib import Path
 from tests.architecture._source_imports import imported_modules
 
 CANARY = Path("src/loushang/coding/_product_worker_canary.py")
+CANARY_LIFECYCLE = Path("src/loushang/harness/worker/_product_attempt_lifecycle.py")
 APPHOST_PRODUCT = Path("src/loushang/coding/apphost_product.py")
 APPHOST_CANARY = Path("src/loushang/coding/apphost_canary.py")
 CODING_ROOT = Path("src/loushang/coding")
@@ -573,7 +574,7 @@ def test_c54_session_and_entrypoint_evidence_are_pathless_and_shared() -> None:
 
 
 def test_c54_health_precedes_domain_publication_and_ambiguity_is_reclaimed() -> None:
-    start = _class_method_source(CANARY, "CodingProductWorkerCanary", "start")
+    start = _class_method_source(CANARY_LIFECYCLE, "_ProductWorkerAttemptLifecycle", "start")
     assert start.index("supervisor.start_session(") < start.index("adapter.admit()")
     assert start.index("adapter.admit()") < start.index("coordinator.publish(")
     assert start.index("coordinator.publish(") < start.index("domain.publish(")
@@ -581,8 +582,8 @@ def test_c54_health_precedes_domain_publication_and_ambiguity_is_reclaimed() -> 
         "await domain.publish("
     )
     reclaim = _class_method_source(
-        CANARY,
-        "CodingProductWorkerCanary",
+        CANARY_LIFECYCLE,
+        "_ProductWorkerAttemptLifecycle",
         "_reclaim_failed_attempt",
     )
     for token in (
@@ -614,7 +615,7 @@ def test_c54_rollback_recovery_and_no_fallback_are_fixed() -> None:
         "V5-BUDGET-EXHAUSTED",
         "V6-HOST-RESTART",
     )
-    rollback = _class_method_source(CANARY, "CodingProductWorkerCanary", "rollback")
+    rollback = _class_method_source(CANARY_LIFECYCLE, "_ProductWorkerAttemptLifecycle", "rollback")
     calls = (
         "coordinator.latch_kill_switch(",
         "domain.fence_attempt(",
@@ -629,9 +630,19 @@ def test_c54_rollback_recovery_and_no_fallback_are_fixed() -> None:
         sorted(rollback.index(call) for call in calls)
     )
     assert "current_owner.start" not in rollback
-    recover = _class_method_source(CANARY, "CodingProductWorkerCanary", "recover")
-    assert "steps != _RECOVERY_STEPS" in recover
-    assert "coding_worker_recovery_incomplete" in recover
+    recover = _class_method_source(CANARY_LIFECYCLE, "_ProductWorkerAttemptLifecycle", "recover")
+    assert (
+        "steps != self._expected_recovery_steps()" in recover
+        and "return _RECOVERY_STEPS" in _class_method_source(
+            CANARY, "CodingProductWorkerCanary", "_expected_recovery_steps"
+        )
+    )
+    assert (
+        'self._lifecycle_code("worker_recovery_incomplete")' in recover
+        and 'return "coding_" + reason' in _class_method_source(
+            CANARY, "CodingProductWorkerCanary", "_lifecycle_code"
+        )
+    )
 
 
 def test_c54_required_report_is_mandatory_in_linux_gate() -> None:

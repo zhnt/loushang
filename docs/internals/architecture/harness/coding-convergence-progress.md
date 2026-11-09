@@ -979,4 +979,3 @@ Coding保留digest/支持范围、Desired removal与第二次snapshot、路径/h
 - 四个实际完整变化源 `--follow-imports=silent` mypy通过；非默认完整依赖图。修改源Ruff/format、294项先前source/test/fixture守卫与diff核查保持；此范围之外的旧广依赖/skill及native限制未宣称修复。
 
 实际frame SHA256 `9843e2a90d7a8f0c1e0dbe1af42fc39ce306f64e56a8a7976cf06250037d29d4`，三份实际代码评审、终态、原源码/探针/预期和完整成本置产品树外 `query-owners-a81/`。O-A8-N01仅关闭这三个中性程序的归位，目标/stage、具体确认/产品授权及其余装配仍分项审视；四完整PD切片/原C08最低线/系统净减及Goal未完成。当前全Coding累计−8,030，原C08−4,599／差3,401，全生产仍+68。未提交/发布、新增gate、联网或调用模型。
-

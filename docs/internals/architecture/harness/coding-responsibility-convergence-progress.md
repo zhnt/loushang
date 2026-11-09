@@ -2,22 +2,38 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P1/A1–A27指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P1/A1–A63指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A63）
+## 当前续接（2026-11-09，A64–A65）
 
-Coding118987/系统644437（1952源），较原Coding基线少18768（13.62%），距15K
-仍103987。完整operator查询的activate-through-dispose协调已归原Session并获
-三代码视角及Root有界采用，复用Worker/Hosting/C5/Provider/Graph；Code保领域
-政策/配置与薄入口，ordinary/operator Source共用真实原投影，Code−124/Core320/
-系统+196全计，不称系统去重。
+用户以完整P1–P4、Coding归属≤15K及优先复用Harness的Goal继续执行。
+原A63的535份source/test/fixture/doc变更已逐文件SHA复制到专用任务worktree
+`.worktrees/coding-convergence-delivery`，分支`harness/coding-convergence-delivery`；
+原Harness工作区保留未改。树外5076文件归档SHA256
+`8d67a73439c5e0540a0a0bdab8c20c7e79eed205b1d34fcc6b658a3907bd7a97`。
+本地保存提交`9a5285723`仅是可追溯checkpoint，不代表完整Goal或本轮回归接受。
+远程main实核仍`2aa2f7deb`，无远程发布。
 
-当前88有限对照与原架构4项通过，实际三源类型/Ruff/format通过。原业务59过/
-1原hostskip/1C54事实表失败，唯一operator条目按新归属修正后同节点1过，不
-反写首轮全绿或重跑59。完整P1–P4/≤15K仍未完成；KD011 R6独立待用户，未接通。
-Fresh fetch后HEAD/origin仍2aa2f7deb、0/0；无commit/push。
+A64发现继承的新增独立test文件未分类，原检查计划生成因此失败。将57份仅本地
+探针改名`probe_*.py`并同步唯一跨探针import，fixture原位保留；相对原main的
+既有测试文件发现集及catalog/workflow/路线不扩大。计划生成已恢复，266项
+跨探针/原Foundation对照通过；57份探针2538节点全部收集成功。它们须显式
+执行，不属于原CI自动覆盖。当前路径见[本地探针索引](../../testing/coding-convergence-local-probes.md)。
+
+A65完整builtin Plugin install→handoff→runtime结清→enable及首次完成识别
+已接通原Harness Package Product，共用一次历史证明。三独立设计及实际代码
+审查无已识别阻断；31固定旧观察+1原测试的before/after各32过，类型/Ruff通过。
+较广真实场景首轮240过/7架构事实失败/43原skip/7deselect；七失败事实修正后
+同节点7过，未重复已过240。实现owner在实际三代码视角及终态核验后接受本片。
+当前Coding118811（430文件），系统644501（1953生产源）：相对A63
+Code−176/Core+240/系统+64，全成本计入，不称系统净精简。
+
+[逐文件清单R2](coding-responsibility-inventory.md)刷新430文件当前行数/SHA与28组
+汇总，保留原审计列；它不把候选处置改写成接受。完整P1–P4/15K仍未完成，
+KD011/A33待用户事项未擅自采用。本片真实回归失败已关闭，正在整理可追溯提交；
+随后按完整业务簇复核其余Worker、Session装配、托管/Continuity和入口机制。
 
 ## 起点与保存
 
@@ -1953,3 +1969,53 @@ fresh读取，原own字段/slots、epoch探针和条件重绑、300/180窗/最�
 树外`p1-operator-query-candidate/final-code-acceptance.json`保存三源SHA/成本/接受
 角色/测试构成及局限。生成依赖事实已更新；fresh fetch成功仍2aa2f7deb/0ahead/
 0behind，控制lane脏改动保留，无远程发布。KD011图未答复、未安装。
+
+## A64：继续Goal、专用worktree与本地探针整理
+
+续接用户附件的完整七项要求，并补充Harness既有组件优先、高内聚低耦合及架构
+简洁的要求。原535份变更逐文件复制，5076份source/test/doc/fixture与归档清单
+一致，原Harness lane及控制lane三份用户改动均保留。基线归档、路径映射、
+原计划失败、修复后计划和JUnit位于树外`coding-convergence-continue/20261109T142640Z`。
+
+原57份探针均不在`main`测试树或已接受catalog中；56份源码字节不变，一份仅
+同步另一probe模块import。原分类Foundation missing报错确实关闭，未改变原
+检查器、workflow或平台。266项显式探针通过10.81s；57文件2538节点收集成功
+45.71s，收集不是全执行。原main测试覆盖集合须与这些新增本地证据分开报告。
+三独立审查确认该整理属于避免新增自动覆盖，并核相互import及fixture路径。
+
+## A65：builtin Plugin完整启动程序归Harness Package Product（有界完成）
+
+[设计与有界接受](key-designs/builtin-plugin-bootstrap-convergence.md)复用原两平台
+Product owner/factory、Lifecycle route、Desired ledger、Management和handoff。
+Coding保三builtin顺序、enable政策、namespace及四字段纯值policy；三个旧函数
+薄外观保留。执行和完成识别的重复首次install/enable证明共享，当前revision
+只在原retry分支核验；无新增manager/authority/阶段回调/日志。
+
+原两完整程序和operation-ID函数在改动前冻结，原源码SHA匹配checkpoint。
+31固定旧结果包含完整trace、真实DTO编码和异常cause/context/notes图；
+before32过3.83s、after32过3.29s（各含同一原测试，不能相加为64独立覆盖）。
+真实Product效果在这些差分中受控，不宣称物理存储/原生/完整取消或ABI证据。
+新proof首轮类型检查发现既有ledger还返回UpdateV2；改用原journal_codecs的
+联合类型，运行body不变，两显式源mypy通过。
+
+实际Code1996→1820（−176）、Core240、系统+64；其余1951旧生产源SHA不变。
+旧系统口径由原baseline与A63完整帧复核：src/loushang使用py/c/css/html/js，
+gui/src使用css/ts/tsx，gui/src-tauri/src用rs，gui/contracts/generated用rs/ts。
+完整系统644501，较原Goal634794多9707；Code累计少18944（13.75%），
+距离15000仍103811。迁移与共享证明的收益不冒称整体系统去重。
+
+较广原八文件终态为240过、7架构失败、43原平台/host skip、7deselect，耗时340.57s。
+其中真实Coding Product/托管业务51过，另43原skip；架构189过及7过时事实失败。
+七项分别为两处已接受Resume继承链、PLC9唯一迁后定义位置、三schema元数据计数、
+C51七个已迁移精确消费者、C54两个完整生命周期方法的实现归属。更新当前事实后
+原七节点7过28.47s，原扫描、发布/rollback/reclaim顺序、恢复矩阵与无fallback
+断言均保留，三独立实际审查确认；不重跑已过240、不改历史首轮失败。
+
+固定31原观察另保存为仓库显式`probe_builtin_bootstrap_compatibility.py`与只读
+fixture，31过3.06s，不依赖树外源码；此为同批覆盖的持久化复验，不累计独立数量。
+检查计划因继承完整范围选择AI，既有`make check-ai`离线完成：937过/7deselect，
+覆盖阈值通过，未改变共享venv安装。两源mypy、变动Python Ruff、Core格式、
+9项文档检查、依赖事实freshness与diff-check通过。原31其它顶层类/函数AST不变，
+公开dataclass/格式/默认路线不变；store_id与actor_id真实稳定字段的提前读取
+已明确接受，不覆盖effectful替身getter或任意私有热替换。实施owner `/root` 在
+核定三独立设计/代码报告及真实JUnit后接受本片，完整Goal仍未完成。

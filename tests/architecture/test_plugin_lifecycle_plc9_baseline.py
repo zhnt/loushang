@@ -108,6 +108,10 @@ SOURCE_ENABLED_FILES = {
 }
 LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
     {
+        # Shared RecordSchema metadata excludes the original explicit codec field.
+        (Path("src/loushang/coding/package_legacy_builtin_review.py"), "<module>"): 1,
+        (Path("src/loushang/coding/package_legacy_removed_review.py"), "<module>"): 1,
+        (Path("src/loushang/coding/package_legacy_review.py"), "<module>"): 1,
         (
             Path("src/loushang/coding/package_legacy_classification.py"),
             "CodingLegacyWorkspaceClassificationV1",

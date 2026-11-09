@@ -668,4 +668,3 @@ Root读三份实际代码报告并核完整XML后有界接受本片；详见
 
 源码/原件/三阶段独立评审/类型修复和全部证据存产品树外
 `p2-live-resume-convergence`；`actual-proof.json`区分当前安装与待验收状态。
-
