@@ -27,7 +27,21 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-09，A71）
+## 当前状态（2026-11-09，A72全量复核）
+
+生产停在已接受A71 `2c322a821`：Coding430文件117115行，系统1958源645173行，
+本次新增生产精简0。430源码SHA/行/定义/import与28组处置已重核；领域语义、
+公开兼容与当前实现分账，未发现可证的>15K必要下界，也未证明目标必可达。
+9607当前语法候选行不是保留成本或删量；完整P1–P4、≤15K及兼容恢复要求保持。
+
+[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)明确全部组的原
+owner、现成复用、残留义务和三视角限制。最大已定位P2十源交互窗口12560行，
+不作为可删预算；下一候选是原owner的完整Definition approved-resolve及Activation
+到Session inputs程序，接口/实物/成本尚待设计，不能重复计已有Base/Catalog/
+Graph/cleanup收益。Worker完整payload recovery与prepared-task寿命为备选。
+KD003未实施；KD011/A33原待确认边界保持，继续无依赖的整体职责工作。
+
+## A71 已交付状态（2026-11-09）
 
 A71 从`d86482c26`继续完整 P1–P4。Windows Installation root lineage 的完整
 bind/inspect/restore intent/receipt publication、删除前驱重放、代际围栏、codec

@@ -6,7 +6,21 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A71）
+## 当前状态（2026-11-09，A72全量复核）
+
+生产停在已接受A71 `2c322a821`：Coding430文件117115行，系统1958源645173行，
+本次新增生产精简0。430源码SHA/行/定义/import与28组处置已重核；领域语义、
+公开兼容与当前实现分账，未发现可证的>15K必要下界，也未证明目标必可达。
+9607当前语法候选行不是保留成本或删量；完整P1–P4、≤15K及兼容恢复要求保持。
+
+[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)明确全部组的原
+owner、现成复用、残留义务和三视角限制。最大已定位P2十源交互窗口12560行，
+不作为可删预算；下一候选是原owner的完整Definition approved-resolve及Activation
+到Session inputs程序，接口/实物/成本尚待设计，不能重复计已有Base/Catalog/
+Graph/cleanup收益。Worker完整payload recovery与prepared-task寿命为备选。
+KD003未实施；KD011/A33原待确认边界保持，继续无依赖的整体职责工作。
+
+## A71 已交付状态（2026-11-09）
 
 A71 从`d86482c26`继续完整 P1–P4。Windows Installation root lineage 的完整
 bind/inspect/restore intent/receipt publication、删除前驱重放、代际围栏、codec
@@ -215,7 +229,7 @@ KD011/A33待用户事项未擅自采用。本片真实回归失败已关闭，�
 2. Supervisor产品Journal525行的C07静态导入闭包43文件/18,156行，含32文件强连通簇；带lazy/type-only边，不是运行时循环证明。它促使先拆五流typed history、checkpoint权限和产品启动/清理政策，而不是单文件搬迁。
 3. LSP/Arch当前9,296行与C08当前7,139行若全部永久留原样，已达16,435行，超过整个Goal上限且还未算入口/策略。故“前序已交付不重做”不能解释为任何Code残留都永久豁免：不重建已共享机制、不变更原合同，但仍须对残留通用记录/声明/绑定按本轮职责处置。当前尚未证明15K可达，也不因此放宽目标。
 
-## 当前工作件与下一步
+## 首轮工作件与当时下一步（历史）
 
 [H-COD-KD-004 R3](key-designs/worker-history-responsibility-convergence.md)已形成可实施的首片设计。用户已接受图示职责方向；R2接受D1原storage覆写、固定path/动态scope-store和锁/退出时序。R3经原三位reviewer独立增量复核，均无实质架构阻断，实施owner内部接受五流读取/动作边界、公开dataclass薄外观+Worker机制mixin及全成本/交付合同，见[评审记录](key-designs/worker-history-responsibility-convergence-review.md)。没有把内部技术接受归给用户，也没有宣称实现完成。
 

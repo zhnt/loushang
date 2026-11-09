@@ -1,5 +1,7 @@
 # Coding 全量职责收敛与重构方案 R1
 
+本文件保留2026-11-06 R1分析快照。现行执行与计量见[当前Goal](coding-responsibility-convergence-goal.md)、[A72全量剩余账](coding-responsibility-remaining-audit.md)，下文旧阶段编号/行数/未实施状态不覆盖后续事实。
+
 ## 状态、目标与证据边界
 
 - Authority: descriptive audit + proposed reconstruction；不替代 [Current Owner Map](current-owner-map.md) 或已接受合同。
