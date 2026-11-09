@@ -240,6 +240,7 @@ their original context.
 | appserver protocol/client | 2,274 / 2,284 | 2,284 / 2,284 | 2,277 / 2,284; 7 lines spare |
 | appservice-core | 1,966 / 1,966 | 1,966 / 1,966 | 1,966 / 1,966 |
 | appserver managed-close values | 78 / 80 | 80 / 80 | 80 / 80 |
+| AppHost application G12 | 565 / 566 | 568 / 566; later caught by existing CI | 565 / 566 after type-only namespace import |
 
 For the first implementation, preserve the existing single-line export-list
 style in `appserver/client.py`. The new assignments are self-explanatory; keep
@@ -424,7 +425,8 @@ retain their existing contracts. The scope docstring accurately separates
 application authority, transport/authentication and accepted-work ownership.
 Current AppServer/AppService documentation records the canonical/legacy roles.
 
-Verification on the final source contents:
+Pre-publication verification on the initial source contents, before the G12
+budget correction recorded below:
 
 - **1,424 passed, 10 skipped in 328.51s**: 1,420 existing cases and four external
   compatibility probe cases. This extends the contract subset above with the
@@ -493,6 +495,39 @@ was not retained; the reviewers did not count that author result as an
 independently reproduced run. No test route, assertion or gate was added.
 
 This record-only follow-up leaves the reviewed Product source unchanged.
+
+## PR Validation Follow-Up
+
+The existing AppHost job on PR #884 found a constraint omitted from the initial
+local subset and reviews: G12 counts the whole `apphost/application.py` owner
+with a 566-line limit. Expanding its type-only two-name import had raised the
+file from 565 to 568 lines. The initial job reported 1 failed, 2,643 passed and
+11 skipped. No threshold or assertion was changed to resolve this.
+
+The correction imports the same `client_scope` module under `TYPE_CHECKING`
+and qualifies the two affected annotations. The runtime factory import and
+all executed statements remain unchanged; postponed annotations are retained.
+The file returns to 565/566. Ruff, mypy and a normalized AST comparison passed.
+The actual existing G12 budget case passed, and its complete G12/design and
+application-focused selection passed 18 cases. All three original reviewers
+independently approved this narrow correction and acknowledged the initially
+missed G12 constraint. Their refreshed Coding overlap previews remained clean.
+
+Type-hint reflection can now show the `client_scope.` qualification; default
+reflection has the same pre-existing type-only-import NameError limit. With
+the type namespace supplied, it resolves to the original concrete class.
+
+PR-required checks remain authoritative at the final delivery head. Full
+AppHost CI-selection rerun results are retained separately from the original
+1,424-case result; that earlier count is not relabeled as a new execution.
+An additional local Makefile inventory run entered installed-terminal evidence
+and observed an Embedded startup timeout (`transcript_writer:unsafe`); it was
+stopped after 289 passed, one failed and one skipped and is not passing
+evidence. That fixture intentionally excludes PYTHONPATH and invokes the
+shared venv's installed CLI, whose editable source resolves to the unmodified
+control checkout rather than this task. No installed environment or unrelated
+runtime code was changed to hide that failure. Native/installed acceptance is
+still not claimed by this naming delivery.
 
 ## Review History And Closure
 
