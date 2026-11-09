@@ -732,3 +732,16 @@ journals, and later admission/consumption/Provider/Graph mechanisms stay unchang
 Coding retains Product paths/Profile/error mapping/issuer and Resume admission.
 [Bounded coordination evidence](key-designs/product-approval-closure-convergence.md)
 records the fixed original observations, original consumers and execution limits.
+
+## Retained Linux Worker payload recovery (A74)
+
+The Worker payload component owns the complete complete/empty/unmarked debt
+preview/review/inventory, intent/repair, read/reopen and retry coordination. It
+uses the original PayloadStorage, RepairJournal and RootedSupervisor history
+mechanisms directly. Product retains offline quiescence/currentness/GC admission;
+Coding keeps actual public DTOs/type admission and the original root borrowing
+scope. Core closes its stage FDs and never the borrowed root. The effectful
+Supervisor factory still admits/constructs the original owner at each old point;
+there is no Product scan/verify/delete callback. Registered recovery retains its
+separate evidence contract. [Bounded recovery evidence](key-designs/worker-payload-recovery-convergence.md)
+records the three different claim/settlement contracts and execution limits.

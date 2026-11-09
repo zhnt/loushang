@@ -9773,14 +9773,16 @@ def test_empty_worker_payload_debt_requires_absent_supervisor_claim(
         )
         remove_empty_stage = worker_payload_module._remove_empty_stage
 
-        def crash_after_removal(root_fd: int, stage_name: str) -> None:
+        def crash_after_removal(_storage, root_fd: int, stage_name: str) -> None:
             remove_empty_stage(root_fd, stage_name)
             if stage_name == f"worker-payload-{crash_attempt}":
                 raise OSError("injected post-remove interruption")
 
         with monkeypatch.context() as patch:
             patch.setattr(
-                worker_payload_module, "_remove_empty_stage", crash_after_removal
+                type(worker_payload_module._STORAGE),
+                "_remove_empty_stage",
+                crash_after_removal,
             )
             with pytest.raises(OSError, match="post-remove interruption"):
                 repair_coding_product_worker_empty_payload_debt(
@@ -9958,6 +9960,7 @@ def test_complete_worker_payload_repair_resumes_partial_deletion(
         replacement_stage.mkdir(mode=0o700)
 
         def interrupted_removal(
+            _storage,
             root_fd: int,
             opened_stage_fd: int,
             stage_name: str,
@@ -9990,7 +9993,9 @@ def test_complete_worker_payload_repair_resumes_partial_deletion(
 
         with monkeypatch.context() as patch:
             patch.setattr(
-                worker_payload_module, "_remove_verified_stage", interrupted_removal
+                type(worker_payload_module._STORAGE),
+                "_remove_verified_stage",
+                interrupted_removal,
             )
             with pytest.raises(OSError, match="partial payload deletion"):
                 repair_coding_product_worker_payload_debt(product, expected_plan=plan)
@@ -10327,6 +10332,7 @@ def test_unmarked_worker_payload_repair_resumes_exact_partial_deletion(
             gc.prepare()
 
         def interrupted_removal(
+            _storage,
             root_fd: int,
             stage_fd: int,
             stage_name: str,
@@ -10357,7 +10363,7 @@ def test_unmarked_worker_payload_repair_resumes_exact_partial_deletion(
 
         with monkeypatch.context() as patch:
             patch.setattr(
-                worker_payload_module,
+                type(worker_payload_module._STORAGE),
                 "_remove_unmarked_repair_remainder",
                 interrupted_removal,
             )

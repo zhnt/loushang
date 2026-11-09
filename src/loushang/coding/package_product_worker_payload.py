@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import cast
 
+import loushang.harness.worker.payload._recovery as _recovery
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -315,15 +316,15 @@ def review_coding_product_worker_payload_recovery(
     """
 
     with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        plan = _verify_debt(root_fd, attempt_id)
-        record = open_coding_product_worker_supervisor_journal(product).status(
-            attempt_id
+        plan, record = _recovery.review_complete(
+            _STORAGE,
+            root_fd,
+            attempt_id=attempt_id,
+            supervisor=lambda: open_coding_product_worker_supervisor_journal(product),
         )
-        if _verify_debt(root_fd, attempt_id) != plan:
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        return CodingWorkerPayloadRecoveryReviewV1(plan=plan, attempt_record=record)
+        return CodingWorkerPayloadRecoveryReviewV1(
+            plan=cast("CodingWorkerPayloadDebtPlanV1", plan), attempt_record=record
+        )
 
 
 @contextmanager
@@ -465,7 +466,10 @@ def preview_coding_product_worker_payload_debt(
     """Read a complete abandoned stage only while Product Sessions are absent."""
 
     with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        return _verify_debt(root_fd, attempt_id)
+        return cast(
+            "CodingWorkerPayloadDebtPlanV1",
+            _recovery.preview_complete(_STORAGE, root_fd, attempt_id=attempt_id),
+        )
 
 
 def preview_coding_product_worker_empty_payload_debt(
@@ -474,19 +478,17 @@ def preview_coding_product_worker_empty_payload_debt(
     """Review only an empty stage with no durable Supervisor claim."""
 
     with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        plan = _verify_empty_debt(root_fd, attempt_id)
-        if (
-            open_coding_product_worker_supervisor_journal(product).status(attempt_id)
-            is not None
-        ):
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_attempt_claimed"
-            )
-        if _verify_empty_debt(root_fd, attempt_id) != plan:
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        return plan
+        return cast(
+            "CodingWorkerEmptyPayloadDebtPlanV1",
+            _recovery.preview_empty(
+                _STORAGE,
+                root_fd,
+                attempt_id=attempt_id,
+                supervisor=lambda: open_coding_product_worker_supervisor_journal(
+                    product
+                ),
+            ),
+        )
 
 
 def review_coding_product_worker_unmarked_payload_debt(
@@ -495,19 +497,17 @@ def review_coding_product_worker_unmarked_payload_debt(
     """Inspect a nonempty pre-marker stage without granting cleanup authority."""
 
     with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        review = _scan_unmarked_debt(root_fd, attempt_id)
-        if (
-            open_coding_product_worker_supervisor_journal(product).status(attempt_id)
-            is not None
-        ):
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_attempt_claimed"
-            )
-        if _scan_unmarked_debt(root_fd, attempt_id) != review:
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        return review
+        return cast(
+            "CodingWorkerUnmarkedPayloadDebtReviewV1",
+            _recovery.review_unmarked(
+                _STORAGE,
+                root_fd,
+                attempt_id=attempt_id,
+                supervisor=lambda: open_coding_product_worker_supervisor_journal(
+                    product
+                ),
+            ),
+        )
 
 
 def repair_coding_product_worker_unmarked_payload_debt(
@@ -523,43 +523,17 @@ def repair_coding_product_worker_unmarked_payload_debt(
         _offline(product, require_write=True),
         _STORAGE.open_root(lambda: product.state_root) as root_fd,
     ):
-        prior = _read_unmarked_repair_intent(root_fd, expected_review.attempt_id)
-        if prior is not None and prior != expected_review:
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        _require_unclaimed_attempt(product, expected_review.attempt_id)
-        if prior is not None and not _stage_exists(root_fd, expected_review.attempt_id):
-            _settle_unmarked_repair_intent(root_fd, expected_review)
-            return expected_review
-        if prior is None and (
-            _scan_unmarked_debt(root_fd, expected_review.attempt_id) != expected_review
-        ):
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        stage_name = f"worker-payload-{expected_review.attempt_id}"
-        stage_fd = os.open(stage_name, _DIR_FLAGS, dir_fd=root_fd)
-        try:
-            _verify_unmarked_repair_remainder(
+        return cast(
+            "CodingWorkerUnmarkedPayloadDebtReviewV1",
+            _recovery.repair_unmarked(
+                _STORAGE,
                 root_fd,
-                stage_fd,
-                stage_name,
-                expected_review,
-                allow_partial=prior is not None,
-            )
-            _publish_unmarked_repair_intent(root_fd, expected_review)
-            _require_unclaimed_attempt(product, expected_review.attempt_id)
-            _remove_unmarked_repair_remainder(
-                root_fd,
-                stage_fd,
-                stage_name,
-                expected_review,
-                allow_partial=True,
-            )
-        finally:
-            os.close(stage_fd)
-        return expected_review
+                expected_review=expected_review,
+                supervisor=lambda: open_coding_product_worker_supervisor_journal(
+                    product
+                ),
+            ),
+        )
 
 
 def reopen_coding_product_worker_unmarked_payload_repair(
@@ -568,11 +542,17 @@ def reopen_coding_product_worker_unmarked_payload_repair(
     """Reopen a published, completed pre-marker cleanup after a process crash."""
 
     with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        prior = _read_unmarked_repair_intent(root_fd, attempt_id)
-        if prior is None or _stage_exists(root_fd, attempt_id):
-            return None
-        _require_unclaimed_attempt(product, attempt_id)
-        return prior
+        return cast(
+            "CodingWorkerUnmarkedPayloadDebtReviewV1 | None",
+            _recovery.reopen_unmarked(
+                _STORAGE,
+                root_fd,
+                attempt_id=attempt_id,
+                supervisor=lambda: open_coding_product_worker_supervisor_journal(
+                    product
+                ),
+            ),
+        )
 
 
 def read_coding_product_worker_unmarked_payload_repair_intent(
@@ -581,21 +561,16 @@ def read_coding_product_worker_unmarked_payload_repair_intent(
     """Read a durable cleanup intent even when its exact stage remains."""
 
     with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        prior = _read_unmarked_repair_intent(root_fd, attempt_id)
-        if prior is not None:
-            _require_unclaimed_attempt(product, attempt_id)
-        return prior
-
-
-def _require_unclaimed_attempt(
-    product: PosixLocalWheelProductSessionOwner, attempt_id: str
-) -> None:
-    if (
-        open_coding_product_worker_supervisor_journal(product).status(attempt_id)
-        is not None
-    ):
-        raise CodingWorkerPayloadMaterializationError(
-            "coding_worker_payload_attempt_claimed"
+        return cast(
+            "CodingWorkerUnmarkedPayloadDebtReviewV1 | None",
+            _recovery.read_unmarked_intent(
+                _STORAGE,
+                root_fd,
+                attempt_id=attempt_id,
+                supervisor=lambda: open_coding_product_worker_supervisor_journal(
+                    product
+                ),
+            ),
         )
 
 
@@ -605,19 +580,17 @@ def reopen_coding_product_worker_empty_payload_repair(
     """Read a durable repair result only after its exact stage disappeared."""
 
     with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        plan = _read_empty_repair_intent(root_fd, attempt_id)
-        if plan is None:
-            return None
-        if _stage_exists(root_fd, attempt_id):
-            return None
-        if (
-            open_coding_product_worker_supervisor_journal(product).status(attempt_id)
-            is not None
-        ):
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_attempt_claimed"
-            )
-        return plan
+        return cast(
+            "CodingWorkerEmptyPayloadDebtPlanV1 | None",
+            _recovery.reopen_empty(
+                _STORAGE,
+                root_fd,
+                attempt_id=attempt_id,
+                supervisor=lambda: open_coding_product_worker_supervisor_journal(
+                    product
+                ),
+            ),
+        )
 
 
 def list_coding_product_worker_payload_debts(
@@ -630,23 +603,10 @@ def list_coding_product_worker_payload_debts(
     """
 
     with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        try:
-            names = tuple(os.listdir(root_fd))
-        except OSError as exc:
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_debt_unverified"
-            ) from exc
-        plans: list[CodingWorkerPayloadDebtPlanV1] = []
-        for name in sorted(names):
-            if not name.startswith("worker-payload-"):
-                continue
-            attempt_id = name.removeprefix("worker-payload-")
-            if _ATTEMPT.fullmatch(attempt_id) is None:
-                raise CodingWorkerPayloadMaterializationError(
-                    "coding_worker_payload_debt_unverified"
-                )
-            plans.append(_verify_debt(root_fd, attempt_id))
-        return tuple(plans)
+        return cast(
+            "tuple[CodingWorkerPayloadDebtPlanV1, ...]",
+            _recovery.list_complete(_STORAGE, root_fd),
+        )
 
 
 def repair_coding_product_worker_payload_debt(
@@ -662,57 +622,17 @@ def repair_coding_product_worker_payload_debt(
         _offline(product, require_write=True),
         _STORAGE.open_root(lambda: product.state_root) as root_fd,
     ):
-        prior = _read_complete_repair_intent(root_fd, expected_plan.attempt_id)
-        if prior is not None and prior[0] != expected_plan:
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        if prior is None:
-            current = _verify_debt(root_fd, expected_plan.attempt_id)
-            if current != expected_plan:
-                raise CodingWorkerPayloadMaterializationError(
-                    "coding_worker_payload_debt_plan_stale"
-                )
-        supervisor_fingerprint = _settled_supervisor_fingerprint(
-            product, expected_plan.attempt_id
+        return cast(
+            "CodingWorkerPayloadDebtPlanV1",
+            _recovery.repair_complete(
+                _STORAGE,
+                root_fd,
+                expected_plan=expected_plan,
+                supervisor=lambda: open_coding_product_worker_supervisor_journal(
+                    product
+                ),
+            ),
         )
-        if prior is not None and prior[1] != supervisor_fingerprint:
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        if prior is not None and not _stage_exists(root_fd, expected_plan.attempt_id):
-            _settle_complete_repair_intent(
-                root_fd, expected_plan, supervisor_fingerprint
-            )
-            return expected_plan
-        stage_name = f"worker-payload-{expected_plan.attempt_id}"
-        stage_fd = os.open(stage_name, _DIR_FLAGS, dir_fd=root_fd)
-        try:
-            _verify_complete_repair_remainder(
-                root_fd, stage_fd, stage_name, expected_plan
-            )
-            _publish_complete_repair_intent(
-                root_fd, expected_plan, supervisor_fingerprint
-            )
-            if (
-                _settled_supervisor_fingerprint(product, expected_plan.attempt_id)
-                != supervisor_fingerprint
-            ):
-                raise CodingWorkerPayloadMaterializationError(
-                    "coding_worker_payload_debt_plan_stale"
-                )
-            _verify_complete_repair_remainder(
-                root_fd, stage_fd, stage_name, expected_plan
-            )
-            if prior is None:
-                _remove_verified_stage(root_fd, stage_fd, stage_name, expected_plan)
-            else:
-                _remove_partial_stage(
-                    root_fd, stage_fd, stage_name, expected_plan.entrypoint
-                )
-        finally:
-            os.close(stage_fd)
-        return expected_plan
 
 
 def reopen_coding_product_worker_payload_repair(
@@ -721,17 +641,17 @@ def reopen_coding_product_worker_payload_repair(
     """Read one completed, exact payload repair without accepting stage debt."""
 
     with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        prior = _read_complete_repair_intent(root_fd, attempt_id)
-        if prior is None or _stage_exists(root_fd, attempt_id):
-            return None
-        plan, recorded_supervisor = prior
-        if _settled_supervisor_fingerprint(product, attempt_id) != (
-            recorded_supervisor
-        ):
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        return plan
+        return cast(
+            "CodingWorkerPayloadDebtPlanV1 | None",
+            _recovery.reopen_complete(
+                _STORAGE,
+                root_fd,
+                attempt_id=attempt_id,
+                supervisor=lambda: open_coding_product_worker_supervisor_journal(
+                    product
+                ),
+            ),
+        )
 
 
 def read_coding_product_worker_payload_repair_intent(
@@ -740,28 +660,17 @@ def read_coding_product_worker_payload_repair_intent(
     """Read a durable settled cleanup intent while its stage may remain."""
 
     with _offline(product), _STORAGE.open_root(lambda: product.state_root) as root_fd:
-        prior = _read_complete_repair_intent(root_fd, attempt_id)
-        if prior is None:
-            return None
-        plan, recorded_supervisor = prior
-        if _settled_supervisor_fingerprint(product, attempt_id) != (
-            recorded_supervisor
-        ):
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        return plan
-
-
-def _settled_supervisor_fingerprint(
-    product: PosixLocalWheelProductSessionOwner, attempt_id: str
-) -> str:
-    record = open_coding_product_worker_supervisor_journal(product).status(attempt_id)
-    if record is None or not record.process_settled:
-        raise CodingWorkerPayloadMaterializationError(
-            "coding_worker_payload_process_unsettled"
+        return cast(
+            "CodingWorkerPayloadDebtPlanV1 | None",
+            _recovery.read_complete_intent(
+                _STORAGE,
+                root_fd,
+                attempt_id=attempt_id,
+                supervisor=lambda: open_coding_product_worker_supervisor_journal(
+                    product
+                ),
+            ),
         )
-    return sha256(canonical_json_bytes(record.to_dict())).hexdigest()
 
 
 def repair_coding_product_worker_empty_payload_debt(
@@ -777,55 +686,17 @@ def repair_coding_product_worker_empty_payload_debt(
         _offline(product, require_write=True),
         _STORAGE.open_root(lambda: product.state_root) as root_fd,
     ):
-        prior = _read_empty_repair_intent(root_fd, expected_plan.attempt_id)
-        if prior is not None and prior != expected_plan:
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        if prior is not None and not _stage_exists(root_fd, expected_plan.attempt_id):
-            if (
-                open_coding_product_worker_supervisor_journal(product).status(
-                    expected_plan.attempt_id
-                )
-                is not None
-            ):
-                raise CodingWorkerPayloadMaterializationError(
-                    "coding_worker_payload_attempt_claimed"
-                )
-            _settle_empty_repair_intent(root_fd, expected_plan)
-            return expected_plan
-        current = _verify_empty_debt(root_fd, expected_plan.attempt_id)
-        if current != expected_plan:
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        if (
-            open_coding_product_worker_supervisor_journal(product).status(
-                current.attempt_id
-            )
-            is not None
-        ):
-            raise CodingWorkerPayloadMaterializationError(
-                "coding_worker_payload_attempt_claimed"
-            )
-        stage_name = f"worker-payload-{current.attempt_id}"
-        stage_fd = os.open(stage_name, _DIR_FLAGS, dir_fd=root_fd)
-        try:
-            _require_visible_stage(stage_name, root_fd, stage_fd)
-            opened = os.fstat(stage_fd)
-            if (
-                opened.st_dev,
-                opened.st_ino,
-            ) != (current.stage_device, current.stage_inode) or os.listdir(stage_fd):
-                raise CodingWorkerPayloadMaterializationError(
-                    "coding_worker_payload_debt_plan_stale"
-                )
-            _publish_empty_repair_intent(root_fd, current)
-            _require_visible_stage(stage_name, root_fd, stage_fd)
-            _remove_empty_stage(root_fd, stage_name)
-        finally:
-            os.close(stage_fd)
-        return current
+        return cast(
+            "CodingWorkerEmptyPayloadDebtPlanV1",
+            _recovery.repair_empty(
+                _STORAGE,
+                root_fd,
+                expected_plan=expected_plan,
+                supervisor=lambda: open_coding_product_worker_supervisor_journal(
+                    product
+                ),
+            ),
+        )
 
 
 def _empty_repair_fields(

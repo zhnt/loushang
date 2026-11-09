@@ -164,6 +164,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.history._native_approval"
     },
     CODING_ROOT / "package_product_worker_payload.py": {
+        "loushang.harness.worker.payload._recovery",
         'loushang.harness.worker.contracts',
         'loushang.harness.worker.journal',
         'loushang.harness.worker.payload._records',

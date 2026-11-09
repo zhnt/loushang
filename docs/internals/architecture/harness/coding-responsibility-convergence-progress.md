@@ -2,11 +2,33 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P1/A1–A71指定路径、P2/A73审批协调、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P1/A1–A71指定路径及A74三类payload恢复、P2/A73审批协调、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A73审批协调）
+## 当前状态（2026-11-09，A74 Worker payload恢复）
+
+从A73 `039d787ed`接续；三类Linux payload debt的preview/review/list、repair、
+read/reopen和retry完整程序已归原Worker payload组，直接复用Storage、RepairJournal
+与RootedSupervisor。Code保13公开入口的真实DTO/type准入、原Product离线政策与根
+借用scope，不提供扫描/验证/写日志/删除厚回调。Registered不同证据合同仍待处置。
+
+Coding430文件116879行，系统1959源645560行：Code−129、Core351、系统净+222，
+其余1957旧源SHA同；全部薄入口/cast/注解/格式计账，属于职责迁移。距15K仍101879；
+P1–P4和完整Goal仍partial/active，领域化及必要保留成本继续核实。
+
+旧113固定先在旧源全过；迁后同113加原消费者164过（107.02s）。首轮111过/2随机
+head临时名trace失败保留，只修probe逐名归一并从原raw重算两trace hash。真实IO/
+journal/DTO；补充边界16过/1旧依赖事实失败，更新精确模块事实后固定113+原断言114过；
+原49架构及1171消费者断言AST保持，三实际视角有界接受、types/static通过。
+Product准入端口受控；同步CancelledError不外推Task.cancel，close后
+故障不证明close前泄露。当前实现与全成本见[本片交付](key-designs/worker-payload-recovery-convergence.md)。
+
+下一步继续评估prepared-task寿命或剩余启动装配的完整场景，优先原Session lifecycle/
+Construction/Graph复用；不把已共享机制再次计益，不将行数窗口当必要下界。KD003
+未实施，KD011/A33原待用户工作件保持；完整P1–P4继续，不以本片代替全Goal。
+
+## A73历史交付（2026-11-09）
 
 从A72 `2dfe75fee`接续；Definition approved-resolve和Activation到Session inputs
 的完整协调已归原DeclarationHost、ComponentHost及CompositionAssembly。Code保产品
