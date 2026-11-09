@@ -1798,10 +1798,20 @@ def test_continuity_core_and_common_tui_keep_product_boundaries() -> None:
         ),
     )
 
+    # A68 reuses this neutral short-write primitive, not Journal persistence.
+    accepted_payload_io = frozenset(
+        "continuity core: src/loushang/harness/continuity/"
+        f"_payload_staging.py imports {target}"
+        for target in (
+            "loushang.harness.journal._io_loops",
+            "loushang.harness.journal._io_loops.write_all",
+        )
+    )
     offenders = [
         offender
         for boundary in boundaries
         for offender in _find_forbidden_imports(boundary)
+        if offender not in accepted_payload_io
     ]
 
     assert offenders == []

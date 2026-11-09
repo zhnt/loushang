@@ -41,7 +41,9 @@ P1–P4/Goal保持partial/active。A51同类managed候选继续暂缓，没有�
 固定79先在旧源全过（3.12s）；迁后同79加原33消费者共112过（19.08s）。POSIX
 实际RootedIO/文件/FD；Windows receipt/epoch及GC准入端口受控，取消为同步异常，
 close故障在真实关闭之后。三实际视角有界接受；两源mypy及Ruff/format3源通过。
-补充原architecture/Product/GC回归终态与全部来源见[本片交付](key-designs/backup-topology-custody-convergence.md)。
+补充原architecture/Product/GC为173过/1前序边界失败，原起点同节点复现；独立修正
+A68两条精确primitive导入事实后该节点1过（1.92s），生产不变，不把原整批称全绿。
+完整来源与限制见[本片交付](key-designs/backup-topology-custody-convergence.md)。
 
 下一步继续registered恢复的完整history proof/GC revalidation及驱动闭包，不把
 backup这一条依赖关闭当全部恢复完成。剩余P2/P3/P4仍按全量账推进，不重复计已有

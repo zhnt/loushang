@@ -109,8 +109,8 @@ Actual mypy for both production sources, Ruff and format for those sources plus
 the explicit probe passed. Three independent responsibility/reuse, runtime/failure
 and data/compatibility reviewers accepted direction, complete prototype and actual
 code within the recorded evidence limits. The implementation owner accepts this
-bounded slice under the existing Goal; the separate Continuity fact repair and
-whole Goal remain open.
+bounded slice under the existing Goal; the whole Goal remains open. The
+independent follow-up below closes the observed Continuity fact mismatch.
 
 POSIX storage and FD operations are real; epoch, GC and admission are controlled.
 Windows uses the actual receipt object with controlled read/write and epoch
@@ -145,3 +145,24 @@ recovery driver remain separate unfinished programs. P1–P4 and the whole Goal
 remain active/partial; KD003 is unimplemented, KD011/A33 remain user-pending.
 Rollback restores both production sources as one change; no data rewrite is
 needed because old wire, path and revision contracts are unchanged.
+
+## Separate A68 Dependency Fact Correction
+
+After the A76 migration commit `afcd4dbfb`, the original failing Continuity node
+was corrected separately. A68 already accepted direct reuse of write_all, whose
+short-write loop has no Journal state, storage or authority. Copying that loop or
+creating another owner would undermine the accepted reuse.
+
+The existing node exempts only the exact payload-staging source and the two
+exact import facts for journal._io_loops and its write_all symbol. All forbidden
+prefixes, scan roots, scanner code and original assertions remain unchanged;
+other Journal imports and other sources are still rejected. It does not use an
+entire-file allowed_paths exemption, add a check or broaden a PR gate. This is
+the permitted narrowing of an existing check, not new gate coverage.
+
+The exact node now passed **1 test (1.92s)**. The earlier full selection remains
+**173 passed, 1 failed**; it was not rerun or rewritten as all green. A static
+inverse removal of only the new local set and its single exclusion makes the
+entire original test module AST identical. Production source hashes, physical
+counts and all Product behavior remain unchanged. XML, static proof and reviewer
+addenda are retained alongside the original failing evidence.
