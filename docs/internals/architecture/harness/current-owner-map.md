@@ -208,6 +208,16 @@ bindings. Install temporary cleanup and repair debt preservation remain separate
 [Bounded custody evidence](key-designs/linux-product-native-release-custody-convergence.md)
 records real inert ZIP/FD observations; this grants no execution or replacement policy.
 
+Plugin Management's private `_installation_root_windows` owns complete Windows
+Installation root lineage: bind/inspect, restore intent/publication, original
+deletion-history replay, generation fencing and receipt bytes/write-or-match.
+It directly uses the existing native receipt IO, directory primitives and original
+concrete deletion transaction; no Code IO callback or second authority is added.
+Coding retains its actual Generation DTO, key/path/epoch/runtime admission and
+thin consumer entries. The existing restore transaction keeps its hook positions.
+[Bounded lineage evidence](key-designs/windows-installation-root-lineage-convergence.md)
+does not establish native Windows ACL or whole-Goal completion.
+
 The bounded [Product composition input preparation](plugin/composition-route-inputs.md)
 keeps owner grouping, structural supplied-binding checks, ordering and selection
 seed construction in the existing private Session assembly. Coding retains its

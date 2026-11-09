@@ -18,6 +18,7 @@ from loushang.coding.package_private_data_deletion_journal import (
 from loushang.coding.package_private_data_deletion_preview import (
     CodingArchPrivateDataTargetSnapshotV1,
 )
+from loushang.harness.plugin_management import _installation_root_windows as lineage
 from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionConfirmationV1,
     PluginPrivateDataDeletionPlanV1,
@@ -77,20 +78,24 @@ def test_windows_arch_root_generations_follow_completed_deletions(
     records: dict[Path, bytes] = {}
     events: tuple[CodingArchPrivateDataDeletionEventV1, ...] = ()
     monkeypatch.setattr(
-        root_module, "read_windows_private_receipt", lambda path, **_kwargs: records.get(path)
+        lineage.WindowsPrivateReceiptIO,
+        "read_private_receipt",
+        lambda _io, path, **_kwargs: records.get(path),
     )
     monkeypatch.setattr(
-        root_module,
+        lineage,
         "inspect_windows_product_private_directory_identity",
         lambda _path: parent_identity,
     )
     monkeypatch.setattr(
-        root_module, "_windows_arch_root_deletion_events", lambda _path: events
+        lineage._WindowsInstallationRootLineage,
+        "_deletion_events",
+        lambda _owner, _path: events,
     )
     monkeypatch.setattr(
-        root_module,
-        "_require_no_future_windows_root_generations",
-        lambda _state, _root, _number: None,
+        lineage._WindowsInstallationRootLineage,
+        "_require_no_future_generations",
+        lambda _owner, _state, _root, _number: None,
     )
     first_intent, first_receipt = root_module._windows_arch_generation_paths(
         root, state_root, 1
@@ -195,21 +200,27 @@ def test_windows_arch_root_rebinds_only_after_completed_deletion(
         root_module, "coding_arch_installation_private_data_root", lambda _layout, _key: root
     )
     monkeypatch.setattr(
-        root_module, "_windows_arch_root_deletion_events", lambda _path: (deletion,)
+        lineage._WindowsInstallationRootLineage,
+        "_deletion_events",
+        lambda _owner, _path: (deletion,),
     )
     monkeypatch.setattr(
-        root_module,
-        "_require_no_future_windows_root_generations",
-        lambda _state, _root, _number: None,
+        lineage._WindowsInstallationRootLineage,
+        "_require_no_future_generations",
+        lambda _owner, _state, _root, _number: None,
     )
     monkeypatch.setattr(
-        root_module, "read_windows_private_receipt", lambda path, **_kwargs: records.get(path)
+        lineage.WindowsPrivateReceiptIO,
+        "read_private_receipt",
+        lambda _io, path, **_kwargs: records.get(path),
     )
     monkeypatch.setattr(
-        root_module, "write_windows_private_receipt", lambda path, payload: records.setdefault(path, payload)
+        lineage.WindowsPrivateReceiptIO,
+        "write_private_receipt",
+        lambda _io, path, payload, **_kwargs: records.setdefault(path, payload),
     )
     monkeypatch.setattr(
-        root_module,
+        lineage,
         "prepare_windows_product_private_directory_chain",
         lambda _package_root, *_parts: root.mkdir(parents=True, exist_ok=True),
     )
@@ -223,7 +234,7 @@ def test_windows_arch_root_rebinds_only_after_completed_deletion(
         return metadata.st_dev, metadata.st_ino
 
     monkeypatch.setattr(
-        root_module, "inspect_windows_product_private_directory_identity", identity
+        lineage, "inspect_windows_product_private_directory_identity", identity
     )
     layout = SimpleNamespace(package_root=package_root)
     rebound = root_module._bind_windows_arch_installation_root(
@@ -282,15 +293,19 @@ def test_windows_restore_publishes_only_the_retired_successor(
         lambda _layout: SimpleNamespace(control_root=tmp_path),
     )
     monkeypatch.setattr(
-        root_module, "_windows_arch_root_deletion_events", lambda _path: (deletion,)
+        lineage._WindowsInstallationRootLineage,
+        "_deletion_events",
+        lambda _owner, _path: (deletion,),
     )
     monkeypatch.setattr(
-        root_module,
-        "_require_no_future_windows_root_generations",
-        lambda _state, _root, _number: None,
+        lineage._WindowsInstallationRootLineage,
+        "_require_no_future_generations",
+        lambda _owner, _state, _root, _number: None,
     )
     monkeypatch.setattr(
-        root_module, "read_windows_private_receipt", lambda path, **_kwargs: records.get(path)
+        lineage.WindowsPrivateReceiptIO,
+        "read_private_receipt",
+        lambda _io, path, **_kwargs: records.get(path),
     )
 
     def write_receipt(path: Path, payload: bytes) -> None:
@@ -298,7 +313,11 @@ def test_windows_restore_publishes_only_the_retired_successor(
             raise FileExistsError(path)
         records[path] = payload
 
-    monkeypatch.setattr(root_module, "write_windows_private_receipt", write_receipt)
+    monkeypatch.setattr(
+        lineage.WindowsPrivateReceiptIO,
+        "write_private_receipt",
+        lambda _io, path, payload, **_kwargs: write_receipt(path, payload),
+    )
 
     def identity(path: Path) -> tuple[int, int]:
         if path == package_root:
@@ -309,7 +328,7 @@ def test_windows_restore_publishes_only_the_retired_successor(
         return metadata.st_dev, metadata.st_ino
 
     monkeypatch.setattr(
-        root_module, "inspect_windows_product_private_directory_identity", identity
+        lineage, "inspect_windows_product_private_directory_identity", identity
     )
     receipt_id = deletion.receipt.receipt_id
     with pytest.raises(ValueError, match="generation changed"):

@@ -25,7 +25,6 @@ from unittest.mock import patch
 
 import pytest
 
-import loushang.coding.package_installation_private_data as arch_private_data_module
 import loushang.coding.package_legacy_windows_receipt as windows_receipt_module
 import loushang.coding.package_private_data_windows_backup as windows_backup_module
 import loushang.coding.package_private_data_windows_deletion_owner as windows_deletion_module
@@ -334,6 +333,9 @@ from loushang.harness.plugin_management.records import (
     PluginPackageRevisionRefV1,
 )
 from loushang.harness.plugin_management.service import PluginManagementService
+from loushang.harness.resources.packages._private_receipts_windows import (
+    WindowsPrivateReceiptIO,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
 )
@@ -1216,10 +1218,16 @@ def test_windows_arch_private_data_uses_product_selected_native_acl(
         )
         try:
             runtime = binding.activate()
-            write_receipt = arch_private_data_module.write_windows_private_receipt
+            write_receipt = WindowsPrivateReceiptIO.write_private_receipt
             interrupted = False
 
-            def interrupt_first_root_receipt(path: Path, payload: bytes) -> None:
+            def interrupt_first_root_receipt(
+                receipt_io: WindowsPrivateReceiptIO,
+                path: Path,
+                payload: bytes,
+                *,
+                maximum_bytes: int,
+            ) -> None:
                 nonlocal interrupted
                 if (
                     path.name.startswith("arch-private-root-")
@@ -1228,11 +1236,11 @@ def test_windows_arch_private_data_uses_product_selected_native_acl(
                 ):
                     interrupted = True
                     raise RuntimeError("injected Arch root receipt interruption")
-                write_receipt(path, payload)
+                write_receipt(receipt_io, path, payload, maximum_bytes=maximum_bytes)
 
             with patch.object(
-                arch_private_data_module,
-                "write_windows_private_receipt",
+                WindowsPrivateReceiptIO,
+                "write_private_receipt",
                 interrupt_first_root_receipt,
             ):
                 with pytest.raises(

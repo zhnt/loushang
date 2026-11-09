@@ -1,6 +1,6 @@
 """Fixed Windows restore receipts in the existing Plugin Management owner.
 
-Product keeps admission, immutable record identity and root-generation policy.
+Product keeps admission, immutable record identity and exact Installation path policy.
 Native receipt/tree/ACL operations reuse their original owners; no new store.
 """
 

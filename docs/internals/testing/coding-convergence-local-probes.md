@@ -141,3 +141,15 @@ production replacement. There is no capture path in the durable probe, no ELF
 execution and no expansion of default discovery or PR gates.
 
 Explicit local path: [probe_linux_product_native_release_compatibility.py](../../../tests/coding/probe_linux_product_native_release_compatibility.py).
+
+
+The Windows Installation root-lineage probe compares86 immutable original
+observations: full values/error graphs/tree plus exact ordered trace count/SHA.
+Raw source-guarded observations and canonical content hashes remain in the
+external archive. It runs the real receipt IO and deletion scan/decode/sequence
+programs over real disk files; native ACL, directory identity and admitted paths
+are emulated. It covers staged debt, predecessor/name fencing, restore publication,
+write-or-match retries and getter/enter/constructor/events/close/exit failures.
+No current capture path, native Windows proof or default gate expansion is claimed.
+
+Explicit local path: [probe_windows_installation_root_lineage_compatibility.py](../../../tests/coding/probe_windows_installation_root_lineage_compatibility.py).

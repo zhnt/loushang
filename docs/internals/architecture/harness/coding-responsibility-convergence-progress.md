@@ -2,11 +2,38 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P1/A1–A70指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P1/A1–A71指定路径、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A70）
+## 当前状态（2026-11-09，A71）
+
+A71 从`d86482c26`继续完整 P1–P4。Windows Installation root lineage 的完整
+bind/inspect/restore intent/receipt publication、删除前驱重放、代际围栏、codec
+及write-or-match归原Harness Plugin Management。直接复用原receipt IO、目录
+组件及实际DeletionTransaction.events/close；Code不提供历史/读写厚IO回调。
+Code保七字段真实DTO、key/path/epoch/runtime准入及九条薄入口，原restore事务
+操作体不变。整lmux命令迁移因底层已复用且交互混合明确拒绝。
+
+Code674→328（−346）、Core592、原restore857不增行，系统+246；当前Coding
+430文件117115行、系统1958源645173行，其余1955旧源SHA相同，距15K仍102115。
+这是职责迁移，含全部协议/绑定/薄入口/格式成本，不称系统净精简。
+
+86固定旧观察在旧生产先86过；迁后同86加原4 lineage共90过（3.03s）。真实
+receipt文件/FD/原deletion解码与sequence，native ACL/identity端口受控；fixture
+保完整结果/异常/tree及全有序trace的条数/SHA，原raw/source guards留存树外，
+expected不来自替代实现。旧30原消费者和capture90终态分别留存，不累加重叠。
+
+更广原消费者117过、42原Windows skip、7原selector排除（45.55s）。两原测试
+24/959 assert及raises AST、节点与参数/选择器不变，仅实际hook归新owner。
+首mypy发现target缺只读root_path_digest；最小Protocol补足后2源通过，无Any/
+ignore或运行检查。三个实际代码视角有界接受，原stage/重试/异常差异保持；Ruff/格式、文档9项、
+依赖freshness、plan和diff检查通过。
+完整来源、成本及限制见[本片交付](key-designs/windows-installation-root-lineage-convergence.md)。
+完整Goal未完成，继续重核剩余P1–P4与必要领域保留成本；KD003、KD011/A33
+原未实施/待确认边界不自动采用。
+
+## A70 历史状态（2026-11-09）
 
 A70 从`12f67b71a`继续完整 P1–P4。Linux H6 Product native release 的完整
 review/install/repair、receipt/source 校验及当前 launch material 读取归原
