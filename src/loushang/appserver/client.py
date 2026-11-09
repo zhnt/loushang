@@ -1,4 +1,4 @@
-"""Transport-neutral client contract for the G11 hosted application."""
+"""Shared service-operation ports with legacy client-type compatibility."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ class AppConnectionClosedError(AppServiceError):
 
 
 class AppClientV1(Protocol):
-    """Semantic client API shared by in-process and future transports."""
+    """Legacy type identity for the canonical AppServicePortV1 contract."""
 
     async def create_mux(self, request: MuxCreateV1) -> MuxSpaceV1: ...
 
@@ -90,4 +90,7 @@ class SessionDiscoveryClientV1(Protocol):
     async def list_sessions(self, request: SessionListV1) -> SessionListResultV1: ...
 
 
-__all__ = ["AppClientV1", "AppConnectionClosedError", "SessionDiscoveryClientV1"]
+AppServicePortV1 = AppClientV1
+SessionDiscoveryPortV1 = SessionDiscoveryClientV1
+
+__all__ = ["AppClientV1", "AppConnectionClosedError", "SessionDiscoveryClientV1", "AppServicePortV1", "SessionDiscoveryPortV1"]

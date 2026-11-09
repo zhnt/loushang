@@ -28,8 +28,8 @@ from ._local_peer import (
     _spawn,
 )
 from ._local_record_values import _hex
-from .client import AppClientV1, SessionDiscoveryClientV1
-from .execution.client import ExecutionClientV1
+from .client import AppServicePortV1, SessionDiscoveryPortV1
+from .execution.client import ExecutionPortV1
 from .framing import AppConnectionClosedError, AsyncioStreamTransportV1, require_timeout
 from .local_auth import authenticate_local_client
 from .local_record import (
@@ -38,11 +38,11 @@ from .local_record import (
     LocalEndpointReservationV1,
     LocalRecordScopeV1,
 )
-from .managed_mux import ManagedMuxCreationClientV1
-from .managed_mux_close import ManagedMuxCloseClientV1
+from .managed_mux import ManagedMuxCreationPortV1
+from .managed_mux_close import ManagedMuxClosePortV1
 from .protocol import AppErrorCodeV1, AppServiceError
 from .remote_client import RemoteAppClientV1
-from .resume_model import ResumeInputLookupClientV1
+from .resume_model import ResumeInputLookupPortV1
 
 MAX_LOCAL_CONNECTIONS = 8
 MAX_LOCAL_APP_CONNECTIONS = 7  # One authenticated slot is reserved for stop.
@@ -383,37 +383,37 @@ class LocalAppClientConnectionV1:
         self._stop_requested = False
 
     @property
-    def client(self) -> AppClientV1:
+    def client(self) -> AppServicePortV1:
         if not self._ready or self._closed or self._client is None:
             raise AppConnectionClosedError()
         return self._client
 
     @property
-    def discovery_client(self) -> SessionDiscoveryClientV1 | None:
+    def discovery_client(self) -> SessionDiscoveryPortV1 | None:
         if not self._ready or self._closed or self._client is None:
             return None
         return self._client.discovery_client
 
     @property
-    def execution_client(self) -> ExecutionClientV1 | None:
+    def execution_client(self) -> ExecutionPortV1 | None:
         if not self._ready or self._closed or self._client is None:
             return None
         return self._client.execution_client
 
     @property
-    def resume_input_lookup_client(self) -> ResumeInputLookupClientV1 | None:
+    def resume_input_lookup_client(self) -> ResumeInputLookupPortV1 | None:
         if not self._ready or self._closed or self._client is None:
             return None
         return self._client.resume_input_lookup_client
 
     @property
-    def managed_mux_client(self) -> ManagedMuxCreationClientV1 | None:
+    def managed_mux_client(self) -> ManagedMuxCreationPortV1 | None:
         if not self._ready or self._closed or self._client is None:
             return None
         return self._client.managed_mux_client
 
     @property
-    def managed_mux_close_client(self) -> ManagedMuxCloseClientV1 | None:
+    def managed_mux_close_client(self) -> ManagedMuxClosePortV1 | None:
         if not self._ready or self._closed or self._client is None:
             return None
         return self._client.managed_mux_close_client

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from loushang.appserver.client import SessionDiscoveryClientV1
+from loushang.appserver.client import SessionDiscoveryPortV1
 from loushang.appserver.protocol import (
     AppServiceError,
     SessionAvailabilityV1,
@@ -33,7 +33,7 @@ class SessionPickerV1:
 
     def __init__(
         self,
-        client: SessionDiscoveryClientV1 | None,
+        client: SessionDiscoveryPortV1 | None,
         *,
         actions: ShellActions,
         product_id: str,

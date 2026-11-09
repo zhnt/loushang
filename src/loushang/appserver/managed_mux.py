@@ -58,3 +58,5 @@ class ManagedMuxCreationClientV1(Protocol):
     """Optional capability; does not extend the legacy AppClient algebra."""
 
     async def create_managed_mux(self, request: ManagedMuxCreateV1) -> ManagedMuxCreatedV1: ...
+
+ManagedMuxCreationPortV1 = ManagedMuxCreationClientV1

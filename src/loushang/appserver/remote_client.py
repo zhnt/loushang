@@ -8,7 +8,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Literal, TypeVar, cast
 
-from .client import SessionDiscoveryClientV1
+from .client import SessionDiscoveryPortV1
 from .execution.codec import (
     EXECUTION_PROTOCOL_VERSION,
     decode_execution_hello,
@@ -30,10 +30,10 @@ from .framing import (
 from .managed_mux import (
     ManagedMuxCreatedV1,
     ManagedMuxCreateV1,
-    ManagedMuxCreationClientV1,
+    ManagedMuxCreationPortV1,
 )
 from .managed_mux_close import (
-    ManagedMuxCloseClientV1,
+    ManagedMuxClosePortV1,
     ManagedMuxCloseStateV1,
     ManagedMuxCloseV1,
 )
@@ -99,7 +99,7 @@ from .protocol.stdio_profile import (
     MAX_CONTROL_REQUESTS,
     MAX_ORDINARY_REQUESTS,
 )
-from .resume_model import ResumeInputLookupClientV1
+from .resume_model import ResumeInputLookupPortV1
 
 _Result = TypeVar("_Result", bound=AppResultPayloadV1)
 _Family = Literal["app", "execution", "managed_mux", "managed_mux_close"]
@@ -144,14 +144,14 @@ class RemoteAppClientV1:
         return self._execution_client if self._ready and not self._closed else None
 
     @property
-    def resume_input_lookup_client(self) -> ResumeInputLookupClientV1 | None:
+    def resume_input_lookup_client(self) -> ResumeInputLookupPortV1 | None:
         """Borrow only after this exact optional read profile is negotiated."""
 
         client = self.execution_client
         return client if client is not None and client.resume_input_lookup_available else None
 
     @property
-    def managed_mux_client(self) -> ManagedMuxCreationClientV1 | None:
+    def managed_mux_client(self) -> ManagedMuxCreationPortV1 | None:
         if self._ready and not self._closed and supports_managed_mux(self._profile):
             return self
         return None
@@ -168,7 +168,7 @@ class RemoteAppClientV1:
         ))
 
     @property
-    def managed_mux_close_client(self) -> ManagedMuxCloseClientV1 | None:
+    def managed_mux_close_client(self) -> ManagedMuxClosePortV1 | None:
         if self._ready and not self._closed and supports_managed_mux_close(self._profile):
             return self
         return None
@@ -191,7 +191,7 @@ class RemoteAppClientV1:
         ))
 
     @property
-    def discovery_client(self) -> SessionDiscoveryClientV1 | None:
+    def discovery_client(self) -> SessionDiscoveryPortV1 | None:
         """Borrow only the explicitly selected, ready discovery capability."""
         if self._ready and not self._closed and supports_session_discovery(self._profile):
             return self

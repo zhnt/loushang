@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from loushang.appserver.client import AppClientV1
-from loushang.appserver.execution.client import ExecutionClientV1
+from loushang.appserver.client import AppServicePortV1
+from loushang.appserver.execution.client import ExecutionPortV1
 from loushang.appserver.protocol import MuxSelectorV1
 
 from .controller import HostedMuxControllerV1
 
 
 async def open_hosted_mux_profile(
-    client: AppClientV1,
+    client: AppServicePortV1,
     *,
     selector: MuxSelectorV1,
     mailbox_capacity: int = 256,
-    execution_client: ExecutionClientV1 | None = None,
+    execution_client: ExecutionPortV1 | None = None,
 ) -> HostedMuxControllerV1:
     """Explicitly construct and attach the hosted profile; never auto-discovered."""
 

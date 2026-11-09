@@ -35,7 +35,7 @@ from .ports import HostedSessionPortV1
 from .resume_ports import ResumeInputLookupQueryV1, ResumeInputLookupResultV1
 
 if TYPE_CHECKING:
-    from .client_scope import AppClientScopeV1
+    from .client_scope import ScopedAppServicePortV1
     from .goal import HostedGoalPortV1
     from .method_work import HostedMethodWorkPortV1
     from .runtime import _SessionOwner
@@ -87,7 +87,7 @@ class ScopedExecutionClientV1:
     the client scope discards delivery, while the registry keeps execution.
     """
 
-    def __init__(self, scope: AppClientScopeV1, registry: ExecutionRegistryV1) -> None:
+    def __init__(self, scope: ScopedAppServicePortV1, registry: ExecutionRegistryV1) -> None:
         self._scope, self._registry = scope, registry
         self._streams: dict[tuple[str, str], _Stream] = {}
 

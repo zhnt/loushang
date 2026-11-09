@@ -48,6 +48,7 @@ Standalone drafts:
 - [AppHost A0 Component Discovery (completed validation)](apphost-component-discovery-a0.md)
 - [AppHost A0 Contract Baseline (promoted to canonical AppHost scope)](apphost-contract-baseline-a0.md)
 - [Hosted Product Runtime V1 Delivery Plan](hosted-product-runtime-v1-plan.md)
+- [App Service Port Rename Plan (R2)](appclient-contract-rename-plan.md)
 - [Harnesstui Named Mux And Daemon Attach](harnesstui-named-mux-daemon-attach-design.md)
 - [lmux：命名多 Tab 与自动后台服务设计](lmux-managed-service-design.md)
 - [Loushang Runtime Architecture](loushang-runtime-architecture.md)
