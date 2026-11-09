@@ -15,6 +15,7 @@ export interface TrayHost {
   busy: boolean;
   manageable: boolean;
   canStop?: boolean;
+  canEnable?: boolean;
   webUrl?: string;
 }
 export interface TrayModel { userName: string; language: string; hosts: TrayHost[] }
@@ -23,25 +24,27 @@ const dots: Record<TrayConnection, string> = { connected: "🟢", connecting: "�
 export function availableTrayAction(host: TrayHost, action: TrayAction): boolean {
   if (action === "info") return true;
   if (host.busy) return false;
-  if (action === "enable") return !host.selected;
+  if (action === "enable") return !host.selected && host.canEnable !== false;
+  // Reconnect is also the recovery path when status/identity is unavailable.
+  if (action === "reconnect") return true;
   if (!host.manageable) return false;
-  if (action === "reconnect") return host.service === "running";
   if (action === "start") return host.service === "stopped";
   return host.service === "running" && host.canStop !== false;
 }
 export function trayProjection(model: TrayModel, revision: number) {
   const text = labels[model.language.startsWith("zh") ? "zh" : "en"];
+  const separator = model.language.startsWith("zh") ? "：" : ": ";
   const current = model.hosts.find((host) => host.selected);
   return {
     revision, userName: model.userName || text.user,
-    currentLabel: current ? `${text.current}：${dots[current.connection]} ${current.name} · ${text[current.connection]}` : `⚪ ${text.none}`,
+    currentLabel: current ? `${text.current}${separator}${dots[current.connection]} ${current.name} · ${text[current.connection]}` : `⚪ ${text.none}`,
     showLabel: text.showLabel, webLabel: text.webLabel, manageLabel: text.manageLabel,
     quitLabel: text.quitLabel, enableLabel: text.enableLabel, infoLabel: text.infoLabel,
     reconnectLabel: text.reconnectLabel, startLabel: text.startLabel, stopLabel: text.stopLabel,
     webUrl: current?.webUrl ?? null,
     hosts: model.hosts.map((host) => ({
       id: host.id, label: `${dots[host.connection]} ${host.name}${host.selected ? " ✓" : ""}`,
-      serviceLabel: `${text.service}：${text[host.service]}`,
+      serviceLabel: `${text.service}${separator}${text[host.service]}`,
       enable: availableTrayAction(host, "enable"), reconnect: availableTrayAction(host, "reconnect"),
       start: availableTrayAction(host, "start"), stop: availableTrayAction(host, "stop"),
     })),

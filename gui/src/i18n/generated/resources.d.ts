@@ -322,6 +322,7 @@ export default interface Resources {
       "stopping": "Stopping…",
       "unknown": "Unknown",
       "user": "User",
+      "webAddress": "Web address",
       "webError": "Unable to open the Web page. Check your default browser.",
       "webLabel": "Open Web"
     },

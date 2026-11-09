@@ -116,6 +116,7 @@
     "stopping": "Stopping…",
     "user": "User",
     "localHost": "Local Host",
-    "webError": "Unable to open the Web page. Check your default browser."
+    "webError": "Unable to open the Web page. Check your default browser.",
+    "webAddress": "Web address"
   }
 }

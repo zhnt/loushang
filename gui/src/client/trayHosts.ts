@@ -76,7 +76,7 @@ export function useTrayHosts(options: {
         const value = await listTrayHosts();
         if (stopped) return;
         setDirectory(value);
-        await Promise.all(value.connections.filter((entry) => !entry.selected).map(probe));
+        await Promise.all(value.connections.filter((entry) => entry.id !== latest.current.selectedId).map(probe));
       } catch {
         // A failed refresh does not erase saved entries or invent connection facts.
         if (!stopped) setError("management_unavailable");
@@ -97,7 +97,8 @@ export function useTrayHosts(options: {
     return { id: entry.id, name: entry.kind === "local" ? options.localName : entry.name,
       selected: entry.selected, connection: state.connection, service: service(state.host.state),
       busy: switching || workingIds.includes(entry.id) || (entry.selected && options.busy),
-      manageable: state.supported, canStop: Boolean(state.host.instanceId), webUrl: entry.webUrl ?? undefined };
+      manageable: state.supported, canEnable: !options.busy && !switching,
+      canStop: Boolean(state.host.instanceId), webUrl: entry.webUrl ?? undefined };
   });
 
   async function manage(entry: SavedHost, action: HostAction, state: HostProbe) {
@@ -107,6 +108,11 @@ export function useTrayHosts(options: {
       if (entry.id === latest.current.selectedId) {
         await latest.current.onManage(action, state.workspace, state.host.instanceId);
       } else {
+        if (action === "connect" && (!state.workspace || !state.supported)) {
+          const environment = await atHost<{ workspace: string; supported: boolean }>(entry.id, { operation: "environment" });
+          state = { ...state, workspace: environment.workspace, supported: environment.supported };
+          if (!state.supported) throw new Error("platform_unsupported");
+        }
         const host = await atHost<HostStatus>(entry.id, { operation: "manage", action,
           workspace: state.workspace, ...(state.host.instanceId ? { instanceId: state.host.instanceId } : {}) });
         if (active.current) setProbes((old) => ({ ...old, [entry.id]: { ...state, host,

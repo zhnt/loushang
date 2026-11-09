@@ -61,9 +61,15 @@ struct TrayState {
 
 pub fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
+        // Some X11 window managers leave an iconified GTK window unmapped after
+        // deiconify/present. Remap that existing window before restoring focus.
+        #[cfg(target_os = "linux")]
+        if window.is_minimized().unwrap_or(false) {
+            let _ = window.hide();
+        }
         let result = window
-            .show()
-            .and_then(|()| window.unminimize())
+            .unminimize()
+            .and_then(|()| window.show())
             .and_then(|()| window.set_focus());
         if let Err(error) = result {
             eprintln!("Unable to show main window from system tray: {error}");
@@ -149,7 +155,6 @@ fn apply(app: &AppHandle, projection: TrayProjection) -> tauri::Result<()> {
     Ok(())
 }
 
-#[tauri::command]
 pub async fn sync_tray(app: AppHandle, projection: TrayProjection) -> Result<(), String> {
     if projection.hosts.len() > 128 {
         return Err("too_many_hosts".into());

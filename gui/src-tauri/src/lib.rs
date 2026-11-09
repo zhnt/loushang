@@ -26,6 +26,22 @@ fn quit_app(app: tauri::AppHandle) {
 fn show_tray_window(app: tauri::AppHandle) {
     #[cfg(desktop)]
     tray::show_main_window(&app);
+    #[cfg(not(desktop))]
+    let _ = app;
+}
+
+#[tauri::command]
+async fn sync_tray(app: tauri::AppHandle, projection: serde_json::Value) -> Result<(), String> {
+    #[cfg(desktop)]
+    {
+        let projection = serde_json::from_value(projection).map_err(|error| error.to_string())?;
+        tray::sync_tray(app, projection).await
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, projection);
+        Ok(())
+    }
 }
 
 #[cfg(feature = "fixture-bridge")]
@@ -64,7 +80,7 @@ pub fn run() {
     let builder = builder.manage(live_bridge::LiveLaunchState::from_process());
     #[cfg(feature = "fixture-bridge")]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        tray::sync_tray,
+        sync_tray,
         quit_app,
         show_tray_window,
         fixture_bridge_handshake,
@@ -83,7 +99,7 @@ pub fn run() {
     ]);
     #[cfg(not(feature = "fixture-bridge"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        tray::sync_tray,
+        sync_tray,
         quit_app,
         show_tray_window,
         local_host::local_host_environment,

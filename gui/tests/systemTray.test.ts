@@ -9,7 +9,7 @@ describe("system tray projection", () => {
     expect(view.userName).toBe("Chester");
     expect(view.currentLabel).toContain("🔴 Local · Disconnected");
     expect(view.hosts[0].label).toContain("✓");
-    expect(view.hosts[0].serviceLabel).toBe("Service：Running");
+    expect(view.hosts[0].serviceLabel).toBe("Service: Running");
     expect(view.hosts[1].label).toBe("🟢 Other");
     expect(view.hosts[1].enable).toBe(true);
     expect(view.hosts[0].enable).toBe(false);
@@ -30,6 +30,8 @@ describe("system tray projection", () => {
     expect(availableTrayAction({ ...local, service: "unknown" }, "start")).toBe(false);
     expect(availableTrayAction({ ...local, manageable: false }, "stop")).toBe(false);
     expect(availableTrayAction({ ...local, busy: true }, "info")).toBe(true);
+    expect(availableTrayAction({ ...local, selected: false, canEnable: false }, "enable")).toBe(false);
+    expect(availableTrayAction({ ...local, service: "unknown", manageable: false }, "reconnect")).toBe(true);
     expect(availableTrayAction({ ...local, service: "stopped" }, "start")).toBe(true);
     expect(trayProjection({ userName: "", language: "en", hosts: [] }, 1).currentLabel).toContain("No Host selected");
   });

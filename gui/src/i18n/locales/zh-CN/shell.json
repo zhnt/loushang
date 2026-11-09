@@ -116,6 +116,7 @@
     "stopping": "停止中…",
     "user": "用户",
     "localHost": "本机",
-    "webError": "无法打开 Web 页面，请检查系统默认浏览器。"
+    "webError": "无法打开 Web 页面，请检查系统默认浏览器。",
+    "webAddress": "Web 地址"
   }
 }

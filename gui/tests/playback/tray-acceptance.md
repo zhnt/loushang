@@ -23,10 +23,15 @@ removed the test window from the window-manager client list while the tray
 remained registered. Show window restored the same window. Open Web invoked
 an isolated system URL handler with the configured HTTP address. Tray Quit
 ended the test process with status 0. No managed execution Host was started.
+Minimize kept the window in the taskbar; Show window restored it from the
+iconified state. The observed X11 environment required remapping the existing
+GTK window when restoring from minimization; that fallback is Linux-only.
 
 This check exposed AppIndicator retaining a submenu's previous title after
 `set_text`; the implementation replaces the Host child submenu while retaining
 the root menu. Windows and macOS native interactions remain unverified here.
+The corrected English submenu title and all window actions passed the repeat
+native check after this change.
 
 ## Shared Host configuration integration
 

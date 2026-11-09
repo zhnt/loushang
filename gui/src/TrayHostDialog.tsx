@@ -10,11 +10,11 @@ export function TrayHostDialog({ details, error, onClose, onConfirm }: {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (details || error) { if (!dialog.current?.open) dialog.current?.showModal(); }
-    else dialog.current?.close();
+    else if (dialog.current?.open) dialog.current.close();
   }, [details, error]);
   const state = details?.probe.host;
   const name = details?.entry.kind === "local" ? t("shell:tray.localHost") : details?.entry.name;
-  return <dialog ref={dialog} className="tray-host-dialog" aria-labelledby="tray-host-title" onClose={onClose}>
+  return <dialog ref={dialog} role={details?.confirm ? "alertdialog" : "dialog"} className="tray-host-dialog" aria-labelledby="tray-host-title" onClose={onClose}>
     <h2 id="tray-host-title">{details?.confirm ? t("localHost.confirmTitle") : t("localHost.identity")}{name ? ` · ${name}` : ""}</h2>
     {details?.confirm ? <p>{t("localHost.confirmStop")}</p> : null}
     {details ? <dl className="detail-list">
@@ -23,7 +23,7 @@ export function TrayHostDialog({ details, error, onClose, onConfirm }: {
       {state?.pid != null ? <div><dt>{t("localHost.pid")}</dt><dd>{state.pid}</dd></div> : null}
       {state?.instanceId ? <div><dt>{t("localHost.instanceId")}</dt><dd>{state.instanceId}</dd></div> : null}
       {state?.serviceInstanceId ? <div><dt>{t("localHost.serviceInstanceId")}</dt><dd>{state.serviceInstanceId}</dd></div> : null}
-      {details.entry.webUrl ? <div><dt>Web</dt><dd>{details.entry.webUrl}</dd></div> : null}
+      {details.entry.webUrl ? <div><dt>{t("shell:tray.webAddress")}</dt><dd>{details.entry.webUrl}</dd></div> : null}
     </dl> : null}
     {error || state?.errorCode ? <p role="alert">{t("localHost.errors.unknown")} <code>{error ?? state?.errorCode}</code></p> : null}
     <footer>
