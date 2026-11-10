@@ -13,7 +13,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product._worker_windows_attempt import (
     inspect_windows_product_worker_retirement_ids,
 )
@@ -53,7 +52,7 @@ from .package_product_worker_windows_recovery_inventory import (
 from .package_product_worker_windows_stage_review import (
     CodingWindowsWorkerStageReviewV1,
     _inspection,
-    _require_direct,
+    _require_retirement_root,
     _review_complete_stage_under_gc_guard,
 )
 
@@ -149,12 +148,12 @@ def retire_coding_windows_product_worker_complete_stage(
         with product.gc_gate.guard(require_write=True):
             product.assert_root_gc_authority_current()
             with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                with WindowsPrivateDirectoryAcl() as acl:
-                    _require_direct(root, acl, directory=True)
-                    if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
-                        raise CodingWindowsWorkerStageRetirementError(
-                            "coding_worker_stage_retirement_root_changed"
-                        )
+                _require_retirement_root(
+                    product,
+                    root,
+                    CodingWindowsWorkerStageRetirementError,
+                    "coding_worker_stage_retirement_root_changed",
+                )
                 start = _read_review(product, expected_review.attempt_id)
                 completed = _read_receipt(product, expected_review.attempt_id)
                 if start is None:

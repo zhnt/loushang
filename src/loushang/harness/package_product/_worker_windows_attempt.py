@@ -584,6 +584,21 @@ def capture_windows_product_worker_orphan_runtime(
     )
 
 
+def require_windows_worker_retirement_root(
+    product: WindowsLocalWheelProductSessionOwner,
+    root: int,
+    inspection: Callable[[], WindowsStageInspection],
+    error_type: type[Exception],
+    changed_message: str,
+) -> None:
+    """Check the borrowed root and close the ACL before retirement work."""
+
+    with WindowsPrivateDirectoryAcl() as acl:
+        inspection().require_direct(root, acl, directory=True)
+        if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
+            raise error_type(changed_message)
+
+
 def inspect_windows_product_worker_retirement_ids(
     product: WindowsLocalWheelProductSessionOwner,
     *,

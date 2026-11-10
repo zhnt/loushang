@@ -18,6 +18,7 @@ from loushang.harness.package_product._worker_windows_attempt import (
 )
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_stage,
+    require_windows_worker_retirement_root,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -332,10 +333,15 @@ def _read_checked_file(
     )
 
 
-def _require_direct(
-    descriptor: int, acl: WindowsPrivateDirectoryAcl, *, directory: bool
-) -> FileIdentity:
-    return _inspection().require_direct(descriptor, acl, directory=directory)
+def _require_retirement_root(
+    product: WindowsLocalWheelProductSessionOwner,
+    root: int,
+    error_type: type[Exception],
+    changed_message: str,
+) -> None:
+    require_windows_worker_retirement_root(
+        product, root, _inspection, error_type, changed_message
+    )
 
 
 CodingWindowsWorkerStageReviewV1._bind_record_schema()

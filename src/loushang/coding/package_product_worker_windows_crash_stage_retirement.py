@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -40,7 +39,7 @@ from .package_product_worker_windows_stage_retirement import (
     _remove_remaining_stage,
     _stage_exists,
 )
-from .package_product_worker_windows_stage_review import _require_direct
+from .package_product_worker_windows_stage_review import _require_retirement_root
 
 _MAX_REVIEW_BYTES = 32768
 _MAX_RECEIPT_BYTES = 1024
@@ -69,10 +68,9 @@ def retire_coding_windows_product_worker_crash_stage(
         with product.gc_gate.guard(require_write=True):
             product.assert_root_gc_authority_current()
             with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                with WindowsPrivateDirectoryAcl() as acl:
-                    _require_direct(root, acl, directory=True)
-                    if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
-                        raise ValueError("Windows Worker crash stage root changed")
+                _require_retirement_root(
+                    product, root, ValueError, "Windows Worker crash stage root changed"
+                )
                 _require_no_other_retirement(product, expected_review.attempt_id)
                 start = _read_start(product, expected_review.attempt_id)
                 completed = _read_receipt(product, expected_review.attempt_id)

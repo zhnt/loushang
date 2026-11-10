@@ -1,5 +1,7 @@
 # Coding 全量剩余职责与保留成本复核 A72
 
+- A138 五条 Windows 退休及结算路径共用原 Product 根校验，Coding 净0行，系统增15行。见[A138](coding-responsibility-convergence-progress.md#a138统一windows退休根校验)。
+
 - A137 三类 Windows Worker 日志共用绑定和追加，Coding 减19行，系统减12行。见[A137](coding-responsibility-convergence-progress.md#a137共用worker日志读取与追加)。
 
 - A136 共用 Worker 授权重放与代次检查，Coding 减9行，Harness 增15行。见[A136](coding-responsibility-convergence-progress.md#a136共用worker授权重放与代次检查)。
@@ -76,7 +78,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
-数量按A137当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
+数量按A138当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |

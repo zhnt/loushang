@@ -35,6 +35,22 @@ START native_revision==2特殊校验在草稿中遗漏。未装Product，生产�
 [A129](key-designs/worker-history-responsibility-convergence.md#a129完整windows退休闭包原型未采用)。
 完整Goal仍active/partial；A129当时仍用A128已接受计量，不以树外原型报减少。
 
+## A138统一Windows退休根校验
+
+四条 Windows Worker 阶段退休和一条预留结算共用原 Package Product 的借用根校验。
+原 Coding stage review 绑定目录检查策略，Harness 负责短时 ACL、直接目录校验及可见
+根身份复核。各入口原错误类和文本、ACL 在后续读取前释放的边界、锁和描述符借用顺序保留。
+
+外层锁封装草稿净增60行，未采用。A91 的多重清理失败对照也要求保留原词法退出范围。
+预留结算继续先复核 review 和 intent，再借用根，并在归还后复核权限。
+313 条受控新旧观察逐字节一致，覆盖五个实际入口到首个业务读取及多重退出异常。
+既有 crash 恢复测试迁移挂点并保留原断言，37 项回归通过。Windows 原生运行未覆盖。
+183 项架构检查、7 个改动模块的类型检查、Ruff、依赖图和文档约束通过。运行记录在
+树外 `a138-windows-offline-stage-custody`。
+
+Coding 净0行，Harness 和系统各增15行。当前 Coding 111876行，系统648269行。
+较 Goal 起点分别减少25879行和增加13475行，距15K还差96876行。P1–P4仍在进行。
+
 ## A137共用Worker日志读取与追加
 
 Windows 的授权、回执和原生发布审批日志共用绑定、解码、规范编码、字节容量检查、

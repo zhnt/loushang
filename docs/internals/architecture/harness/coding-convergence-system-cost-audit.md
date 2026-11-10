@@ -574,3 +574,11 @@ Coding 新增75行、删除84行。Harness 新增89行、删除74行，系统净
 Coding 新增4行、删除23行。Harness 新增76行、删除69行，系统净减12行。
 生产源码当前430份 Coding 111876行、1969份系统648254行。受控探针新增9行，单独计量。
 见[A137](coding-responsibility-convergence-progress.md#a137共用worker日志读取与追加)。
+
+
+## A138 共用 Windows 退休根校验
+
+Coding 新增42行、删除42行，原 Package Product 新增15行，全系统净增15行。
+五份 Coding 直接 ACL/身份检查退出，由一个既有 stage-review 策略绑定接入原 Product。
+测试挂点净增4行，另计。当前430份 Coding 源码111876行、1969份系统源码648269行。
+见[A138](coding-responsibility-convergence-progress.md#a138统一windows退休根校验)。
