@@ -270,6 +270,33 @@ from the repository root. Do not substitute a plain `cargo build`: that bypasses
 the Tauri frontend build and production protocol configuration and can produce a
 window that expects a running localhost development server.
 
+## Ubuntu complete deb test package
+
+Build the current GUI, then package it with CPython, AppHost/AppService, the
+installed Loushang wheel, locked Python dependencies and local Web assets:
+
+```text
+npm --prefix gui ci
+npm --prefix gui run build
+uv run python scripts/gui/build_linux_deb.py
+uv run python scripts/gui/check_deb_package.py dist/deb/loushang_<version>_amd64.deb
+```
+
+Install the generated file with `sudo apt install /absolute/path/to/package.deb`.
+The application menu and `/usr/bin/loushang` use the bundled runtime under
+`/opt/loushang`. Local startup uses the same managed Host entrypoint as the tray;
+GUI close/quit leaves that Host running. A saved remote connection remains
+selected. `loushang --workspace /absolute/path --status` and `--stop` manage the
+local Host. Stop running Hosts before replacing or removing this test package.
+Settings and Session data remain outside the installed program directory.
+
+This Ubuntu 26.10 amd64 candidate declares native system-library dependencies.
+It does not require a system Python/uv/Node installation. It does not register
+a systemd unit or start services during installation. Provider credentials and
+optional external tools/Plugin worker runtimes are not included. The opt-in
+checker extracts the actual deb and verifies relocated imports, real Host
+startup, reuse, stop and restart without provider calls or system installation.
+
 ## Linux portable package candidate
 
 To bundle the real GUI with its own CPython, AppHost and locked Python runtime
