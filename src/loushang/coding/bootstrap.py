@@ -1874,6 +1874,8 @@ def _create_agent_session(
             )
             raise
 
+    constructed_session: AgentSession | None = None
+
     def _create_session(
         capability_runtime: StagedResourceCompositionCandidate,
         side_question_binding: LegacySideQuestionBinding | None,
@@ -1888,6 +1890,7 @@ def _create_agent_session(
         package_product_inventory: PackageProductLifecycleInventoryPort | None,
         package_product_lifecycle_mode: PackageProductLifecycleMode,
     ) -> AgentSession:
+        nonlocal constructed_session
         if len(prepared_resource_catalog_adapters) != 1:
             raise RuntimeError(
                 "Initial Resource Catalog projection adapter is unavailable"
@@ -2602,6 +2605,7 @@ def _create_agent_session(
             )
             raise
         process_session = child_session
+        constructed_session = child_session
         return child_session
 
     construction_binding = replace(
@@ -2660,6 +2664,9 @@ def _create_agent_session(
             ),
         )
     except BaseException as error:
+        cleanup = get_session_construction_cleanup(error)
+        if cleanup is not None and cleanup.owns_session(constructed_session):
+            raise
         failure_custodian = coding_capability_plugin_failure_custodian(error)
         capability_plugin_cleanup: Callable[[], None] | None
         capability_management_cleanup: Callable[[], None] | None

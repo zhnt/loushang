@@ -27,7 +27,14 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-10，A98）
+## 当前状态（2026-11-10，A100）
+
+完成工厂/Package绑定后的scoped-model失败交接现复用原Session custody，避免裸
+leaf提前释放。Coding+7/Core+29/系统+36，精简收益0；当前113594/647966行，距15K
+尚98594。完整P1–P4仍active/partial，验证范围、未关闭构造路径及五项Hosting欠账
+见[当前执行记录](coding-responsibility-convergence-progress.md)。KD003未实施，KD011/A33未采用。
+
+## A98历史交付（2026-11-10）
 
 完成Core构造后交付失败的Session清理责任已接通，72项实际检查通过。Coding+20/
 Core+150/系统+170，精简收益0；当前113587/647930行，距15K尚98587。完整P1–P4

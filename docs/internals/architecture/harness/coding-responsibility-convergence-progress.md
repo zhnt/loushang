@@ -6,7 +6,24 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A99候选不采用）
+## 当前状态（2026-11-10，A100 scoped-model失败交接）
+
+完成工厂/Package绑定后，scoped-model解析、setter或Core Result失败，现在复用
+原A98 Session custody；原Binding/Coding只有同Session身份匹配时才避免裸资源
+提前清理。泛型及构造前失败保原行为，早期部分构造及Package bind失败仍未关闭。
+Coding+7/Core+29/系统+36，非精简；当前113594/647966，相对Goal−24161/+13172，
+距15K尚98594。新probe357行另计且不进默认PR route；15新检查分12+3两次通过，
+41原消费者通过。原签名/DTO/持久格式及审计回调保持，源码仅三处改动，其余
+1965源与13资源SHA同。SDK及静态检查终态另列于本节交付验证。
+交付验证：70项分批通过（15新/41既有/14原SDK），文档9项通过；Ruff检查、
+新Core/probe格式及依赖图检查通过。三源限定mypy（follow-imports=silent）通过；
+直接mypy报传递依赖231条/5文件错误，未宣称全库类型通过，未重跑原基线全量。
+Code整文件格式差异在原源同样存在，未无关重排。取消检查为直接抛CancelledError，
+不等同Task.cancel调度验证；foreign检查是两个direct公开调用，不冒充双async Root。
+详见[KD009 §23](key-designs/startup-session-assembly-convergence.md#23-a100scoped-model失败交接复用原session清理责任)。
+完整P1–P4仍active/partial，五项Hosting欠账未关；KD003未实施，KD011/A33未采用。
+
+## A99历史处置（2026-11-10，候选不采用）
 
 A99已完成Windows cleanup authority六个证明方法的树外完整原型及成本核算。
 Coding387→211（−176）、原PackageProduct模块739→973（+234），系统净+58；

@@ -781,3 +781,34 @@ Linux入口（sync/in-loop分别注册/Result包装失败四项，async Root自�
 另一Arch消费者因外置候选不在真实editable project root被拒，原源和实际安装均过。
 这些环境修正没有放宽guard。最终联合actual72/0失败/0skip，另原SDK14项全过，合计86个不同节点；详细三视角报告、全帧、
 源码起点、脚本、日志/XML及实际安装证明保在树外A98交付证据目录。
+
+
+## 23. A100：scoped-model失败交接复用原Session清理责任
+
+- Authority: accepted bounded internal design and actual implementation；三独立实物视角有界接受。
+- Scope: 原Core工厂已成功返回并完成Package binding的实际AgentProductSession，到scoped-model解析/设置和Core Result返回。
+- Implementation status: implemented；完整Goal与更早partial constructor/Package bind失败仍未关闭。
+
+原Linux实物观察确认setter失败保原错误，却没有Session custody，外层先释放实际
+runtime租约。现由原Construction Runtime把确切完成Session交给A98 custody；
+Binding和Coding只有在custody匹配本次成功返回的同Session时才跳过裸leaf清理，
+由原Session.dispose按原图/资源顺序最终释放runtime。未新增Task、registry、协议、
+端口或清理引擎。同步调用者仍显式await原cleanup.retry_cleanup；原Transcript
+Store仍负责自动结清、失败保留及close重试。
+
+泛型SessionT接口不收紧：仅真实AgentProductSession继承关系采用该机制，其他
+泛型值保持原Exception清理/BaseException传播。type-based判断不读取自定义
+__class__；原59签名、16类结构、process audit回调AST与持久格式保持。跨构造
+复用异常时，旧custody不能证明当前资源已交付；匹配纯身份且拒绝None，第二个
+完成Session使用A98原AttachmentError保两个独立owner。
+
+成本Coding+7（含完整返回点引用及薄guard）、原Core construction+25/cleanup+4，
+系统+36，属于已复现故障修复，精简收益0。当前Coding113594/系统647966；较Goal
+起点−24161/+13172，距15K尚98594。显式本地probe357行另计，不进默认PR route。
+15新检查分12+3两次执行，41原消费者及14原SDK通过；静态终态见当前执行记录，不能
+把原生Windows、跨loop/thread、绑定失败或部分构造外推为本片已验证。
+
+R1外层错引内层process_session，由两评审发现，未安装；R1首次责任评审接受已
+明确撤回。R2修scope，R3改实际Session判型，R4恢复异常真实类匹配，原源及各版
+候选/SHA/失败和三视角报告保留树外A100。最初原行为探针未注册asyncio marker
+收集失败，改仓库既有asyncio.run后原观察通过，不修改Product guard掩盖失败。

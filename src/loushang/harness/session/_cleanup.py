@@ -45,6 +45,10 @@ class SessionConstructionCleanup:
         self._session: _ConstructedSession | None = session
         self._task: asyncio.Task[None] | None = None
 
+    def owns_session(self, session: object) -> bool:
+        """Match this pending custody to an exact completed construction."""
+        return self._session is not None and self._session is session
+
     async def retry_cleanup(self) -> None:
         if self._session is None:
             return

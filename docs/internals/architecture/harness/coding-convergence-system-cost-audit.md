@@ -267,3 +267,12 @@ A95缓存和A96普通Session候选不采用，生产收益0，避免重复此前
 原型漏导入cast另为静态阻断，不构成生产缺陷；原型未进入Product、未执行pytest，
 不宣称运行或Windows验证。实际生产增删均0，全部1968源及13资源SHA保持A98；
 Coding113587/系统647930不变，精简收益0。详见[当前处置](coding-responsibility-convergence-progress.md)。
+
+
+## A100：原Session清理责任覆盖scoped-model失败
+
+Coding bootstrap+7（含同候选身份薄guard）、原Core construction+25/cleanup+4，
+系统+36；旧机制复用，无新manager/Task/registry/协议，属于故障顺序修复而非
+精简。测试probe357行另计，无新PR gate。当前Coding113594/系统647966，较Goal
+起点−24161/+13172，15K尚98594；全部增量与未关闭构造路径见
+[KD009 §23](key-designs/startup-session-assembly-convergence.md#23-a100scoped-model失败交接复用原session清理责任)。

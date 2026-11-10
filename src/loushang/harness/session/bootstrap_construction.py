@@ -43,7 +43,11 @@ from loushang.harness.resources.packages.product_contract import (
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import ResolvedRuntimeProfile
-from loushang.harness.session._cleanup import run_cleanup_steps
+from loushang.harness.session._cleanup import (
+    get_session_construction_cleanup,
+    retain_session_construction_failure,
+    run_cleanup_steps,
+)
 from loushang.harness.session.bootstrap_configuration import (
     CatalogBootstrapProjectionPreparer,
     ExtensionFlagValues,
@@ -342,6 +346,7 @@ class AgentProductConstructionRuntime(Generic[AgentT, SessionT, StandardExtensio
             StandardExtensionT,
         ],
     ) -> AgentProductConstructionResult[SessionT, StandardExtensionT]:
+        session: SessionT | None = None
         try:
             configuration = StandardAgentSessionConfigurationRuntime[
                 StandardExtensionT
@@ -451,8 +456,19 @@ class AgentProductConstructionRuntime(Generic[AgentT, SessionT, StandardExtensio
                 session=session,
                 configuration=configuration,
             )
-        except Exception:
-            request.ports.dispose_capabilities()
+        except BaseException as error:
+            if session is not None:
+                from loushang.harness.session.agent_product import AgentProductSession
+
+                if issubclass(type(session), AgentProductSession):
+                    failure = retain_session_construction_failure(
+                        error, cast(AgentProductSession, session)
+                    )
+                    if failure is error:
+                        raise
+                    raise failure from error
+            if issubclass(type(error), Exception):
+                request.ports.dispose_capabilities()
             raise
 
 
@@ -578,13 +594,16 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         )
         session_side_question_bindings: list[LegacySideQuestionBinding] = []
         package_runtime: PackageProductRuntimeBindingV1 | None = None
+        constructed_session: SessionT | None = None
 
         def bind_package_runtime(session: SessionT) -> SessionT:
+            nonlocal constructed_session
             if package_runtime is not None and package_runtime.on_dispose is not None:
                 bind = getattr(session, "_bind_package_product_runtime", None)
                 if not callable(bind):
                     raise TypeError("Package Product Session cannot own its runtime")
                 bind(package_runtime)
+            constructed_session = session
             return session
 
         def create_session(
@@ -784,6 +803,12 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 )
             )
         except BaseException as error:
+            cleanup = get_session_construction_cleanup(error)
+            if cleanup is not None and cleanup.owns_session(constructed_session):
+                from loushang.harness.session.agent_product import AgentProductSession
+
+                if issubclass(type(constructed_session), AgentProductSession):
+                    raise
             if package_runtime is not None:
                 run_cleanup_steps(
                     error,
