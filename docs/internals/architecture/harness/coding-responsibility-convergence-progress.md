@@ -2,11 +2,38 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P2/P3/A80完整canonical Catalog custody、P2/A79完整Product selected revision输入、P1/A78完整Linux恢复/evidence及A1–A71指定路径、A74三类payload恢复、A77完整Linux history proof、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口及A76备份拓扑存储）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（A81完整delegated Goal Work/Session轮次交接已接通获有界接受、P2/P3/A80完整canonical Catalog custody、P2/A79完整Product selected revision输入、P1/A78完整Linux恢复/evidence及A1–A71指定路径、A74三类payload恢复、A77完整Linux history proof、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口及A76备份拓扑存储）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A80完整canonical Catalog custody）
+## 当前状态（2026-11-10，A81完整delegated Goal Work/Session轮次交接）
+
+从A80 `a442f3c7a`接续；完整family选择/确认、Work创建/交付/完成、报告发布、
+失败interrupt、取消/idle结清及release/close重试已接入原HarnessWork Session集成。
+固定watermark历史回放/图片水合归原Harness Session集成；直接复用原MultiAgent
+control/runtime、Transcript、BlobStore、ContextFactory及ModelCallAllowance。
+Code保真实类、Product factory/SDK接缝及纯选择/冻结/报告/evidence政策。
+
+实际Coding430文件114179行、系统1967源647780行：Code−327、Core+477、系统
+净+150；其余1963原source SHA与13原资源字节同，全部兼容/policy/绑定/格式成本
+计入。是职责迁移，不称系统去重；距15K仍99179，完整P1–P4保持partial。
+相对本Goal原137755/634794基线，累计Code−23576（约17.1%），系统+12986；
+不把接收增长冒称系统精简，原完整15K/职责及兼容条件保持。
+
+迁前四原consumer模块83过（595.92s），R2原delegated/inherit/release12过；实际
+R4同四模块83过（1083.99s），原共享MultiAgent/context/RunHandle与import boundaries
+209过（351.83s）。原28值/API/wire及完整38 Task/round/失败/取消观察均已独立冻结，
+旧固定及实际同观察通过；落盘显式探针67过（12.01s），六报告场景直接命中新Core
+publisher并禁旧helper。三独立实际代码视角无本片具体阻断，Root作有界技术接受。
+AI935测试通过，但原覆盖率阈值失败；旧A80同935过且79源完整逐行coverage完全同，
+确认既有基线问题并保留，不称整条check-ai或全产品检查通过。
+完整合同、候选修正与实际终态见[本片交付](key-designs/delegated-goal-session-convergence.md)。
+
+后续继续普通Worker、启动/Plugin/Session、其余托管/Continuity及入口/存量职责；
+原GoalCoordinator/ExecutionScope/PlanningWork直接复用不重复计益。
+KD003未实施，KD011/A33仍待用户且不采用；本片不代表整个C12、P3/P4或全Goal完成。
+
+## A80历史交付（2026-11-10，完整canonical Catalog custody）
 
 从A79 `489929afd`接续；canonical create/find/list/display-discovery/open、owned
 post-delivery candidate custody、claim/close及Managed Store探针/根观测整体归现有

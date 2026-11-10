@@ -6,7 +6,7 @@
 
 - Authority: accepted execution goal；用户2026-11-07将本描述设为active Goal。本文件不替代各组件的已接受架构合同。
 - Design status: accepted goal scope；各波次专项架构仍须设计、评审及按原约定由用户审阅重要工作件。
-- 当前实施摘要：A80完整canonical Catalog custody已接通并获有界技术验收；A79及此前成果已提交。当前计量及欠账见下文“当前状态”。KD011/A33待用户工作件保持，KD003 bytes-import仍未实施；以下逐项保留各历史接受范围。
+- 当前实施摘要：A81完整delegated Goal Work/Session轮次交接已接通并获有界技术接受；A80及此前成果已提交。当前计量及欠账见下文“当前状态”。KD011/A33待用户工作件保持，KD003 bytes-import仍未实施；以下逐项保留各历史接受范围。
 - Implementation status: partial（P1/P2/P3/P4）；指定五流/Rooted命令、payload、checkpoint/快照及A13–A15 Windows指定路径已获有界技术接受；A17图关系归原Session，A19本地启动阶段复用、A20托管Session桥接、A21 foreground Product所有权接缝、A22受控Wheel Source目录共享程序及A23依赖来源完整操作复用也已获有界接受。P2 R2.1职责方向已于2026-11-08获用户接受，D3完整兼容捕获路径获有界技术接受（181实际通过/5原skip），D1/D2的owner租约/证据账本与startup、D4完整成员/退役/关闭协同均已接入并获有界接受，P2启动装配首批owner publication亦已接通并获有界代码接受（75项实际回归及21组冻结观察对照），三种构造/发布前后清理路径也已复用Session共同程序并完成有界评审，原Loader回执至Catalog source specs完整交接也已接入（原47节点通过/失败集合不变，16固定观察通过，保留10项迁前失败），其余bootstrap/共同输入与刷新装配仍待收敛；KD010六Windows基线/join已整体接入Worker.history并取得实际有限验证，P4的F06 Goal记录后端亦已本地接通（14原节点及7固定IO观察通过，2项Session准入失败用旧后端复现），A24十三个Payload入口已复用原Storage根借用、删除重复根IO骨架（Code−71/系统净−48，实际48项通过及代码三视角有界接受），A25内置Source四个物理程序也已接入原Resources（Code−216/系统+4，65过/1原native skip，代码三视角有界接受）；A26 Windows Worker Source完整目录协调已归原Package Product（Code−204/系统+78，117过/1原native skip，代码三视角有界接受）；A27两平台候选事实联接及四条安装/更新共同程序已归原Package Product（Code−313/系统净−123，103过/2原skip，代码三视角有界接受）；其余Worker、其它托管/Continuity与P4剩余入口仍未完成，Coding≤15K及现行职责/复用/成本准则保持，实际测试与全成本见[执行记录](coding-responsibility-convergence-progress.md)。
 - Owner: Coding与各接收组件原owner；跨组件决定由共同上级架构owner综合接受。
 - 依据：[全量重构方案](coding-reconstruction-proposal.md)、[逐文件职责清单](coding-responsibility-inventory.md)、[Current Owner Map](current-owner-map.md)。方案与清单中的旧行数不是本轮当前事实。
@@ -27,7 +27,34 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-10，A80完整canonical Catalog custody）
+## 当前状态（2026-11-10，A81完整delegated Goal Work/Session轮次交接）
+
+从A80 `a442f3c7a`接续；完整family选择/确认、Work创建/交付/完成、报告发布、
+失败interrupt、取消/idle结清及release/close重试已接入原HarnessWork Session集成。
+固定watermark历史回放/图片水合归原Harness Session集成；直接复用原MultiAgent
+control/runtime、Transcript、BlobStore、ContextFactory及ModelCallAllowance。
+Code保真实类、Product factory/SDK接缝及纯选择/冻结/报告/evidence政策。
+
+实际Coding430文件114179行、系统1967源647780行：Code−327、Core+477、系统
+净+150；其余1963原source SHA与13原资源字节同，全部兼容/policy/绑定/格式成本
+计入。是职责迁移，不称系统去重；距15K仍99179，完整P1–P4保持partial。
+相对本Goal原137755/634794基线，累计Code−23576（约17.1%），系统+12986；
+不把接收增长冒称系统精简，原完整15K/职责及兼容条件保持。
+
+迁前四原consumer模块83过（595.92s），R2原delegated/inherit/release12过；实际
+R4同四模块83过（1083.99s），原共享MultiAgent/context/RunHandle与import boundaries
+209过（351.83s）。原28值/API/wire及完整38 Task/round/失败/取消观察均已独立冻结，
+旧固定及实际同观察通过；落盘显式探针67过（12.01s），六报告场景直接命中新Core
+publisher并禁旧helper。三独立实际代码视角无本片具体阻断，Root作有界技术接受。
+AI935测试通过，但原覆盖率阈值失败；旧A80同935过且79源完整逐行coverage完全同，
+确认既有基线问题并保留，不称整条check-ai或全产品检查通过。
+完整合同、候选修正与实际终态见[本片交付](key-designs/delegated-goal-session-convergence.md)。
+
+后续继续普通Worker、启动/Plugin/Session、其余托管/Continuity及入口/存量职责；
+原GoalCoordinator/ExecutionScope/PlanningWork直接复用不重复计益。
+KD003未实施，KD011/A33仍待用户且不采用；本片不代表整个C12、P3/P4或全Goal完成。
+
+## A80历史交付（2026-11-10，完整canonical Catalog custody）
 
 从A79 `489929afd`接续；canonical create/find/list/display-discovery/open、owned
 post-delivery candidate custody、claim/close及Managed Store探针/根观测整体归现有

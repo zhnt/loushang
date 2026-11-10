@@ -43,6 +43,17 @@ depend on `loushang.coding`, `loushang.harnesswork`, `loushang.work`, `loushang.
 | `journal` | byte codecs, physical append/read/publication and rooted file bindings under caller custody | Worker semantic closure, Product policy or process settlement |
 | `diagnostics` / `continuity` / `workspace` | shared diagnostic records/export, continuity provider composition, one-shot execution, and bounded session-owned process primitives | Product-specific recovery UX, business audit retention, protocol/server selection, Product artifact semantics |
 
+The original Session multiagent integration also supplies exact-watermark Agent
+Transcript replay and image hydration to the existing context factory. Its
+HarnessWork integration owns the complete admitted Work-to-child-round
+association, dispatch/creation tasks, cancellation settlement and cleanup retry.
+The original MultiAgent control/runtime remains the identity, round and resource
+authority; no second runtime or registry is introduced. Coding keeps actual types,
+Product factory/policy, frozen context/report fields and pure evidence codecs.
+Blob put/readback and Work publish call their original owners directly. See the
+[A81 delivery](key-designs/delegated-goal-session-convergence.md) for the exact
+scope, original failure order, full cost and bounded verification.
+
 Journal's optional `owned` module supports the original retained writer and
 borrowed root IO through same-object exports and one forwarding borrow function.
 Its supported profile retains fixed subsystem lock/hash hooks,

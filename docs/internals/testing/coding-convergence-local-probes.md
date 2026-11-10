@@ -187,3 +187,19 @@ Explicit local paths: [probe_hosted_catalog_values.py](../../../tests/coding/pro
 and [probe_hosted_catalog_custody.py](../../../tests/coding/probe_hosted_catalog_custody.py).
 The existing opt-in private input plugin described above can be supplied when
 running original consumers alongside these probes on this machine.
+
+
+The delegated Goal Session probes compare28 immutable original API/value/wire
+observations and38 full runtime observations. The report cases call the actual
+shared publisher and prohibit the former helper. Real Tasks, cancellation,
+MultiAgent control/runtime/RunHandle, history codecs and model allowance execute;
+parent/SDK/factory/child-driver, reader, Work lookup and Blob ports are controlled.
+Ordered traces, exact error chains, ownership/fence state and cleanup retries are
+compared without event sorting or candidate recapture. Real SDK consumers are
+verified separately. The runtime JSON fixture is losslessly gzip-compressed and
+checks its full original content hash after decompression. Fixture provenance,
+raw captures and complete source/origin guards remain in the external evidence
+archive. These are explicit local probes and add no default discovery or PR gate.
+
+Explicit local paths: [probe_goal_delegation_values.py](../../../tests/coding/probe_goal_delegation_values.py)
+and [probe_goal_delegation_runtime.py](../../../tests/coding/probe_goal_delegation_runtime.py).

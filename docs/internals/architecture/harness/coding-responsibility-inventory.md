@@ -7,6 +7,7 @@
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
 当前430个Python文件均重新计量并核SHA；原审计列与候选处置保留供追溯。当前行数包括已接通但尚待最终切片验证的源码；各批接受范围以执行记录为准。
+A81完整delegated Goal Work/Session轮次交接已接通；Code保纯政策及真实类型；见[本片交付](key-designs/delegated-goal-session-convergence.md)。
 A80完整canonical Catalog custody已接通，Code保实际类/政策/薄入口；见[本片交付](key-designs/canonical-transcript-catalog-custody-convergence.md)。
 A79完整Product selected revision输入与Wheel bytes已接通，政策/实际DTO留Code；见[本片交付](key-designs/product-selected-revision-custody-convergence.md)。
 A78完整Linux registered/crash恢复与cleanup evidence已接通；见[本片交付](key-designs/linux-worker-recovery-convergence.md)。
@@ -59,10 +60,10 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [_worker_tool_identity.py](../../../../src/loushang/coding/_worker_tool_identity.py) | C06 | 5 | K | C06 其余根目录入口与策略 | c1b1add5e98b | 5 | c1b1add5e98b |
 | [adapters/__init__.py](../../../../src/loushang/coding/adapters/__init__.py) | C12 | 3 | M | C12 Goal/Work/证据适配 | e9aba5aed4ae | 3 | e9aba5aed4ae |
 | [adapters/_goal_calculator.py](../../../../src/loushang/coding/adapters/_goal_calculator.py) | C12 | 603 | M | C12 Goal/Work/证据适配 | e3f69a3c88e7 | 603 | e3f69a3c88e7 |
-| [adapters/_goal_delegation.py](../../../../src/loushang/coding/adapters/_goal_delegation.py) | C12 | 520 | M | C12 Goal/Work/证据适配 | 3d3dfe7c8262 | 520 | 3d3dfe7c8262 |
+| [adapters/_goal_delegation.py](../../../../src/loushang/coding/adapters/_goal_delegation.py) | C12 | 520 | M | A81：原 Session/Work 集成；Code 政策/真实类型 | 3d3dfe7c8262 | 225 | a45d6029695f |
 | [adapters/_goal_delegation_report.py](../../../../src/loushang/coding/adapters/_goal_delegation_report.py) | C12 | 274 | M | C12 Goal/Work/证据适配 | 1b5ce0b8df47 | 274 | 1b5ce0b8df47 |
 | [adapters/_goal_driver.py](../../../../src/loushang/coding/adapters/_goal_driver.py) | C12 | 278 | M | C12 Goal/Work/证据适配 | 4a17c03e9382 | 278 | 4a17c03e9382 |
-| [adapters/_goal_execution_context.py](../../../../src/loushang/coding/adapters/_goal_execution_context.py) | C12 | 179 | M | C12 Goal/Work/证据适配 | 08589251e563 | 179 | 08589251e563 |
+| [adapters/_goal_execution_context.py](../../../../src/loushang/coding/adapters/_goal_execution_context.py) | C12 | 179 | M | A81：原 Session history bridge；Code 纯选择/codec/证据 | 08589251e563 | 147 | 00faf633d86d |
 | [adapters/_goal_planning.py](../../../../src/loushang/coding/adapters/_goal_planning.py) | C12 | 259 | M | C12 Goal/Work/证据适配 | 76673cb27a92 | 259 | 76673cb27a92 |
 | [adapters/_goal_planning_history.py](../../../../src/loushang/coding/adapters/_goal_planning_history.py) | C12 | 44 | M | C12 Goal/Work/证据适配 | 822452a59e18 | 44 | 822452a59e18 |
 | [adapters/_goal_planning_limits.py](../../../../src/loushang/coding/adapters/_goal_planning_limits.py) | C12 | 99 | M | C12 Goal/Work/证据适配 | 6361118f9e51 | 99 | 6361118f9e51 |
@@ -473,7 +474,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C09 | 34 | 9,711 |
 | C10 | 12 | 5,546 |
 | C11 | 25 | 9,310 |
-| C12 | 25 | 7,517 |
+| C12 | 25 | 7,190 |
 | C13 | 21 | 5,668 |
 | C14 | 13 | 3,628 |
 | C15 | 2 | 2,127 |
@@ -490,4 +491,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 114,506 |
+| 合计 | 430 | 114,179 |
