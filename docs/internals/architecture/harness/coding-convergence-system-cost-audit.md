@@ -257,3 +257,13 @@ A95缓存和A96普通Session候选不采用，生产收益0，避免重复此前
 527行另计、不进默认PR route；54原/18新本地检查合计72过，另原SDK14过。当前Coding113587/
 系统647930，较Goal起点−24168/+13136；15K尚98587。完整边界、失败和证据限制见
 [KD009 §22](key-designs/startup-session-assembly-convergence.md#22-a98完成构造后的session交付失败责任)。
+
+
+## A99：Windows cleanup证明基类候选不采用
+
+已制作六方法的完整树外原型：Coding−176、原PackageProduct接收模块+234、系统
++58。原IO/锁/日志/资源owner均已共享，本候选不退出第二实现；新增两个Protocol、
+泛型继承及三个实现接点只服务一个实际子类，收益不足，三视角评审后不采用。
+原型漏导入cast另为静态阻断，不构成生产缺陷；原型未进入Product、未执行pytest，
+不宣称运行或Windows验证。实际生产增删均0，全部1968源及13资源SHA保持A98；
+Coding113587/系统647930不变，精简收益0。详见[当前处置](coding-responsibility-convergence-progress.md)。

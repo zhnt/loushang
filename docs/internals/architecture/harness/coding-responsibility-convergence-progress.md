@@ -6,7 +6,29 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A98未交付Session清理责任）
+## 当前状态（2026-11-10，A99候选不采用）
+
+A99已完成Windows cleanup authority六个证明方法的树外完整原型及成本核算。
+Coding387→211（−176）、原PackageProduct模块739→973（+234），系统净+58；
+新增两个Protocol、泛型基类及三个实现接点，只有一个实际产品子类，原capture/锁/
+日志/资源owner均不退出，也没有第二份证明算法被消除。综合三独立视角，不采用
+这个迁移形状：不能把方法换目录计成精简。原型另有漏导入cast的静态阻断；修复
+该错误也不足以使架构方案值得采用，未安装或运行原型。
+
+本批生产源码、兼容适配及资源变更均为0；最新生产交付仍为A98 `226600e5c`。
+全部1968生产源及13声明/资源与A98终帧SHA一致。当前Coding113587、系统647930，
+距15K尚98587；完整P1–P4及五项Hosting欠账不因此关闭。原型源码/原源SHA、全帧、
+精确同体筛查与三独立评审保存在树外A99证据目录，不新增测试、PR gate或发布。
+后续排除再次尝试此单消费者proof基类，检查原Core在Session工厂完成后、Result
+返回前的scoped-model失败交接，先复现原失败与清理顺序，再判断复用A98 custody；
+泛型Session及外层裸资源清理合同须一并核实，不能只加局部catch宣称闭合。
+A100原行为已用真实Linux AgentSession观察：工厂完成后注入setter失败，原错误保持，
+未附Session cleanup custody，实际native runtime lease在显式Session.dispose前已释放；
+探针随后显式dispose成功。该1项原行为观察通过只证明缺口，不是修复或平台验收；
+首次探针误用未注册asyncio marker收集失败，改用仓库原asyncio.run后通过，原失败
+保留。尚未改生产代码，下一批须核清通用Session合同与完整外层清理顺序。
+
+## A98历史交付（2026-11-10，未交付Session清理责任）
 
 完成Core构造后的multiagent安装/SDK Result包装失败，现保确切Session清理责任；
 原Store先关实际tree/Session再释放Transcript，失败保原pending条目供close重试。
