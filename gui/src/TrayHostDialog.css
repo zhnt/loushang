@@ -10,6 +10,4 @@
 .tray-host-dialog h2 { margin: 0 0 16px; font-size: 18px; }
 .tray-host-dialog dd { overflow-wrap: anywhere; }
 .tray-host-dialog footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
-.tray-host-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .tray-host-dialog button { padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: transparent; color: inherit; }
-.tray-host-dialog button:disabled { opacity: .5; }

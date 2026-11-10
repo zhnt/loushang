@@ -56,8 +56,8 @@ function projection() {
   const calls = backend.invoke.mock.calls.filter(([command]) => command === "sync_tray");
   return calls[calls.length - 1]?.[1].projection;
 }
-function selectHost(id: string) {
-  act(() => backend.listeners.get("gui://tray-host-selected")?.({ payload: { hostId: id, revision: projection().revision } }));
+function click(id: string, action: string) {
+  act(() => backend.listeners.get("gui://tray-host-action")?.({ payload: { hostId: id, action, revision: projection().revision } }));
 }
 describe("tray selection integration", () => {
   it("opens Host settings from Start when the local Host cannot be reached and starts a newly chosen workspace", async () => {
@@ -77,10 +77,8 @@ describe("tray selection integration", () => {
       return invoke(command, args);
     });
     render(<LocalHostGate />);
-    await waitFor(() => expect(projection()?.currentLabel).toContain("🔴"));
-    selectHost("local");
-    const start = await screen.findByRole("button", { name: "Start…" });
-    fireEvent.click(start);
+    await waitFor(() => expect(projection()?.hosts[0]).toMatchObject({ start: true, startLabel: "Start…" }));
+    click("local", "start");
     expect(await screen.findByRole("region", { name: "Host settings" })).toBeVisible();
     expect(screen.getByRole("alert")).toHaveTextContent("connection_unavailable");
     expect(backend.invoke).not.toHaveBeenCalledWith("local_host_action", { request: expect.objectContaining({ action: "start" }) });
@@ -91,14 +89,11 @@ describe("tray selection integration", () => {
   });
   it("switches the bound client and Web destination while retaining the mounted draft", async () => {
     render(<LocalHostGate />);
-    await waitFor(() => expect(projection()?.currentLabel).toContain("🟢 Local Host"));
+    await waitFor(() => expect(projection()?.hosts[1]?.enable).toBe(true));
     const draft = screen.getByLabelText("Draft");
     // Flush the queued tray projection before clicking its revisioned menu.
     await act(async () => { fireEvent.change(draft, { target: { value: "Unsent work" } }); });
-    selectHost("office");
-    const enable = await screen.findByRole("button", { name: "Enable" });
-    await waitFor(() => expect(enable).toBeEnabled());
-    fireEvent.click(enable);
+    click("office", "enable");
     await waitFor(() => expect(backend.create).toHaveBeenCalledWith("/office", "office"));
     await waitFor(() => expect(projection().currentLabel).toContain("🟢 Office"));
     expect(projection().webUrl).toBe("https://office.example");
@@ -110,16 +105,13 @@ describe("tray selection integration", () => {
   });
   it("retains the previous client and opens an error when saving the selection fails", async () => {
     render(<LocalHostGate />);
-    await waitFor(() => expect(projection()?.currentLabel).toContain("🟢 Local Host"));
+    await waitFor(() => expect(projection()?.hosts[1]?.enable).toBe(true));
     const implementation = backend.settings.getMockImplementation()!;
     backend.settings.mockImplementation(async (request) => {
       if (request.operation === "connections/select") throw new Error("read_only_config");
       return implementation(request);
     });
-    selectHost("office");
-    const enable = await screen.findByRole("button", { name: "Enable" });
-    await waitFor(() => expect(enable).toBeEnabled());
-    fireEvent.click(enable);
+    click("office", "enable");
     expect(await screen.findByRole("alert")).toHaveTextContent("connection_failed");
     await waitFor(() => expect(projection().currentLabel).toContain("Local Host"));
     expect(projection().webUrl).toBe("http://127.0.0.1:1422");
