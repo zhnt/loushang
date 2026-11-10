@@ -264,6 +264,17 @@ class ReceiptHistory(Generic[_RecordT]):
             load_policy=self._load_policy,
         )
 
+    def find_retained_record(self, receipt_fingerprint: str) -> _RecordT | None:
+        """Find the first exact receipt in the original admitted retained read."""
+        return next(
+            (
+                record
+                for record in self.read_records(retained_only=True)
+                if record.receipt.fingerprint == receipt_fingerprint
+            ),
+            None,
+        )
+
     def read_records(self, *, retained_only: bool = False) -> tuple[_RecordT, ...]:
         with self._access.guard(require_write=False):
             self._access.assert_current()

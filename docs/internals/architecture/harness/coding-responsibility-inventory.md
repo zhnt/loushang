@@ -314,7 +314,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_provider.py](../../../../src/loushang/coding/package_product_worker_provider.py) | C07 | 288 | M | C07 插件 Worker 执行/持久化/恢复 | 33ebd66f42c1 | 288 | 33ebd66f42c1 |
 | [package_product_worker_provider_host.py](../../../../src/loushang/coding/package_product_worker_provider_host.py) | C07 | 290 | M | C07 插件 Worker 执行/持久化/恢复 | 97fc7aa0e78a | 237 | 2ed09625a33f |
 | [package_product_worker_query_consumer.py](../../../../src/loushang/coding/package_product_worker_query_consumer.py) | C07 | 159 | M | C07 插件 Worker 执行/持久化/恢复 | 3edc3bdf34d7 | 159 | 3edc3bdf34d7 |
-| [package_product_worker_receipt.py](../../../../src/loushang/coding/package_product_worker_receipt.py) | C07 | 1,287 | M | C07 插件 Worker 执行/持久化/恢复 | 28b31f8d21d9 | 890 | 4ceee116c742 |
+| [package_product_worker_receipt.py](../../../../src/loushang/coding/package_product_worker_receipt.py) | C07 | 1,287 | M | C07 插件 Worker 执行/持久化/恢复 | 28b31f8d21d9 | 883 | eb4ce9a7539b |
 | [package_product_worker_receipt_base_v2.py](../../../../src/loushang/coding/package_product_worker_receipt_base_v2.py) | C07 | 234 | M | C07 插件 Worker 执行/持久化/恢复 | 6e0d43651711 | 44 | e68d7ab4c84d |
 | [package_product_worker_registered_c5_settlement.py](../../../../src/loushang/coding/package_product_worker_registered_c5_settlement.py) | C07 | 368 | M | C07 插件 Worker 执行/持久化/恢复 | 4e651980106b | 102 | 2bdcfed63608 |
 | [package_product_worker_registered_payload_repair.py](../../../../src/loushang/coding/package_product_worker_registered_payload_repair.py) | C07 | 490 | M | C07 插件 Worker 执行/持久化/恢复 | 154d62d8b4ea | 291 | b01b88bd0bce |
@@ -470,7 +470,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C04 | 2 | 2,968 |
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
-| C07 | 112 | 22,688 |
+| C07 | 112 | 22,681 |
 | C08 | 31 | 6,743 |
 | C09 | 34 | 9,711 |
 | C10 | 12 | 5,546 |
@@ -492,4 +492,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 114,117 |
+| 合计 | 430 | 114,110 |

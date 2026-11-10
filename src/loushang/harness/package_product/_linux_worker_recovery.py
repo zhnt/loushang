@@ -179,16 +179,7 @@ def _read_receipt(
         raise ValueError(
             f"{bindings.history.product_label} Worker receipt fingerprint is invalid"
         )
-    return next(
-        (
-            record
-            for record in bindings.history.receipts(product).read_records(
-                retained_only=True
-            )
-            if record.receipt.fingerprint == receipt_fingerprint
-        ),
-        None,
-    )
+    return bindings.history.receipts(product).find_retained_record(receipt_fingerprint)
 
 
 class CleanupEvidenceAuthority(Generic[HistoryT]):

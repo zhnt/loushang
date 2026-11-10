@@ -6,7 +6,20 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A85 Catalog实际factory/type绑定）
+## 当前状态（2026-11-10，A86 retained receipt精确查找实际复用）
+
+Code公开单条receipt读取与Core恢复的两处相同扫描，改为直接调用原ReceiptHistory
+的find_retained_record。两入口原Product/type/hash校验保留在history构造前；原
+read_records(retained_only=True)完整读取、guard/FD退出后按原顺序取首个匹配对象。
+V1/V2/archived读取程序原AST保持，没有新索引/缓存/状态/回调。公开DTO/签名/wire
+不变，未修改fixture/probe/断言。原恢复/清理固定观察、receipt访问及V2共155过
+（19.82s），三源mypy/Ruff/format通过，三独立实际视角窄接受。最终正常格式下
+Code890→883（−7）、Core恢复1402→1393（−9）、原ReceiptHistory425→436（+11），
+接收侧合+2、系统−5；不是新增模块再包调用。其余1964源SHA及13资源相同。
+当前Coding430文件114110行、系统1967源647687行，完整P1–P4/15K仍未完成。
+下批继续处理完整效果回借/装配闭包，不把这一精确读取去重代替大范围剩余职责。
+
+## A85历史交付（2026-11-10，Catalog实际factory/type绑定）
 
 退出三个仅返回原factory/类的虚拟getter；Code构造时持有同一实际对象/类，Core
 直接使用三个typedfields，不引入profile框架/新owner。owned raw先入pending再

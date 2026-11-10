@@ -690,15 +690,8 @@ def read_coding_product_worker_receipt_record(
         or any(char not in "0123456789abcdef" for char in receipt_fingerprint)
     ):
         raise ValueError("Coding Worker receipt fingerprint is invalid")
-    return next(
-        (
-            record
-            for record in read_coding_product_worker_receipt_records(
-                product, retained_only=True
-            )
-            if record.receipt.fingerprint == receipt_fingerprint
-        ),
-        None,
+    return _receipt_history_for_product(product).find_retained_record(
+        receipt_fingerprint
     )
 
 
