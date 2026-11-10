@@ -1,0 +1,2912 @@
+{
+  "metadata": {
+    "canonical_input_root": "/__loushang_a80_values__",
+    "normalization": "frozen-input-formulas/v1",
+    "normalization_fragment_sha256": "67c8fd77b9b2db9f074f5e0d025423ee294f9199991b171e741d1f7987683b29",
+    "original_expected_sha256": "2b064ad331a52c80b2b4101b31327b9544cef528e59af99b59fd284397dd9c9f",
+    "original_raw_sha256": {
+      "binding-close-retry.json": "4cee5764d90ab3ecbf0f4bffa3d58caef434ec1e2677a3321ab6da6f411639e1",
+      "binding-retained-owner.json": "14c68c0793756e4a2b399c930d967c15715ee9d1869179198ce3e1e9d0836040",
+      "binding-transfer.json": "c36452f87ac878fc19f9985c55bbec4e2042676302b3e1f12afb002c98a44a5e",
+      "candidate-claim.json": "b309d522edc08751c8de6121add8768836f5b350643409ea52b7c6c39efcaddd",
+      "candidate-close-retry.json": "4957b21c16a1a6acab9c0058f778f79074d7684820366322222145c7b5aba226",
+      "candidate-stale.json": "a18a9960ef980c4c4ab6e828e46b8b503145d51bf67231053d95741bcc30d7a6",
+      "canonical-legacy.json": "26f4a10471060282832271c82824d470ba5cee06f509496af85c5aa923f8d7a9",
+      "canonical-managed.json": "3cd946075b66c8fb43405e7253e15dec2aa09f8b46fb505d576b4b785b882853",
+      "canonical-owned.json": "20f987d5de4d0b54d06e6cc737fdd9436245254c137de5f7474b59172c481947",
+      "history-close-retry.json": "c304d592522b04c35e0bd3e0008ecfc75285718b93abac79994ea3dd80febe08",
+      "history-transfer.json": "412d2d6b87b2cacc89b0180109c1530522337df86303ce1620c4440798a3ca0d",
+      "metadata-bool.json": "a18a9960ef980c4c4ab6e828e46b8b503145d51bf67231053d95741bcc30d7a6",
+      "metadata-compat-unknown.json": "75b6d4ed817f54fc5982baa8b726ed48d5c132182391bc2ecb96b3fa60e42553",
+      "metadata-cwd.json": "ad958895a4fe47ab249563d64d6e00f36ba38e47c812b3992f9e426c1159a8c7",
+      "metadata-empty-continuity.json": "c4b057e0ecd50c256b28c247ea3a8f95de8b034d567d3fc34d3ec33c905b8960",
+      "metadata-extra.json": "a18a9960ef980c4c4ab6e828e46b8b503145d51bf67231053d95741bcc30d7a6",
+      "metadata-float.json": "a18a9960ef980c4c4ab6e828e46b8b503145d51bf67231053d95741bcc30d7a6",
+      "metadata-home.json": "4aeea0d4407d3f533f90bd216015b06c7ef4ca097558a0328033c68b52a130e8",
+      "metadata-scope-mismatch.json": "a18a9960ef980c4c4ab6e828e46b8b503145d51bf67231053d95741bcc30d7a6",
+      "metadata-session-mismatch.json": "a18a9960ef980c4c4ab6e828e46b8b503145d51bf67231053d95741bcc30d7a6",
+      "record-duplicate-policies.json": "c04e14e982c803d80ff963bfedb92eb8c127dbc9fae7be3ae21a76f11a6a3408",
+      "record-projections.json": "6d364cfd64842ddbd928a2a8b2a084310290efe9b9d4cd06ab0cbc9503892dfc",
+      "reflection.json": "b48bc035c52a3a856c6778d961edb3927a0de89d09ec4fdfd879fb61ec9301fd",
+      "resume-source-close-failure.json": "b400ca592b358bb6b3c231f9f6e259b28b44bfa73280158278fb57cd6305876d",
+      "resume-source-values.json": "7bcc9ea2533d495c8eb897fa8efbef2737375d64955ec5043c7bc0cbaf908472",
+      "scope-cwd.json": "489ac4c5a43c4fe117f41de43fcab1695061ea8c4c848f6d93bb06fdede3ca9f",
+      "scope-enum.json": "b4aa9b58d5aab8d706a4c51a24f0e063d4d2222ea54a4cc8a35f012496cbcb01",
+      "scope-home.json": "317152fc3903272247156ed5ef1ded34842c06729bccbad6c5c6c8d46ca37f41",
+      "scope-relative.json": "7c84320d05644f585e70987aa5e8f6ba29db3797abc3e8455b0a626bca8b8aeb",
+      "validator-valid.json": "d445372717e3fcf2c2b8cd7f98bb1f26baa411fadbdcd7ba228d744a406c9006",
+      "validator-wrong-type.json": "a18a9960ef980c4c4ab6e828e46b8b503145d51bf67231053d95741bcc30d7a6"
+    },
+    "scope": "Exact original31 with only declared paths and independently computed original scope/create identities normalized; complete Header bytes preserved outside those inputs; bytes SHA/length recomputed.",
+    "source_count": 1964,
+    "source_head": "489929afd895f5147fa9858d5f1ef9a7a220ecd2"
+  },
+  "observations": {
+    "binding-close-retry": {
+      "result": {
+        "after_close": {
+          "error": {
+            "args": [
+              "coding_hosted_candidate_unavailable"
+            ],
+            "cause": null,
+            "context": null,
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+          }
+        },
+        "calls": [
+          "manager-dispose",
+          "manager-dispose"
+        ],
+        "first": {
+          "error": {
+            "args": [
+              "controlled manager dispose failure"
+            ],
+            "cause": null,
+            "context": null,
+            "errno": null,
+            "filename": null,
+            "filename2": null,
+            "notes": [],
+            "suppress": false,
+            "type": "builtins.OSError"
+          }
+        },
+        "retained": true
+      }
+    },
+    "binding-retained-owner": {
+      "result": {
+        "after_close": {
+          "error": {
+            "args": [
+              "coding_hosted_candidate_unavailable"
+            ],
+            "cause": null,
+            "context": null,
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+          }
+        },
+        "calls": [
+          "constructed-dispose"
+        ]
+      }
+    },
+    "binding-transfer": {
+      "result": {
+        "after_take": {
+          "error": {
+            "args": [
+              "coding_hosted_candidate_unavailable"
+            ],
+            "cause": null,
+            "context": null,
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+          }
+        },
+        "calls": [],
+        "same": true,
+        "twice": {
+          "error": {
+            "args": [
+              "coding_hosted_candidate_unavailable"
+            ],
+            "cause": null,
+            "context": null,
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+          }
+        }
+      }
+    },
+    "candidate-claim": {
+      "result": {
+        "calls": [
+          "manager-dispose"
+        ],
+        "calls_before_claim_close": [],
+        "candidate_class": "loushang.coding.hosted_catalog._Candidate",
+        "claim_class": "loushang.coding.hosted_catalog._Claimed",
+        "same_binding": true,
+        "same_reference": true,
+        "second": {
+          "error": {
+            "args": [
+              "coding_hosted_candidate_unavailable"
+            ],
+            "cause": null,
+            "context": null,
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+          }
+        }
+      }
+    },
+    "candidate-close-retry": {
+      "result": {
+        "calls": [
+          "manager-dispose",
+          "manager-dispose"
+        ],
+        "first": {
+          "error": {
+            "args": [
+              "controlled manager dispose failure"
+            ],
+            "cause": null,
+            "context": null,
+            "errno": null,
+            "filename": null,
+            "filename2": null,
+            "notes": [],
+            "suppress": false,
+            "type": "builtins.OSError"
+          }
+        },
+        "state_after_failure": [
+          true,
+          false
+        ]
+      }
+    },
+    "candidate-stale": {
+      "error": {
+        "args": [
+          "coding_hosted_candidate_unavailable"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+      }
+    },
+    "canonical-legacy": {
+      "result": {
+        "bytes_after_retry": {
+          "base64": "eyJ0eXBlIjogImNvbnZlcnNhdGlvbiIsICJjb252ZXJzYXRpb25JZCI6ICI2ZGZkY2ZkYjAxNjNhMzc2YmIyMTU2OTY0ZmM0ZDMyODdlNGUxNTc0YTA4ZTgyYjQ2Y2E4ZTg1MDQwMjk1YWYzIiwgInZlcnNpb24iOiAxLCAiY3JlYXRlZEF0IjogIjIwMjYtMTEtMDlUMDA6MDA6MDBaIiwgInBhcmVudENvbnZlcnNhdGlvbklkIjogbnVsbCwgIm1ldGFkYXRhIjogeyJjd2QiOiAiL19fbG91c2hhbmdfYTgwX3ZhbHVlc19fL2Nhbm9uaWNhbC1sZWdhY3kvd29ya3NwYWNlIiwgInJ1bnRpbWVQcm9maWxlIjogeyJzY2hlbWFWZXJzaW9uIjogMSwgInByb2R1Y3RJZCI6ICJjb2RpbmciLCAiY2FwYWJpbGl0aWVzIjogW3sic2xvdCI6ICJjb252ZXJzYXRpb24uc3RvcmUiLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInNlYWxlZCIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiY29kaW5nLmZpbGUiLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHsicGVyc2lzdGVuY2UiOiAiZmlsZSJ9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJhZ2VudC50cmFuc2NyaXB0X3Byb2ZpbGUiLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInNlYWxlZCIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiY29kaW5nLmFnZW50X3RyYW5zY3JpcHQiLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHsiZm9ybWF0IjogImNvbnZlcnNhdGlvbi1qc29ubCIsICJmb3JtYXRWZXJzaW9uIjogMX0sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogImNvbnRleHQuY29tcGFjdGlvbiIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAidHVybiIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiYWdlbnRfdHJhbnNjcmlwdC50dXJuX2F3YXJlX3N1bW1hcnkiLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHsiZW5hYmxlZCI6IHRydWUsICJjb21wYWN0UGVyY2VudCI6IDgwLjAsICJyZXNlcnZlVG9rZW5zIjogODE5MiwgImtlZXBSZWNlbnRUb2tlbnMiOiAzMjc2OH0sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifV19LCAiY2FwYWJpbGl0eVByb2ZpbGUiOiB7InNjaGVtYVZlcnNpb24iOiAxLCAicHJvZHVjdElkIjogImNvZGluZyIsICJjYXBhYmlsaXRpZXMiOiBbeyJzbG90IjogInJlc291cmNlLnJ1bnRpbWUiLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogIndvcmtzcGFjZSIsICJyZWZyZXNoQm91bmRhcnkiOiAic2VhbGVkIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJoYXJuZXNzLnJlc291cmNlX2FjdGl2YXRpb24iLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHt9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJwcm9tcHQuc2VjdGlvbnMiLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInR1cm4iLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImhhcm5lc3MucHJvbXB0X3NlY3Rpb25zIiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7InNlcGFyYXRvciI6ICJcblxuIiwgInN0cmlwU2VjdGlvbnMiOiB0cnVlfSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAic2tpbGwuYWN0aXZhdGlvbiIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAidHVybiIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiaGFybmVzcy5kaXNhYmxlZF9za2lsbF9hY3RpdmF0aW9uIiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7fSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAidG9vbC5wYWNrcyIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAidHVybiIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiaGFybmVzcy5vcmRlcmVkX2NhcGFiaWxpdHlfcGFja3MiLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHt9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJjb21tYW5kLnBhY2tzIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJ0dXJuIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJoYXJuZXNzLm9yZGVyZWRfY2FwYWJpbGl0eV9wYWNrcyIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjoge30sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogImNvbnRpbnVpdHkucHJvdmlkZXJfcGFja3MiLCAic2hhcGUiOiAib3JkZXJlZCIsICJzY29wZSI6ICJwcm9jZXNzIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJzZWFsZWQiLCAic2VsZWN0aW9ucyI6IFtdLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiYWdncmVnYXRlX2NvbnRyaWJ1dGlvbiJ9XX0sICJjb2RpbmcuaG9zdGVkIjogeyJ2ZXJzaW9uIjogMSwgImNvbXBhdGliaWxpdHlJZCI6ICJjb2RpbmctaG9zdGVkLXYxIiwgImNvbnRpbnVpdHlJZCI6ICJmaXhlZC1jb250aW51aXR5IiwgInNlc3Npb25JZCI6ICI2ZGZkY2ZkYjAxNjNhMzc2YmIyMTU2OTY0ZmM0ZDMyODdlNGUxNTc0YTA4ZTgyYjQ2Y2E4ZTg1MDQwMjk1YWYzIiwgInNjb3BlIjogImN3ZCIsICJzY29wZUZpbmdlcnByaW50IjogImJkNmI0ZTMzNzMzNDY1Yzk1ZTMxZjZlZDhhMTMyMDczMTRkZGU2YTFiYmFhZTU0ODI5NmM1Mjg1OGY1MjM3M2YiLCAib3BlcmF0aW9uSWQiOiAiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEifSwgImNvZGluZ0NvbXBvc2l0aW9uU2V0VjEiOiB7InZlcnNpb24iOiAxLCAic2V0SWQiOiAiY29kaW5nLXN0YW5kYXJkIiwgInBsYW5GaW5nZXJwcmludCI6ICI3NmQ5YjI4ODQyMmUxMWRhZTk0YTVjZGZmNDg1NTE0NjNlOTlkNTE1ZTdlMGM0OTZmODA1NmFlNGUwMTk4YWIyIn19fQo=",
+          "length": 4079,
+          "sha256": "a05dac85bcb9c1335ed1f0969b38a8cc173413a5337605c1794bfe9b1f55ca15"
+        },
+        "catalog_class": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1",
+        "create_id": "6dfdcfdb0163a376bb2156964fc4d3287e4e1574a08e82b46ca8e85040295af3",
+        "envelope": {
+          "class": "loushang.apphost.contracts.SessionIdentityEnvelopeV1",
+          "fields": {
+            "continuity_id": "fixed-continuity",
+            "locator_token": "6dfdcfdb0163a376bb2156964fc4d3287e4e1574a08e82b46ca8e85040295af3",
+            "product_compatibility_id": "coding-hosted-v1",
+            "product_id": "coding",
+            "provider_id": "coding.jsonl",
+            "session_id": "6dfdcfdb0163a376bb2156964fc4d3287e4e1574a08e82b46ca8e85040295af3",
+            "version": "loushang.session-identity/v1"
+          }
+        },
+        "filename": "hosted-6dfdcfdb0163a376bb2156964fc4d3287e4e1574a08e82b46ca8e85040295af3.jsonl",
+        "full_bytes": {
+          "base64": "eyJ0eXBlIjogImNvbnZlcnNhdGlvbiIsICJjb252ZXJzYXRpb25JZCI6ICI2ZGZkY2ZkYjAxNjNhMzc2YmIyMTU2OTY0ZmM0ZDMyODdlNGUxNTc0YTA4ZTgyYjQ2Y2E4ZTg1MDQwMjk1YWYzIiwgInZlcnNpb24iOiAxLCAiY3JlYXRlZEF0IjogIjIwMjYtMTEtMDlUMDA6MDA6MDBaIiwgInBhcmVudENvbnZlcnNhdGlvbklkIjogbnVsbCwgIm1ldGFkYXRhIjogeyJjd2QiOiAiL19fbG91c2hhbmdfYTgwX3ZhbHVlc19fL2Nhbm9uaWNhbC1sZWdhY3kvd29ya3NwYWNlIiwgInJ1bnRpbWVQcm9maWxlIjogeyJzY2hlbWFWZXJzaW9uIjogMSwgInByb2R1Y3RJZCI6ICJjb2RpbmciLCAiY2FwYWJpbGl0aWVzIjogW3sic2xvdCI6ICJjb252ZXJzYXRpb24uc3RvcmUiLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInNlYWxlZCIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiY29kaW5nLmZpbGUiLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHsicGVyc2lzdGVuY2UiOiAiZmlsZSJ9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJhZ2VudC50cmFuc2NyaXB0X3Byb2ZpbGUiLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInNlYWxlZCIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiY29kaW5nLmFnZW50X3RyYW5zY3JpcHQiLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHsiZm9ybWF0IjogImNvbnZlcnNhdGlvbi1qc29ubCIsICJmb3JtYXRWZXJzaW9uIjogMX0sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogImNvbnRleHQuY29tcGFjdGlvbiIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAidHVybiIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiYWdlbnRfdHJhbnNjcmlwdC50dXJuX2F3YXJlX3N1bW1hcnkiLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHsiZW5hYmxlZCI6IHRydWUsICJjb21wYWN0UGVyY2VudCI6IDgwLjAsICJyZXNlcnZlVG9rZW5zIjogODE5MiwgImtlZXBSZWNlbnRUb2tlbnMiOiAzMjc2OH0sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifV19LCAiY2FwYWJpbGl0eVByb2ZpbGUiOiB7InNjaGVtYVZlcnNpb24iOiAxLCAicHJvZHVjdElkIjogImNvZGluZyIsICJjYXBhYmlsaXRpZXMiOiBbeyJzbG90IjogInJlc291cmNlLnJ1bnRpbWUiLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogIndvcmtzcGFjZSIsICJyZWZyZXNoQm91bmRhcnkiOiAic2VhbGVkIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJoYXJuZXNzLnJlc291cmNlX2FjdGl2YXRpb24iLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHt9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJwcm9tcHQuc2VjdGlvbnMiLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInR1cm4iLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImhhcm5lc3MucHJvbXB0X3NlY3Rpb25zIiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7InNlcGFyYXRvciI6ICJcblxuIiwgInN0cmlwU2VjdGlvbnMiOiB0cnVlfSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAic2tpbGwuYWN0aXZhdGlvbiIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAidHVybiIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiaGFybmVzcy5kaXNhYmxlZF9za2lsbF9hY3RpdmF0aW9uIiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7fSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAidG9vbC5wYWNrcyIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAidHVybiIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiaGFybmVzcy5vcmRlcmVkX2NhcGFiaWxpdHlfcGFja3MiLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHt9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJjb21tYW5kLnBhY2tzIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJ0dXJuIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJoYXJuZXNzLm9yZGVyZWRfY2FwYWJpbGl0eV9wYWNrcyIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjoge30sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogImNvbnRpbnVpdHkucHJvdmlkZXJfcGFja3MiLCAic2hhcGUiOiAib3JkZXJlZCIsICJzY29wZSI6ICJwcm9jZXNzIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJzZWFsZWQiLCAic2VsZWN0aW9ucyI6IFtdLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiYWdncmVnYXRlX2NvbnRyaWJ1dGlvbiJ9XX0sICJjb2RpbmcuaG9zdGVkIjogeyJ2ZXJzaW9uIjogMSwgImNvbXBhdGliaWxpdHlJZCI6ICJjb2RpbmctaG9zdGVkLXYxIiwgImNvbnRpbnVpdHlJZCI6ICJmaXhlZC1jb250aW51aXR5IiwgInNlc3Npb25JZCI6ICI2ZGZkY2ZkYjAxNjNhMzc2YmIyMTU2OTY0ZmM0ZDMyODdlNGUxNTc0YTA4ZTgyYjQ2Y2E4ZTg1MDQwMjk1YWYzIiwgInNjb3BlIjogImN3ZCIsICJzY29wZUZpbmdlcnByaW50IjogImJkNmI0ZTMzNzMzNDY1Yzk1ZTMxZjZlZDhhMTMyMDczMTRkZGU2YTFiYmFhZTU0ODI5NmM1Mjg1OGY1MjM3M2YiLCAib3BlcmF0aW9uSWQiOiAiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEifSwgImNvZGluZ0NvbXBvc2l0aW9uU2V0VjEiOiB7InZlcnNpb24iOiAxLCAic2V0SWQiOiAiY29kaW5nLXN0YW5kYXJkIiwgInBsYW5GaW5nZXJwcmludCI6ICI3NmQ5YjI4ODQyMmUxMWRhZTk0YTVjZGZmNDg1NTE0NjNlOTlkNTE1ZTdlMGM0OTZmODA1NmFlNGUwMTk4YWIyIn19fQo=",
+          "length": 4079,
+          "sha256": "a05dac85bcb9c1335ed1f0969b38a8cc173413a5337605c1794bfe9b1f55ca15"
+        },
+        "header": {
+          "class": "loushang.harness.conversation.types.ConversationHeader",
+          "fields": {
+            "conversation_id": "6dfdcfdb0163a376bb2156964fc4d3287e4e1574a08e82b46ca8e85040295af3",
+            "created_at": "2026-11-09T00:00:00Z",
+            "metadata": {
+              "capabilityProfile": {
+                "capabilities": [
+                  {
+                    "refreshBoundary": "sealed",
+                    "scope": "workspace",
+                    "selections": [
+                      {
+                        "config": {},
+                        "implementation": "harness.resource_activation",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "resource.runtime",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {
+                          "separator": "\n\n",
+                          "stripSections": true
+                        },
+                        "implementation": "harness.prompt_sections",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "prompt.sections",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {},
+                        "implementation": "harness.disabled_skill_activation",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "skill.activation",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {},
+                        "implementation": "harness.ordered_capability_packs",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "tool.packs",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {},
+                        "implementation": "harness.ordered_capability_packs",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "command.packs",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "sealed",
+                    "scope": "process",
+                    "selections": [],
+                    "shape": "ordered",
+                    "slot": "continuity.provider_packs",
+                    "variationSemantic": "aggregate_contribution"
+                  }
+                ],
+                "productId": "coding",
+                "schemaVersion": 1
+              },
+              "coding.hosted": {
+                "compatibilityId": "coding-hosted-v1",
+                "continuityId": "fixed-continuity",
+                "operationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "scope": "cwd",
+                "scopeFingerprint": "bd6b4e33733465c95e31f6ed8a13207314dde6a1bbaae548296c52858f52373f",
+                "sessionId": "6dfdcfdb0163a376bb2156964fc4d3287e4e1574a08e82b46ca8e85040295af3",
+                "version": 1
+              },
+              "codingCompositionSetV1": {
+                "planFingerprint": "76d9b288422e11dae94a5cdff48551463e99d515e7e0c496f8056ae4e0198ab2",
+                "setId": "coding-standard",
+                "version": 1
+              },
+              "cwd": "/__loushang_a80_values__/canonical-legacy/workspace",
+              "runtimeProfile": {
+                "capabilities": [
+                  {
+                    "refreshBoundary": "sealed",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {
+                          "persistence": "file"
+                        },
+                        "implementation": "coding.file",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "conversation.store",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "sealed",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {
+                          "format": "conversation-jsonl",
+                          "formatVersion": 1
+                        },
+                        "implementation": "coding.agent_transcript",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "agent.transcript_profile",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {
+                          "compactPercent": 80.0,
+                          "enabled": true,
+                          "keepRecentTokens": 32768,
+                          "reserveTokens": 8192
+                        },
+                        "implementation": "agent_transcript.turn_aware_summary",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "context.compaction",
+                    "variationSemantic": "exclusive_replacement"
+                  }
+                ],
+                "productId": "coding",
+                "schemaVersion": 1
+              }
+            },
+            "parent_conversation_id": null,
+            "version": 1
+          }
+        },
+        "identity": {
+          "class": "loushang.appserver.protocol.model.SessionIdentityV1",
+          "fields": {
+            "continuity_id": "fixed-continuity",
+            "product_id": "coding",
+            "scope": {
+              "enum": "loushang.appserver.protocol.model.SessionScopeV1",
+              "value": "cwd"
+            },
+            "scope_fingerprint": "bd6b4e33733465c95e31f6ed8a13207314dde6a1bbaae548296c52858f52373f",
+            "session_id": "6dfdcfdb0163a376bb2156964fc4d3287e4e1574a08e82b46ca8e85040295af3"
+          }
+        },
+        "manager_class": "loushang.coding.hosted_catalog._HostedTranscript",
+        "metadata": {
+          "capabilityProfile": {
+            "capabilities": [
+              {
+                "refreshBoundary": "sealed",
+                "scope": "workspace",
+                "selections": [
+                  {
+                    "config": {},
+                    "implementation": "harness.resource_activation",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "resource.runtime",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {
+                      "separator": "\n\n",
+                      "stripSections": true
+                    },
+                    "implementation": "harness.prompt_sections",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "prompt.sections",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {},
+                    "implementation": "harness.disabled_skill_activation",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "skill.activation",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {},
+                    "implementation": "harness.ordered_capability_packs",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "tool.packs",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {},
+                    "implementation": "harness.ordered_capability_packs",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "command.packs",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "sealed",
+                "scope": "process",
+                "selections": [],
+                "shape": "ordered",
+                "slot": "continuity.provider_packs",
+                "variationSemantic": "aggregate_contribution"
+              }
+            ],
+            "productId": "coding",
+            "schemaVersion": 1
+          },
+          "coding.hosted": {
+            "compatibilityId": "coding-hosted-v1",
+            "continuityId": "fixed-continuity",
+            "operationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "scope": "cwd",
+            "scopeFingerprint": "bd6b4e33733465c95e31f6ed8a13207314dde6a1bbaae548296c52858f52373f",
+            "sessionId": "6dfdcfdb0163a376bb2156964fc4d3287e4e1574a08e82b46ca8e85040295af3",
+            "version": 1
+          },
+          "codingCompositionSetV1": {
+            "planFingerprint": "76d9b288422e11dae94a5cdff48551463e99d515e7e0c496f8056ae4e0198ab2",
+            "setId": "coding-standard",
+            "version": 1
+          },
+          "cwd": "/__loushang_a80_values__/canonical-legacy/workspace",
+          "runtimeProfile": {
+            "capabilities": [
+              {
+                "refreshBoundary": "sealed",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {
+                      "persistence": "file"
+                    },
+                    "implementation": "coding.file",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "conversation.store",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "sealed",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {
+                      "format": "conversation-jsonl",
+                      "formatVersion": 1
+                    },
+                    "implementation": "coding.agent_transcript",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "agent.transcript_profile",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {
+                      "compactPercent": 80.0,
+                      "enabled": true,
+                      "keepRecentTokens": 32768,
+                      "reserveTokens": 8192
+                    },
+                    "implementation": "agent_transcript.turn_aware_summary",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "context.compaction",
+                "variationSemantic": "exclusive_replacement"
+              }
+            ],
+            "productId": "coding",
+            "schemaVersion": 1
+          }
+        },
+        "pending": 0,
+        "reference_revision_is_sha256": true,
+        "retry_same_identity": true,
+        "scope": {
+          "class": "loushang.coding.hosted_catalog.CodingHostedScopeV1",
+          "fields": {
+            "cwd": "/__loushang_a80_values__/canonical-legacy/workspace",
+            "scope": {
+              "enum": "loushang.appserver.protocol.model.SessionScopeV1",
+              "value": "cwd"
+            },
+            "session_dir": "/__loushang_a80_values__/canonical-legacy/sessions"
+          }
+        }
+      }
+    },
+    "canonical-managed": {
+      "result": {
+        "bytes_after_retry": {
+          "base64": "eyJ0eXBlIjogImNvbnZlcnNhdGlvbiIsICJjb252ZXJzYXRpb25JZCI6ICIyMWZkYTVjMjM1Y2E0YWYzMWIyYTNjMWVmZDFhNThiMzVkNmYyMzhjOWNiOTVlODU1ZjIwOWYzNDEzOTZiYTExIiwgInZlcnNpb24iOiAxLCAiY3JlYXRlZEF0IjogIjIwMjYtMTEtMDlUMDA6MDA6MDBaIiwgInBhcmVudENvbnZlcnNhdGlvbklkIjogbnVsbCwgIm1ldGFkYXRhIjogeyJjd2QiOiAiL19fbG91c2hhbmdfYTgwX3ZhbHVlc19fL2Nhbm9uaWNhbC1tYW5hZ2VkL3dvcmtzcGFjZSIsICJydW50aW1lUHJvZmlsZSI6IHsic2NoZW1hVmVyc2lvbiI6IDEsICJwcm9kdWN0SWQiOiAiY29kaW5nIiwgImNhcGFiaWxpdGllcyI6IFt7InNsb3QiOiAiY29udmVyc2F0aW9uLnN0b3JlIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJzZWFsZWQiLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImNvZGluZy5maWxlIiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7InBlcnNpc3RlbmNlIjogImZpbGUifSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAiYWdlbnQudHJhbnNjcmlwdF9wcm9maWxlIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJzZWFsZWQiLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImNvZGluZy5hZ2VudF90cmFuc2NyaXB0IiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7ImZvcm1hdCI6ICJjb252ZXJzYXRpb24tanNvbmwiLCAiZm9ybWF0VmVyc2lvbiI6IDF9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJjb250ZXh0LmNvbXBhY3Rpb24iLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInR1cm4iLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImFnZW50X3RyYW5zY3JpcHQudHVybl9hd2FyZV9zdW1tYXJ5IiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7ImVuYWJsZWQiOiB0cnVlLCAiY29tcGFjdFBlcmNlbnQiOiA4MC4wLCAicmVzZXJ2ZVRva2VucyI6IDgxOTIsICJrZWVwUmVjZW50VG9rZW5zIjogMzI3Njh9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In1dfSwgImNhcGFiaWxpdHlQcm9maWxlIjogeyJzY2hlbWFWZXJzaW9uIjogMSwgInByb2R1Y3RJZCI6ICJjb2RpbmciLCAiY2FwYWJpbGl0aWVzIjogW3sic2xvdCI6ICJyZXNvdXJjZS5ydW50aW1lIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJ3b3Jrc3BhY2UiLCAicmVmcmVzaEJvdW5kYXJ5IjogInNlYWxlZCIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiaGFybmVzcy5yZXNvdXJjZV9hY3RpdmF0aW9uIiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7fSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAicHJvbXB0LnNlY3Rpb25zIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJ0dXJuIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJoYXJuZXNzLnByb21wdF9zZWN0aW9ucyIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjogeyJzZXBhcmF0b3IiOiAiXG5cbiIsICJzdHJpcFNlY3Rpb25zIjogdHJ1ZX0sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogInNraWxsLmFjdGl2YXRpb24iLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInR1cm4iLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImhhcm5lc3MuZGlzYWJsZWRfc2tpbGxfYWN0aXZhdGlvbiIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjoge30sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogInRvb2wucGFja3MiLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInR1cm4iLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImhhcm5lc3Mub3JkZXJlZF9jYXBhYmlsaXR5X3BhY2tzIiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7fSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAiY29tbWFuZC5wYWNrcyIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAidHVybiIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiaGFybmVzcy5vcmRlcmVkX2NhcGFiaWxpdHlfcGFja3MiLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHt9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJjb250aW51aXR5LnByb3ZpZGVyX3BhY2tzIiwgInNoYXBlIjogIm9yZGVyZWQiLCAic2NvcGUiOiAicHJvY2VzcyIsICJyZWZyZXNoQm91bmRhcnkiOiAic2VhbGVkIiwgInNlbGVjdGlvbnMiOiBbXSwgInZhcmlhdGlvblNlbWFudGljIjogImFnZ3JlZ2F0ZV9jb250cmlidXRpb24ifV19LCAiY29kaW5nLmhvc3RlZCI6IHsidmVyc2lvbiI6IDEsICJjb21wYXRpYmlsaXR5SWQiOiAiY29kaW5nLWhvc3RlZC12MSIsICJjb250aW51aXR5SWQiOiAiZml4ZWQtY29udGludWl0eSIsICJzZXNzaW9uSWQiOiAiMjFmZGE1YzIzNWNhNGFmMzFiMmEzYzFlZmQxYTU4YjM1ZDZmMjM4YzljYjk1ZTg1NWYyMDlmMzQxMzk2YmExMSIsICJzY29wZSI6ICJjd2QiLCAic2NvcGVGaW5nZXJwcmludCI6ICJmZDA3NmM3OTUxODYxZDEzOTk2YTAyYzkzZDMzZDc3YmQ1MjE4MDhhN2ZjYTk1MDZhM2QzNDM5NjRhYzc1NGRlIiwgIm9wZXJhdGlvbklkIjogImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIn0sICJjb2RpbmdDb21wb3NpdGlvblNldFYxIjogeyJ2ZXJzaW9uIjogMSwgInNldElkIjogImNvZGluZy1zdGFuZGFyZCIsICJwbGFuRmluZ2VycHJpbnQiOiAiNzZkOWIyODg0MjJlMTFkYWU5NGE1Y2RmZjQ4NTUxNDYzZTk5ZDUxNWU3ZTBjNDk2ZjgwNTZhZTRlMDE5OGFiMiJ9fX0K",
+          "length": 4080,
+          "sha256": "f01655c45a32d9021befd32a1fa50cd42a34e6286e5dbaa1e4ccf31e07f68af1"
+        },
+        "catalog_class": "loushang.coding.managed_catalog.CodingManagedSessionCatalogV1",
+        "create_id": "21fda5c235ca4af31b2a3c1efd1a58b35d6f238c9cb95e855f209f341396ba11",
+        "envelope": {
+          "class": "loushang.apphost.contracts.SessionIdentityEnvelopeV1",
+          "fields": {
+            "continuity_id": "fixed-continuity",
+            "locator_token": "21fda5c235ca4af31b2a3c1efd1a58b35d6f238c9cb95e855f209f341396ba11",
+            "product_compatibility_id": "coding-hosted-v1",
+            "product_id": "coding",
+            "provider_id": "coding.jsonl",
+            "session_id": "21fda5c235ca4af31b2a3c1efd1a58b35d6f238c9cb95e855f209f341396ba11",
+            "version": "loushang.session-identity/v1"
+          }
+        },
+        "filename": "hosted-21fda5c235ca4af31b2a3c1efd1a58b35d6f238c9cb95e855f209f341396ba11.jsonl",
+        "full_bytes": {
+          "base64": "eyJ0eXBlIjogImNvbnZlcnNhdGlvbiIsICJjb252ZXJzYXRpb25JZCI6ICIyMWZkYTVjMjM1Y2E0YWYzMWIyYTNjMWVmZDFhNThiMzVkNmYyMzhjOWNiOTVlODU1ZjIwOWYzNDEzOTZiYTExIiwgInZlcnNpb24iOiAxLCAiY3JlYXRlZEF0IjogIjIwMjYtMTEtMDlUMDA6MDA6MDBaIiwgInBhcmVudENvbnZlcnNhdGlvbklkIjogbnVsbCwgIm1ldGFkYXRhIjogeyJjd2QiOiAiL19fbG91c2hhbmdfYTgwX3ZhbHVlc19fL2Nhbm9uaWNhbC1tYW5hZ2VkL3dvcmtzcGFjZSIsICJydW50aW1lUHJvZmlsZSI6IHsic2NoZW1hVmVyc2lvbiI6IDEsICJwcm9kdWN0SWQiOiAiY29kaW5nIiwgImNhcGFiaWxpdGllcyI6IFt7InNsb3QiOiAiY29udmVyc2F0aW9uLnN0b3JlIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJzZWFsZWQiLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImNvZGluZy5maWxlIiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7InBlcnNpc3RlbmNlIjogImZpbGUifSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAiYWdlbnQudHJhbnNjcmlwdF9wcm9maWxlIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJzZWFsZWQiLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImNvZGluZy5hZ2VudF90cmFuc2NyaXB0IiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7ImZvcm1hdCI6ICJjb252ZXJzYXRpb24tanNvbmwiLCAiZm9ybWF0VmVyc2lvbiI6IDF9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJjb250ZXh0LmNvbXBhY3Rpb24iLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInR1cm4iLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImFnZW50X3RyYW5zY3JpcHQudHVybl9hd2FyZV9zdW1tYXJ5IiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7ImVuYWJsZWQiOiB0cnVlLCAiY29tcGFjdFBlcmNlbnQiOiA4MC4wLCAicmVzZXJ2ZVRva2VucyI6IDgxOTIsICJrZWVwUmVjZW50VG9rZW5zIjogMzI3Njh9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In1dfSwgImNhcGFiaWxpdHlQcm9maWxlIjogeyJzY2hlbWFWZXJzaW9uIjogMSwgInByb2R1Y3RJZCI6ICJjb2RpbmciLCAiY2FwYWJpbGl0aWVzIjogW3sic2xvdCI6ICJyZXNvdXJjZS5ydW50aW1lIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJ3b3Jrc3BhY2UiLCAicmVmcmVzaEJvdW5kYXJ5IjogInNlYWxlZCIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiaGFybmVzcy5yZXNvdXJjZV9hY3RpdmF0aW9uIiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7fSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAicHJvbXB0LnNlY3Rpb25zIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJ0dXJuIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJoYXJuZXNzLnByb21wdF9zZWN0aW9ucyIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjogeyJzZXBhcmF0b3IiOiAiXG5cbiIsICJzdHJpcFNlY3Rpb25zIjogdHJ1ZX0sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogInNraWxsLmFjdGl2YXRpb24iLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInR1cm4iLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImhhcm5lc3MuZGlzYWJsZWRfc2tpbGxfYWN0aXZhdGlvbiIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjoge30sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogInRvb2wucGFja3MiLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInR1cm4iLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImhhcm5lc3Mub3JkZXJlZF9jYXBhYmlsaXR5X3BhY2tzIiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7fSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAiY29tbWFuZC5wYWNrcyIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAidHVybiIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiaGFybmVzcy5vcmRlcmVkX2NhcGFiaWxpdHlfcGFja3MiLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHt9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJjb250aW51aXR5LnByb3ZpZGVyX3BhY2tzIiwgInNoYXBlIjogIm9yZGVyZWQiLCAic2NvcGUiOiAicHJvY2VzcyIsICJyZWZyZXNoQm91bmRhcnkiOiAic2VhbGVkIiwgInNlbGVjdGlvbnMiOiBbXSwgInZhcmlhdGlvblNlbWFudGljIjogImFnZ3JlZ2F0ZV9jb250cmlidXRpb24ifV19LCAiY29kaW5nLmhvc3RlZCI6IHsidmVyc2lvbiI6IDEsICJjb21wYXRpYmlsaXR5SWQiOiAiY29kaW5nLWhvc3RlZC12MSIsICJjb250aW51aXR5SWQiOiAiZml4ZWQtY29udGludWl0eSIsICJzZXNzaW9uSWQiOiAiMjFmZGE1YzIzNWNhNGFmMzFiMmEzYzFlZmQxYTU4YjM1ZDZmMjM4YzljYjk1ZTg1NWYyMDlmMzQxMzk2YmExMSIsICJzY29wZSI6ICJjd2QiLCAic2NvcGVGaW5nZXJwcmludCI6ICJmZDA3NmM3OTUxODYxZDEzOTk2YTAyYzkzZDMzZDc3YmQ1MjE4MDhhN2ZjYTk1MDZhM2QzNDM5NjRhYzc1NGRlIiwgIm9wZXJhdGlvbklkIjogImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIn0sICJjb2RpbmdDb21wb3NpdGlvblNldFYxIjogeyJ2ZXJzaW9uIjogMSwgInNldElkIjogImNvZGluZy1zdGFuZGFyZCIsICJwbGFuRmluZ2VycHJpbnQiOiAiNzZkOWIyODg0MjJlMTFkYWU5NGE1Y2RmZjQ4NTUxNDYzZTk5ZDUxNWU3ZTBjNDk2ZjgwNTZhZTRlMDE5OGFiMiJ9fX0K",
+          "length": 4080,
+          "sha256": "f01655c45a32d9021befd32a1fa50cd42a34e6286e5dbaa1e4ccf31e07f68af1"
+        },
+        "header": {
+          "class": "loushang.harness.conversation.types.ConversationHeader",
+          "fields": {
+            "conversation_id": "21fda5c235ca4af31b2a3c1efd1a58b35d6f238c9cb95e855f209f341396ba11",
+            "created_at": "2026-11-09T00:00:00Z",
+            "metadata": {
+              "capabilityProfile": {
+                "capabilities": [
+                  {
+                    "refreshBoundary": "sealed",
+                    "scope": "workspace",
+                    "selections": [
+                      {
+                        "config": {},
+                        "implementation": "harness.resource_activation",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "resource.runtime",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {
+                          "separator": "\n\n",
+                          "stripSections": true
+                        },
+                        "implementation": "harness.prompt_sections",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "prompt.sections",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {},
+                        "implementation": "harness.disabled_skill_activation",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "skill.activation",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {},
+                        "implementation": "harness.ordered_capability_packs",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "tool.packs",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {},
+                        "implementation": "harness.ordered_capability_packs",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "command.packs",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "sealed",
+                    "scope": "process",
+                    "selections": [],
+                    "shape": "ordered",
+                    "slot": "continuity.provider_packs",
+                    "variationSemantic": "aggregate_contribution"
+                  }
+                ],
+                "productId": "coding",
+                "schemaVersion": 1
+              },
+              "coding.hosted": {
+                "compatibilityId": "coding-hosted-v1",
+                "continuityId": "fixed-continuity",
+                "operationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "scope": "cwd",
+                "scopeFingerprint": "fd076c7951861d13996a02c93d33d77bd521808a7fca9506a3d343964ac754de",
+                "sessionId": "21fda5c235ca4af31b2a3c1efd1a58b35d6f238c9cb95e855f209f341396ba11",
+                "version": 1
+              },
+              "codingCompositionSetV1": {
+                "planFingerprint": "76d9b288422e11dae94a5cdff48551463e99d515e7e0c496f8056ae4e0198ab2",
+                "setId": "coding-standard",
+                "version": 1
+              },
+              "cwd": "/__loushang_a80_values__/canonical-managed/workspace",
+              "runtimeProfile": {
+                "capabilities": [
+                  {
+                    "refreshBoundary": "sealed",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {
+                          "persistence": "file"
+                        },
+                        "implementation": "coding.file",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "conversation.store",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "sealed",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {
+                          "format": "conversation-jsonl",
+                          "formatVersion": 1
+                        },
+                        "implementation": "coding.agent_transcript",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "agent.transcript_profile",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {
+                          "compactPercent": 80.0,
+                          "enabled": true,
+                          "keepRecentTokens": 32768,
+                          "reserveTokens": 8192
+                        },
+                        "implementation": "agent_transcript.turn_aware_summary",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "context.compaction",
+                    "variationSemantic": "exclusive_replacement"
+                  }
+                ],
+                "productId": "coding",
+                "schemaVersion": 1
+              }
+            },
+            "parent_conversation_id": null,
+            "version": 1
+          }
+        },
+        "identity": {
+          "class": "loushang.appserver.protocol.model.SessionIdentityV1",
+          "fields": {
+            "continuity_id": "fixed-continuity",
+            "product_id": "coding",
+            "scope": {
+              "enum": "loushang.appserver.protocol.model.SessionScopeV1",
+              "value": "cwd"
+            },
+            "scope_fingerprint": "fd076c7951861d13996a02c93d33d77bd521808a7fca9506a3d343964ac754de",
+            "session_id": "21fda5c235ca4af31b2a3c1efd1a58b35d6f238c9cb95e855f209f341396ba11"
+          }
+        },
+        "manager_class": "loushang.coding.hosted_catalog._OwnedHostedTranscript",
+        "metadata": {
+          "capabilityProfile": {
+            "capabilities": [
+              {
+                "refreshBoundary": "sealed",
+                "scope": "workspace",
+                "selections": [
+                  {
+                    "config": {},
+                    "implementation": "harness.resource_activation",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "resource.runtime",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {
+                      "separator": "\n\n",
+                      "stripSections": true
+                    },
+                    "implementation": "harness.prompt_sections",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "prompt.sections",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {},
+                    "implementation": "harness.disabled_skill_activation",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "skill.activation",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {},
+                    "implementation": "harness.ordered_capability_packs",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "tool.packs",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {},
+                    "implementation": "harness.ordered_capability_packs",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "command.packs",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "sealed",
+                "scope": "process",
+                "selections": [],
+                "shape": "ordered",
+                "slot": "continuity.provider_packs",
+                "variationSemantic": "aggregate_contribution"
+              }
+            ],
+            "productId": "coding",
+            "schemaVersion": 1
+          },
+          "coding.hosted": {
+            "compatibilityId": "coding-hosted-v1",
+            "continuityId": "fixed-continuity",
+            "operationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "scope": "cwd",
+            "scopeFingerprint": "fd076c7951861d13996a02c93d33d77bd521808a7fca9506a3d343964ac754de",
+            "sessionId": "21fda5c235ca4af31b2a3c1efd1a58b35d6f238c9cb95e855f209f341396ba11",
+            "version": 1
+          },
+          "codingCompositionSetV1": {
+            "planFingerprint": "76d9b288422e11dae94a5cdff48551463e99d515e7e0c496f8056ae4e0198ab2",
+            "setId": "coding-standard",
+            "version": 1
+          },
+          "cwd": "/__loushang_a80_values__/canonical-managed/workspace",
+          "runtimeProfile": {
+            "capabilities": [
+              {
+                "refreshBoundary": "sealed",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {
+                      "persistence": "file"
+                    },
+                    "implementation": "coding.file",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "conversation.store",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "sealed",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {
+                      "format": "conversation-jsonl",
+                      "formatVersion": 1
+                    },
+                    "implementation": "coding.agent_transcript",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "agent.transcript_profile",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {
+                      "compactPercent": 80.0,
+                      "enabled": true,
+                      "keepRecentTokens": 32768,
+                      "reserveTokens": 8192
+                    },
+                    "implementation": "agent_transcript.turn_aware_summary",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "context.compaction",
+                "variationSemantic": "exclusive_replacement"
+              }
+            ],
+            "productId": "coding",
+            "schemaVersion": 1
+          }
+        },
+        "pending": 0,
+        "reference_revision_is_sha256": true,
+        "retry_same_identity": true,
+        "scope": {
+          "class": "loushang.coding.hosted_catalog.CodingHostedScopeV1",
+          "fields": {
+            "cwd": "/__loushang_a80_values__/canonical-managed/workspace",
+            "scope": {
+              "enum": "loushang.appserver.protocol.model.SessionScopeV1",
+              "value": "cwd"
+            },
+            "session_dir": "/__loushang_a80_values__/canonical-managed/sessions"
+          }
+        }
+      }
+    },
+    "canonical-owned": {
+      "result": {
+        "bytes_after_retry": {
+          "base64": "eyJ0eXBlIjogImNvbnZlcnNhdGlvbiIsICJjb252ZXJzYXRpb25JZCI6ICJkYjRhNTRiMTViNTQxMTY5NDUxNGE2OWVkZWZmMjNiODgwYmUyYmVhNjU4NmYyZWIwMmVkZWIxZmY3OTM0OTIwIiwgInZlcnNpb24iOiAxLCAiY3JlYXRlZEF0IjogIjIwMjYtMTEtMDlUMDA6MDA6MDBaIiwgInBhcmVudENvbnZlcnNhdGlvbklkIjogbnVsbCwgIm1ldGFkYXRhIjogeyJjd2QiOiAiL19fbG91c2hhbmdfYTgwX3ZhbHVlc19fL2Nhbm9uaWNhbC1vd25lZC93b3Jrc3BhY2UiLCAicnVudGltZVByb2ZpbGUiOiB7InNjaGVtYVZlcnNpb24iOiAxLCAicHJvZHVjdElkIjogImNvZGluZyIsICJjYXBhYmlsaXRpZXMiOiBbeyJzbG90IjogImNvbnZlcnNhdGlvbi5zdG9yZSIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAic2VhbGVkIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJjb2RpbmcuZmlsZSIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjogeyJwZXJzaXN0ZW5jZSI6ICJmaWxlIn0sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogImFnZW50LnRyYW5zY3JpcHRfcHJvZmlsZSIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAic2VhbGVkIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJjb2RpbmcuYWdlbnRfdHJhbnNjcmlwdCIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjogeyJmb3JtYXQiOiAiY29udmVyc2F0aW9uLWpzb25sIiwgImZvcm1hdFZlcnNpb24iOiAxfSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAiY29udGV4dC5jb21wYWN0aW9uIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJ0dXJuIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJhZ2VudF90cmFuc2NyaXB0LnR1cm5fYXdhcmVfc3VtbWFyeSIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjogeyJlbmFibGVkIjogdHJ1ZSwgImNvbXBhY3RQZXJjZW50IjogODAuMCwgInJlc2VydmVUb2tlbnMiOiA4MTkyLCAia2VlcFJlY2VudFRva2VucyI6IDMyNzY4fSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9XX0sICJjYXBhYmlsaXR5UHJvZmlsZSI6IHsic2NoZW1hVmVyc2lvbiI6IDEsICJwcm9kdWN0SWQiOiAiY29kaW5nIiwgImNhcGFiaWxpdGllcyI6IFt7InNsb3QiOiAicmVzb3VyY2UucnVudGltZSIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAid29ya3NwYWNlIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJzZWFsZWQiLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImhhcm5lc3MucmVzb3VyY2VfYWN0aXZhdGlvbiIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjoge30sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogInByb21wdC5zZWN0aW9ucyIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAidHVybiIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiaGFybmVzcy5wcm9tcHRfc2VjdGlvbnMiLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHsic2VwYXJhdG9yIjogIlxuXG4iLCAic3RyaXBTZWN0aW9ucyI6IHRydWV9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJza2lsbC5hY3RpdmF0aW9uIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJ0dXJuIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJoYXJuZXNzLmRpc2FibGVkX3NraWxsX2FjdGl2YXRpb24iLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHt9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJ0b29sLnBhY2tzIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJ0dXJuIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJoYXJuZXNzLm9yZGVyZWRfY2FwYWJpbGl0eV9wYWNrcyIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjoge30sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogImNvbW1hbmQucGFja3MiLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInR1cm4iLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImhhcm5lc3Mub3JkZXJlZF9jYXBhYmlsaXR5X3BhY2tzIiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7fSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAiY29udGludWl0eS5wcm92aWRlcl9wYWNrcyIsICJzaGFwZSI6ICJvcmRlcmVkIiwgInNjb3BlIjogInByb2Nlc3MiLCAicmVmcmVzaEJvdW5kYXJ5IjogInNlYWxlZCIsICJzZWxlY3Rpb25zIjogW10sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJhZ2dyZWdhdGVfY29udHJpYnV0aW9uIn1dfSwgImNvZGluZy5ob3N0ZWQiOiB7InZlcnNpb24iOiAxLCAiY29tcGF0aWJpbGl0eUlkIjogImNvZGluZy1ob3N0ZWQtdjEiLCAiY29udGludWl0eUlkIjogImZpeGVkLWNvbnRpbnVpdHkiLCAic2Vzc2lvbklkIjogImRiNGE1NGIxNWI1NDExNjk0NTE0YTY5ZWRlZmYyM2I4ODBiZTJiZWE2NTg2ZjJlYjAyZWRlYjFmZjc5MzQ5MjAiLCAic2NvcGUiOiAiY3dkIiwgInNjb3BlRmluZ2VycHJpbnQiOiAiNDhjMWQ3NDk5ZmY2YzM3ZDEwNDE4NjM2MzU2MmE1ZGNmYmUyOTc4N2U0YjJlY2I3NDI4MGFlMDlkZGM2ZmI4YSIsICJvcGVyYXRpb25JZCI6ICJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSJ9LCAiY29kaW5nQ29tcG9zaXRpb25TZXRWMSI6IHsidmVyc2lvbiI6IDEsICJzZXRJZCI6ICJjb2Rpbmctc3RhbmRhcmQiLCAicGxhbkZpbmdlcnByaW50IjogIjc2ZDliMjg4NDIyZTExZGFlOTRhNWNkZmY0ODU1MTQ2M2U5OWQ1MTVlN2UwYzQ5NmY4MDU2YWU0ZTAxOThhYjIifX19Cg==",
+          "length": 4078,
+          "sha256": "64f132e130b5a0936b1a58558036dac42fd82b17e43f9166b36367520507d0dc"
+        },
+        "catalog_class": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1",
+        "create_id": "db4a54b15b5411694514a69edeff23b880be2bea6586f2eb02edeb1ff7934920",
+        "envelope": {
+          "class": "loushang.apphost.contracts.SessionIdentityEnvelopeV1",
+          "fields": {
+            "continuity_id": "fixed-continuity",
+            "locator_token": "db4a54b15b5411694514a69edeff23b880be2bea6586f2eb02edeb1ff7934920",
+            "product_compatibility_id": "coding-hosted-v1",
+            "product_id": "coding",
+            "provider_id": "coding.jsonl",
+            "session_id": "db4a54b15b5411694514a69edeff23b880be2bea6586f2eb02edeb1ff7934920",
+            "version": "loushang.session-identity/v1"
+          }
+        },
+        "filename": "hosted-db4a54b15b5411694514a69edeff23b880be2bea6586f2eb02edeb1ff7934920.jsonl",
+        "full_bytes": {
+          "base64": "eyJ0eXBlIjogImNvbnZlcnNhdGlvbiIsICJjb252ZXJzYXRpb25JZCI6ICJkYjRhNTRiMTViNTQxMTY5NDUxNGE2OWVkZWZmMjNiODgwYmUyYmVhNjU4NmYyZWIwMmVkZWIxZmY3OTM0OTIwIiwgInZlcnNpb24iOiAxLCAiY3JlYXRlZEF0IjogIjIwMjYtMTEtMDlUMDA6MDA6MDBaIiwgInBhcmVudENvbnZlcnNhdGlvbklkIjogbnVsbCwgIm1ldGFkYXRhIjogeyJjd2QiOiAiL19fbG91c2hhbmdfYTgwX3ZhbHVlc19fL2Nhbm9uaWNhbC1vd25lZC93b3Jrc3BhY2UiLCAicnVudGltZVByb2ZpbGUiOiB7InNjaGVtYVZlcnNpb24iOiAxLCAicHJvZHVjdElkIjogImNvZGluZyIsICJjYXBhYmlsaXRpZXMiOiBbeyJzbG90IjogImNvbnZlcnNhdGlvbi5zdG9yZSIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAic2VhbGVkIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJjb2RpbmcuZmlsZSIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjogeyJwZXJzaXN0ZW5jZSI6ICJmaWxlIn0sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogImFnZW50LnRyYW5zY3JpcHRfcHJvZmlsZSIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAic2VhbGVkIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJjb2RpbmcuYWdlbnRfdHJhbnNjcmlwdCIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjogeyJmb3JtYXQiOiAiY29udmVyc2F0aW9uLWpzb25sIiwgImZvcm1hdFZlcnNpb24iOiAxfSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAiY29udGV4dC5jb21wYWN0aW9uIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJ0dXJuIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJhZ2VudF90cmFuc2NyaXB0LnR1cm5fYXdhcmVfc3VtbWFyeSIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjogeyJlbmFibGVkIjogdHJ1ZSwgImNvbXBhY3RQZXJjZW50IjogODAuMCwgInJlc2VydmVUb2tlbnMiOiA4MTkyLCAia2VlcFJlY2VudFRva2VucyI6IDMyNzY4fSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9XX0sICJjYXBhYmlsaXR5UHJvZmlsZSI6IHsic2NoZW1hVmVyc2lvbiI6IDEsICJwcm9kdWN0SWQiOiAiY29kaW5nIiwgImNhcGFiaWxpdGllcyI6IFt7InNsb3QiOiAicmVzb3VyY2UucnVudGltZSIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAid29ya3NwYWNlIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJzZWFsZWQiLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImhhcm5lc3MucmVzb3VyY2VfYWN0aXZhdGlvbiIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjoge30sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogInByb21wdC5zZWN0aW9ucyIsICJzaGFwZSI6ICJzaW5nbGUiLCAic2NvcGUiOiAic2Vzc2lvbiIsICJyZWZyZXNoQm91bmRhcnkiOiAidHVybiIsICJzZWxlY3Rpb25zIjogW3siaW1wbGVtZW50YXRpb24iOiAiaGFybmVzcy5wcm9tcHRfc2VjdGlvbnMiLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHsic2VwYXJhdG9yIjogIlxuXG4iLCAic3RyaXBTZWN0aW9ucyI6IHRydWV9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJza2lsbC5hY3RpdmF0aW9uIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJ0dXJuIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJoYXJuZXNzLmRpc2FibGVkX3NraWxsX2FjdGl2YXRpb24iLCAiaW1wbGVtZW50YXRpb25WZXJzaW9uIjogMSwgImNvbmZpZyI6IHt9LCAic291cmNlIjogInByb2R1Y3QiLCAibGF5ZXJJZCI6ICJwcm9kdWN0OmNvZGluZyIsICJsYXllclByaW9yaXR5IjogMCwgInNlbGVjdGlvblByaW9yaXR5IjogMH1dLCAidmFyaWF0aW9uU2VtYW50aWMiOiAiZXhjbHVzaXZlX3JlcGxhY2VtZW50In0sIHsic2xvdCI6ICJ0b29sLnBhY2tzIiwgInNoYXBlIjogInNpbmdsZSIsICJzY29wZSI6ICJzZXNzaW9uIiwgInJlZnJlc2hCb3VuZGFyeSI6ICJ0dXJuIiwgInNlbGVjdGlvbnMiOiBbeyJpbXBsZW1lbnRhdGlvbiI6ICJoYXJuZXNzLm9yZGVyZWRfY2FwYWJpbGl0eV9wYWNrcyIsICJpbXBsZW1lbnRhdGlvblZlcnNpb24iOiAxLCAiY29uZmlnIjoge30sICJzb3VyY2UiOiAicHJvZHVjdCIsICJsYXllcklkIjogInByb2R1Y3Q6Y29kaW5nIiwgImxheWVyUHJpb3JpdHkiOiAwLCAic2VsZWN0aW9uUHJpb3JpdHkiOiAwfV0sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJleGNsdXNpdmVfcmVwbGFjZW1lbnQifSwgeyJzbG90IjogImNvbW1hbmQucGFja3MiLCAic2hhcGUiOiAic2luZ2xlIiwgInNjb3BlIjogInNlc3Npb24iLCAicmVmcmVzaEJvdW5kYXJ5IjogInR1cm4iLCAic2VsZWN0aW9ucyI6IFt7ImltcGxlbWVudGF0aW9uIjogImhhcm5lc3Mub3JkZXJlZF9jYXBhYmlsaXR5X3BhY2tzIiwgImltcGxlbWVudGF0aW9uVmVyc2lvbiI6IDEsICJjb25maWciOiB7fSwgInNvdXJjZSI6ICJwcm9kdWN0IiwgImxheWVySWQiOiAicHJvZHVjdDpjb2RpbmciLCAibGF5ZXJQcmlvcml0eSI6IDAsICJzZWxlY3Rpb25Qcmlvcml0eSI6IDB9XSwgInZhcmlhdGlvblNlbWFudGljIjogImV4Y2x1c2l2ZV9yZXBsYWNlbWVudCJ9LCB7InNsb3QiOiAiY29udGludWl0eS5wcm92aWRlcl9wYWNrcyIsICJzaGFwZSI6ICJvcmRlcmVkIiwgInNjb3BlIjogInByb2Nlc3MiLCAicmVmcmVzaEJvdW5kYXJ5IjogInNlYWxlZCIsICJzZWxlY3Rpb25zIjogW10sICJ2YXJpYXRpb25TZW1hbnRpYyI6ICJhZ2dyZWdhdGVfY29udHJpYnV0aW9uIn1dfSwgImNvZGluZy5ob3N0ZWQiOiB7InZlcnNpb24iOiAxLCAiY29tcGF0aWJpbGl0eUlkIjogImNvZGluZy1ob3N0ZWQtdjEiLCAiY29udGludWl0eUlkIjogImZpeGVkLWNvbnRpbnVpdHkiLCAic2Vzc2lvbklkIjogImRiNGE1NGIxNWI1NDExNjk0NTE0YTY5ZWRlZmYyM2I4ODBiZTJiZWE2NTg2ZjJlYjAyZWRlYjFmZjc5MzQ5MjAiLCAic2NvcGUiOiAiY3dkIiwgInNjb3BlRmluZ2VycHJpbnQiOiAiNDhjMWQ3NDk5ZmY2YzM3ZDEwNDE4NjM2MzU2MmE1ZGNmYmUyOTc4N2U0YjJlY2I3NDI4MGFlMDlkZGM2ZmI4YSIsICJvcGVyYXRpb25JZCI6ICJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSJ9LCAiY29kaW5nQ29tcG9zaXRpb25TZXRWMSI6IHsidmVyc2lvbiI6IDEsICJzZXRJZCI6ICJjb2Rpbmctc3RhbmRhcmQiLCAicGxhbkZpbmdlcnByaW50IjogIjc2ZDliMjg4NDIyZTExZGFlOTRhNWNkZmY0ODU1MTQ2M2U5OWQ1MTVlN2UwYzQ5NmY4MDU2YWU0ZTAxOThhYjIifX19Cg==",
+          "length": 4078,
+          "sha256": "64f132e130b5a0936b1a58558036dac42fd82b17e43f9166b36367520507d0dc"
+        },
+        "header": {
+          "class": "loushang.harness.conversation.types.ConversationHeader",
+          "fields": {
+            "conversation_id": "db4a54b15b5411694514a69edeff23b880be2bea6586f2eb02edeb1ff7934920",
+            "created_at": "2026-11-09T00:00:00Z",
+            "metadata": {
+              "capabilityProfile": {
+                "capabilities": [
+                  {
+                    "refreshBoundary": "sealed",
+                    "scope": "workspace",
+                    "selections": [
+                      {
+                        "config": {},
+                        "implementation": "harness.resource_activation",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "resource.runtime",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {
+                          "separator": "\n\n",
+                          "stripSections": true
+                        },
+                        "implementation": "harness.prompt_sections",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "prompt.sections",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {},
+                        "implementation": "harness.disabled_skill_activation",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "skill.activation",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {},
+                        "implementation": "harness.ordered_capability_packs",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "tool.packs",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {},
+                        "implementation": "harness.ordered_capability_packs",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "command.packs",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "sealed",
+                    "scope": "process",
+                    "selections": [],
+                    "shape": "ordered",
+                    "slot": "continuity.provider_packs",
+                    "variationSemantic": "aggregate_contribution"
+                  }
+                ],
+                "productId": "coding",
+                "schemaVersion": 1
+              },
+              "coding.hosted": {
+                "compatibilityId": "coding-hosted-v1",
+                "continuityId": "fixed-continuity",
+                "operationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "scope": "cwd",
+                "scopeFingerprint": "48c1d7499ff6c37d104186363562a5dcfbe29787e4b2ecb74280ae09ddc6fb8a",
+                "sessionId": "db4a54b15b5411694514a69edeff23b880be2bea6586f2eb02edeb1ff7934920",
+                "version": 1
+              },
+              "codingCompositionSetV1": {
+                "planFingerprint": "76d9b288422e11dae94a5cdff48551463e99d515e7e0c496f8056ae4e0198ab2",
+                "setId": "coding-standard",
+                "version": 1
+              },
+              "cwd": "/__loushang_a80_values__/canonical-owned/workspace",
+              "runtimeProfile": {
+                "capabilities": [
+                  {
+                    "refreshBoundary": "sealed",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {
+                          "persistence": "file"
+                        },
+                        "implementation": "coding.file",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "conversation.store",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "sealed",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {
+                          "format": "conversation-jsonl",
+                          "formatVersion": 1
+                        },
+                        "implementation": "coding.agent_transcript",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "agent.transcript_profile",
+                    "variationSemantic": "exclusive_replacement"
+                  },
+                  {
+                    "refreshBoundary": "turn",
+                    "scope": "session",
+                    "selections": [
+                      {
+                        "config": {
+                          "compactPercent": 80.0,
+                          "enabled": true,
+                          "keepRecentTokens": 32768,
+                          "reserveTokens": 8192
+                        },
+                        "implementation": "agent_transcript.turn_aware_summary",
+                        "implementationVersion": 1,
+                        "layerId": "product:coding",
+                        "layerPriority": 0,
+                        "selectionPriority": 0,
+                        "source": "product"
+                      }
+                    ],
+                    "shape": "single",
+                    "slot": "context.compaction",
+                    "variationSemantic": "exclusive_replacement"
+                  }
+                ],
+                "productId": "coding",
+                "schemaVersion": 1
+              }
+            },
+            "parent_conversation_id": null,
+            "version": 1
+          }
+        },
+        "identity": {
+          "class": "loushang.appserver.protocol.model.SessionIdentityV1",
+          "fields": {
+            "continuity_id": "fixed-continuity",
+            "product_id": "coding",
+            "scope": {
+              "enum": "loushang.appserver.protocol.model.SessionScopeV1",
+              "value": "cwd"
+            },
+            "scope_fingerprint": "48c1d7499ff6c37d104186363562a5dcfbe29787e4b2ecb74280ae09ddc6fb8a",
+            "session_id": "db4a54b15b5411694514a69edeff23b880be2bea6586f2eb02edeb1ff7934920"
+          }
+        },
+        "manager_class": "loushang.coding.hosted_catalog._OwnedHostedTranscript",
+        "metadata": {
+          "capabilityProfile": {
+            "capabilities": [
+              {
+                "refreshBoundary": "sealed",
+                "scope": "workspace",
+                "selections": [
+                  {
+                    "config": {},
+                    "implementation": "harness.resource_activation",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "resource.runtime",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {
+                      "separator": "\n\n",
+                      "stripSections": true
+                    },
+                    "implementation": "harness.prompt_sections",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "prompt.sections",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {},
+                    "implementation": "harness.disabled_skill_activation",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "skill.activation",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {},
+                    "implementation": "harness.ordered_capability_packs",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "tool.packs",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {},
+                    "implementation": "harness.ordered_capability_packs",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "command.packs",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "sealed",
+                "scope": "process",
+                "selections": [],
+                "shape": "ordered",
+                "slot": "continuity.provider_packs",
+                "variationSemantic": "aggregate_contribution"
+              }
+            ],
+            "productId": "coding",
+            "schemaVersion": 1
+          },
+          "coding.hosted": {
+            "compatibilityId": "coding-hosted-v1",
+            "continuityId": "fixed-continuity",
+            "operationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "scope": "cwd",
+            "scopeFingerprint": "48c1d7499ff6c37d104186363562a5dcfbe29787e4b2ecb74280ae09ddc6fb8a",
+            "sessionId": "db4a54b15b5411694514a69edeff23b880be2bea6586f2eb02edeb1ff7934920",
+            "version": 1
+          },
+          "codingCompositionSetV1": {
+            "planFingerprint": "76d9b288422e11dae94a5cdff48551463e99d515e7e0c496f8056ae4e0198ab2",
+            "setId": "coding-standard",
+            "version": 1
+          },
+          "cwd": "/__loushang_a80_values__/canonical-owned/workspace",
+          "runtimeProfile": {
+            "capabilities": [
+              {
+                "refreshBoundary": "sealed",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {
+                      "persistence": "file"
+                    },
+                    "implementation": "coding.file",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "conversation.store",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "sealed",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {
+                      "format": "conversation-jsonl",
+                      "formatVersion": 1
+                    },
+                    "implementation": "coding.agent_transcript",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "agent.transcript_profile",
+                "variationSemantic": "exclusive_replacement"
+              },
+              {
+                "refreshBoundary": "turn",
+                "scope": "session",
+                "selections": [
+                  {
+                    "config": {
+                      "compactPercent": 80.0,
+                      "enabled": true,
+                      "keepRecentTokens": 32768,
+                      "reserveTokens": 8192
+                    },
+                    "implementation": "agent_transcript.turn_aware_summary",
+                    "implementationVersion": 1,
+                    "layerId": "product:coding",
+                    "layerPriority": 0,
+                    "selectionPriority": 0,
+                    "source": "product"
+                  }
+                ],
+                "shape": "single",
+                "slot": "context.compaction",
+                "variationSemantic": "exclusive_replacement"
+              }
+            ],
+            "productId": "coding",
+            "schemaVersion": 1
+          }
+        },
+        "pending": 0,
+        "reference_revision_is_sha256": true,
+        "retry_same_identity": true,
+        "scope": {
+          "class": "loushang.coding.hosted_catalog.CodingHostedScopeV1",
+          "fields": {
+            "cwd": "/__loushang_a80_values__/canonical-owned/workspace",
+            "scope": {
+              "enum": "loushang.appserver.protocol.model.SessionScopeV1",
+              "value": "cwd"
+            },
+            "session_dir": "/__loushang_a80_values__/canonical-owned/sessions"
+          }
+        }
+      }
+    },
+    "history-close-retry": {
+      "result": {
+        "after": true,
+        "calls": [
+          "failed-close"
+        ],
+        "first": {
+          "error": {
+            "args": [
+              "controlled history close failure"
+            ],
+            "cause": null,
+            "context": null,
+            "errno": null,
+            "filename": null,
+            "filename2": null,
+            "notes": [],
+            "suppress": false,
+            "type": "builtins.OSError"
+          }
+        },
+        "retained": true
+      }
+    },
+    "history-transfer": {
+      "result": {
+        "after_source_close": {
+          "error": {
+            "args": [
+              "coding_hosted_candidate_unavailable"
+            ],
+            "cause": null,
+            "context": null,
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+          }
+        },
+        "after_take": {
+          "error": {
+            "args": [
+              "coding_hosted_candidate_unavailable"
+            ],
+            "cause": null,
+            "context": null,
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+          }
+        },
+        "calls": [
+          "current",
+          "current",
+          "current"
+        ],
+        "history_same": true,
+        "manager_type": "loushang.coding.hosted_catalog._HostedTranscript",
+        "source_class": "loushang.coding.hosted_catalog.CodingHostedResumeSourceV1",
+        "supports": false,
+        "writer_same": true
+      }
+    },
+    "metadata-bool": {
+      "error": {
+        "args": [
+          "coding_hosted_candidate_unavailable"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+      }
+    },
+    "metadata-compat-unknown": {
+      "result": {
+        "create_id": "246a99e729fbff964f2a8a8ec6b378ca6cc39a4cfaec01e5d5500547b8bc012f",
+        "identity": [
+          {
+            "class": "loushang.appserver.protocol.model.SessionIdentityV1",
+            "fields": {
+              "continuity_id": "fixed-continuity",
+              "product_id": "coding",
+              "scope": {
+                "enum": "loushang.appserver.protocol.model.SessionScopeV1",
+                "value": "cwd"
+              },
+              "scope_fingerprint": "4285b377a4598e9a144fc1803da9142400bac1aefdbddf4c9433db0d8e7884cc",
+              "session_id": "246a99e729fbff964f2a8a8ec6b378ca6cc39a4cfaec01e5d5500547b8bc012f"
+            }
+          },
+          "future-hosted-v9",
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        "metadata": {
+          "coding.hosted": {
+            "compatibilityId": "future-hosted-v9",
+            "continuityId": "fixed-continuity",
+            "operationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "scope": "cwd",
+            "scopeFingerprint": "4285b377a4598e9a144fc1803da9142400bac1aefdbddf4c9433db0d8e7884cc",
+            "sessionId": "246a99e729fbff964f2a8a8ec6b378ca6cc39a4cfaec01e5d5500547b8bc012f",
+            "version": 1
+          },
+          "cwd": "/__loushang_a80_values__/metadata-compat-unknown/workspace"
+        }
+      }
+    },
+    "metadata-cwd": {
+      "result": {
+        "create_id": "92509bbc716041fb0df9c59d9e88474d59ccb81704ea9979033f96debc22ddc9",
+        "identity": [
+          {
+            "class": "loushang.appserver.protocol.model.SessionIdentityV1",
+            "fields": {
+              "continuity_id": "fixed-continuity",
+              "product_id": "coding",
+              "scope": {
+                "enum": "loushang.appserver.protocol.model.SessionScopeV1",
+                "value": "cwd"
+              },
+              "scope_fingerprint": "e4cf65dee55b2c219800fa5f8e1be7ae0c296b804b9eef261e8b6c73bb6f609f",
+              "session_id": "92509bbc716041fb0df9c59d9e88474d59ccb81704ea9979033f96debc22ddc9"
+            }
+          },
+          "coding-hosted-v1",
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        "metadata": {
+          "coding.hosted": {
+            "compatibilityId": "coding-hosted-v1",
+            "continuityId": "fixed-continuity",
+            "operationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "scope": "cwd",
+            "scopeFingerprint": "e4cf65dee55b2c219800fa5f8e1be7ae0c296b804b9eef261e8b6c73bb6f609f",
+            "sessionId": "92509bbc716041fb0df9c59d9e88474d59ccb81704ea9979033f96debc22ddc9",
+            "version": 1
+          },
+          "cwd": "/__loushang_a80_values__/metadata-cwd/workspace"
+        }
+      }
+    },
+    "metadata-empty-continuity": {
+      "error": {
+        "args": [
+          "invalid AppHost contract field 'requested_continuity_id'; opaque_token_required"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "loushang.apphost.errors.InvalidAppHostContractError"
+      }
+    },
+    "metadata-extra": {
+      "error": {
+        "args": [
+          "coding_hosted_candidate_unavailable"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+      }
+    },
+    "metadata-float": {
+      "error": {
+        "args": [
+          "coding_hosted_candidate_unavailable"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+      }
+    },
+    "metadata-home": {
+      "result": {
+        "create_id": "ff79dcc1442e721359d2ea6da9d10946cce7126e36f27fc5019d5e450f902cc6",
+        "identity": [
+          {
+            "class": "loushang.appserver.protocol.model.SessionIdentityV1",
+            "fields": {
+              "continuity_id": "fixed-continuity",
+              "product_id": "coding",
+              "scope": {
+                "enum": "loushang.appserver.protocol.model.SessionScopeV1",
+                "value": "user_home"
+              },
+              "scope_fingerprint": "a82b718a6af3ef564aaf6ae4daf66a5010898711dd01c9dfe2eecc424002edb2",
+              "session_id": "ff79dcc1442e721359d2ea6da9d10946cce7126e36f27fc5019d5e450f902cc6"
+            }
+          },
+          "coding-hosted-v1",
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        "metadata": {
+          "coding.hosted": {
+            "compatibilityId": "coding-hosted-v1",
+            "continuityId": "fixed-continuity",
+            "operationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "scope": "user_home",
+            "scopeFingerprint": "a82b718a6af3ef564aaf6ae4daf66a5010898711dd01c9dfe2eecc424002edb2",
+            "sessionId": "ff79dcc1442e721359d2ea6da9d10946cce7126e36f27fc5019d5e450f902cc6",
+            "version": 1
+          },
+          "cwd": "/__loushang_a80_values__/metadata-home/workspace"
+        }
+      }
+    },
+    "metadata-scope-mismatch": {
+      "error": {
+        "args": [
+          "coding_hosted_candidate_unavailable"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+      }
+    },
+    "metadata-session-mismatch": {
+      "error": {
+        "args": [
+          "coding_hosted_candidate_unavailable"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+      }
+    },
+    "record-duplicate-policies": {
+      "result": {
+        "base_same": {
+          "error": {
+            "args": [
+              "coding_hosted_candidate_unavailable"
+            ],
+            "cause": null,
+            "context": null,
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+          }
+        },
+        "managed_other_file": {
+          "error": {
+            "args": [
+              "coding_hosted_candidate_unavailable"
+            ],
+            "cause": null,
+            "context": null,
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+          }
+        },
+        "managed_same_view": {
+          "error": {
+            "args": [
+              "coding_hosted_candidate_unavailable"
+            ],
+            "cause": null,
+            "context": null,
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+          }
+        },
+        "managed_two_views": {
+          "value": null
+        }
+      }
+    },
+    "record-projections": {
+      "result": {
+        "base": {
+          "available": true,
+          "display": {
+            "class": "loushang.appserver.protocol.model.SessionIdentityV1",
+            "fields": {
+              "continuity_id": "fixed-continuity",
+              "product_id": "coding",
+              "scope": {
+                "enum": "loushang.appserver.protocol.model.SessionScopeV1",
+                "value": "cwd"
+              },
+              "scope_fingerprint": "f6fea69d03e0c17a3068e17a3f9079f2482121d53f780d3c0a6f435bbd1ead1c",
+              "session_id": "56bac2f5afa108e31fceb8c563de67cc9df0cf18f1dd027969c7c44cfaa65521"
+            }
+          },
+          "visible": true
+        },
+        "base_open_unsupported": {
+          "value": null
+        },
+        "managed": {
+          "available": false,
+          "display": {
+            "class": "loushang.appserver.protocol.model.SessionIdentityV1",
+            "fields": {
+              "continuity_id": "fixed-continuity",
+              "product_id": "coding",
+              "scope": {
+                "enum": "loushang.appserver.protocol.model.SessionScopeV1",
+                "value": "cwd"
+              },
+              "scope_fingerprint": "f6fea69d03e0c17a3068e17a3f9079f2482121d53f780d3c0a6f435bbd1ead1c",
+              "session_id": "56bac2f5afa108e31fceb8c563de67cc9df0cf18f1dd027969c7c44cfaa65521"
+            }
+          },
+          "visible": false
+        },
+        "managed_open_unsupported": {
+          "error": {
+            "args": [
+              "coding_hosted_candidate_unavailable"
+            ],
+            "cause": null,
+            "context": null,
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+          }
+        }
+      }
+    },
+    "reflection": {
+      "result": {
+        "loushang.coding.hosted_catalog": {
+          "CODING_HOSTED_COMPATIBILITY_ID": "coding-hosted-v1",
+          "CodingHostedCandidateBindingV1": {
+            "class": "loushang.coding.hosted_catalog.CodingHostedCandidateBindingV1",
+            "constructor": "(record: '_Record', manager: 'SessionManager') -> 'None'",
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "manager": "SessionManager",
+                  "record": "_Record",
+                  "return": "None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedCandidateBindingV1.__init__",
+                "signature": "(self, record: '_Record', manager: 'SessionManager') -> 'None'"
+              },
+              "close": {
+                "annotations": {
+                  "return": "None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedCandidateBindingV1.close",
+                "signature": "(self) -> 'None'"
+              },
+              "manager_for_construction": {
+                "annotations": {
+                  "return": "SessionManager"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedCandidateBindingV1.manager_for_construction",
+                "signature": "(self) -> 'SessionManager'"
+              },
+              "retain_constructed_owner": {
+                "annotations": {
+                  "dispose": "Callable[[], Awaitable[None]]",
+                  "return": "None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedCandidateBindingV1.retain_constructed_owner",
+                "signature": "(self, dispose: 'Callable[[], Awaitable[None]]') -> 'None'"
+              },
+              "take_manager": {
+                "annotations": {
+                  "return": "SessionManager"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedCandidateBindingV1.take_manager",
+                "signature": "(self) -> 'SessionManager'"
+              }
+            },
+            "own_annotations": {}
+          },
+          "CodingHostedCandidateValidatorV1": {
+            "class": "loushang.coding.hosted_catalog.CodingHostedCandidateValidatorV1",
+            "constructor": "()",
+            "methods": {
+              "open_product_candidate": {
+                "annotations": {
+                  "candidate": "ClaimedSessionCandidateV1",
+                  "envelope": "SessionIdentityEnvelopeV1",
+                  "return": "OpenedProductCandidateV1"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedCandidateValidatorV1.open_product_candidate",
+                "signature": "(self, candidate: 'ClaimedSessionCandidateV1', envelope: 'SessionIdentityEnvelopeV1') -> 'OpenedProductCandidateV1'"
+              }
+            },
+            "own_annotations": {}
+          },
+          "CodingHostedCatalogError": {
+            "class": "loushang.coding.hosted_catalog.CodingHostedCatalogError",
+            "constructor": "() -> 'None'",
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "return": "None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedCatalogError.__init__",
+                "signature": "(self) -> 'None'"
+              }
+            },
+            "own_annotations": {}
+          },
+          "CodingHostedHistoryCandidateBindingV1": {
+            "class": "loushang.coding.hosted_catalog.CodingHostedHistoryCandidateBindingV1",
+            "constructor": "(record: '_Record', binding: 'CodingHostedSessionBindingV1', require_accepting: 'Callable[[], None]', *, manager_type: 'type[SessionManager]', writer_factory: 'AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding]') -> 'None'",
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "binding": "CodingHostedSessionBindingV1",
+                  "manager_type": "type[SessionManager]",
+                  "record": "_Record",
+                  "require_accepting": "Callable[[], None]",
+                  "return": "None",
+                  "writer_factory": "AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding]"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedHistoryCandidateBindingV1.__init__",
+                "signature": "(self, record: '_Record', binding: 'CodingHostedSessionBindingV1', require_accepting: 'Callable[[], None]', *, manager_type: 'type[SessionManager]', writer_factory: 'AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding]') -> 'None'"
+              },
+              "close": {
+                "annotations": {
+                  "return": "None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedHistoryCandidateBindingV1.close",
+                "signature": "(self) -> 'None'"
+              },
+              "require_current_source": {
+                "annotations": {
+                  "return": "None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedHistoryCandidateBindingV1.require_current_source",
+                "signature": "(self) -> 'None'"
+              },
+              "supports_writable_resume": {
+                "annotations": {
+                  "return": "bool"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedHistoryCandidateBindingV1.supports_writable_resume",
+                "signature": "(self) -> 'bool'"
+              },
+              "take_binding": {
+                "annotations": {
+                  "return": "CodingHostedHistoryBindingV1"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedHistoryCandidateBindingV1.take_binding",
+                "signature": "(self) -> 'CodingHostedHistoryBindingV1'"
+              },
+              "take_resume_source": {
+                "annotations": {
+                  "return": "CodingHostedResumeSourceV1"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedHistoryCandidateBindingV1.take_resume_source",
+                "signature": "(self) -> 'CodingHostedResumeSourceV1'"
+              }
+            },
+            "own_annotations": {}
+          },
+          "CodingHostedResumeCatalogV1": {
+            "class": "loushang.coding.hosted_catalog.CodingHostedResumeCatalogV1",
+            "constructor": "(catalog: 'CodingHostedSessionCatalogV1', *, max_bytes: 'int' = 67108864) -> 'None'",
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "catalog": "CodingHostedSessionCatalogV1",
+                  "max_bytes": "int",
+                  "return": "None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedResumeCatalogV1.__init__",
+                "signature": "(self, catalog: 'CodingHostedSessionCatalogV1', *, max_bytes: 'int' = 67108864) -> 'None'"
+              },
+              "close": {
+                "annotations": {
+                  "return": "None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedResumeCatalogV1.close",
+                "signature": "(self) -> 'None'"
+              },
+              "create_candidate": {
+                "annotations": {
+                  "intent": "SessionCreateIntentV1",
+                  "return": "_Candidate"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedResumeCatalogV1.create_candidate",
+                "signature": "(self, intent: 'SessionCreateIntentV1') -> '_Candidate'"
+              },
+              "fence": {
+                "annotations": {
+                  "return": "None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedResumeCatalogV1.fence",
+                "signature": "(self) -> 'None'"
+              },
+              "find_created_candidate": {
+                "annotations": {
+                  "request": "SessionCreateRequestV1",
+                  "return": "_Candidate | None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedResumeCatalogV1.find_created_candidate",
+                "signature": "(self, request: 'SessionCreateRequestV1') -> '_Candidate | None'"
+              },
+              "list_identities": {
+                "annotations": {
+                  "limit": "int",
+                  "return": "tuple[SessionIdentityProjectionV1, ...]",
+                  "scopes": "tuple[SessionDiscoveryScope, ...]"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedResumeCatalogV1.list_identities",
+                "signature": "(self, scopes: 'tuple[SessionDiscoveryScope, ...]', *, limit: 'int') -> 'tuple[SessionIdentityProjectionV1, ...]'"
+              },
+              "open_candidate": {
+                "annotations": {
+                  "reference": "SessionCandidateRefV1",
+                  "return": "_Candidate"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedResumeCatalogV1.open_candidate",
+                "signature": "(self, reference: 'SessionCandidateRefV1') -> '_Candidate'"
+              },
+              "pending_sessions": {
+                "annotations": {
+                  "return": "tuple[AgentTranscriptLifecycleSession[RuntimeProfileBinding], ...]"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedResumeCatalogV1.pending_sessions",
+                "signature": "(self) -> 'tuple[AgentTranscriptLifecycleSession[RuntimeProfileBinding], ...]'"
+              },
+              "scopes": {
+                "annotations": {
+                  "return": "tuple[CodingHostedScopeV1, ...]"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedResumeCatalogV1.scopes",
+                "signature": "(self) -> 'tuple[CodingHostedScopeV1, ...]'"
+              }
+            },
+            "own_annotations": {}
+          },
+          "CodingHostedResumeSourceV1": {
+            "class": "loushang.coding.hosted_catalog.CodingHostedResumeSourceV1",
+            "constructor": "(record: '_Record', history_binding: 'CodingHostedHistoryBindingV1', manager_type: 'type[SessionManager]', writer_factory: 'AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding]', _require_current: 'Callable[[], None]', _closed: 'bool' = False) -> None",
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "_closed": "bool",
+                  "_require_current": "Callable[[], None]",
+                  "history_binding": "CodingHostedHistoryBindingV1",
+                  "manager_type": "type[SessionManager]",
+                  "record": "_Record",
+                  "return": "None",
+                  "writer_factory": "AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding]"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedResumeSourceV1.__init__",
+                "signature": "(self, record: '_Record', history_binding: 'CodingHostedHistoryBindingV1', manager_type: 'type[SessionManager]', writer_factory: 'AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding]', _require_current: 'Callable[[], None]', _closed: 'bool' = False) -> None"
+              },
+              "close": {
+                "annotations": {
+                  "return": "None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedResumeSourceV1.close",
+                "signature": "(self) -> 'None'"
+              },
+              "history": {
+                "annotations": {
+                  "return": "CodingResumeHistoryPreview"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedResumeSourceV1.history",
+                "signature": "(self) -> 'CodingResumeHistoryPreview'"
+              },
+              "require_current_source": {
+                "annotations": {
+                  "return": "None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedResumeSourceV1.require_current_source",
+                "signature": "(self) -> 'None'"
+              }
+            },
+            "own_annotations": {
+              "_closed": "bool",
+              "_require_current": "Callable[[], None]",
+              "history_binding": "CodingHostedHistoryBindingV1",
+              "manager_type": "type[SessionManager]",
+              "record": "_Record",
+              "writer_factory": "AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding]"
+            }
+          },
+          "CodingHostedScopeV1": {
+            "class": "loushang.coding.hosted_catalog.CodingHostedScopeV1",
+            "constructor": "(scope: 'SessionScopeV1', session_dir: 'Path', cwd: 'Path') -> None",
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "cwd": "Path",
+                  "return": "None",
+                  "scope": "SessionScopeV1",
+                  "session_dir": "Path"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedScopeV1.__init__",
+                "signature": "(self, scope: 'SessionScopeV1', session_dir: 'Path', cwd: 'Path') -> None"
+              },
+              "discovery_scope": {
+                "annotations": {
+                  "return": "SessionDiscoveryScope"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedScopeV1.discovery_scope",
+                "signature": "(self) -> 'SessionDiscoveryScope'"
+              },
+              "fingerprint": {
+                "annotations": {
+                  "return": "str"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedScopeV1.fingerprint",
+                "signature": "(self) -> 'str'"
+              },
+              "source_id": {
+                "annotations": {
+                  "return": "str"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedScopeV1.source_id",
+                "signature": "(self) -> 'str'"
+              }
+            },
+            "own_annotations": {
+              "cwd": "Path",
+              "scope": "SessionScopeV1",
+              "session_dir": "Path"
+            }
+          },
+          "CodingHostedSessionCatalogV1": {
+            "class": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1",
+            "constructor": "(scopes: 'tuple[CodingHostedScopeV1, ...]', *, owned_transcripts: 'bool' = False, store_state_root: 'Path | None' = None, store_root_observed: 'threading.Event | None' = None) -> 'None'",
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "owned_transcripts": "bool",
+                  "return": "None",
+                  "scopes": "tuple[CodingHostedScopeV1, ...]",
+                  "store_root_observed": "threading.Event | None",
+                  "store_state_root": "Path | None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.__init__",
+                "signature": "(self, scopes: 'tuple[CodingHostedScopeV1, ...]', *, owned_transcripts: 'bool' = False, store_state_root: 'Path | None' = None, store_root_observed: 'threading.Event | None' = None) -> 'None'"
+              },
+              "close": {
+                "annotations": {
+                  "return": "None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.close",
+                "signature": "(self) -> 'None'"
+              },
+              "create_candidate": {
+                "annotations": {
+                  "intent": "SessionCreateIntentV1",
+                  "return": "_Candidate"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.create_candidate",
+                "signature": "(self, intent: 'SessionCreateIntentV1') -> '_Candidate'"
+              },
+              "discover_sessions": {
+                "annotations": {
+                  "return": "HostedSessionDiscoverySnapshotV1",
+                  "scope": "HostedSessionDiscoveryScopeV1",
+                  "stop": "Callable[[], bool]"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.discover_sessions",
+                "signature": "(self, scope: 'HostedSessionDiscoveryScopeV1', *, stop: 'Callable[[], bool]') -> 'HostedSessionDiscoverySnapshotV1'"
+              },
+              "fence": {
+                "annotations": {
+                  "return": "None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.fence",
+                "signature": "(self) -> 'None'"
+              },
+              "find_created_candidate": {
+                "annotations": {
+                  "request": "SessionCreateRequestV1",
+                  "return": "_Candidate | None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.find_created_candidate",
+                "signature": "(self, request: 'SessionCreateRequestV1') -> '_Candidate | None'"
+              },
+              "list_identities": {
+                "annotations": {
+                  "limit": "int",
+                  "return": "tuple[SessionIdentityProjectionV1, ...]",
+                  "scopes": "tuple[SessionDiscoveryScope, ...]"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.list_identities",
+                "signature": "(self, scopes: 'tuple[SessionDiscoveryScope, ...]', *, limit: 'int') -> 'tuple[SessionIdentityProjectionV1, ...]'"
+              },
+              "open_candidate": {
+                "annotations": {
+                  "reference": "SessionCandidateRefV1",
+                  "return": "_Candidate"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.open_candidate",
+                "signature": "(self, reference: 'SessionCandidateRefV1') -> '_Candidate'"
+              },
+              "open_history_binding": {
+                "annotations": {
+                  "max_bytes": "int",
+                  "reference": "SessionCandidateRefV1",
+                  "return": "CodingHostedSessionBindingV1",
+                  "selected_leaf_id": "str | None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.open_history_binding",
+                "signature": "(self, reference: 'SessionCandidateRefV1', *, max_bytes: 'int', selected_leaf_id: 'str | None' = None) -> 'CodingHostedSessionBindingV1'"
+              },
+              "open_history_candidate": {
+                "annotations": {
+                  "max_bytes": "int",
+                  "reference": "SessionCandidateRefV1",
+                  "return": "_Candidate",
+                  "selected_leaf_id": "str | None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.open_history_candidate",
+                "signature": "(self, reference: 'SessionCandidateRefV1', *, max_bytes: 'int', selected_leaf_id: 'str | None' = None) -> '_Candidate'"
+              },
+              "pending_sessions": {
+                "annotations": {
+                  "return": "tuple[AgentTranscriptLifecycleSession[RuntimeProfileBinding], ...]"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.pending_sessions",
+                "signature": "(self) -> 'tuple[AgentTranscriptLifecycleSession[RuntimeProfileBinding], ...]'"
+              },
+              "preview_history_header": {
+                "annotations": {
+                  "reference": "SessionCandidateRefV1",
+                  "return": "CodingResumeHeaderPreview"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.preview_history_header",
+                "signature": "(self, reference: 'SessionCandidateRefV1') -> 'CodingResumeHeaderPreview'"
+              },
+              "preview_history_snapshot": {
+                "annotations": {
+                  "max_bytes": "int",
+                  "reference": "SessionCandidateRefV1",
+                  "return": "CodingResumeHistoryPreview",
+                  "selected_leaf_id": "str | None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.preview_history_snapshot",
+                "signature": "(self, reference: 'SessionCandidateRefV1', *, max_bytes: 'int', selected_leaf_id: 'str | None' = None) -> 'CodingResumeHistoryPreview'"
+              },
+              "preview_resume_model_outcome": {
+                "annotations": {
+                  "max_bytes": "int",
+                  "query": "CodingResumeInputLookupQueryV1",
+                  "reference": "SessionCandidateRefV1",
+                  "return": "CodingResumeModelOutcomeObservationV1",
+                  "selected_leaf_id": "str | None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.preview_resume_model_outcome",
+                "signature": "(self, reference: 'SessionCandidateRefV1', query: 'CodingResumeInputLookupQueryV1', *, max_bytes: 'int', selected_leaf_id: 'str | None' = None) -> 'CodingResumeModelOutcomeObservationV1'"
+              }
+            },
+            "own_annotations": {}
+          }
+        },
+        "loushang.coding.managed_catalog": {
+          "CodingManagedSessionCatalogV1": {
+            "class": "loushang.coding.managed_catalog.CodingManagedSessionCatalogV1",
+            "constructor": "(*, session_root: 'Path', workspace: 'Path', initialize_session_root: 'bool' = False, store_state_root: 'Path | None' = None) -> 'None'",
+            "methods": {
+              "__init__": {
+                "annotations": {
+                  "initialize_session_root": "bool",
+                  "return": "None",
+                  "session_root": "Path",
+                  "store_state_root": "Path | None",
+                  "workspace": "Path"
+                },
+                "fq": "loushang.coding.managed_catalog.CodingManagedSessionCatalogV1.__init__",
+                "signature": "(self, *, session_root: 'Path', workspace: 'Path', initialize_session_root: 'bool' = False, store_state_root: 'Path | None' = None) -> 'None'"
+              },
+              "close": {
+                "annotations": {
+                  "return": "None"
+                },
+                "fq": "loushang.coding.managed_catalog.CodingManagedSessionCatalogV1.close",
+                "signature": "(self) -> 'None'"
+              },
+              "create_candidate": {
+                "annotations": {
+                  "intent": "SessionCreateIntentV1",
+                  "return": "_Candidate"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.create_candidate",
+                "signature": "(self, intent: 'SessionCreateIntentV1') -> '_Candidate'"
+              },
+              "discover_sessions": {
+                "annotations": {
+                  "return": "HostedSessionDiscoverySnapshotV1",
+                  "scope": "HostedSessionDiscoveryScopeV1",
+                  "stop": "Callable[[], bool]"
+                },
+                "fq": "loushang.coding.managed_catalog.CodingManagedSessionCatalogV1.discover_sessions",
+                "signature": "(self, scope: 'HostedSessionDiscoveryScopeV1', *, stop: 'Callable[[], bool]') -> 'HostedSessionDiscoverySnapshotV1'"
+              },
+              "fence": {
+                "annotations": {
+                  "return": "None"
+                },
+                "fq": "loushang.coding.managed_catalog.CodingManagedSessionCatalogV1.fence",
+                "signature": "(self) -> 'None'"
+              },
+              "find_created_candidate": {
+                "annotations": {
+                  "request": "SessionCreateRequestV1",
+                  "return": "_Candidate | None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.find_created_candidate",
+                "signature": "(self, request: 'SessionCreateRequestV1') -> '_Candidate | None'"
+              },
+              "list_identities": {
+                "annotations": {
+                  "limit": "int",
+                  "return": "tuple[SessionIdentityProjectionV1, ...]",
+                  "scopes": "tuple[SessionDiscoveryScope, ...]"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.list_identities",
+                "signature": "(self, scopes: 'tuple[SessionDiscoveryScope, ...]', *, limit: 'int') -> 'tuple[SessionIdentityProjectionV1, ...]'"
+              },
+              "open_candidate": {
+                "annotations": {
+                  "reference": "SessionCandidateRefV1",
+                  "return": "_Candidate"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.open_candidate",
+                "signature": "(self, reference: 'SessionCandidateRefV1') -> '_Candidate'"
+              },
+              "open_history_binding": {
+                "annotations": {
+                  "max_bytes": "int",
+                  "reference": "SessionCandidateRefV1",
+                  "return": "CodingHostedSessionBindingV1",
+                  "selected_leaf_id": "str | None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.open_history_binding",
+                "signature": "(self, reference: 'SessionCandidateRefV1', *, max_bytes: 'int', selected_leaf_id: 'str | None' = None) -> 'CodingHostedSessionBindingV1'"
+              },
+              "open_history_candidate": {
+                "annotations": {
+                  "max_bytes": "int",
+                  "reference": "SessionCandidateRefV1",
+                  "return": "_Candidate",
+                  "selected_leaf_id": "str | None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.open_history_candidate",
+                "signature": "(self, reference: 'SessionCandidateRefV1', *, max_bytes: 'int', selected_leaf_id: 'str | None' = None) -> '_Candidate'"
+              },
+              "pending_sessions": {
+                "annotations": {
+                  "return": "tuple[AgentTranscriptLifecycleSession[RuntimeProfileBinding], ...]"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.pending_sessions",
+                "signature": "(self) -> 'tuple[AgentTranscriptLifecycleSession[RuntimeProfileBinding], ...]'"
+              },
+              "preview_history_header": {
+                "annotations": {
+                  "reference": "SessionCandidateRefV1",
+                  "return": "CodingResumeHeaderPreview"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.preview_history_header",
+                "signature": "(self, reference: 'SessionCandidateRefV1') -> 'CodingResumeHeaderPreview'"
+              },
+              "preview_history_snapshot": {
+                "annotations": {
+                  "max_bytes": "int",
+                  "reference": "SessionCandidateRefV1",
+                  "return": "CodingResumeHistoryPreview",
+                  "selected_leaf_id": "str | None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.preview_history_snapshot",
+                "signature": "(self, reference: 'SessionCandidateRefV1', *, max_bytes: 'int', selected_leaf_id: 'str | None' = None) -> 'CodingResumeHistoryPreview'"
+              },
+              "preview_resume_model_outcome": {
+                "annotations": {
+                  "max_bytes": "int",
+                  "query": "CodingResumeInputLookupQueryV1",
+                  "reference": "SessionCandidateRefV1",
+                  "return": "CodingResumeModelOutcomeObservationV1",
+                  "selected_leaf_id": "str | None"
+                },
+                "fq": "loushang.coding.hosted_catalog.CodingHostedSessionCatalogV1.preview_resume_model_outcome",
+                "signature": "(self, reference: 'SessionCandidateRefV1', query: 'CodingResumeInputLookupQueryV1', *, max_bytes: 'int', selected_leaf_id: 'str | None' = None) -> 'CodingResumeModelOutcomeObservationV1'"
+              }
+            },
+            "own_annotations": {}
+          }
+        }
+      }
+    },
+    "resume-source-close-failure": {
+      "result": {
+        "calls": [
+          "failed-close"
+        ],
+        "closed": true,
+        "first": {
+          "error": {
+            "args": [
+              "controlled source close failure"
+            ],
+            "cause": null,
+            "context": null,
+            "errno": null,
+            "filename": null,
+            "filename2": null,
+            "notes": [],
+            "suppress": false,
+            "type": "builtins.OSError"
+          }
+        },
+        "history_after_close": {
+          "error": {
+            "args": [
+              "coding_hosted_candidate_unavailable"
+            ],
+            "cause": null,
+            "context": null,
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+          }
+        },
+        "second": {
+          "value": null
+        }
+      }
+    },
+    "resume-source-values": {
+      "result": {
+        "closed": true,
+        "dtype": {
+          "class": "loushang.coding.hosted_catalog.CodingHostedResumeSourceV1",
+          "constructor": "(record: '_Record', history_binding: 'CodingHostedHistoryBindingV1', manager_type: 'type[SessionManager]', writer_factory: 'AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding]', _require_current: 'Callable[[], None]', _closed: 'bool' = False) -> None",
+          "dataclass_params": {
+            "eq": true,
+            "frozen": false,
+            "init": true,
+            "order": false,
+            "repr": true,
+            "unsafe_hash": false
+          },
+          "fields": [
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "record",
+              "repr": true,
+              "type": "_Record"
+            },
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "history_binding",
+              "repr": true,
+              "type": "CodingHostedHistoryBindingV1"
+            },
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "manager_type",
+              "repr": true,
+              "type": "type[SessionManager]"
+            },
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "writer_factory",
+              "repr": true,
+              "type": "AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding]"
+            },
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "_require_current",
+              "repr": false,
+              "type": "Callable[[], None]"
+            },
+            {
+              "compare": true,
+              "default": false,
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "_closed",
+              "repr": true,
+              "type": "bool"
+            }
+          ],
+          "has_dict": false,
+          "own_annotations": {
+            "_closed": "bool",
+            "_require_current": "Callable[[], None]",
+            "history_binding": "CodingHostedHistoryBindingV1",
+            "manager_type": "type[SessionManager]",
+            "record": "_Record",
+            "writer_factory": "AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding]"
+          },
+          "pickle": {
+            "value": {
+              "class": "loushang.coding.hosted_catalog.CodingHostedResumeSourceV1",
+              "equal": false
+            }
+          },
+          "repr": "CodingHostedResumeSourceV1(record=_Record(projection=SessionIdentityProjectionV1(reference=SessionCandidateRefV1(source_id='coding.hosted.cwd', candidate_id='ae634b56e17c36da199bc07e7d4055fc539658d37a09020baeb1d8610c6f80a6', revision='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), scope=<SessionDiscoveryScope.CURRENT_DIRECTORY: 'current_directory'>, mode=<SessionCandidateMode.CANONICAL: 'canonical'>, envelope=SessionIdentityEnvelopeV1(product_id='coding', product_compatibility_id='coding-hosted-v1', continuity_id='fixed-continuity', session_id='ae634b56e17c36da199bc07e7d4055fc539658d37a09020baeb1d8610c6f80a6', provider_id='coding.jsonl', version='loushang.session-identity/v1')), identity=SessionIdentityV1(product_id='coding', continuity_id='fixed-continuity', session_id='ae634b56e17c36da199bc07e7d4055fc539658d37a09020baeb1d8610c6f80a6', scope=<SessionScopeV1.CWD: 'cwd'>, scope_fingerprint='7afd64210cffa163d1e6bfb0d954093f3e0c02174b0a721cd07aee4500551915'), scope=CodingHostedScopeV1(scope=<SessionScopeV1.CWD: 'cwd'>), operation_id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', header=ConversationHeader(conversation_id='ae634b56e17c36da199bc07e7d4055fc539658d37a09020baeb1d8610c6f80a6', version=1, created_at='2026-11-09T00:00:00Z', parent_conversation_id=None, metadata={'cwd': '/__loushang_a80_values__/resume-source-values/workspace', 'coding.hosted': {'version': 1, 'compatibilityId': 'coding-hosted-v1', 'continuityId': 'fixed-continuity', 'sessionId': 'ae634b56e17c36da199bc07e7d4055fc539658d37a09020baeb1d8610c6f80a6', 'scope': 'cwd', 'scopeFingerprint': '7afd64210cffa163d1e6bfb0d954093f3e0c02174b0a721cd07aee4500551915', 'operationId': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}}), compatible=True), history_binding=<loushang.coding.hosted_session.CodingHostedHistoryBindingV1 object at 0x<ADDRESS>>, manager_type=<class 'loushang.coding.hosted_catalog._HostedTranscript'>, writer_factory=<loushang.harness.transcript.session_factory.AgentTranscriptSessionFactory object at 0x<ADDRESS>>, _closed=False)",
+          "slots": [
+            "record",
+            "history_binding",
+            "manager_type",
+            "writer_factory",
+            "_require_current",
+            "_closed"
+          ]
+        },
+        "history_after_close": {
+          "error": {
+            "args": [
+              "coding_hosted_candidate_unavailable"
+            ],
+            "cause": null,
+            "context": null,
+            "notes": [],
+            "suppress": false,
+            "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+          }
+        },
+        "history_same": true,
+        "record_dtype": {
+          "class": "loushang.coding.hosted_catalog._Record",
+          "constructor": "(projection: 'SessionIdentityProjectionV1', identity: 'SessionIdentityV1', scope: 'CodingHostedScopeV1', path: 'Path', operation_id: 'str', header: 'ConversationHeader', compatible: 'bool' = True) -> None",
+          "dataclass_params": {
+            "eq": true,
+            "frozen": true,
+            "init": true,
+            "order": false,
+            "repr": true,
+            "unsafe_hash": false
+          },
+          "fields": [
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "projection",
+              "repr": true,
+              "type": "SessionIdentityProjectionV1"
+            },
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "identity",
+              "repr": true,
+              "type": "SessionIdentityV1"
+            },
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "scope",
+              "repr": true,
+              "type": "CodingHostedScopeV1"
+            },
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "path",
+              "repr": false,
+              "type": "Path"
+            },
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "operation_id",
+              "repr": true,
+              "type": "str"
+            },
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "header",
+              "repr": true,
+              "type": "ConversationHeader"
+            },
+            {
+              "compare": true,
+              "default": true,
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "compatible",
+              "repr": true,
+              "type": "bool"
+            }
+          ],
+          "has_dict": false,
+          "own_annotations": {
+            "compatible": "bool",
+            "header": "ConversationHeader",
+            "identity": "SessionIdentityV1",
+            "operation_id": "str",
+            "path": "Path",
+            "projection": "SessionIdentityProjectionV1",
+            "scope": "CodingHostedScopeV1"
+          },
+          "pickle": {
+            "value": {
+              "class": "loushang.coding.hosted_catalog._Record",
+              "equal": true
+            }
+          },
+          "repr": "_Record(projection=SessionIdentityProjectionV1(reference=SessionCandidateRefV1(source_id='coding.hosted.cwd', candidate_id='ae634b56e17c36da199bc07e7d4055fc539658d37a09020baeb1d8610c6f80a6', revision='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), scope=<SessionDiscoveryScope.CURRENT_DIRECTORY: 'current_directory'>, mode=<SessionCandidateMode.CANONICAL: 'canonical'>, envelope=SessionIdentityEnvelopeV1(product_id='coding', product_compatibility_id='coding-hosted-v1', continuity_id='fixed-continuity', session_id='ae634b56e17c36da199bc07e7d4055fc539658d37a09020baeb1d8610c6f80a6', provider_id='coding.jsonl', version='loushang.session-identity/v1')), identity=SessionIdentityV1(product_id='coding', continuity_id='fixed-continuity', session_id='ae634b56e17c36da199bc07e7d4055fc539658d37a09020baeb1d8610c6f80a6', scope=<SessionScopeV1.CWD: 'cwd'>, scope_fingerprint='7afd64210cffa163d1e6bfb0d954093f3e0c02174b0a721cd07aee4500551915'), scope=CodingHostedScopeV1(scope=<SessionScopeV1.CWD: 'cwd'>), operation_id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', header=ConversationHeader(conversation_id='ae634b56e17c36da199bc07e7d4055fc539658d37a09020baeb1d8610c6f80a6', version=1, created_at='2026-11-09T00:00:00Z', parent_conversation_id=None, metadata={'cwd': '/__loushang_a80_values__/resume-source-values/workspace', 'coding.hosted': {'version': 1, 'compatibilityId': 'coding-hosted-v1', 'continuityId': 'fixed-continuity', 'sessionId': 'ae634b56e17c36da199bc07e7d4055fc539658d37a09020baeb1d8610c6f80a6', 'scope': 'cwd', 'scopeFingerprint': '7afd64210cffa163d1e6bfb0d954093f3e0c02174b0a721cd07aee4500551915', 'operationId': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}}), compatible=True)",
+          "slots": [
+            "projection",
+            "identity",
+            "scope",
+            "path",
+            "operation_id",
+            "header",
+            "compatible"
+          ]
+        }
+      }
+    },
+    "scope-cwd": {
+      "result": {
+        "discovery_scope": {
+          "enum": "loushang.apphost.contracts.SessionDiscoveryScope",
+          "value": "current_directory"
+        },
+        "dtype": {
+          "class": "loushang.coding.hosted_catalog.CodingHostedScopeV1",
+          "constructor": "(scope: 'SessionScopeV1', session_dir: 'Path', cwd: 'Path') -> None",
+          "dataclass_params": {
+            "eq": true,
+            "frozen": true,
+            "init": true,
+            "order": false,
+            "repr": true,
+            "unsafe_hash": false
+          },
+          "fields": [
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "scope",
+              "repr": true,
+              "type": "SessionScopeV1"
+            },
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "session_dir",
+              "repr": false,
+              "type": "Path"
+            },
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "cwd",
+              "repr": false,
+              "type": "Path"
+            }
+          ],
+          "has_dict": false,
+          "own_annotations": {
+            "cwd": "Path",
+            "scope": "SessionScopeV1",
+            "session_dir": "Path"
+          },
+          "pickle": {
+            "value": {
+              "class": "loushang.coding.hosted_catalog.CodingHostedScopeV1",
+              "equal": true
+            }
+          },
+          "repr": "CodingHostedScopeV1(scope=<SessionScopeV1.CWD: 'cwd'>)",
+          "slots": [
+            "scope",
+            "session_dir",
+            "cwd"
+          ]
+        },
+        "fingerprint": "19f127e176cfd52f0f34b45e7bcf1ff4a964f7474f89627efb9d47d18020e50e",
+        "source_id": "coding.hosted.cwd"
+      }
+    },
+    "scope-enum": {
+      "error": {
+        "args": [
+          "invalid hosted scope"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      }
+    },
+    "scope-home": {
+      "result": {
+        "discovery_scope": {
+          "enum": "loushang.apphost.contracts.SessionDiscoveryScope",
+          "value": "user_global_canonical"
+        },
+        "dtype": {
+          "class": "loushang.coding.hosted_catalog.CodingHostedScopeV1",
+          "constructor": "(scope: 'SessionScopeV1', session_dir: 'Path', cwd: 'Path') -> None",
+          "dataclass_params": {
+            "eq": true,
+            "frozen": true,
+            "init": true,
+            "order": false,
+            "repr": true,
+            "unsafe_hash": false
+          },
+          "fields": [
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "scope",
+              "repr": true,
+              "type": "SessionScopeV1"
+            },
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "session_dir",
+              "repr": false,
+              "type": "Path"
+            },
+            {
+              "compare": true,
+              "default": "<MISSING>",
+              "factory": "<MISSING>",
+              "init": true,
+              "kw_only": false,
+              "name": "cwd",
+              "repr": false,
+              "type": "Path"
+            }
+          ],
+          "has_dict": false,
+          "own_annotations": {
+            "cwd": "Path",
+            "scope": "SessionScopeV1",
+            "session_dir": "Path"
+          },
+          "pickle": {
+            "value": {
+              "class": "loushang.coding.hosted_catalog.CodingHostedScopeV1",
+              "equal": true
+            }
+          },
+          "repr": "CodingHostedScopeV1(scope=<SessionScopeV1.USER_HOME: 'user_home'>)",
+          "slots": [
+            "scope",
+            "session_dir",
+            "cwd"
+          ]
+        },
+        "fingerprint": "5abb69f26383891c13000bf939d3790d034b473eecf21f0b727e06c3318e069d",
+        "source_id": "coding.hosted.user_home"
+      }
+    },
+    "scope-relative": {
+      "error": {
+        "args": [
+          "hosted scope requires admitted absolute paths"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "builtins.ValueError"
+      }
+    },
+    "validator-valid": {
+      "result": {
+        "binding_same": true,
+        "key": {
+          "class": "loushang.apphost.contracts.SessionBindingKeyV1",
+          "fields": {
+            "continuity_id": "fixed-continuity",
+            "product_id": "coding",
+            "session_id": "66ac08208e02ff657b72db826bf8b68d97d527f86f861ed39e187b25479710f5"
+          }
+        },
+        "manager_retained": true,
+        "opened_class": "loushang.coding.hosted_catalog._Opened"
+      }
+    },
+    "validator-wrong-type": {
+      "error": {
+        "args": [
+          "coding_hosted_candidate_unavailable"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "loushang.coding.hosted_catalog.CodingHostedCatalogError"
+      }
+    }
+  }
+}

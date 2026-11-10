@@ -7,6 +7,7 @@
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
 当前430个Python文件均重新计量并核SHA；原审计列与候选处置保留供追溯。当前行数包括已接通但尚待最终切片验证的源码；各批接受范围以执行记录为准。
+A80完整canonical Catalog custody已接通，Code保实际类/政策/薄入口；见[本片交付](key-designs/canonical-transcript-catalog-custody-convergence.md)。
 A79完整Product selected revision输入与Wheel bytes已接通，政策/实际DTO留Code；见[本片交付](key-designs/product-selected-revision-custody-convergence.md)。
 A78完整Linux registered/crash恢复与cleanup evidence已接通；见[本片交付](key-designs/linux-worker-recovery-convergence.md)。
 A77完整Linux history proof已接通，实际DTO/政策留Code；见[本片交付](key-designs/linux-worker-history-proof-convergence.md)。
@@ -146,7 +147,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [extension_author.py](../../../../src/loushang/coding/extension_author.py) | C05 | 366 | V | C05 显式 canary 与作者验证入口 | cee4f5980761 | 366 | cee4f5980761 |
 | [hosted_application.py](../../../../src/loushang/coding/hosted_application.py) | C02 | 932 | B | C02 托管与受管运行接入 | 391f0fc90f4b | 747 | 3917a7d74492 |
 | [hosted_bootstrap.py](../../../../src/loushang/coding/hosted_bootstrap.py) | C02 | 316 | B | C02 托管与受管运行接入 | 20d1a3e2578e | 314 | f077f36acb66 |
-| [hosted_catalog.py](../../../../src/loushang/coding/hosted_catalog.py) | C02 | 1,221 | B | C02 托管与受管运行接入 | 1a07a14c6e43 | 1,216 | fdf36ff76c2d |
+| [hosted_catalog.py](../../../../src/loushang/coding/hosted_catalog.py) | C02 | 1,221 | B | C02 托管与受管运行接入 | 1a07a14c6e43 | 931 | ffc81875f898 |
 | [hosted_continuity.py](../../../../src/loushang/coding/hosted_continuity.py) | C02 | 308 | B | C02 托管与受管运行接入 | b714d619b52d | 289 | d21b24f1d13f |
 | [hosted_execution.py](../../../../src/loushang/coding/hosted_execution.py) | C02 | 265 | B | C02 托管与受管运行接入 | 434428f1690d | 345 | 7c10da248cfa |
 | [hosted_goal.py](../../../../src/loushang/coding/hosted_goal.py) | C02 | 216 | B | C02 托管与受管运行接入 | 19f9feb3b57a | 216 | 19f9feb3b57a |
@@ -183,7 +184,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [lsp/supervisor.py](../../../../src/loushang/coding/lsp/supervisor.py) | C13 | 441 | K/M | C13 LSP Capability | 24675a3ef20a | 441 | 24675a3ef20a |
 | [lsp/tools.py](../../../../src/loushang/coding/lsp/tools.py) | C13 | 752 | K/M | C13 LSP Capability | 01c821d48cfa | 728 | 62414981154f |
 | [managed_bootstrap.py](../../../../src/loushang/coding/managed_bootstrap.py) | C02 | 149 | B | C02 托管与受管运行接入 | caf5eed49a10 | 149 | caf5eed49a10 |
-| [managed_catalog.py](../../../../src/loushang/coding/managed_catalog.py) | C02 | 301 | B | C02 托管与受管运行接入 | f59741d1cc8f | 301 | f59741d1cc8f |
+| [managed_catalog.py](../../../../src/loushang/coding/managed_catalog.py) | C02 | 301 | B | C02 托管与受管运行接入 | f59741d1cc8f | 228 | e392695cb5f3 |
 | [managed_local.py](../../../../src/loushang/coding/managed_local.py) | C02 | 172 | B | C02 托管与受管运行接入 | 92b01ff32c7a | 172 | 877cf0d8f9d6 |
 | [managed_process.py](../../../../src/loushang/coding/managed_process.py) | C02 | 164 | B | C02 托管与受管运行接入 | 5d34ff8a9094 | 164 | 5d34ff8a9094 |
 | [model_reasoning.py](../../../../src/loushang/coding/model_reasoning.py) | C06 | 68 | R/M | C06 其余根目录入口与策略 | c6b15f1173ea | 68 | c6b15f1173ea |
@@ -462,7 +463,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | 组 | 当前文件 | 当前物理行 |
 | --- | ---: | ---: |
 | C01 | 22 | 12,966 |
-| C02 | 28 | 8,413 |
+| C02 | 28 | 8,055 |
 | C03 | 15 | 4,132 |
 | C04 | 2 | 2,968 |
 | C05 | 6 | 3,565 |
@@ -489,4 +490,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 114,864 |
+| 合计 | 430 | 114,506 |

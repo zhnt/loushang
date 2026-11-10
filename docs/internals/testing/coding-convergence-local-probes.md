@@ -167,3 +167,23 @@ with no current recapture entry or expansion of default discovery/PR coverage.
 
 Explicit local paths: [probe_product_selected_revision_values.py](../../../tests/coding/probe_product_selected_revision_values.py)
 and [probe_product_selected_revision_custody.py](../../../tests/coding/probe_product_selected_revision_custody.py).
+
+
+The canonical hosted Catalog probes compare31 original value/byte observations
+and35 complete custody observations. The latter directly invokes the existing five
+consumer modules with their original assertions, rather than copying their files.
+Actual Writers/Store probes, real task cancellation, source changes and retry run.
+Private per-test inputs and a scoped Home avoid shared directories or live state;
+the managed RunLease remains on the configured private disk runtime directory.
+Input-derived identities and exact title/filename relations use frozen original
+formulas. Complete normalized Header bytes and ordered traces remain checked;
+only two observed identical-input concurrent completion traces are allowed.
+Original raw evidence, conversion and anti-mask proofs remain outside Product.
+The full custody JSON fixture is losslessly gzip-compressed; decompression keeps
+the exact original bytes and every ordered event. These are explicit local probes,
+with no default discovery or PR gate expansion.
+
+Explicit local paths: [probe_hosted_catalog_values.py](../../../tests/coding/probe_hosted_catalog_values.py)
+and [probe_hosted_catalog_custody.py](../../../tests/coding/probe_hosted_catalog_custody.py).
+The existing opt-in private input plugin described above can be supplied when
+running original consumers alongside these probes on this machine.

@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import stat
+from _thread import LockType
 from dataclasses import dataclass
 from pathlib import Path
 from secrets import token_hex
@@ -20,6 +21,9 @@ from threading import Event
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.journal._directory_lease import DirectoryWriterLease
 from loushang.harness.journal._rooted_io import RootedFileIO
+from loushang.harness.transcript._canonical_header import (
+    _CanonicalTranscriptSourceMethods,
+)
 
 from ._admission_publication import AdmissionWitnessLease as _WitnessLease
 from .writer_lease import TranscriptStoreAdmissionError, TranscriptWriterError
@@ -459,7 +463,7 @@ def _missing(path: Path) -> bool:
 
 
 _unique = _unique_json_object_hook(
-    lambda: 'duplicate field',
+    lambda: "duplicate field",
 )
 
 
@@ -477,3 +481,106 @@ def _read_record(port: RootedFileIO, path: Path, *, max_bytes: int = 4096,
         return json.loads(data, object_pairs_hook=_unique)
     except (ValueError, RecursionError) as error:
         raise TranscriptStoreAdmissionError("conflict", stage="decode_record", record_path=path) from error
+
+
+class _TranscriptStoreCatalogObservations(_CanonicalTranscriptSourceMethods):
+    _root_observed: Event
+    _store_state_root: Path | None
+    _store_probes: dict[TranscriptStoreAdmission, bool]
+    _store_probe_lock: LockType
+    _store_probes_fenced: bool
+    _store_active_reads: int
+    _observed_store_binding: TranscriptStoreBinding | None
+    _observed_root_identity: tuple[int, int] | None
+
+    def _maximum_store_observations(self) -> int:
+        raise NotImplementedError
+
+    def _directory_revision(self, path: Path) -> tuple[int, int, int] | None:
+        probe = None
+        if self._store_state_root is not None:
+            probe = TranscriptStoreAdmission(
+                path,
+                state_root=self._store_state_root,
+                root_observed=self._root_observed,
+            )
+            with self._store_probe_lock:
+                if (
+                    self._store_probes_fenced
+                    or len(self._store_probes) >= self._maximum_store_observations()
+                    or any((not active for active in self._store_probes.values()))
+                ):
+                    raise self._catalog_error_class()()
+                self._store_probes[probe] = True
+        try:
+            binding = probe.inspect() if probe is not None else None
+            if probe is not None:
+                with self._store_probe_lock:
+                    if (
+                        self._observed_store_binding is not None
+                        and binding != self._observed_store_binding
+                    ):
+                        raise self._catalog_error_class()()
+                    if binding is not None:
+                        self._observed_store_binding = binding
+            revision = super()._directory_revision(path)
+            if revision is not None:
+                self._root_observed.set()
+                if probe is not None:
+                    with self._store_probe_lock:
+                        if (
+                            self._observed_root_identity is not None
+                            and revision[:2] != self._observed_root_identity
+                        ):
+                            raise self._catalog_error_class()()
+                        self._observed_root_identity = revision[:2]
+            if binding is not None:
+                assert probe is not None
+                probe.check()
+                if revision is None or revision[:2] != binding.root_identity:
+                    raise self._catalog_error_class()()
+            if revision is None and self._root_observed.is_set():
+                raise self._catalog_error_class()()
+        except BaseException as error:
+            self._root_observed.set()
+            if probe is not None:
+                try:
+                    self._finish_store_probe(probe)
+                except BaseException as cleanup_error:
+                    error.add_note(
+                        f"store observation cleanup retained: {type(cleanup_error).__name__}"
+                    )
+            raise
+        else:
+            if probe is not None:
+                self._finish_store_probe(probe)
+        return revision
+
+    def _finish_store_probe(self, probe: TranscriptStoreAdmission) -> None:
+        try:
+            probe.close()
+        except BaseException:
+            with self._store_probe_lock:
+                self._store_probes[probe] = False
+            raise
+        else:
+            with self._store_probe_lock:
+                self._store_probes.pop(probe, None)
+
+    def _close_store_probes(self) -> None:
+        with self._store_probe_lock:
+            probes = tuple(self._store_probes.items())
+            active_reads = self._store_active_reads
+        failures: list[Exception] = (
+            [self._catalog_error_class()()] if active_reads else []
+        )
+        for probe, active in probes:
+            if active:
+                failures.append(self._catalog_error_class()())
+                continue
+            try:
+                self._finish_store_probe(probe)
+            except Exception as error:
+                failures.append(error)
+        if failures:
+            raise failures[0]

@@ -2,11 +2,41 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（P2/A79完整Product selected revision输入、P1/A78完整Linux恢复/evidence及A1–A71指定路径、A74三类payload恢复、A77完整Linux history proof、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口及A76备份拓扑存储）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（P2/P3/A80完整canonical Catalog custody、P2/A79完整Product selected revision输入、P1/A78完整Linux恢复/evidence及A1–A71指定路径、A74三类payload恢复、A77完整Linux history proof、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口及A76备份拓扑存储）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-09，A79完整Product selected revision输入）
+## 当前状态（2026-11-10，A80完整canonical Catalog custody）
+
+从A79 `489929afd`接续；canonical create/find/list/display-discovery/open、owned
+post-delivery candidate custody、claim/close及Managed Store探针/根观测整体归现有
+AppHost/Harness集成与原Transcript owner。直接复用原scan/header/fingerprint、
+Factory/Writer及StoreAdmission；不激活dark adapter，不另建catalog对象或状态机。
+Code保真实类/公开签名、identity/metadata/compatibility/view政策及薄入口；history
+preview/navigation五方法原AST保持，窄history currentness guard的原effects明确保留。
+
+实际Coding430文件114506行，系统1966源647630行：Code−358、Core+947、系统
+净+589；其余1961原source SHA同，13原package资源字节同。全部Protocol/泛型/
+动态getter/构造/薄方法/import/格式计账，是职责迁移，不称系统净去重；距15K仍
+99506，完整P1–P4/Goal保持partial/active。
+
+原五consumer模块88过，R5同88过；原31值/三完整Header bytes对R5固定31+guard
+32过，portable期望仅从原raw转换，原31及候选31+guard通过。原35运行场景完整
+执行通过；固定重播按原公式约束路径/continuity/title/filename排序，同输入并发
+仅允许两条实际旧完整trace。R5同35及直接复用原模块的portable35分别通过。
+实际66固定+原88共154过（38.07s）；另外边界172过1旧精确事实失败保留，旧源
+同节点复现两条原遗漏，仅RHS加三真实路径，原8func/单节点7assert/scanner保持，
+同1节点修后通过。实际AppHost关闭/重开及发现到交互原consumer另14过1旧loader
+挂点失败保留，旧源同节点通过；仅retarget实际Transcript loader后同1节点通过，
+五func/29assert/原输入及超时全保持。实际5源mypy及源码/probe Ruff通过，完整来源、失败/修正、有限
+边界和实际三视角接受见[本片交付](key-designs/canonical-transcript-catalog-custody-convergence.md)。
+
+后续继续普通Worker、启动/Plugin/Session、其余托管/Continuity及入口/存量完整职责。
+原summary/dark adapter/Factory._projection均有不同合同，不用较窄摘要代严格路由；
+原已有机制直接复用不重复计益。KD003未实施，KD011/A33待用户且不采用；本片不
+代表whole hosted_catalog/history、任一整波次或全Goal完成。
+
+## A79历史交付（2026-11-09，完整Product selected revision输入）
 
 从A78 `3e3af964e`接续；selected snapshot到live handle、builtin/external验证、
 host distribution lock、package/binding/plugin/resolution及前缀失败关闭整体归原

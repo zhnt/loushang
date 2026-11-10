@@ -811,3 +811,17 @@ operation at the original point, without a Code IO callback or duplicate manager
 The original Plugin DTO/parser, resolver, currentness and later approval/Graph
 owners remain sole mechanisms. [Bounded input evidence](key-designs/product-selected-revision-custody-convergence.md)
 records source identities, exact bytes, cleanup asymmetries and full cost.
+
+## Canonical transcript catalog custody (A80)
+
+The existing AppHost/Harness optional integration owns canonical create/find/list/
+open/display discovery, candidate claim/close and post-delivery session custody on
+the actual Product catalog/candidate instances. It neither activates the dark
+adapter nor adds a second catalog or registry. Transcript owns original physical
+revision/header observations and Managed StoreAdmission probe/identity custody.
+The original Factory/Writer, scanner, fingerprint and admission mechanisms remain
+the sole resource owners. Coding keeps real classes/public signatures and pure
+identity/metadata/compatibility/view policy with thin entries. Its existing narrow
+history-currentness guard retains effects; history preview/navigation is unchanged.
+[Bounded canonical evidence](key-designs/canonical-transcript-catalog-custody-convergence.md)
+records distinct owned/legacy failures, true thread completion and complete cost.

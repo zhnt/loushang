@@ -4,7 +4,7 @@
 - Design status: current-gap review；下面候选接口尚未接受或实施。
 - Implementation status: A71已提交；本工作件不新增生产实现或精简收益。
 - Owner: Coding及各原组件owner；三独立视角复核，实施owner综合事实。
-- 后续：A73关闭下文候选的完整审批协调，A74关闭三类payload恢复协调（registered另合同仍待），A75关闭prepared-operation任务custody、A76关闭备份拓扑完整存储依赖、A77关闭完整Linux history proof/strict GC，A78关闭完整registered/crash恢复、cleanup evidence及POSIX C5 Store custody，A79关闭完整Product selected revision输入与installed member/Wheel bytes程序；当前计量与未关闭职责见[执行状态](coding-responsibility-convergence-progress.md)，本文件其余数值保留A72审计切点。
+- 后续：A73关闭下文候选的完整审批协调，A74关闭三类payload恢复协调（registered另合同仍待），A75关闭prepared-operation任务custody、A76关闭备份拓扑完整存储依赖、A77关闭完整Linux history proof/strict GC，A78关闭完整registered/crash恢复、cleanup evidence及POSIX C5 Store custody，A79关闭完整Product selected revision输入与installed member/Wheel bytes程序，A80关闭完整canonical Catalog协调/候选custody与Managed探针程序（history/navigation原位）；当前计量与未关闭职责见[执行状态](coding-responsibility-convergence-progress.md)，本文件其余数值保留A72审计切点。
 - 实物：`2c322a821`，专用delivery worktree；Coding430文件117115行，系统1958源645173行。
 - 方法：本地干净master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 

@@ -6,7 +6,7 @@
 
 - Authority: accepted execution goal；用户2026-11-07将本描述设为active Goal。本文件不替代各组件的已接受架构合同。
 - Design status: accepted goal scope；各波次专项架构仍须设计、评审及按原约定由用户审阅重要工作件。
-- 当前实施摘要：A79接通并完成完整Product selected revision输入与Wheel bytes的有界技术验收；A78完整Linux registered/crash恢复及此前成果已提交。当前计量及欠账见下文“当前状态”。KD011/A33待用户工作件保持，KD003 bytes-import仍未实施；以下逐项保留各历史接受范围。
+- 当前实施摘要：A80完整canonical Catalog custody已接通并获有界技术验收；A79及此前成果已提交。当前计量及欠账见下文“当前状态”。KD011/A33待用户工作件保持，KD003 bytes-import仍未实施；以下逐项保留各历史接受范围。
 - Implementation status: partial（P1/P2/P3/P4）；指定五流/Rooted命令、payload、checkpoint/快照及A13–A15 Windows指定路径已获有界技术接受；A17图关系归原Session，A19本地启动阶段复用、A20托管Session桥接、A21 foreground Product所有权接缝、A22受控Wheel Source目录共享程序及A23依赖来源完整操作复用也已获有界接受。P2 R2.1职责方向已于2026-11-08获用户接受，D3完整兼容捕获路径获有界技术接受（181实际通过/5原skip），D1/D2的owner租约/证据账本与startup、D4完整成员/退役/关闭协同均已接入并获有界接受，P2启动装配首批owner publication亦已接通并获有界代码接受（75项实际回归及21组冻结观察对照），三种构造/发布前后清理路径也已复用Session共同程序并完成有界评审，原Loader回执至Catalog source specs完整交接也已接入（原47节点通过/失败集合不变，16固定观察通过，保留10项迁前失败），其余bootstrap/共同输入与刷新装配仍待收敛；KD010六Windows基线/join已整体接入Worker.history并取得实际有限验证，P4的F06 Goal记录后端亦已本地接通（14原节点及7固定IO观察通过，2项Session准入失败用旧后端复现），A24十三个Payload入口已复用原Storage根借用、删除重复根IO骨架（Code−71/系统净−48，实际48项通过及代码三视角有界接受），A25内置Source四个物理程序也已接入原Resources（Code−216/系统+4，65过/1原native skip，代码三视角有界接受）；A26 Windows Worker Source完整目录协调已归原Package Product（Code−204/系统+78，117过/1原native skip，代码三视角有界接受）；A27两平台候选事实联接及四条安装/更新共同程序已归原Package Product（Code−313/系统净−123，103过/2原skip，代码三视角有界接受）；其余Worker、其它托管/Continuity与P4剩余入口仍未完成，Coding≤15K及现行职责/复用/成本准则保持，实际测试与全成本见[执行记录](coding-responsibility-convergence-progress.md)。
 - Owner: Coding与各接收组件原owner；跨组件决定由共同上级架构owner综合接受。
 - 依据：[全量重构方案](coding-reconstruction-proposal.md)、[逐文件职责清单](coding-responsibility-inventory.md)、[Current Owner Map](current-owner-map.md)。方案与清单中的旧行数不是本轮当前事实。
@@ -27,7 +27,37 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-09，A79完整Product selected revision输入）
+## 当前状态（2026-11-10，A80完整canonical Catalog custody）
+
+从A79 `489929afd`接续；canonical create/find/list/display-discovery/open、owned
+post-delivery candidate custody、claim/close及Managed Store探针/根观测整体归现有
+AppHost/Harness集成与原Transcript owner。直接复用原scan/header/fingerprint、
+Factory/Writer及StoreAdmission；不激活dark adapter，不另建catalog对象或状态机。
+Code保真实类/公开签名、identity/metadata/compatibility/view政策及薄入口；history
+preview/navigation五方法原AST保持，窄history currentness guard的原effects明确保留。
+
+实际Coding430文件114506行，系统1966源647630行：Code−358、Core+947、系统
+净+589；其余1961原source SHA同，13原package资源字节同。全部Protocol/泛型/
+动态getter/构造/薄方法/import/格式计账，是职责迁移，不称系统净去重；距15K仍
+99506，完整P1–P4/Goal保持partial/active。
+
+原五consumer模块88过，R5同88过；原31值/三完整Header bytes对R5固定31+guard
+32过，portable期望仅从原raw转换，原31及候选31+guard通过。原35运行场景完整
+执行通过；固定重播按原公式约束路径/continuity/title/filename排序，同输入并发
+仅允许两条实际旧完整trace。R5同35及直接复用原模块的portable35分别通过。
+实际66固定+原88共154过（38.07s）；另外边界172过1旧精确事实失败保留，旧源
+同节点复现两条原遗漏，仅RHS加三真实路径，原8func/单节点7assert/scanner保持，
+同1节点修后通过。实际AppHost关闭/重开及发现到交互原consumer另14过1旧loader
+挂点失败保留，旧源同节点通过；仅retarget实际Transcript loader后同1节点通过，
+五func/29assert/原输入及超时全保持。实际5源mypy及源码/probe Ruff通过，完整来源、失败/修正、有限
+边界和实际三视角接受见[本片交付](key-designs/canonical-transcript-catalog-custody-convergence.md)。
+
+后续继续普通Worker、启动/Plugin/Session、其余托管/Continuity及入口/存量完整职责。
+原summary/dark adapter/Factory._projection均有不同合同，不用较窄摘要代严格路由；
+原已有机制直接复用不重复计益。KD003未实施，KD011/A33待用户且不采用；本片不
+代表whole hosted_catalog/history、任一整波次或全Goal完成。
+
+## A79历史交付（2026-11-09，完整Product selected revision输入）
 
 从A78 `3e3af964e`接续；selected snapshot到live handle、builtin/external验证、
 host distribution lock、package/binding/plugin/resolution及前缀失败关闭整体归原
