@@ -843,3 +843,32 @@ route、platform 或 merge-blocking 条件。没有推断任何门禁扩张批�
 帧、逆 AST、反事实及 XML 保留在树外 A105。本节只关闭 A104 观察到的这一清单
 失配，不关闭其它 Catalog/Session 历史失败、五项 Hosting、AI coverage、早期构造/
 绑定缺口或完整 P1–P4。KD003 未实施，KD011/A33 待用户且未采用。
+
+## 25. A110：构造后交接窗口的有界核实，不新增清理机制
+
+A98/A100没有覆盖的source窗口不能直接等同于资源泄漏。真实fresh Worker turn
+binding仅检查已绑定再赋值；原Package binder校验同一lifecycle/inventory/mode后
+一次赋值，没有磁盘操作。正常构造的原不变量未显示这两个guard有需新增custody
+的失败路径，不为人为already-bound或throw-after-assignment替身扩充清理责任。
+
+实际值得检查的是完整AgentSession返回后、Catalog构造回调返回前的deferred LSP
+Product selection读取。公开create_agent_session在同步及已有事件循环环境下，
+均在该方法包装入口注入同一EIO，保留原异常身份；真实Session已构造，尚未绑定
+Package runtime，没有附带A98句柄。原回退已释放真实Linux Product lease及Catalog
+输入。两项原实现观察通过；这不是物理磁盘自发EIO或永久lease/FD泄漏证据。
+
+同两模式进一步验证：失败候选ownership已disposed、graph无pending retirements；
+旧Session尚未手工dispose前，同一Transcript manager立即重试成功，新binding真实
+转交、新租约在旧Session.dispose后仍live。最后Session/manager手工清理无错，两
+租约皆released。强化两项通过，不把前后运行重复计为四个独立故障点，也不把这些
+有限状态和重试证明外推为所有资源的普查、Windows或所有早期构造失败已结清。
+
+本批处置是不因该source窗口增加custody包装、前移指针或另建pending manager；
+尚未证明有需要此修复的缺陷。若后续有具体未退役owner/失败重试证据，须先明确
+当时已转交与仍未转交的资源、原owner及顺序，再评估最小复用形状。不能只retain
+Session后跳过外层清理，让尚未归Session的Package或management义务失去owner。
+
+1968生产源及13资源SHA均同A109，生产修改与精简收益0，Coding113098/系统648139。
+探针、来源SHA守卫、两轮JUnit与完整观察及三视角审查在树外
+`coding-convergence-continue/a110-construction-transfer-audit`；未加默认测试/gate。
+这只处置已测的窗口，不关闭其它早期构造/绑定问题、P1–P4或15K目标。

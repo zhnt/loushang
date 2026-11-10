@@ -354,3 +354,10 @@ Protocol或manager。原leaf机制均已共享，本片只计完整跨owner读�
 不宣称重复算法消除。两原测试挂点迁移净−1行，无新fixture、默认检查或gate。
 当前430源113098/系统1968源648139，相对Goal−24657/+13345，距15K98098；其余1966源
 及13资源SHA同。A108拒绝的六值类原型不计收益，生产增删0。详见[A109](key-designs/worker-history-responsibility-convergence.md#a109完整-v2-预检复用原-packageproduct-history-协调)。
+
+
+## A110：构造后交接窗口审计，生产增删0
+
+1968源及13资源SHA同A109，Coding113098/系统648139，累计−24657/+13345；距15K98098。
+原实现两模式的失败回退与同Transcript重试已核实，未证实需新增清理机制，不计
+生产精简收益。仅树外显式探针/观察和文档变更，无新默认gate；见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。

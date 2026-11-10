@@ -17,6 +17,15 @@ Coding及系统净+17、Core0；11个schema/encoder绑定没有替代额外的IO
 三视角处置保存在树外`coding-convergence-continue/a108-flat-record-traversal`。
 生产修改及精简收益均为0；完整Goal仍active/partial，下面A107数值保持。
 
+## A110有界审计（2026-11-10，生产不变）
+
+真实public构造的post-constructor selection读取受控失败，在sync/loop两模式核实；
+强化观察显示原候选disposed/无pending retirement、同Transcript可在旧Session手工
+dispose前立即重试，新租约不受旧Session关闭影响，最终租约/手工清理正常结清。
+尚未证明该窗口需要新增custody包装，故不实施；不是全构造路径无缺陷或完整资源
+普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
+详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
+
 ## 当前状态（2026-11-10，A109完整Worker预检归位）
 
 checkpoint→逐attempt完整review→独立V1 histories→条件opt-in/借根重读intent→

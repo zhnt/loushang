@@ -6,6 +6,7 @@
 - Design status: current-gap review；下面候选接口尚未接受或实施。
 - Implementation status: A71已提交；本工作件不新增生产实现或精简收益。
 - Owner: Coding及各原组件owner；三独立视角复核，实施owner综合事实。
+- A110：原构造后selection读失败窗口已有回退/同Transcript重试证据，未证明需新增custody；其它早期构造问题未泛关，见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 - A109：完整V2预检读协调归原PackageProduct，Code保政策与薄入口；不关闭C07，见[A109](key-designs/worker-history-responsibility-convergence.md#a109完整-v2-预检复用原-packageproduct-history-协调)。
 - A107：初始Worker封口全Rooted程序归原Publication，复用原五锁环；不关闭C07/完整Goal，见[KD004 A107](key-designs/worker-history-responsibility-convergence.md#a107初始-v1-封口复用原-historypublication)。
 - A106：历史读取完整Task/read/drain归原Session；Code保领域reader及关闭政策，不关闭C17，见[A106](key-designs/resume-history-task-custody-convergence.md)。
