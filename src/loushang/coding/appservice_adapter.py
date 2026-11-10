@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from loushang.ai.model import model_selection_ref, normalize_model_selection
+from loushang.ai.model.selection import is_usable_model_selection
 from loushang.apphost import SessionDiscoveryScope, SessionIdentityEnvelopeV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -259,17 +260,17 @@ class CodingHostedSessionV1:
         control = self._binding.control
         active_model = getattr(getattr(control, "agent", None), "model", None)
         selection = normalize_model_selection(active_model)
-        if selection is None:
-            selection = await get_session_model_selection(control)
-            active_model = selection
+        if not is_usable_model_selection(selection):
+            active_model = selection = await get_session_model_selection(control)
+        selection = selection if is_usable_model_selection(selection) else None
         current = model_selection_ref(selection) if selection is not None else None
         details = await iter_available_model_details(control)
-        if active_model is not None:
+        if selection is not None:
             details.append(active_model)
         models: list[SessionModelChoiceV1] = []
         for choice in model_choice_data_from_details(details):
             reference = normalize_model_selection(choice.selection)
-            if reference is None:
+            if reference is None or not is_usable_model_selection(reference):
                 continue
             models.append(SessionModelChoiceV1(
                 id=choice.value,
