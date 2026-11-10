@@ -8,17 +8,73 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+
+from loushang.appserver.local import LocalAppClientConnectionV1
+from loushang.appserver.local_record import (
+    LocalConnectionDirectoryV1,
+    LocalRecordError,
+    LocalRecordErrorCodeV1,
+)
 
 from .client_settings import remember_workspace, settings_request
 from .gui_local_host import operate
 from .web_client import WebHostClient
 
 
+@dataclass(frozen=True)
+class ExternalHost:
+    workspace: Path
+    record_root: Path
+    mux_name: str
+
+    async def operate(self, request: dict) -> dict:
+        reply = {
+            "version": "gui-local-host/v1",
+            "supported": True,
+            "workspace": request["workspace"],
+            "state": "not_running",
+            "errorCode": None,
+        }
+        if request["workspace"] != str(self.workspace):
+            return {**reply, "errorCode": "workspace_not_configured"}
+        if request["action"] not in {"status", "connect"}:
+            return {**reply, "errorCode": "external_service_managed"}
+        directory = LocalConnectionDirectoryV1(self.record_root)
+        connection = LocalAppClientConnectionV1(
+            directory, "workspace", expected_product_id="coding"
+        )
+        try:
+            await connection.start()
+            execution = connection.execution_client
+            if execution is None:
+                return {**reply, "errorCode": "protocol_incompatible"}
+            instance = execution.service_instance_id
+            return {
+                **reply,
+                "state": "running",
+                "instanceId": instance,
+                "serviceInstanceId": instance,
+                "recordRoot": str(self.record_root),
+                "muxName": self.mux_name,
+            }
+        except LocalRecordError as error:
+            if error.code is not LocalRecordErrorCodeV1.NOT_FOUND:
+                raise
+            return reply
+        finally:
+            try:
+                await connection.close()
+            finally:
+                directory.close()
+
+
 class WebGateway:
-    def __init__(self):
+    def __init__(self, external_host: ExternalHost | None = None):
         self.clients: dict[str, WebHostClient] = {}
         self.management = asyncio.Lock()
+        self.operate = external_host.operate if external_host is not None else operate
 
     async def close(self):
         for client in self.clients.values():
@@ -41,7 +97,7 @@ class WebGateway:
         if operation == "manage":
             async with self.management:
                 action = request.get("action")
-                result = await operate(
+                result = await self.operate(
                     {
                         "action": action,
                         "workspace": workspace,
@@ -60,11 +116,14 @@ class WebGateway:
                     if workspace not in self.clients and len(self.clients) >= 6:
                         raise ValueError("connection_limit")
                     previous = self.clients.get(workspace)
+                    previous_execution = (
+                        previous.connection.execution_client if previous is not None else None
+                    )
                     healthy = False
                     if (
                         previous is not None
-                        and previous.connection.execution_client.service_instance_id
-                        == result["serviceInstanceId"]
+                        and previous_execution is not None
+                        and previous_execution.service_instance_id == result["serviceInstanceId"]
                     ):
                         try:
                             await previous.call("snapshot", {})

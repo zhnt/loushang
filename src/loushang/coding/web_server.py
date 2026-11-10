@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 
 from loushang.foundation.platform_paths import resolve_platform_home
 
-from .web_gateway import WebGateway
+from .web_gateway import ExternalHost, WebGateway
 
 
 class WebServer(ThreadingHTTPServer):
@@ -163,7 +163,17 @@ class WebHandler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description="Serve the real Loushang Host UI")
     parser.add_argument("--dist", type=Path)
+    parser.add_argument(
+        "--external-host", nargs=3, metavar=("WORKSPACE", "CONNECTION_ROOT", "MUX"),
+        help="connect to an existing Host whose lifetime is managed externally",
+    )
     args = parser.parse_args()
+    external_host = None
+    if args.external_host is not None:
+        workspace, connection_root, mux = args.external_host
+        external_host = ExternalHost(
+            Path(workspace).expanduser().resolve(), Path(connection_root).expanduser().resolve(), mux
+        )
     home = resolve_platform_home()
     home.mkdir(mode=0o700, parents=True, exist_ok=True)
     (home / "state").mkdir(mode=0o700, exist_ok=True)
@@ -189,7 +199,7 @@ def main():
     loop = asyncio.new_event_loop()
     thread = threading.Thread(target=loop.run_forever)
     thread.start()
-    gateway = WebGateway()
+    gateway = WebGateway(external_host)
     try:
         with WebServer((bind, port), gateway, loop, dist, secure) as server:
             if secure:
