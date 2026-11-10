@@ -197,3 +197,14 @@ R2直接复用已有三键identity，删除R1新增canonical wrapper；原四键
 Goal系统基线+12842；不把本片当整个系统简化完成。显式测试705行与14781字节
 lossless原fixture另列，不扩PR gate。全合同/失败与输入修正见
 [KD009 §21](key-designs/startup-session-assembly-convergence.md#21-a90原publication直接捕获完整receipt)。
+
+## A91后续：partial物理职责归位及A89异常链纠正
+
+Code三源合计−109，现有PackageProduct接收+137，全系统净+28；结构+47、格式−19。
+这批完成partial捕获程序退出并恢复full/reserved原生关闭异常链，没有消除另一份
+partial重复算法，不计系统精简。当前Code113755、系统647664，较Goal基线分别
+−24000/+12870；整体增长问题仍在。复用既有StageInspection、Product root与whole-child
+close，无新manager/模块；纯公开DTO构造保留原资源时点，scope不泄漏到Code。
+四源、原R1/R2失败、pre-A89正确旧行为及完整有限验证见
+[A91](key-designs/windows-stage-capture-custody-convergence.md#a91完整partial-capture与原生关闭区域)。
+新增显式测试1071行、两压缩fixture34219字节与文档另列，不包含在生产源码增减。

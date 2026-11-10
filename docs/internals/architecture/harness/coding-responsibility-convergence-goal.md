@@ -6,7 +6,7 @@
 
 - Authority: accepted execution goal；用户2026-11-07将本描述设为active Goal。本文件不替代各组件的已接受架构合同。
 - Design status: accepted goal scope；各波次专项架构仍须设计、评审及按原约定由用户审阅重要工作件。
-- 当前实施摘要：A90完整owner receipt捕获已复用原Session publication；A89 Reserved完整重复capture已复用A88同一PackageProduct操作；A83–A86实际薄层/重复读取退出，A87纠正cleanup当前归属，A82完成系统增长账复核；此前各批成果保持。当前计量及欠账见下文“当前状态”。KD011/A33待用户工作件保持，KD003 bytes-import仍未实施；以下逐项保留各历史接受范围。
+- 当前实施摘要：A91完整partial capture归原PackageProduct并修复A89关闭异常链；A90完整owner receipt捕获已复用原Session publication；A89 Reserved完整重复capture已复用A88同一PackageProduct操作；A83–A86实际薄层/重复读取退出，A87纠正cleanup当前归属，A82完成系统增长账复核；此前各批成果保持。当前计量及欠账见下文“当前状态”。KD011/A33待用户工作件保持，KD003 bytes-import仍未实施；以下逐项保留各历史接受范围。
 - Implementation status: partial（P1/P2/P3/P4）；指定五流/Rooted命令、payload、checkpoint/快照及A13–A15 Windows指定路径已获有界技术接受；A17图关系归原Session，A19本地启动阶段复用、A20托管Session桥接、A21 foreground Product所有权接缝、A22受控Wheel Source目录共享程序及A23依赖来源完整操作复用也已获有界接受。P2 R2.1职责方向已于2026-11-08获用户接受，D3完整兼容捕获路径获有界技术接受（181实际通过/5原skip），D1/D2的owner租约/证据账本与startup、D4完整成员/退役/关闭协同均已接入并获有界接受，P2启动装配首批owner publication亦已接通并获有界代码接受（75项实际回归及21组冻结观察对照），三种构造/发布前后清理路径也已复用Session共同程序并完成有界评审，原Loader回执至Catalog source specs完整交接也已接入（原47节点通过/失败集合不变，16固定观察通过，保留10项迁前失败），其余bootstrap/共同输入与刷新装配仍待收敛；KD010六Windows基线/join已整体接入Worker.history并取得实际有限验证，P4的F06 Goal记录后端亦已本地接通（14原节点及7固定IO观察通过，2项Session准入失败用旧后端复现），A24十三个Payload入口已复用原Storage根借用、删除重复根IO骨架（Code−71/系统净−48，实际48项通过及代码三视角有界接受），A25内置Source四个物理程序也已接入原Resources（Code−216/系统+4，65过/1原native skip，代码三视角有界接受）；A26 Windows Worker Source完整目录协调已归原Package Product（Code−204/系统+78，117过/1原native skip，代码三视角有界接受）；A27两平台候选事实联接及四条安装/更新共同程序已归原Package Product（Code−313/系统净−123，103过/2原skip，代码三视角有界接受）；其余Worker、其它托管/Continuity与P4剩余入口仍未完成，Coding≤15K及现行职责/复用/成本准则保持，实际测试与全成本见[执行记录](coding-responsibility-convergence-progress.md)。
 - Owner: Coding与各接收组件原owner；跨组件决定由共同上级架构owner综合接受。
 - 依据：[全量重构方案](coding-reconstruction-proposal.md)、[逐文件职责清单](coding-responsibility-inventory.md)、[Current Owner Map](current-owner-map.md)。方案与清单中的旧行数不是本轮当前事实。
@@ -27,7 +27,23 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-10，A90完整owner receipt捕获/发布接缝）
+## 当前状态（2026-11-10，A91完整partial capture及关闭异常链修复）
+
+Code完整partial-tree物理操作已退出，原PackageProduct直接复用WindowsStageInspection、
+Product root借用与Worker现有whole-child close。公开Partial/Reserved DTO及产品准入
+仍在Code；仅纯值构造函数进入原返回点，没有Code IO回借、新manager或四scope接口。
+Core恢复原生with/try/finally：partial在children关闭前构造，full/reserved先关children
+再做末次校验/构造。修复了A89扁平ExitStack遗漏的多重关闭异常链；旧失败未删。
+本批Code−109、接收+137、系统+28（结构+47/格式−19）。当前Coding430源113755行，
+系统1967源647664行，其余1963源及13资源SHA保持；相对Goal起点Code−24000、
+系统+12870，不能把职责迁移说成全系统精简。原消费者271过，两个显式旧行为
+探针118+90=208过；三视角评审及有限平台证据见
+[A91](key-designs/windows-stage-capture-custody-convergence.md#a91完整partial-capture与原生关闭区域)。
+完整P1–P4/领域化/≤15K仍active/partial，距15K尚98755行；KD011/A33待用户且未
+采用，KD003仍未实施。下一批须从完整剩余场景核对实际原owner与重复机制；LSP
+现有不同framing/生命周期不能用目录迁移或新通用RPC框架冒充复用成果。
+
+## A90历史交付（2026-11-10，完整owner receipt捕获/发布接缝）
 
 Code两套完整receipt捕获体已退出，原Session publication直接调用实际generation/
 Resource candidate程序，复用已有三键identity作稳定排序。Code保产品选择、两个

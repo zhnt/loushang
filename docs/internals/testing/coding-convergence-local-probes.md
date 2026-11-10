@@ -234,3 +234,14 @@ lossless copy of original values; no identity/input projection is applied.
 This explicit local probe adds no default discovery or PR gate. SDK storage
 smoke on this machine uses the existing private input plugin above; see
 [A90 validation and limits](../architecture/harness/key-designs/startup-session-assembly-convergence.md#21-a90原publication直接捕获完整receipt).
+
+A91 adds [probe_windows_partial_stage_capture_compatibility.py](../../../tests/coding/probe_windows_partial_stage_capture_compatibility.py)
+(118 original partial observations) and [probe_windows_stage_cleanup_compatibility.py](../../../tests/coding/probe_windows_stage_cleanup_compatibility.py)
+(90 original full/reserved cleanup observations from the correct pre-A89 lexical source).
+Run both explicit paths through `scripts/dev/run_pytest.py`, keeping the same non-live and
+host-runtime selectors, private input plugin and workspace execution/storage rules above.
+The combined repository run passed all 208 cases. These probes retain public wire/type
+checks, ordered traces, cause/context graphs and first-close-error FD debt; their gzip
+fixtures derive from frozen original raw observations, never candidate output. They reuse
+existing A88/A89 drivers and do not expand default discovery, PR routes or gates.
+[A91 validation and limits](../architecture/harness/key-designs/windows-stage-capture-custody-convergence.md#a91完整partial-capture与原生关闭区域).

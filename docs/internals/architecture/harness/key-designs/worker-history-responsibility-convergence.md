@@ -501,12 +501,12 @@ A15落实：两内部模块已接通原消费者。18字段只在中性Core定�
 
 | 场景 | 决策与必须保持的边界 | 现有证据入口 |
 | --- | --- | --- |
-| 只读Supervisor查询 | 原GC guard→线程锁→currentness→Rooted/文件锁；不创建缺失Worker文件/锁，不改成“所有Product旁路都无IO” | [Supervisor访问对照](../../../../../tests/coding/test_worker_supervisor_access_compatibility.py)、§6 |
+| 只读Supervisor查询 | 原GC guard→线程锁→currentness→Rooted/文件锁；不创建缺失Worker文件/锁，不改成“所有Product旁路都无IO” | [Supervisor访问对照](../../../../../tests/coding/probe_worker_supervisor_access_compatibility.py)、§6 |
 | 其它四流读写 | 各原guard、V1/V2选择、初始化与revision/checkpoint检查保留；不统一成Supervisor状态机 | [C5/gate/receipt路径](../coding-responsibility-convergence-progress.md)、§7–8 |
-| append失败或结果不明 | 原错误类型/code/cause与已发生痕迹保留；冷读/查到记录不替写入者授权盲重试 | [追加对照](../../../../../tests/coding/test_worker_append_tail_compatibility.py)、[checkpoint命令对照](../../../../../tests/coding/test_worker_checkpoint_command_compatibility.py) |
-| 重开与退休 | 由同一V1/V2 reader、checkpoint和确切deletion ledger恢复投影；缺段不能一律当空，不自动重启进程 | [重建测试](../../../../../tests/coding/test_worker_history_reconstruction.py)、§5–7 |
-| 原生状态与历史不同步 | Hosting继续查证进程/Job/句柄，Worker继续结清；历史查询不补写成功、不获得删除权 | [恢复事实对照](../../../../../tests/coding/test_windows_recovery_value_compatibility.py)、A15 |
-| source查询中GC/root改变 | Code原词法Product查询与GC检查时点保持；Core只借FD/ACL，失败后不新增成功后验覆盖首错 | [来源对照](../../../../../tests/coding/test_windows_history_source_compatibility.py)、A15 |
+| append失败或结果不明 | 原错误类型/code/cause与已发生痕迹保留；冷读/查到记录不替写入者授权盲重试 | [追加对照](../../../../../tests/coding/probe_worker_append_tail_compatibility.py)、[checkpoint命令对照](../../../../../tests/coding/probe_worker_checkpoint_command_compatibility.py) |
+| 重开与退休 | 由同一V1/V2 reader、checkpoint和确切deletion ledger恢复投影；缺段不能一律当空，不自动重启进程 | [重建测试](../../../../../tests/coding/probe_worker_history_reconstruction.py)、§5–7 |
+| 原生状态与历史不同步 | Hosting继续查证进程/Job/句柄，Worker继续结清；历史查询不补写成功、不获得删除权 | [恢复事实对照](../../../../../tests/coding/probe_windows_recovery_value_compatibility.py)、A15 |
+| source查询中GC/root改变 | Code原词法Product查询与GC检查时点保持；Core只借FD/ACL，失败后不新增成功后验覆盖首错 | [来源对照](../../../../../tests/coding/probe_windows_history_source_compatibility.py)、A15 |
 
 以上是原路径的合同，不是跨五流事务、断电恢复或Windows native运行证明。回退以一个完整代码切片恢复原调用链；本次未改wire版本，不依赖新旧双写、后台迁移或第二事实索引。若后续拟新增原未有的异常清理、并发写保证或恢复权利，须作为行为变更另行设计，不能夹入此次迁移。
 
@@ -514,7 +514,7 @@ A15落实：两内部模块已接通原消费者。18字段只在中性Core定�
 
 静态检查发现19个Code文件中的27个公开dataclass与16个Worker内部模块重复声明185行字段；其中19个字段还需保留产品具体嵌套类型绑定。这只是候选池，未修改产品源码、测试或旧fixture，不是已取得185行收益。
 
-本轮**不实施该候选**。§7 D3明确保留原Code类自身的annotations，[既有公开值测试](../../../../../tests/coding/test_worker_history_public_values.py)也直接比较`cls.__annotations__`。将27类整体改成继承Core dataclass即使保持有效fields/签名，也会违反这个已接受合同；不能删除该断言、重录期望或用“私有反射”解释掉既有承诺。普通兼容字段声明不是第二套持久日志或执行算法。保留原Code字段、Core必要类型声明和机制mixin，不为百余行潜在收益引入schema生成器或新的类型注册体系。
+本轮**不实施该候选**。§7 D3明确保留原Code类自身的annotations，[既有公开值测试](../../../../../tests/coding/probe_worker_history_public_values.py)也直接比较`cls.__annotations__`。将27类整体改成继承Core dataclass即使保持有效fields/签名，也会违反这个已接受合同；不能删除该断言、重录期望或用“私有反射”解释掉既有承诺。普通兼容字段声明不是第二套持久日志或执行算法。保留原Code字段、Core必要类型声明和机制mixin，不为百余行潜在收益引入schema生成器或新的类型注册体系。
 
 A15的单独恢复attempt例外仅限`CodingWindowsWorkerRecoveryAttemptV1`：该项已单独设计/评审，保同FQN、有效dataclass字段/构造/旧pickle，同时明确声明层annotations/slots/MRO会变化。该例外不能扩散到其它27类。后续若真有公共API演进需求，应明确修订D3和消费者合同，不能以本次Goal的行数目标代替兼容决策。继承字段的构造器注解解析还依赖Code全局名字；A15曾出现并修复此问题，不能把签名字符串相同当作`typing.get_type_hints`可用的证明。
 

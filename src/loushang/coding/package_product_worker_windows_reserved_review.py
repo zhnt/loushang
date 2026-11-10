@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import re
-from contextlib import ExitStack
 from dataclasses import dataclass
 from hashlib import sha256
 
@@ -337,21 +336,18 @@ def _capture_reserved_stage(
         raise CodingWindowsWorkerReservedReviewError(
             "coding_worker_reserved_history_unverified"
         )
-    with ExitStack() as scope:
-        captured = capture_windows_product_worker_stage(
-            product,
-            attempt_id=intent.attempt_id,
-            expected_stage=intent.stage_identity,
-            intent=intent,
-            inspection=_inspection(),
-            marker_name="worker-payload.json",
-            max_marker_bytes=1024,
-            max_payload_bytes=_MAX_PAYLOAD_BYTES,
-            error_type=CodingWindowsWorkerReservedReviewError,
-            error_prefix="coding_worker_reserved",
-            scope=scope,
-        )
-        return CodingWindowsWorkerReservedNoEffectReviewV1(
+    return capture_windows_product_worker_stage(
+        product,
+        attempt_id=intent.attempt_id,
+        expected_stage=intent.stage_identity,
+        intent=intent,
+        inspection=_inspection(),
+        marker_name="worker-payload.json",
+        max_marker_bytes=1024,
+        max_payload_bytes=_MAX_PAYLOAD_BYTES,
+        error_type=CodingWindowsWorkerReservedReviewError,
+        error_prefix="coding_worker_reserved",
+        result_factory=lambda captured: CodingWindowsWorkerReservedNoEffectReviewV1(
             attempt_id=intent.attempt_id,
             intent_fingerprint=intent.fingerprint,
             lease_owner_revision=lease_owner_revision,
@@ -362,7 +358,8 @@ def _capture_reserved_stage(
             executable_identity=captured.executable_identity,
             executable_digest=captured.executable_digest,
             entrypoint=captured.entrypoint,
-        )
+        ),
+    )
 
 
 __all__ = [

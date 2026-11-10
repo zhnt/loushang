@@ -9,21 +9,17 @@ from __future__ import annotations
 
 import os
 import re
-import stat
 from dataclasses import dataclass
 from hashlib import sha256
 
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.package_product._worker_windows_attempt import (
+    capture_windows_product_worker_partial_stage,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_directory,
-    windows_listdir_at,
-    windows_stat_at,
 )
 from loushang.harness.resources.plugins.locators import (
     canonical_plugin_relative_path,
@@ -40,9 +36,7 @@ from .package_product_worker_windows_stage_retirement import (
 )
 from .package_product_worker_windows_stage_review import (
     FileIdentity,
-    _identity,
-    _read_checked_file,
-    _require_direct,
+    _inspection,
     _valid_identity,
 )
 
@@ -230,121 +224,26 @@ def _review_partial_tree(
     expected_stage: tuple[int, int] | None,
     lease_owner_revision: int,
 ) -> CodingWindowsWorkerPartialStageReviewV1:
-    stage_name = "worker-payload-" + attempt_id
-    with WindowsPrivateDirectoryAcl() as acl:
-        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-            _require_direct(root, acl, directory=True)
-            if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
-                raise CodingWindowsWorkerPartialStageReviewError(
-                    "coding_worker_partial_stage_root_changed"
-                )
-            stage = open_windows_directory(
-                stage_name, dir_fd=root, share_delete=False, read_control=True
-            )
-            try:
-                stage_identity = _require_direct(stage, acl, directory=True)
-                if (
-                    expected_stage is None
-                    or stage_identity[:2] != expected_stage
-                    or _identity(windows_stat_at(root, stage_name)) != stage_identity
-                ):
-                    raise CodingWindowsWorkerPartialStageReviewError(
-                        "coding_worker_partial_stage_changed"
-                    )
-                directories: list[tuple[str, FileIdentity]] = []
-                opened: list[int] = []
-                observed: list[tuple[int, FileIdentity, tuple[str, ...]]] = []
-                entrypoint = None
-                executable_identity = None
-                executable_digest = None
-                current = stage
-                names_before = tuple(windows_listdir_at(stage))
-                try:
-                    for depth in range(_MAX_DEPTH + 1):
-                        names = tuple(windows_listdir_at(current))
-                        if len(names) > 1 or any(
-                            name.casefold() == "worker-payload.json" for name in names
-                        ):
-                            raise CodingWindowsWorkerPartialStageReviewError(
-                                "coding_worker_partial_stage_shape_invalid"
-                            )
-                        if not names:
-                            break
-                        name = names[0]
-                        prefix = directories[-1][0] if directories else ""
-                        path = f"{prefix}/{name}" if prefix else name
-                        try:
-                            canonical = canonical_plugin_relative_path(path)
-                        except ValueError as exc:
-                            raise CodingWindowsWorkerPartialStageReviewError(
-                                "coding_worker_partial_stage_shape_invalid"
-                            ) from exc
-                        if canonical.as_posix() != path:
-                            raise CodingWindowsWorkerPartialStageReviewError(
-                                "coding_worker_partial_stage_shape_invalid"
-                            )
-                        metadata = windows_stat_at(current, name)
-                        if stat.S_ISDIR(metadata.st_mode):
-                            if depth == _MAX_DEPTH:
-                                raise CodingWindowsWorkerPartialStageReviewError(
-                                    "coding_worker_partial_stage_depth_exceeded"
-                                )
-                            child = open_windows_directory(
-                                name,
-                                dir_fd=current,
-                                share_delete=False,
-                                read_control=True,
-                            )
-                            opened.append(child)
-                            identity = _require_direct(child, acl, directory=True)
-                            if _identity(windows_stat_at(current, name)) != identity:
-                                raise CodingWindowsWorkerPartialStageReviewError(
-                                    "coding_worker_partial_stage_changed"
-                                )
-                            directories.append((path, identity))
-                            observed.append(
-                                (child, identity, tuple(windows_listdir_at(child)))
-                            )
-                            current = child
-                        elif stat.S_ISREG(metadata.st_mode):
-                            raw, identity = _read_checked_file(
-                                current, name, acl, maximum_bytes=_MAX_PAYLOAD_BYTES
-                            )
-                            entrypoint = path
-                            executable_identity = identity
-                            executable_digest = sha256(raw).hexdigest()
-                            break
-                        else:
-                            raise CodingWindowsWorkerPartialStageReviewError(
-                                "coding_worker_partial_stage_shape_invalid"
-                            )
-                    if any(
-                        _require_direct(descriptor, acl, directory=True) != identity
-                        or tuple(windows_listdir_at(descriptor)) != names
-                        for descriptor, identity, names in observed
-                    ) or (
-                        _identity(os.fstat(stage)) != stage_identity
-                        or _identity(windows_stat_at(root, stage_name))
-                        != stage_identity
-                        or tuple(windows_listdir_at(stage)) != names_before
-                    ):
-                        raise CodingWindowsWorkerPartialStageReviewError(
-                            "coding_worker_partial_stage_changed"
-                        )
-                    return CodingWindowsWorkerPartialStageReviewV1(
-                        attempt_id=attempt_id,
-                        lease_owner_revision=lease_owner_revision,
-                        stage_identity=stage_identity,
-                        directory_identities=tuple(directories),
-                        entrypoint=entrypoint,
-                        executable_identity=executable_identity,
-                        executable_digest=executable_digest,
-                    )
-                finally:
-                    for child in reversed(opened):
-                        os.close(child)
-            finally:
-                os.close(stage)
+    return capture_windows_product_worker_partial_stage(
+        product,
+        attempt_id=attempt_id,
+        expected_stage=expected_stage,
+        inspection=_inspection(),
+        max_payload_bytes=_MAX_PAYLOAD_BYTES,
+        max_depth=_MAX_DEPTH,
+        marker_name="worker-payload.json",
+        error_type=CodingWindowsWorkerPartialStageReviewError,
+        error_prefix="coding_worker_partial_stage",
+        result_factory=lambda captured: CodingWindowsWorkerPartialStageReviewV1(
+            attempt_id=attempt_id,
+            lease_owner_revision=lease_owner_revision,
+            stage_identity=captured.stage_identity,
+            directory_identities=captured.directory_identities,
+            entrypoint=captured.entrypoint,
+            executable_identity=captured.executable_identity,
+            executable_digest=captured.executable_digest,
+        ),
+    )
 
 
 __all__ = [

@@ -162,7 +162,7 @@ Coding 保留原 prepare-lock 的 missing/history/C5 no-state 前验、Root/GC �
 
 - 五源码逐字等于 Git 基线时冻结 180 组旧行为；其后从归档五模块按 canonical 名称加载，记录 10 组 fdopen 接管前失败的原泄漏。原源码、probe、loader、输出、hash 均保留；固定旧 probe 已在稳定状态下只读重放，结果逐项相等，没有重写 expected。
 - A24 初稿在 fdopen 失败时盲目 close。运行评审 RT-A24-01 指出 wrapper 可能已经自行关闭 FD；两个真实 FD 反例在 A24 上均失败：覆盖原错误或误关复用的 FD。原广组合 372 passed、50 skipped 不能排除此问题，A24 源码和拒绝结论保留。
-- A25 使用 `closefd=False`，wrapper 借用原 FD，Resources 在 finally 中负责唯一 native close。旧 wrapper 隐式关闭改为显式 owner close；测试只明确增加该关闭事件，其余旧字节、错误、marker、文件和事件断言保留。原 fdopen 接管前泄漏及评审指出的两种晚失败均由[实际 FD 回归](../../../../tests/harness/resources/packages/test_windows_journal_stream_ownership.py)验证。
+- A25 使用 `closefd=False`，wrapper 借用原 FD，Resources 在 finally 中负责唯一 native close。旧 wrapper 隐式关闭改为显式 owner close；测试只明确增加该关闭事件，其余旧字节、错误、marker、文件和事件断言保留。原 fdopen 接管前泄漏及评审指出的两种晚失败均由[实际 FD 回归](../../../../tests/harness/resources/packages/probe_windows_journal_stream_ownership.py)验证。
 - 最终 A25 **205 passed（5.92s）**，包含 180 组原协议、10 组旧泄漏、2 组真实构造失败反例和原 Worker 核心检查；六个源文件 mypy、冻结 Python Ruff、105 个 source/test/fixture hash 通过。A24 原较广选择的导入边界没有新跨组件依赖，A25 只改变 helper 所有权与相应回归。
 - 职责/复用、运行/失败、数据/兼容三视角增量复核已关闭 RT-A24-01，无新增代码阻断。没有 native Windows 运行证据，50 个原平台跳过也不算该证据；未增加平台、模型调用或 CI gate。
 

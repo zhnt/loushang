@@ -628,13 +628,17 @@ identity checks. Coding keeps exact intent admission, public Review/Error and
 domain decisions. The private ephemeral captured value belongs to Package
 Product; no Worker-to-Product dependency or Code IO callback is added. Complete
 and crash stage review, reserved review and settled-unlaunched recapture share
-this operation. Coding uses the standard ExitStack scope through real public
-DTO construction; Package Product registers original ACL/root/stage closure,
-while child descriptor closure stays local to capture. Primitive inspection
-errors and Product operation diagnostics stay separately bound, including each
-original payload read bound. No generator is introduced. Partial review and
-retirement keep their existing thin StageInspection adapters. See [A88](key-designs/windows-stage-capture-custody-convergence.md)
-for cost, fixed-original fault evidence and native-platform limitations.
+this operation. Partial review and partial retirement's fresh comparison use
+Package Product's complete partial capture. Physical ACL/root/stage/child
+lifetimes stay inside ordinary lexical with/try/finally regions in that owner.
+Coding passes only pure public DTO construction: partial constructs before
+child cleanup, while full/reserved construct after child cleanup and final
+checks. Complete capture's factory is identity. Original multi-close exception
+contexts and first-child-error descriptor debt are preserved; no generator,
+manager or exposed resource-scope interface is introduced. Primitive inspection
+errors and operation diagnostics remain separate with original read bounds.
+See [A91](key-designs/windows-stage-capture-custody-convergence.md#a91完整partial-capture与原生关闭区域)
+for the correction of A89's flat stack, costs and finite platform evidence.
 
 ## Architecture Gates
 

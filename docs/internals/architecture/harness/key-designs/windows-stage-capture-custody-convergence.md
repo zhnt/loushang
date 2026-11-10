@@ -1,7 +1,7 @@
-# Windows stage capture 职责收敛（A88–A89）
+# Windows stage capture 职责收敛（A88–A91）
 
 - Authority: COD-RESP-GOAL-002 有界职责交付；不替代完整P1–P4验收。
-- Design status: accepted，Root按现有授权综合职责/复用、运行/失败、数据/兼容三独立视角接受实际A88/R5及A89/R2。
+- Design status: accepted，Root按现有授权综合职责/复用、运行/失败、数据/兼容三独立视角接受实际A88/R5及A89/R2的原有界范围；A91/R4补充并纠正其关闭异常链缺口。
 - Implementation status: complete within the capture operation；完整Goal仍partial。
 - Owner: 原PackageProduct与Worker物理能力；Coding产品准入、公开Review/Error及领域政策。
 - 方法：本地干净archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`，没有声称与上游同步。
@@ -196,3 +196,77 @@ fixture只由原raw转换，gzip9102字节，SHA256
 domain hash/身份/预算的错误变异均被拒，抹FD债务仍完整比较不同。两条原架构
 边界断言2过19.70s，文档9项静态规则与改变文件链接通过。测试和fixture另列成本，
 不计生产净减；probe命名保持显式本地执行，不增加CI route/gate/platform。
+
+## A91完整partial capture与原生关闭区域
+
+### 当前职责和选择
+
+起点为A90 `2516c77cd2416ad36a14ce48d191da18d652de92`，冻结1967生产源与13资源。
+原partial `_review_partial_tree`完整物理操作由现有PackageProduct接管，实际消费者
+仍为公开partial review及partial retirement的fresh review；Code保原7字段公开DTO、
+FQN、wire、产品准入/lease/GC政策。Worker原StageInspection及既有`close_opened`
+直接复用，后者反序关闭且首错停止；没有新增模块、manager、存储、状态或IO回调。
+原StageReview `_identity`唯一真实partial消费者退出后删其3行别名；其余真实helper保留。
+
+先比较两个完整替代形状：R3A四个标准lexical ExitStack，Code−93/Core+122/系统+29；
+R3B普通同步with/try/finally加纯值factory，Code−104/Core+134/系统+30。采用后者的
+资源区域内聚方式，再在R4修复邻接full/reserved；没有为少1行向Code暴露四scope。
+同一个泛型返回类型/Callable只承接实际公开结果构造，不接IO、目录遍历或寿命控制。
+这与A88不必要保留未消费私有临时类型FQN的factory不同：公开DTO构造时点是真实合同。
+
+full/reserved先执行原whole-child close，再做stage末次校验并构造结果；partial则在
+child try内构造公开DTO后才close。complete factory仅返回原私有捕获值，外层公开
+complete/crash DTO时点保持。Core的ACL/root with及stage/child finally恢复原生嵌套，
+同步StopIteration不经过generator/PEP479。expected_stage=None仍在打开和验证stage
+之后拒绝；空文件、16层边界、短路顺序、marker形状、primitive/operation两错误域及
+独立读取预算保持。这里只是读取证明，不授予退休、删除或发布权威。
+
+### 真实失败、修正和旧行为来源
+
+R1单ExitStack原有限消费者271过仍不足：原73+guard实际72过/2失败，child+stage及
+all-close异常context丢失。R2双栈通过原74节点后，新增原stage+ACL/root+ACL组合
+仍有2真实失败。两候选均不接受，不能抹去context或用最后错误类型/文本相同解释。
+扩展partial到原118观察：原73原值不改，补45项normal/ValueError/StopIteration与
+15种非空child/stage/root/ACL错误mask。原数据先于R4冻结，绝不从候选生成期望。
+
+进一步用正确pre-A89普通lexical原源验证full/reserved，R2邻接smoke 1guard过/4失败，
+证明A89已有同类真实回归。本批必须一并修复；完整邻接90项来自pre-A89原full程序，
+不是已回归的A89扁平栈。full/reserved构造在child关闭之后，child失败mask下不会
+执行构造，90项保持原真实fired顺序和异常图。旧失败、原输入及各候选均保存在树外。
+首次R1观察器错误地强制patch已退出Code alias，1guard过/73 setup失败；仅重定向
+实际操作owner的hook后暴露上述2个真实错误。一次R2消费者PYTHONPATH配置失败也
+保留，修正为task src和root后通过，未改Product或原fixture。
+
+### 最终成本和验证
+
+| 生产源 | 原行 | R4行 | 净变化 |
+| --- | ---: | ---: | ---: |
+| Code partial review | 357 | 256 | −101 |
+| Code reserved review | 376 | 373 | −3 |
+| Code complete stage review | 350 | 345 | −5 |
+| 原PackageProduct attempts | 602 | 739 | +137 |
+
+Code−109/Core+137/系统+28，所有factory、类型、临时5字段值、错误/budget绑定、import
+及格式均计入。接收正常格式前758→739，故结构+47/格式−19；不是系统净减或第二次
+重复退出收益。当前Code113755/系统647664，相对Goal起点Code−24000/系统+12870。
+其余1963源和13资源字节不变。完整Goal距15K尚98755行，P1–P4保持partial。
+
+R4候选partial118+guard119过12.83s，实际fresh partial119过8.96s；正确pre-A89
+邻接90+guard实际91过6.22s，fresh carrier91过6.88s；原消费者候选271过11.80s、
+实际271过5.71s。持久化到仓库的两个显式probe联合208过10.82s。四实际源SHA匹配
+接受R4，原公开类型/字段/codec及非目标操作AST保持；mypy四源、Ruff/format通过。
+三个独立视角对完整R4形状无剩余已识别阻断，Root按授权接受本片，不接受R1/R2。
+原两条架构边界2过43.97s、生成package图fresh、9项文档规则与改变文档链接通过。
+同时修正8个早期test→probe重命名后遗留的文档链接；没有改变测试发现或PR条件。
+
+持续载体为两个显式probe：partial 777行、邻接294行；复用既有A88/A89观察器，
+不是再复制整套driver。partial gzip21728字节、邻接gzip12491字节；原raw先严格
+核全部公开字段/FQN/canonical wire/domain hash、先验物理身份与原读取预算，再做
+可移植角色投影；完整错误cause/context、顺序与未关闭FD债务保留。strict JSON数值
+类型避免bool/float蒙混。测试/fixture/文档成本另列，不计生产行或增加默认CI发现、
+route、gate、平台。参见[显式执行](../../../testing/coding-convergence-local-probes.md)。
+
+验证使用真实POSIX文件/FD和受控Windows ACL/attributes/root/stream端口；覆盖同步
+CancelledError、KeyboardInterrupt、StopIteration及多关闭故障，不外推native Windows/
+LPAC、真实Task.cancel或所有OS crash。LSP另经原owner审计：现有Worker/Host framing
+与LSP Content-Length及correlation寿命不等价，本批未另建通用RPC或挪走LSP领域政策。

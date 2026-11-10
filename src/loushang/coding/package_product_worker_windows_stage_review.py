@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import re
-from contextlib import ExitStack
 from dataclasses import dataclass
 from hashlib import sha256
 
@@ -33,9 +32,6 @@ from loushang.harness.worker.history._windows_stage_review_wire import (
     _WindowsStageReviewWireMethods,
 )
 from loushang.harness.worker.payload._windows_stage_io import WindowsStageInspection
-from loushang.harness.worker.payload._windows_stage_io import (
-    identity as _identity,  # noqa: F401 -- consumed by partial-stage review
-)
 
 from .package_product_worker_windows_launch_intent import (
     CodingWindowsWorkerLaunchIntentV1,
@@ -287,20 +283,19 @@ def _capture_stage_bytes(
             "coding_worker_stage_review_intent_invalid"
         )
 
-    with ExitStack() as scope:
-        return capture_windows_product_worker_stage(
-            product,
-            attempt_id=attempt_id,
-            expected_stage=expected_stage,
-            intent=intent,
-            inspection=_inspection(),
-            marker_name=_MARKER,
-            max_marker_bytes=_MAX_MARKER_BYTES,
-            max_payload_bytes=_MAX_PAYLOAD_BYTES,
-            error_type=CodingWindowsWorkerStageReviewError,
-            error_prefix="coding_worker_stage_review",
-            scope=scope,
-        )
+    return capture_windows_product_worker_stage(
+        product,
+        attempt_id=attempt_id,
+        expected_stage=expected_stage,
+        intent=intent,
+        inspection=_inspection(),
+        marker_name=_MARKER,
+        max_marker_bytes=_MAX_MARKER_BYTES,
+        max_payload_bytes=_MAX_PAYLOAD_BYTES,
+        error_type=CodingWindowsWorkerStageReviewError,
+        error_prefix="coding_worker_stage_review",
+        result_factory=lambda captured: captured,
+    )
 
 
 __all__ = [

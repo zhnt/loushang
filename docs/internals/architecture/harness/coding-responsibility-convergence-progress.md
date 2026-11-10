@@ -6,7 +6,23 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A90完整owner receipt捕获/发布接缝）
+## 当前状态（2026-11-10，A91完整partial capture及关闭异常链修复）
+
+Code完整partial-tree物理操作已退出，原PackageProduct直接复用WindowsStageInspection、
+Product root借用与Worker现有whole-child close。公开Partial/Reserved DTO及产品准入
+仍在Code；仅纯值构造函数进入原返回点，没有Code IO回借、新manager或四scope接口。
+Core恢复原生with/try/finally：partial在children关闭前构造，full/reserved先关children
+再做末次校验/构造。修复了A89扁平ExitStack遗漏的多重关闭异常链；旧失败未删。
+本批Code−109、接收+137、系统+28（结构+47/格式−19）。当前Coding430源113755行，
+系统1967源647664行，其余1963源及13资源SHA保持；相对Goal起点Code−24000、
+系统+12870，不能把职责迁移说成全系统精简。原消费者271过，两个显式旧行为
+探针118+90=208过；三视角评审及有限平台证据见
+[A91](key-designs/windows-stage-capture-custody-convergence.md#a91完整partial-capture与原生关闭区域)。
+完整P1–P4/领域化/≤15K仍active/partial，距15K尚98755行；KD011/A33待用户且未
+采用，KD003仍未实施。下一批须从完整剩余场景核对实际原owner与重复机制；LSP
+现有不同framing/生命周期不能用目录迁移或新通用RPC框架冒充复用成果。
+
+## A90历史交付（2026-11-10，完整owner receipt捕获/发布接缝）
 
 Code两套完整receipt捕获体已退出，原Session publication直接调用实际generation/
 Resource candidate程序，复用已有三键identity作稳定排序。Code保产品选择、两个
