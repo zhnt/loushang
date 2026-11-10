@@ -1,5 +1,7 @@
 # COD-RESP-GOAL-002：Coding 领域化与公共机制职责归一
 
+- A136 共用 Worker 授权重放与代次检查，Coding 减9行，Harness 增15行。见[A136](coding-responsibility-convergence-progress.md#a136共用worker授权重放与代次检查)。
+
 - A135 两平台共用 Worker 回执与所有者校验，Coding 与系统源码各减10行。见[A135](coding-responsibility-convergence-progress.md#a135两平台共用worker回执复核)。
 
 - A133 三个读取入口共用原 Plugin Management 的 GC 与 Desired 装配，Coding 减10行、Harness 增15行。见[A133](coding-responsibility-convergence-progress.md#a133共用gc与desired账本装配)。

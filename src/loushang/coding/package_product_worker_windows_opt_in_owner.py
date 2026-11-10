@@ -12,8 +12,10 @@ from loushang.harness.package_product.product_worker_candidate import (
 )
 
 from .package_product_worker_opt_in import CodingWorkerOptInDecisionV1
-from .package_product_worker_opt_in_owner import CodingWorkerProductOptInError
-from .package_product_worker_policy import CodingWorkerOptInV1
+from .package_product_worker_opt_in_owner import (
+    CodingWorkerProductOptInError,
+    _plan_worker_allow,
+)
 from .package_product_worker_windows_installed_backend import (
     read_coding_windows_worker_installed_backend_release,
 )
@@ -84,55 +86,22 @@ class CodingWindowsWorkerProductOptInOwner:
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
             ):
                 previous = self._journal.current(plugin_id, directory_fd=root)
-                generation = 0 if previous is None else previous.generation
-                kill_generation = (
-                    0 if previous is None else previous.kill_switch_generation
+                opt_in = _plan_worker_allow(
+                    previous,
+                    binding=binding,
+                    admission=admission,
+                    plugin_id=plugin_id,
+                    operation_id=operation_id,
+                    expected_generation=expected_generation,
+                    require_worker=require_worker,
                 )
-                if (
-                    previous is not None
-                    and previous.operation_id == operation_id
-                    and previous.action == "allow"
-                    and previous.generation == expected_generation + 1
-                ):
-                    prior = previous.opt_in
-                    if (
-                        prior is None
-                        or prior.plugin_id != plugin_id
-                        or prior.contribution_id != admission.contribution_id
-                        or prior.owner_id != admission.owner_id
-                        or prior.artifact_digest != binding.artifact_digest
-                        or prior.native_platform != admission.native_platform
-                        or prior.require_worker != require_worker
-                    ):
-                        raise CodingWorkerProductOptInError(
-                            "coding_worker_opt_in_operation_conflict"
-                        )
-                    return self._journal.change(
-                        directory_fd=root,
-                        plugin_id=plugin_id,
-                        operation_id=operation_id,
-                        expected_generation=expected_generation,
-                        action="allow",
-                        opt_in=prior,
-                    )
-                if generation != expected_generation:
-                    raise CodingWorkerProductOptInError("coding_worker_opt_in_stale")
                 return self._journal.change(
                     directory_fd=root,
                     plugin_id=plugin_id,
                     operation_id=operation_id,
                     expected_generation=expected_generation,
                     action="allow",
-                    opt_in=CodingWorkerOptInV1(
-                        plugin_id=plugin_id,
-                        contribution_id=admission.contribution_id,
-                        owner_id=admission.owner_id,
-                        artifact_digest=binding.artifact_digest,
-                        native_platform=admission.native_platform,
-                        owner_selection_generation=generation + 1,
-                        kill_switch_generation=kill_generation,
-                        require_worker=require_worker,
-                    ),
+                    opt_in=opt_in,
                 )
 
     def revoke(

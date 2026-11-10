@@ -26,7 +26,7 @@ from loushang.harness.worker.product_activation import (
 )
 
 from ._native_approval import _A, _N, _NativeFactory, _next_native_approval_decision
-from ._opt_in import _OPAQUE, _OptInDecisionMethods, _OptInValue
+from ._opt_in import _OPAQUE, _OptInDecisionMethods, _OptInMutation, _OptInValue
 from ._receipts import _ReceiptRecordMethods, latest_receipt_record
 
 
@@ -149,16 +149,10 @@ class WindowsOptInRecords(_WindowsRecords[_D], Generic[_D, _P]):
         opt_in: _P | None,
     ) -> _D:
         self._require_plugin_id(plugin_id)
-        if (
-            not isinstance(operation_id, str)
-            or len(operation_id) > 128
-            or _OPAQUE.fullmatch(operation_id) is None
-            or (type(expected_generation) is not int)
-            or (expected_generation < 0)
-            or (action not in {"allow", "revoke"})
-            or (action == "allow" and (not isinstance(opt_in, self._opt_in_type)))
-            or (action == "revoke" and opt_in is not None)
-        ):
+        mutation = _OptInMutation(
+            plugin_id, operation_id, expected_generation, action, opt_in
+        )
+        if not mutation.is_valid(lambda: self._opt_in_type):
             raise ValueError("Windows Worker opt-in command is invalid")
         self._require_root(directory_fd)
         with ExitStack() as custody:
@@ -169,38 +163,20 @@ class WindowsOptInRecords(_WindowsRecords[_D], Generic[_D, _P]):
                 prepare_lock=lambda root, acl: self._prepare_lock(root, acl),
             )
             events = () if raw is None else self._decode(raw)
-            replay = next(
-                (event for event in events if event.operation_id == operation_id), None
-            )
+            def failure(code: str) -> RuntimeError:
+                return self._failure(code)
+
+            replay = mutation.replay(events, failure=failure)
             if replay is not None:
-                if (
-                    replay.plugin_id != plugin_id
-                    or replay.action != action
-                    or replay.opt_in != opt_in
-                    or (replay.generation != expected_generation + 1)
-                ):
-                    raise self._failure("operation_conflict")
                 self._assert_visible_root(directory_fd)
                 return replay
             previous = next(
                 (event for event in reversed(events) if event.plugin_id == plugin_id),
                 None,
             )
-            generation = 0 if previous is None else previous.generation
-            if generation != expected_generation:
-                raise self._failure("stale")
-            if action == "revoke" and previous is None:
-                raise self._failure("absent")
-            kill = 0 if previous is None else previous.kill_switch_generation
-            if action == "revoke":
-                kill += 1
-            if action == "allow" and (
-                opt_in is None
-                or opt_in.plugin_id != plugin_id
-                or opt_in.owner_selection_generation != generation + 1
-                or (opt_in.kill_switch_generation != kill)
-            ):
-                raise self._failure("generation_invalid")
+            generation, kill = mutation.next_generation(
+                previous, failure=failure
+            )
             if len(events) >= self._max_events():
                 raise self._failure("capacity")
             decision = self._record_type.create(

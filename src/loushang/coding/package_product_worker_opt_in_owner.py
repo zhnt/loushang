@@ -8,6 +8,10 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.package_product.product_worker_candidate import (
     _capture_worker_opt_in_selection,
 )
+from loushang.harness.resources.packages.product_local_wheel_policy import (
+    PackageProductLocalWheelBindingV1,
+    PackageProductLocalWorkerAdmissionV1,
+)
 
 from .package_product_worker_installed_native import (
     open_coding_product_installed_worker_release_reader,
@@ -23,6 +27,54 @@ class CodingWorkerProductOptInError(RuntimeError):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+def _plan_worker_allow(
+    previous: CodingWorkerOptInDecisionV1 | None,
+    *,
+    binding: PackageProductLocalWheelBindingV1,
+    admission: PackageProductLocalWorkerAdmissionV1,
+    plugin_id: str,
+    operation_id: str,
+    expected_generation: int,
+    require_worker: bool,
+) -> CodingWorkerOptInV1:
+    """Validate a current allow or return the exact prior opt-in for replay."""
+
+    generation = 0 if previous is None else previous.generation
+    kill_generation = 0 if previous is None else previous.kill_switch_generation
+    if (
+        previous is not None
+        and previous.operation_id == operation_id
+        and previous.action == "allow"
+        and previous.generation == expected_generation + 1
+    ):
+        prior_opt_in = previous.opt_in
+        if (
+            prior_opt_in is None
+            or prior_opt_in.plugin_id != plugin_id
+            or prior_opt_in.contribution_id != admission.contribution_id
+            or prior_opt_in.owner_id != admission.owner_id
+            or prior_opt_in.artifact_digest != binding.artifact_digest
+            or prior_opt_in.native_platform != admission.native_platform
+            or prior_opt_in.require_worker != require_worker
+        ):
+            raise CodingWorkerProductOptInError(
+                "coding_worker_opt_in_operation_conflict"
+            )
+        return prior_opt_in
+    if generation != expected_generation:
+        raise CodingWorkerProductOptInError("coding_worker_opt_in_stale")
+    return CodingWorkerOptInV1(
+        plugin_id=plugin_id,
+        contribution_id=admission.contribution_id,
+        owner_id=admission.owner_id,
+        artifact_digest=binding.artifact_digest,
+        native_platform=admission.native_platform,
+        owner_selection_generation=generation + 1,
+        kill_switch_generation=kill_generation,
+        require_worker=require_worker,
+    )
 
 
 class CodingWorkerProductOptInOwner:
@@ -77,51 +129,21 @@ class CodingWorkerProductOptInOwner:
                     "coding_worker_opt_in_native_platform_changed"
                 )
             previous = self._journal.current(plugin_id)
-            generation = 0 if previous is None else previous.generation
-            kill_generation = 0 if previous is None else previous.kill_switch_generation
-            if (
-                previous is not None
-                and previous.operation_id == operation_id
-                and previous.action == "allow"
-                and previous.generation == expected_generation + 1
-            ):
-                prior_opt_in = previous.opt_in
-                if (
-                    prior_opt_in is None
-                    or prior_opt_in.plugin_id != plugin_id
-                    or prior_opt_in.contribution_id != admission.contribution_id
-                    or prior_opt_in.owner_id != admission.owner_id
-                    or prior_opt_in.artifact_digest != binding.artifact_digest
-                    or prior_opt_in.native_platform != admission.native_platform
-                    or prior_opt_in.require_worker != require_worker
-                ):
-                    raise CodingWorkerProductOptInError(
-                        "coding_worker_opt_in_operation_conflict"
-                    )
-                return self._journal.change(
-                    plugin_id=plugin_id,
-                    operation_id=operation_id,
-                    expected_generation=expected_generation,
-                    action="allow",
-                    opt_in=prior_opt_in,
-                )
-            if generation != expected_generation:
-                raise CodingWorkerProductOptInError("coding_worker_opt_in_stale")
+            opt_in = _plan_worker_allow(
+                previous,
+                binding=binding,
+                admission=admission,
+                plugin_id=plugin_id,
+                operation_id=operation_id,
+                expected_generation=expected_generation,
+                require_worker=require_worker,
+            )
             return self._journal.change(
                 plugin_id=plugin_id,
                 operation_id=operation_id,
                 expected_generation=expected_generation,
                 action="allow",
-                opt_in=CodingWorkerOptInV1(
-                    plugin_id=plugin_id,
-                    contribution_id=admission.contribution_id,
-                    owner_id=admission.owner_id,
-                    artifact_digest=binding.artifact_digest,
-                    native_platform=admission.native_platform,
-                    owner_selection_generation=generation + 1,
-                    kill_switch_generation=kill_generation,
-                    require_worker=require_worker,
-                ),
+                opt_in=opt_in,
             )
 
     def revoke(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import ClassVar, Literal, Protocol, Self, TypeVar, cast
@@ -187,6 +188,70 @@ class _OptInDecisionMethods:
 
 
 _DecisionT = TypeVar("_DecisionT", bound=_OptInDecisionMethods)
+
+
+@dataclass(frozen=True, slots=True)
+class _OptInMutation:
+    plugin_id: str
+    operation_id: str
+    expected_generation: int
+    action: Literal["allow", "revoke"]
+    opt_in: _OptInValue | None
+
+    def is_valid(self, opt_in_type: Callable[[], type[_OptInValue]]) -> bool:
+        return not (
+            not isinstance(self.operation_id, str)
+            or len(self.operation_id) > 128
+            or _OPAQUE.fullmatch(self.operation_id) is None
+            or type(self.expected_generation) is not int
+            or self.expected_generation < 0
+            or self.action not in {"allow", "revoke"}
+            or (self.action == "allow" and not isinstance(self.opt_in, opt_in_type()))
+            or (self.action == "revoke" and self.opt_in is not None)
+        )
+
+    def replay(
+        self,
+        events: tuple[_DecisionT, ...],
+        *,
+        failure: Callable[[str], RuntimeError],
+    ) -> _DecisionT | None:
+        replay = next(
+            (event for event in events if event.operation_id == self.operation_id), None
+        )
+        if replay is not None and (
+            replay.plugin_id != self.plugin_id
+            or replay.action != self.action
+            or replay.opt_in != self.opt_in
+            or replay.generation != self.expected_generation + 1
+        ):
+            raise failure("operation_conflict")
+        return replay
+
+    def next_generation(
+        self,
+        previous: _OptInDecisionMethods | None,
+        *,
+        failure: Callable[[str], RuntimeError],
+    ) -> tuple[int, int]:
+        """Return the checked current generation and the kill value to append."""
+
+        generation = 0 if previous is None else previous.generation
+        if generation != self.expected_generation:
+            raise failure("stale")
+        if self.action == "revoke" and previous is None:
+            raise failure("absent")
+        kill = 0 if previous is None else previous.kill_switch_generation
+        if self.action == "revoke":
+            kill += 1
+        if self.action == "allow" and (
+            self.opt_in is None
+            or self.opt_in.plugin_id != self.plugin_id
+            or self.opt_in.owner_selection_generation != generation + 1
+            or self.opt_in.kill_switch_generation != kill
+        ):
+            raise failure("generation_invalid")
+        return generation, kill
 
 
 def fold_opt_in_events(

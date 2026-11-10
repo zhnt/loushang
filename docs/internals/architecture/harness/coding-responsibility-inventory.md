@@ -1,5 +1,7 @@
 # Coding 逐文件职责与处置清单 R2
 
+- A136 共用 Worker 授权重放与代次检查，Coding 减9行，Harness 增15行。见[A136](coding-responsibility-convergence-progress.md#a136共用worker授权重放与代次检查)。
+
 - A135 两平台共用 Worker 回执与所有者校验，Coding 与系统源码各减10行。见[A135](coding-responsibility-convergence-progress.md#a135两平台共用worker回执复核)。
 
 - A133 三个读取入口共用原 Plugin Management 的 GC 与 Desired 装配，Coding 减10行、Harness 增15行。见[A133](coding-responsibility-convergence-progress.md#a133共用gc与desired账本装配)。
@@ -355,7 +357,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_operator_query.py](../../../../src/loushang/coding/package_product_worker_operator_query.py) | C07 | 513 | M | C07 插件 Worker 执行/持久化/恢复 | f36fa09c6341 | 373 | e6d991db695a |
 | [package_product_worker_opt_in.py](../../../../src/loushang/coding/package_product_worker_opt_in.py) | C07 | 910 | M | C07 插件 Worker 执行/持久化/恢复 | 5851cc8774a0 | 208 | 83b52ccb430f |
 | [package_product_worker_opt_in_base_v2.py](../../../../src/loushang/coding/package_product_worker_opt_in_base_v2.py) | C07 | 247 | M | C07 插件 Worker 执行/持久化/恢复 | dbfc16fd08d8 | 49 | 5c95fcd66653 |
-| [package_product_worker_opt_in_owner.py](../../../../src/loushang/coding/package_product_worker_opt_in_owner.py) | C07 | 223 | M | C07 插件 Worker 执行/持久化/恢复 | 3869f1eeacad | 147 | d240bd0acbc7 |
+| [package_product_worker_opt_in_owner.py](../../../../src/loushang/coding/package_product_worker_opt_in_owner.py) | C07 | 223 | M | C07 插件 Worker 执行/持久化/恢复 | 3869f1eeacad | 169 | 20a1716593f4 |
 | [package_product_worker_ordinary_bootstrap.py](../../../../src/loushang/coding/package_product_worker_ordinary_bootstrap.py) | C07 | 312 | M | C07 插件 Worker 执行/持久化/恢复 | 7d97151fe500 | 312 | 7d97151fe500 |
 | [package_product_worker_ordinary_error.py](../../../../src/loushang/coding/package_product_worker_ordinary_error.py) | C07 | 12 | M | C07 插件 Worker 执行/持久化/恢复 | 69d14f793272 | 12 | 69d14f793272 |
 | [package_product_worker_payload.py](../../../../src/loushang/coding/package_product_worker_payload.py) | C07 | 2,360 | M | C07 插件 Worker 执行/持久化/恢复 | 331b1fd4706a | 848 | 3608f8bc8296 |
@@ -408,7 +410,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_windows_native_approval_owner.py](../../../../src/loushang/coding/package_product_worker_windows_native_approval_owner.py) | C07 | 108 | M | C07 插件 Worker 执行/持久化/恢复 | 42c5dcf29373 | 94 | 448836bf53b3 |
 | [package_product_worker_windows_opt_in_base.py](../../../../src/loushang/coding/package_product_worker_windows_opt_in_base.py) | C07 | 224 | M | C07 插件 Worker 执行/持久化/恢复 | aaff2073182f | 105 | c0a4585a5b12 |
 | [package_product_worker_windows_opt_in_journal.py](../../../../src/loushang/coding/package_product_worker_windows_opt_in_journal.py) | C07 | 427 | M | C07 插件 Worker 执行/持久化/恢复 | 45de61d79cf7 | 107 | 456a16fdd64c |
-| [package_product_worker_windows_opt_in_owner.py](../../../../src/loushang/coding/package_product_worker_windows_opt_in_owner.py) | C07 | 240 | M | C07 插件 Worker 执行/持久化/恢复 | 8a433b9a6e12 | 164 | 044df2453c67 |
+| [package_product_worker_windows_opt_in_owner.py](../../../../src/loushang/coding/package_product_worker_windows_opt_in_owner.py) | C07 | 240 | M | C07 插件 Worker 执行/持久化/恢复 | 8a433b9a6e12 | 133 | 27e88337d4e7 |
 | [package_product_worker_windows_orphan_review.py](../../../../src/loushang/coding/package_product_worker_windows_orphan_review.py) | C07 | 218 | M | C07 插件 Worker 执行/持久化/恢复 | f208ccc2257a | 191 | 0e0b41e98f2c |
 | [package_product_worker_windows_package_references.py](../../../../src/loushang/coding/package_product_worker_windows_package_references.py) | C07 | 333 | M | C07 插件 Worker 执行/持久化/恢复 | 4e592d2bb6a4 | 333 | 4e592d2bb6a4 |
 | [package_product_worker_windows_partial_stage_retirement.py](../../../../src/loushang/coding/package_product_worker_windows_partial_stage_retirement.py) | C07 | 470 | M | C07 插件 Worker 执行/持久化/恢复 | f3aa4d490897 | 324 | cca371775339 |
@@ -521,7 +523,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C04 | 2 | 2,956 |
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
-| C07 | 112 | 21,681 |
+| C07 | 112 | 21,672 |
 | C08 | 31 | 6,693 |
 | C09 | 34 | 9,523 |
 | C10 | 12 | 5,427 |
@@ -543,4 +545,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 111,904 |
+| 合计 | 430 | 111,895 |

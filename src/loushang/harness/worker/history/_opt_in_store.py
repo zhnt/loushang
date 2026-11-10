@@ -36,6 +36,7 @@ from ._opt_in import (
     _MAX_SEGMENT_BYTES,
     _OPAQUE,
     _OptInDecisionMethods,
+    _OptInMutation,
     _OptInReplayFields,
     _OptInValue,
     fold_opt_in_events,
@@ -209,19 +210,10 @@ class OptInJournal(Generic[_DecisionT, _ProjectionT, _PolicyT]):
         """Persist one explicit decision; replay the same operation exactly."""
 
         self._require_plugin_id(plugin_id)
-        if (
-            not isinstance(operation_id, str)
-            or len(operation_id) > 128
-            or _OPAQUE.fullmatch(operation_id) is None
-            or type(expected_generation) is not int
-            or expected_generation < 0
-            or action not in {"allow", "revoke"}
-            or (
-                action == "allow"
-                and not isinstance(opt_in, self._decision_type._opt_in_type)
-            )
-            or (action == "revoke" and opt_in is not None)
-        ):
+        mutation = _OptInMutation(
+            plugin_id, operation_id, expected_generation, action, opt_in
+        )
+        if not mutation.is_valid(lambda: self._decision_type._opt_in_type):
             raise ValueError("Coding Worker opt-in command is invalid")
         with self._gc_gate.guard(require_write=True), self._bound_journal() as rooted:
             checkpoints = self._checkpoint_writer_fence(rooted)
@@ -241,17 +233,8 @@ class OptInJournal(Generic[_DecisionT, _ProjectionT, _PolicyT]):
                 revision = len(events)
                 self._assert_checkpoint_source(checkpoints, history)
                 self._assert_checkpoint_high_water(checkpoints, events)
-            replay = next(
-                (event for event in events if event.operation_id == operation_id), None
-            )
+            replay = mutation.replay(events, failure=self._failure)
             if replay is not None:
-                if (
-                    replay.plugin_id != plugin_id
-                    or replay.action != action
-                    or replay.opt_in != opt_in
-                    or replay.generation != expected_generation + 1
-                ):
-                    raise self._error_type("coding_worker_opt_in_operation_conflict")
                 return replay
             if any(
                 operation_id in record.new_opt_in_operation_ids
@@ -264,21 +247,9 @@ class OptInJournal(Generic[_DecisionT, _ProjectionT, _PolicyT]):
                 else cast(tuple[_DecisionT, ...], v2_replay.latest_decisions),
                 plugin_id,
             )
-            generation = 0 if previous is None else previous.generation
-            if generation != expected_generation:
-                raise self._error_type("coding_worker_opt_in_stale")
-            if action == "revoke" and previous is None:
-                raise self._error_type("coding_worker_opt_in_absent")
-            kill = 0 if previous is None else previous.kill_switch_generation
-            if action == "revoke":
-                kill += 1
-            if action == "allow" and (
-                opt_in is None
-                or opt_in.plugin_id != plugin_id
-                or opt_in.owner_selection_generation != generation + 1
-                or opt_in.kill_switch_generation != kill
-            ):
-                raise self._error_type("coding_worker_opt_in_generation_invalid")
+            generation, kill = mutation.next_generation(
+                previous, failure=self._failure
+            )
             decision = self._decision_type.create(
                 journal_revision=revision + 1,
                 scope_id=self._scope_id,
@@ -318,6 +289,9 @@ class OptInJournal(Generic[_DecisionT, _ProjectionT, _PolicyT]):
                 append=append,
             )
             return decision
+
+    def _failure(self, code: str) -> RuntimeError:
+        return self._error_type("coding_worker_opt_in_" + code)
 
     def _checkpoint_writer_fence(
         self, rooted: RootedFile

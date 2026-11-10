@@ -560,3 +560,10 @@ Coding 新增18行、删除28行。Harness 新增26行、删除11行。系统净
 Coding 两文件分别净增35行和净减45行，合计新增124行、删除134行。Harness 净0，
 系统净减10行。当前430份 Coding 源码111904行，1969份系统源码648260行。
 该复核含 Coding 领域授权政策，源码仍计入 Coding。见[A135](coding-responsibility-convergence-progress.md#a135两平台共用worker回执复核)。
+
+
+## A136 共用 Worker 授权重放与代次检查
+
+Coding 新增75行、删除84行。Harness 新增89行、删除74行，系统净增6行。
+候选授权仍归 Coding，两种账本共用输入、重放与代次判断。当前430份 Coding 源码
+111895行，1969份系统源码648266行。见[A136](coding-responsibility-convergence-progress.md#a136共用worker授权重放与代次检查)。

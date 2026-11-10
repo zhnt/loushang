@@ -35,6 +35,22 @@ START native_revision==2特殊校验在草稿中遗漏。未装Product，生产�
 [A129](key-designs/worker-history-responsibility-convergence.md#a129完整windows退休闭包原型未采用)。
 完整Goal仍active/partial；A129当时仍用A128已接受计量，不以树外原型报减少。
 
+## A136共用Worker授权重放与代次检查
+
+两平台共用 Coding 的候选授权值判断。同一授权重放会把原 opt-in 对象交回原账本，
+两平台继续从原 Product 选择和原生发布 owner 取证。Harness 原 Worker History
+共用账本命令校验、首条匹配操作检查和代次校验。POSIX 保留退休操作 ID 的拒绝顺序，
+Windows 保留根可见性复核、容量检查和描述符持有范围。锁、追加和编码继续由原 owner 执行。
+
+重放匹配与代次检查分别传参的原型净增49行，未采用。实际共用五字段内部值。初版重复的
+类型变量声明导致类型检查失败，已删除。179条受控新旧观察一致，涵盖重放对象、
+追加字节、容量和退出异常。实际 V2 由既有回归验证。Windows 原生运行未覆盖。
+最终源码的203项回归和11项 Worker 合同检查通过。165项导入边界、5个改动模块的
+类型检查、Ruff、依赖图及文档约束通过。运行记录在树外 `a136-worker-opt-in`。
+
+Coding 减9行，Harness 增15行，系统净增6行。当前 Coding 111895行，系统648266行。
+较 Goal 起点分别减少25860行和增加13472行，距15K还差96895行。P1–P4仍在进行。
+
 ## A135两平台共用Worker回执复核
 
 Coding 的两种回执 owner 共用见证复核和授权所有者 ID 查询。两平台各自读取原历史、
