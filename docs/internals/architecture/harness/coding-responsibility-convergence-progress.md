@@ -6,7 +6,20 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A91完整partial capture及关闭异常链修复）
+## 当前状态（2026-11-10，A92复用原Continuity激活lease机制）
+
+Generation activation lease已直接复用原CallbackPreparedActivationLease的完整consume/
+abort/close、单次标记、Event与共享abort Task机制，退出第二份算法；两个必要阶段的
+lease实例及原Gate/inner权威保持。Gen仅保晚属性、严格await、原准入/完成回执及
+结清注销政策；无新组件、manager、状态表或Code IO回借。R1改变Event失败边界、
+R2新增selfcycle均拒绝；最终R3保原clear/set/complete短路顺序且不存self绑定方法。
+Coding430源113755行不变，本批原机制+19/重复体−47，系统净−28（无格式减量），
+系统1967源647636行；相对Goal起点Code−24000/系统+12842。其余1965源及13资源
+SHA同。原消费者164过/1原平台skip，冻结旧41项与实际持久探针均通过；详见
+[A92](key-designs/activation-lease-lifecycle-convergence.md)。完整P1–P4/领域化/≤15K仍
+active/partial，距15K尚98755行。KD003仍未实施；KD011/A33待用户且未采用。
+
+## A91历史交付（2026-11-10，完整partial capture及关闭异常链修复）
 
 Code完整partial-tree物理操作已退出，原PackageProduct直接复用WindowsStageInspection、
 Product root借用与Worker现有whole-child close。公开Partial/Reserved DTO及产品准入

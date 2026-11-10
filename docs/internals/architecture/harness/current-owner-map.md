@@ -205,6 +205,15 @@ preserve the Code import entry, with definition/reflection metadata moved.
 The [bounded custody evidence](key-designs/continuity-payload-custody-convergence.md)
 does not complete KD003 bytes import or eliminate the compatibility Path.
 
+Continuity's original Callback activation lease owns the single-use consume,
+abort-intent/Event coordination, shared abort Task, cancellation and retry
+mechanism. The generation lease directly reuses it, retaining late inner
+properties, strict async effects and original Gate admission/completion and
+inventory policy. These remain two necessary lease phases, with one algorithm;
+no additional manager, runtime component or Code callback is introduced.
+See [A92](key-designs/activation-lease-lifecycle-convergence.md) for scope,
+failure-order and release-time evidence.
+
 Worker history owns native-approval value/wire/history mechanics and the original
 Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
 selector; their original append/byte/lock/custody rules remain separate. Coding

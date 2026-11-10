@@ -7,6 +7,7 @@
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
 当前430个Python文件均重新计量并核SHA；原审计列与候选处置保留供追溯。当前行数包括已接通但尚待最终切片验证的源码；各批接受范围以执行记录为准。
+A92复用原Continuity激活lease机制，Coding430源SHA/行数不变、系统减28；见[A92](key-designs/activation-lease-lifecycle-convergence.md)。
 A91完整partial capture退出并修复full/reserved关闭异常链，Code−109/接收+137/系统+28；见[A91](key-designs/windows-stage-capture-custody-convergence.md#a91完整partial-capture与原生关闭区域)。
 A90两Code receipt捕获体退出，原publication直接执行，Code−91/接收+71/系统−20；见[KD009 §21](key-designs/startup-session-assembly-convergence.md#21-a90原publication直接捕获完整receipt)。
 A89 Reserved完整capture复用A88，同批保真实DTO寿命；Code减65/接收减7/系统减72，当前接受范围见[交付](key-designs/windows-stage-capture-custody-convergence.md#a89完整reserved捕获复用与共同寿命)。

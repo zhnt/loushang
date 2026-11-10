@@ -245,3 +245,12 @@ checks, ordered traces, cause/context graphs and first-close-error FD debt; thei
 fixtures derive from frozen original raw observations, never candidate output. They reuse
 existing A88/A89 drivers and do not expand default discovery, PR routes or gates.
 [A91 validation and limits](../architecture/harness/key-designs/windows-stage-capture-custody-convergence.md#a91完整partial-capture与原生关闭区域).
+
+A92 adds [probe_activation_lease_runtime.py](../../../tests/harness/continuity/probe_activation_lease_runtime.py):
+41 frozen original Callback/Generation lease observations over real Tasks/Events/Gate,
+with controlled inner effects and explicit failure ports. Run this explicit path through
+`scripts/dev/run_pytest.py` with the existing non-live/host-runtime selectors and workspace
+execution/storage rules. Its lossless gzip comes only from the old baseline; strict JSON
+comparison retains types, complete exception graphs, ordered phase state and task identity.
+The durable carrier has no capture mode or future-production hash lock. No default discovery,
+PR route or gate expands. [A92 scope and limitations](../architecture/harness/key-designs/activation-lease-lifecycle-convergence.md).

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Protocol
 
-from loushang.harness.continuity.activation import ActivationLeaseStateError
+from loushang.harness.continuity.activation import CallbackPreparedActivationLease
 from loushang.harness.continuity.composition import (
     PluginContinuityProviderProvenance,
     plugin_continuity_provider_source,
@@ -599,8 +600,8 @@ class PluginContinuityProvider:
             raise ValueError("Continuity Plugin target belongs to another Provider")
 
 
-class _GenerationActivationLease:
-    """Keep consume under generation authority after copy-first prepare."""
+class _GenerationActivationLease(CallbackPreparedActivationLease):
+    """Keep the original activation lifecycle under generation authority."""
 
     def __init__(
         self,
@@ -609,14 +610,7 @@ class _GenerationActivationLease:
     ) -> None:
         self._inner = inner
         self._gate = gate
-        self._consuming = False
-        self._consume_done = asyncio.Event()
-        self._consume_done.set()
-        self._consumed = False
-        self._consume_attempted = False
-        self._abort_requested = False
-        self._closed = False
-        self._abort_task: asyncio.Task[None] | None = None
+        self._initialize_lifecycle()
 
     @property
     def target(self) -> ContinuityTarget:
@@ -630,62 +624,21 @@ class _GenerationActivationLease:
     def consumed(self) -> bool:
         return self._inner.consumed
 
-    async def consume(self) -> object:
-        if self._closed or self._abort_requested:
-            raise ActivationLeaseStateError("activation lease is closed")
-        if self._consume_attempted or self._consuming:
-            raise ActivationLeaseStateError(
-                "activation lease has already been consumed"
-            )
-        call = self._gate.admit()
-        # Linearize consume before the first await.  Failed consume remains in
-        # the gate inventory so the Product candidate can still be aborted.
-        self._consuming = True
-        self._consume_attempted = True
-        self._consume_done.clear()
-        try:
-            result = await self._inner.consume()
-            self._consumed = True
-            self._closed = True
-            self._gate._unregister_lease(self)
-            return result
-        finally:
-            self._consuming = False
-            self._consume_done.set()
-            call.complete()
+    def _admit_consume(self) -> Callable[[], None]:
+        return self._gate.admit().complete
 
-    async def abort(self) -> None:
-        if self._closed:
-            return
-        self._abort_requested = True
-        if self._consuming:
-            await asyncio.shield(self._consume_done.wait())
-        if self._closed:
-            return
-        if self._consumed:
-            self._closed = True
-            self._gate._unregister_lease(self)
-            return
-        task = self._abort_task
-        if task is None:
-            task = asyncio.create_task(self._run_abort())
-            self._abort_task = task
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError:
-            raise
-        except BaseException:
-            if self._abort_task is task:
-                self._abort_task = None
-            raise
+    async def _consume(self) -> object:
+        return await self._inner.consume()
 
-    async def _run_abort(self) -> None:
+    async def _abort(self) -> None:
         await self._inner.abort()
+
+    def _activation_consumed(self) -> None:
         self._closed = True
         self._gate._unregister_lease(self)
 
-    async def close(self) -> None:
-        await self.abort()
+    def _activation_aborted(self) -> None:
+        self._gate._unregister_lease(self)
 
 
 class _GenerationDeletionLease:

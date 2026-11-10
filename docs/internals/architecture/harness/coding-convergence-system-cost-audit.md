@@ -208,3 +208,13 @@ close，无新manager/模块；纯公开DTO构造保留原资源时点，scope�
 四源、原R1/R2失败、pre-A89正确旧行为及完整有限验证见
 [A91](key-designs/windows-stage-capture-custody-convergence.md#a91完整partial-capture与原生关闭区域)。
 新增显式测试1071行、两压缩fixture34219字节与文档另列，不包含在生产源码增减。
+
+## A92后续：原激活lease机制合一
+
+这批没有Coding源码增删。Continuity原Callback机制149→168（+19），Generation所在
+模块883→836（−47），系统净−28且没有格式减量；不是另迁一份Code领域算法。
+两阶段必要lease实例保持，consume/abort/Event/共享Task算法只留一份。R1 Event
+失败范围变化及R2新selfcycle均未交付，实际反例分别4失败/1失败保留，R3旧41项
+全部通过。当前Code113755/系统647636，较Goal基线−24000/+12842，累计系统增长
+仍未解决。新增482行显式probe、4627字节原41观察gzip及文档另列，不扩默认发现
+或PR gate。完整源码、旧期望来源和验证限制见[A92](key-designs/activation-lease-lifecycle-convergence.md)。
