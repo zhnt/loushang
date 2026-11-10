@@ -115,6 +115,9 @@ pub fn run() {
     ]);
     builder
         .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_title(&app.package_info().name)?;
+            }
             #[cfg(desktop)]
             if let Err(error) = tray::setup(app) {
                 // A desktop without a tray host must still be able to launch.

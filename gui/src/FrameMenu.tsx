@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { appName } from "./branding";
 import type Resources from "./i18n/generated/resources";
 
 export interface FrameActions {
@@ -173,11 +174,11 @@ export function FrameMenu(actions: FrameActions) {
           {groups[name].map((group, index) => <div className="frame-menu-group" key={index}>
             {index > 0 ? <div role="separator" className="frame-menu-separator" /> : null}
             {group.map((item) => <button key={item.label} role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
-              aria-label={t(item.label)} aria-checked={item.checked} aria-haspopup={item.submenu ? "menu" : undefined}
+              aria-label={t(item.label, { appName })} aria-checked={item.checked} aria-haspopup={item.submenu ? "menu" : undefined}
               disabled={!item.action} title={!item.action ? t("actionUnavailable") : undefined}
               onClick={() => { if (item.action) run(item.action); }}>
               <span className="menu-check" aria-hidden="true">{item.checked ? "✓" : ""}</span>
-              <span className="menu-label">{t(item.label)}</span>
+              <span className="menu-label">{t(item.label, { appName })}</span>
               {item.shortcut ? <kbd aria-hidden="true">{item.shortcut}</kbd> : null}
               {item.submenu ? <span aria-hidden="true">›</span> : null}
             </button>)}
@@ -187,8 +188,8 @@ export function FrameMenu(actions: FrameActions) {
     </nav>
     {copyFailed ? <div role="alert" className="window-error"><span>{t("copyFailed")}</span><button onClick={() => setCopyFailed(false)}>{t("dismiss")}</button></div> : null}
     {help ? <dialog ref={dialog} className="frame-dialog" aria-labelledby="frame-dialog-title" onCancel={() => setHelp(null)} onClose={() => setHelp(null)}>
-      <h2 id="frame-dialog-title">{help === "about" ? t("about") : t("shortcuts")}</h2>
-      {help === "about" ? <><p>{t("aboutDescription")}</p><p>{t("aboutRuntime")}</p></> : <dl>
+      <h2 id="frame-dialog-title">{help === "about" ? t("about", { appName }) : t("shortcuts")}</h2>
+      {help === "about" ? <><p>{t("aboutDescription", { appName })}</p><p>{t("aboutRuntime")}</p></> : <dl>
         <dt>{t("sidebarShortcut")}</dt><dd>{t("toggleSidebar")}</dd>
         <dt>{t("sendShortcut")}</dt><dd>{t("sendMessage")}</dd>
         <dt>{t("newlineShortcut")}</dt><dd>{t("insertNewline")}</dd>

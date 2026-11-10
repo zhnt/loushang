@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { appName } from "../../src/branding";
 
 const hoverGray = "rgb(236, 236, 235)";
 const focusGray = "rgb(104, 108, 114)";
@@ -117,6 +118,7 @@ test("desktop shell renders menus and Session history with a simulated native br
   await simulateDesktop(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
+  await expect(page.locator(".brand-name")).toHaveText(appName);
   await expect(page.getByRole("heading", { name: "GUI development" })).toBeVisible();
   await expect(page.locator(".native-frame")).toBeVisible();
   await page.locator('.window-resize-edge[data-edge="SouthEast"]').click();
@@ -141,7 +143,7 @@ test("desktop shell renders menus and Session history with a simulated native br
   await expect(help).toHaveCSS("background-color", hoverGray);
   await help.press("ArrowDown");
   await expect(page.getByRole("menuitem", { name: "Documentation" })).toBeDisabled();
-  const about = page.getByRole("menuitem", { name: "About loushang" });
+  const about = page.getByRole("menuitem", { name: `About ${appName}` });
   await about.hover();
   await expect(about).toHaveCSS("background-color", hoverGray);
   await page.keyboard.press("Escape");
