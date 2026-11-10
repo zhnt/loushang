@@ -6,7 +6,26 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A87 Windows cleanup当前调用链复核）
+## 当前状态（2026-11-10，A88完整Windows stage capture）
+
+完整stage capture已归现有PackageProduct，直接复用原WindowsStageInspection与
+实际Product root借用：ACL/root/stage/child寿命、marker与成员校验、payload大小/
+SHA、末次identity及反序close一并接通，Code旧操作体删除。Code保精确intent
+准入、公开Review/Error、外层GC及有真实消费者的薄helper；没有Worker反向依赖、
+新manager、厚IO回调或第二份状态。私有临时captured值的实现owner改变已明确接受。
+原61场景冻结观察及原有96消费者在实际源码共157过（10.02s），两源mypy/Ruff/
+format通过；三独立视角获有界接受。原R4漏_identity导致的收集回归和一次重复
+conftest注册的搭建失败均保留，不混为通过。Windows接口使用真实POSIX文件/FD
+桥接，不代表原生Windows或实际Task.cancel验证。
+Code434→344（−90），原接收源478→609（+131），系统+41；是职责归位，
+不是系统净精简。当前Coding430文件114020行、系统1967源647728行，其余1965源
+及13包资源保持。完整P1–P4/领域化/≤15K仍active/partial，距15K还差99020行；
+下一步复核相邻offline snapshot、attempt-reference与stage retirement的完整闭包，
+优先复用现有owner并消除重复操作，不重做A87已证实共享的cleanup链。
+仓库完整可移植探针61过8.03s，原导入边界165过94.28s；探针首版预算表达的
+25过/36失败及严格公式修正均保留。详情见[A88交付](key-designs/windows-stage-capture-custody-convergence.md)。
+
+## A87历史交付（2026-11-10，Windows cleanup当前调用链复核）
 
 对A82的‘厚Code IO回借’判断作实物纠正：当前cleanup的orphan/inventory/native
 回调已是Code准入和薄装配，实际目录/FD/journal/Job操作均由原Core/Hosting执行。

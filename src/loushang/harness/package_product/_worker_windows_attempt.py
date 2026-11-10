@@ -11,6 +11,7 @@ import os
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Generic, Protocol, Self, TypeVar
 
@@ -28,7 +29,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeLeaseV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_directory,
     windows_listdir_at,
+    windows_stat_at,
 )
 from loushang.harness.resources.plugins.declarations import (
     PluginLocalWorkerConfiguration,
@@ -47,7 +50,12 @@ from loushang.harness.worker.history._windows_recovery import (
     project_windows_recovery_attempts,
 )
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
-from loushang.harness.worker.payload._windows_stage_io import WindowsStageInspection
+from loushang.harness.worker.payload._windows_stage_io import (
+    FileIdentity,
+    LaunchIntent,
+    WindowsStageInspection,
+)
+from loushang.harness.worker.payload._windows_stage_io import identity as _file_identity
 from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
 
 
@@ -476,3 +484,126 @@ def inspect_windows_product_worker_retirement_ids(
             attempts = inspect_names(windows_listdir_at(root))
     product.assert_root_gc_authority_current()
     return attempts
+
+
+@dataclass(frozen=True, slots=True)
+class CapturedWindowsWorkerStage:
+    entrypoint: str
+    stage_identity: FileIdentity
+    directory_identities: tuple[tuple[str, FileIdentity], ...]
+    marker_identity: FileIdentity
+    executable_identity: FileIdentity
+    executable_digest: str
+
+
+class _StageCaptureIntent(LaunchIntent, Protocol):
+    @property
+    def stage_identity(self) -> tuple[int, int]: ...
+
+
+def capture_windows_product_worker_stage(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    expected_stage: tuple[int, int],
+    intent: _StageCaptureIntent,
+    inspection: WindowsStageInspection,
+    marker_name: str,
+    max_marker_bytes: int,
+) -> CapturedWindowsWorkerStage:
+    """Capture the complete read-only stage under the caller's Product GC scope."""
+    stage_name = "worker-payload-" + attempt_id
+    with WindowsPrivateDirectoryAcl() as acl:
+        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+            inspection.require_direct(root, acl, directory=True)
+            if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
+                raise inspection.error_type(f"{inspection.error_prefix}_root_changed")
+            stage = open_windows_directory(
+                stage_name, dir_fd=root, share_delete=False, read_control=True
+            )
+            try:
+                stage_identity = inspection.require_direct(stage, acl, directory=True)
+                if (
+                    stage_identity[:2] != expected_stage
+                    or stage_identity[:2] != intent.stage_identity
+                    or _file_identity(windows_stat_at(root, stage_name))
+                    != stage_identity
+                ):
+                    raise inspection.error_type(
+                        f"{inspection.error_prefix}_stage_changed"
+                    )
+                raw_marker, marker_identity = inspection.read_checked_file(
+                    stage,
+                    marker_name,
+                    acl,
+                    maximum_bytes=max_marker_bytes,
+                )
+                entrypoint, marker_payload_size = inspection.verify_marker(
+                    raw_marker, intent=intent, stage_identity=expected_stage
+                )
+                parts = entrypoint.split("/")
+                if set(windows_listdir_at(stage)) != {marker_name, parts[0]}:
+                    raise inspection.error_type(
+                        f"{inspection.error_prefix}_tree_changed"
+                    )
+                current = stage
+                children: list[int] = []
+                directory_identities: list[tuple[str, FileIdentity]] = []
+                try:
+                    for index, name in enumerate(parts[:-1]):
+                        child = open_windows_directory(
+                            name,
+                            dir_fd=current,
+                            share_delete=False,
+                            read_control=True,
+                        )
+                        children.append(child)
+                        identity = inspection.require_direct(child, acl, directory=True)
+                        if _file_identity(
+                            windows_stat_at(current, name)
+                        ) != identity or set(windows_listdir_at(child)) != {
+                            parts[index + 1]
+                        }:
+                            raise inspection.error_type(
+                                f"{inspection.error_prefix}_tree_changed"
+                            )
+                        directory_identities.append(
+                            ("/".join(parts[: index + 1]), identity)
+                        )
+                        current = child
+                    executable, executable_identity = inspection.read_checked_file(
+                        current,
+                        parts[-1],
+                        acl,
+                        maximum_bytes=inspection.max_payload_bytes,
+                    )
+                    executable_digest = sha256(executable).hexdigest()
+                    if (
+                        executable_digest != intent.payload_digest
+                        or len(executable) != marker_payload_size
+                    ):
+                        raise inspection.error_type(
+                            f"{inspection.error_prefix}_payload_changed"
+                        )
+                finally:
+                    for child in reversed(children):
+                        os.close(child)
+                if (
+                    _file_identity(os.fstat(stage)) != stage_identity
+                    or _file_identity(windows_stat_at(root, stage_name))
+                    != stage_identity
+                    or set(windows_listdir_at(stage)) != {marker_name, parts[0]}
+                ):
+                    raise inspection.error_type(
+                        f"{inspection.error_prefix}_stage_changed"
+                    )
+                return CapturedWindowsWorkerStage(
+                    entrypoint=entrypoint,
+                    stage_identity=stage_identity,
+                    directory_identities=tuple(directory_identities),
+                    marker_identity=marker_identity,
+                    executable_identity=executable_identity,
+                    executable_digest=executable_digest,
+                )
+            finally:
+                os.close(stage)

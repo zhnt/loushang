@@ -615,6 +615,16 @@ The bounded implementation and limits are recorded in
 [KD008 §22](key-designs/worker-product-runtime-convergence.md#22-a56联合方向接受实际接通与主线同步)
 and [§23](key-designs/worker-product-runtime-convergence.md#23-a57完整windows查询取得与同构reader复用).
 
+Package Product owns the complete read-only Windows stage capture under the
+caller's existing Product GC scope, using the original Worker StageInspection:
+ACL/root/stage/child descriptor lifetime, marker/tree/payload proof and final
+identity checks. Coding keeps exact intent admission, public Review/Error and
+domain decisions. The private ephemeral captured value belongs to Package
+Product; no Worker-to-Product dependency or Code IO callback is added. Complete
+and crash stage review share this operation; partial review and retirement keep
+their existing thin StageInspection adapters. See [A88](key-designs/windows-stage-capture-custody-convergence.md)
+for cost, fixed-original fault evidence and native-platform limitations.
+
 ## Architecture Gates
 
 `make check-harness` is the integration gate. The architecture tests enforce:

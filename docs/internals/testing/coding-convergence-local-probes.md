@@ -11,6 +11,17 @@ on PYTHONPATH, private disk runtime, outside the sandbox and with the existing
 `not live` / `--skip-host-runtime` selectors. Passing these probes does not claim
 that existing PR gates executed them.
 
+A88 adds the complete 61-case Windows stage capture replay at
+[probe_windows_stage_capture_compatibility.py](../../../tests/coding/probe_windows_stage_capture_compatibility.py).
+The fixed gzip fixture is derived only from frozen original observations. Each
+fresh input's identities, injected offsets, bytes and bounded read budgets are
+checked before physical-role projection; all event ordering, errors and FD debt
+remain compared. Use `-p tests.coding.probe_continuity_payload_custody` for this
+machine's private temporary input fixture. Windows ACL/native ports are bridged
+to real POSIX files/FDs, and cancellation is synchronous fault injection. This
+does not prove native Windows or actual Task.cancel interleavings. See the
+[A88 evidence and portability correction](../architecture/harness/key-designs/windows-stage-capture-custody-convergence.md).
+
 | Historical path | Current explicit local path |
 | --- | --- |
 | `tests/coding/test_arch_private_cache_stream_ownership.py` | [tests/coding/probe_arch_private_cache_stream_ownership.py](../../../tests/coding/probe_arch_private_cache_stream_ownership.py) |

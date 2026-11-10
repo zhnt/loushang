@@ -13,16 +13,17 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.package_product._worker_windows_attempt import (
+    CapturedWindowsWorkerStage as _CapturedStageBytesV1,
+)
+from loushang.harness.package_product._worker_windows_attempt import (
+    capture_windows_product_worker_stage,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_directory,
-    windows_listdir_at,
-    windows_stat_at,
 )
 from loushang.harness.resources.plugins.locators import (
     canonical_plugin_relative_path,
@@ -31,7 +32,9 @@ from loushang.harness.worker.history._windows_stage_review_wire import (
     _WindowsStageReviewWireMethods,
 )
 from loushang.harness.worker.payload._windows_stage_io import WindowsStageInspection
-from loushang.harness.worker.payload._windows_stage_io import identity as _identity
+from loushang.harness.worker.payload._windows_stage_io import (
+    identity as _identity,  # noqa: F401 -- consumed by partial-stage review
+)
 
 from .package_product_worker_windows_launch_intent import (
     CodingWindowsWorkerLaunchIntentV1,
@@ -52,16 +55,6 @@ _DIRECTORY_ATTRIBUTES = 0x00000010 | 0x00000020 | 0x00002000
 _FILE_ATTRIBUTES = 0x00000020 | 0x00000080 | 0x00002000
 
 FileIdentity = tuple[int, int, int, int, int]
-
-
-@dataclass(frozen=True, slots=True)
-class _CapturedStageBytesV1:
-    entrypoint: str
-    stage_identity: FileIdentity
-    directory_identities: tuple[tuple[str, FileIdentity], ...]
-    marker_identity: FileIdentity
-    executable_identity: FileIdentity
-    executable_digest: str
 
 
 class CodingWindowsWorkerStageReviewError(RuntimeError):
@@ -292,99 +285,16 @@ def _capture_stage_bytes(
         raise CodingWindowsWorkerStageReviewError(
             "coding_worker_stage_review_intent_invalid"
         )
-    stage_name = "worker-payload-" + attempt_id
-    with WindowsPrivateDirectoryAcl() as acl:
-        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-            _require_direct(root, acl, directory=True)
-            if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
-                raise CodingWindowsWorkerStageReviewError(
-                    "coding_worker_stage_review_root_changed"
-                )
-            stage = open_windows_directory(
-                stage_name, dir_fd=root, share_delete=False, read_control=True
-            )
-            try:
-                stage_identity = _require_direct(stage, acl, directory=True)
-                if (
-                    stage_identity[:2] != expected_stage
-                    or stage_identity[:2] != intent.stage_identity
-                    or _identity(windows_stat_at(root, stage_name)) != stage_identity
-                ):
-                    raise CodingWindowsWorkerStageReviewError(
-                        "coding_worker_stage_review_stage_changed"
-                    )
-                raw_marker, marker_identity = _read_checked_file(
-                    stage,
-                    _MARKER,
-                    acl,
-                    maximum_bytes=_MAX_MARKER_BYTES,
-                )
-                entrypoint, marker_payload_size = _verify_marker(
-                    raw_marker, intent=intent, stage_identity=expected_stage
-                )
-                parts = entrypoint.split("/")
-                if set(windows_listdir_at(stage)) != {_MARKER, parts[0]}:
-                    raise CodingWindowsWorkerStageReviewError(
-                        "coding_worker_stage_review_tree_changed"
-                    )
-                current = stage
-                children: list[int] = []
-                directory_identities: list[tuple[str, FileIdentity]] = []
-                try:
-                    for index, name in enumerate(parts[:-1]):
-                        child = open_windows_directory(
-                            name,
-                            dir_fd=current,
-                            share_delete=False,
-                            read_control=True,
-                        )
-                        children.append(child)
-                        identity = _require_direct(child, acl, directory=True)
-                        if _identity(windows_stat_at(current, name)) != identity or set(
-                            windows_listdir_at(child)
-                        ) != {parts[index + 1]}:
-                            raise CodingWindowsWorkerStageReviewError(
-                                "coding_worker_stage_review_tree_changed"
-                            )
-                        directory_identities.append(
-                            ("/".join(parts[: index + 1]), identity)
-                        )
-                        current = child
-                    executable, executable_identity = _read_checked_file(
-                        current,
-                        parts[-1],
-                        acl,
-                        maximum_bytes=_MAX_PAYLOAD_BYTES,
-                    )
-                    executable_digest = sha256(executable).hexdigest()
-                    if (
-                        executable_digest != intent.payload_digest
-                        or len(executable) != marker_payload_size
-                    ):
-                        raise CodingWindowsWorkerStageReviewError(
-                            "coding_worker_stage_review_payload_changed"
-                        )
-                finally:
-                    for child in reversed(children):
-                        os.close(child)
-                if (
-                    _identity(os.fstat(stage)) != stage_identity
-                    or _identity(windows_stat_at(root, stage_name)) != stage_identity
-                    or set(windows_listdir_at(stage)) != {_MARKER, parts[0]}
-                ):
-                    raise CodingWindowsWorkerStageReviewError(
-                        "coding_worker_stage_review_stage_changed"
-                    )
-                return _CapturedStageBytesV1(
-                    entrypoint=entrypoint,
-                    stage_identity=stage_identity,
-                    directory_identities=tuple(directory_identities),
-                    marker_identity=marker_identity,
-                    executable_identity=executable_identity,
-                    executable_digest=executable_digest,
-                )
-            finally:
-                os.close(stage)
+
+    return capture_windows_product_worker_stage(
+        product,
+        attempt_id=attempt_id,
+        expected_stage=expected_stage,
+        intent=intent,
+        inspection=_inspection(),
+        marker_name=_MARKER,
+        max_marker_bytes=_MAX_MARKER_BYTES,
+    )
 
 
 __all__ = [

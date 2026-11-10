@@ -161,3 +161,14 @@ __init__注入，原36个assert/raises及所有输入/期望保持；候选故�
 多层接线成本，但不能据此重复实现采集器。两次独立native重读不能合并。真实
 未共享stage capture是另一个完整场景；尚无采用或减量证明。详见
 [当前路径](key-designs/windows-worker-cleanup-current-path.md)。本片生产源码零变化。
+
+## A88后续：完整stage capture职责归位及接收成本
+
+Code原完整capture物理操作退出，现有PackageProduct直接使用已有StageInspection、
+actual Product与原native API；底层Worker源码不改。没有回借Code IO、constructor
+factory callback、root-owner框架或新的模块/manager。保留真实partial/retirement
+消费者需要的薄helper和_identity import，不能为减行数删掉真实合同。
+最终Code−90/接收+131/系统+41，已计临时值类型、窄intent Protocol、所有import/
+注释/格式。属于完整职责迁移及类型边界成本，不计去重或系统精简；全系统647728
+相对Goal634794基线仍净增12934。三视角有界接受及实际157项通过见
+[A88](key-designs/windows-stage-capture-custody-convergence.md)。整体15K与P1–P4未完成。

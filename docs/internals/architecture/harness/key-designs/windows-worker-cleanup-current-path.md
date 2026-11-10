@@ -64,3 +64,11 @@ RecoveryBindings框架或采集器。Code保类型准入、实际Review/捕获�
 
 下一实施范围优先上述完整stage capture的现有owner接入；若实际全成本证明只是
 加层，则退回方案，不重启已经共享的cleanup采集。完整Goal保持active/partial。
+
+## A88后续处置
+
+以上候选/未实施描述为A87时点。A88完整capture已接通现有PackageProduct并获
+三视角有界接受；Code保公开Review/Error与准入，私有临时captured值归接收owner。
+实际157项通过，Code−90/接收+131/系统+41，不冒称系统净精简；原Worker primitives
+保持字节相同。具体合同、失败修正及平台限制见[A88交付](windows-stage-capture-custody-convergence.md)。
+其余cleanup当前事实及相邻未完成范围保持。
