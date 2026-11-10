@@ -122,8 +122,9 @@ Host connection colors and service lifecycle are separate: green means
 connected, yellow connecting, red disconnected, and grey unknown. A checkmark
 identifies the selected Host. The Open Web action is disabled without a usable
 address and never appends credentials. Menu text follows the interface language.
-Host management is a section heading with one submenu per Host, avoiding nested
-inline submenus in AppIndicator desktops. A separator always precedes Quit.
+Manage Hosts opens one submenu with the saved Hosts. Selecting a Host opens its
+details and controls in the window, so AppIndicator desktops only expand one
+menu. A separator always precedes Quit.
 Connected Hosts show their name and green dot without redundant status text;
 connecting and disconnected states retain their explanatory labels.
 See [tray acceptance](tests/playback/tray-acceptance.md) for validation scope.

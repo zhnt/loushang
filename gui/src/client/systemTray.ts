@@ -41,41 +41,34 @@ export function trayProjection(model: TrayModel, revision: number) {
     revision, userName: model.userName || text.user,
     currentLabel: current ? `${text.current}${separator}${dots[current.connection]} ${current.name}${status}` : `⚪ ${text.none}`,
     showLabel: text.showLabel, webLabel: text.webLabel, manageLabel: text.manageLabel,
-    quitLabel: text.quitLabel, enableLabel: text.enableLabel, infoLabel: text.infoLabel,
-    reconnectLabel: text.reconnectLabel, stopLabel: text.stopLabel,
+    quitLabel: text.quitLabel,
     webUrl: current?.webUrl ?? null,
     hosts: model.hosts.map((host) => ({
       id: host.id, label: `${dots[host.connection]} ${host.name}${host.selected ? " ✓" : ""}`,
-      serviceLabel: `${text.service}${separator}${text[host.service]}`,
-      startLabel: host.configureStart ? `${text.startLabel}…` : text.startLabel,
-      enable: availableTrayAction(host, "enable"), reconnect: availableTrayAction(host, "reconnect"),
-      start: availableTrayAction(host, "start"), stop: availableTrayAction(host, "stop"),
     })),
   };
 }
 let nextRevision = 0;
 let updates: Promise<unknown> = Promise.resolve();
 /** Serializes projections and ignores clicks from menus replaced during Host changes. */
-export function useSystemTray(model: TrayModel, action: (hostId: string, action: TrayAction) => void, onError: (error: string) => void) {
-  const latest = useRef({ model, action, onError });
-  latest.current = { model, action, onError };
+export function useSystemTray(model: TrayModel, onHostSelected: (hostId: string) => void, onError: (error: string) => void) {
+  const latest = useRef({ model, onHostSelected, onError });
+  latest.current = { model, onHostSelected, onError };
   const revision = useRef(0);
   const ready = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
     if (!isTauri()) return;
     let active = true;
-    const release = listen<{ revision: number; hostId: string; action: TrayAction }>("gui://tray-host-action", ({ payload }) => {
+    const release = listen<{ revision: number; hostId: string }>("gui://tray-host-selected", ({ payload }) => {
       if (!active || payload.revision !== revision.current) return;
       const host = latest.current.model.hosts.find((item) => item.id === payload.hostId);
-      if (host && ["enable", "info", "reconnect", "start", "stop"].includes(payload.action) && availableTrayAction(host, payload.action)) {
-        latest.current.action(payload.hostId, payload.action);
-      }
+      if (host) latest.current.onHostSelected(host.id);
     });
     ready.current = release;
     const errors = listen<string>("gui://tray-error", ({ payload }) => { if (active) latest.current.onError(payload); });
     return () => { active = false; void release.then((stop) => stop()); void errors.then((stop) => stop()); };
   }, []);
-  const key = JSON.stringify(model);
+  const key = JSON.stringify(trayProjection(model, 0));
   useEffect(() => {
     if (!isTauri()) return;
     const current = ++nextRevision;

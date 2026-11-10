@@ -77,18 +77,22 @@ describe("local managed Host presentation", () => {
       const calls = native.invoke.mock.calls.filter(([name]) => name === "sync_tray");
       return calls[calls.length - 1]?.[1].projection;
     };
-    await waitFor(() => expect(projection()?.hosts[0]?.start).toBe(true));
+    await waitFor(() => expect(projection()?.hosts[0]?.id).toBe("local"));
     expect(projection().userName).toBe("desktop-user");
     expect(projection().webUrl).toBeNull();
-    const click = (revision: number, action: string) => act(() => native.listeners.get("gui://tray-host-action")?.({
-      payload: { revision, hostId: "local", action },
+    const selectHost = (revision: number) => act(() => native.listeners.get("gui://tray-host-selected")?.({
+      payload: { revision, hostId: "local" },
     }));
-    click(projection().revision - 1, "start");
-    expect(native.invoke.mock.calls.some(([, args]) => args?.request?.action === "start")).toBe(false);
-    click(projection().revision, "start");
-    await waitFor(() => expect(projection()?.hosts[0]?.stop).toBe(true));
-    expect(projection().currentLabel).toContain("Connecting");
-    click(projection().revision, "stop");
+    selectHost(projection().revision - 1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    selectHost(projection().revision);
+    const start = await screen.findByRole("button", { name: "Start" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    await screen.findByLabelText("Draft");
+    await waitFor(() => expect(projection()?.currentLabel).toContain("Connecting"));
+    selectHost(projection().revision);
+    fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
     expect(await screen.findByRole("alertdialog")).toBeVisible();
     expect(within(screen.getByRole("alertdialog")).getByText("instance-1", { exact: true })).toBeVisible();
     expect(native.invoke.mock.calls.some(([, args]) => args?.request?.action === "stop")).toBe(false);

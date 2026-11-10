@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { TrayAction, TrayConnection, TrayHost } from "./systemTray";
+import { availableTrayAction, type TrayAction, type TrayConnection, type TrayHost } from "./systemTray";
 
 export type HostState = "unknown" | "not_running" | "starting" | "running" | "stopping" | "exited";
 export type HostAction = "status" | "start" | "connect" | "stop" | "restart";
@@ -128,14 +128,17 @@ export function useTrayHosts(options: {
   }
   function action(id: string, action: TrayAction) {
     const entry = entries.find((item) => item.id === id);
-    if (!entry) return;
+    const host = hosts.find((item) => item.id === id);
+    if (!entry || !host || !availableTrayAction(host, action)) return;
     const state = currentProbe(entry);
-    if (action === "start" && needsWorkspace(entry, state.host)) {
-      latest.current.onConfigureStart();
+    if (action === "info" || action === "stop") {
+      setError(null);
+      setDetails({ entry, probe: state, confirm: action === "stop" });
       return;
     }
-    if (action === "info" || action === "stop") {
-      setDetails({ entry, probe: state, confirm: action === "stop" });
+    setDetails(null);
+    if (action === "start" && needsWorkspace(entry, state.host)) {
+      latest.current.onConfigureStart();
       return;
     }
     if (action === "enable") {
@@ -155,6 +158,9 @@ export function useTrayHosts(options: {
     // Preserve the identity shown in the confirmation even if polling found a replacement.
     void manage(captured.entry, "stop", captured.probe);
   }
-  return { hosts, action, details, closeDetails: () => setDetails(null), confirmStop, error,
+  const detailEntry = entries.find((entry) => entry.id === details?.entry.id);
+  const visibleDetails = details?.confirm ? details
+    : detailEntry ? { entry: detailEntry, probe: currentProbe(detailEntry), confirm: false } : null;
+  return { hosts, action, details: visibleDetails, closeDetails: () => setDetails(null), confirmStop, error,
     clearError: () => setError(null) };
 }
