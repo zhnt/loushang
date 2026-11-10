@@ -36,8 +36,6 @@ from loushang.harness.worker.journal import (
 )
 from loushang.harness.worker.payload._records import (
     PayloadValueTypes,
-    complete_fields,
-    empty_fields,
     plan_fields,
     unmarked_fields,
 )
@@ -699,12 +697,6 @@ def repair_coding_product_worker_empty_payload_debt(
         )
 
 
-def _empty_repair_fields(
-    plan: CodingWorkerEmptyPayloadDebtPlanV1,
-) -> dict[str, object]:
-    return empty_fields(plan)
-
-
 def _empty_repair_names(attempt_id: str) -> tuple[str, str]:
     return repair_names(attempt_id, _EMPTY_REPAIR_PREFIX)
 
@@ -727,20 +719,8 @@ def _publish_empty_repair_intent(
     return _STORAGE.empty.publish(root_fd, plan.attempt_id, plan)
 
 
-def _settle_empty_repair_intent(
-    root_fd: int, plan: CodingWorkerEmptyPayloadDebtPlanV1
-) -> None:
-    return _STORAGE.empty.settle(root_fd, plan.attempt_id, plan)
-
-
 def _complete_repair_names(attempt_id: str) -> tuple[str, str]:
     return repair_names(attempt_id, _COMPLETE_REPAIR_PREFIX)
-
-
-def _complete_repair_fields(
-    plan: CodingWorkerPayloadDebtPlanV1, supervisor_fingerprint: str
-) -> dict[str, object]:
-    return complete_fields(plan, supervisor_fingerprint)
 
 
 def _read_complete_repair_intent(
@@ -756,14 +736,6 @@ def _publish_complete_repair_intent(
     root_fd: int, plan: CodingWorkerPayloadDebtPlanV1, supervisor_fingerprint: str
 ) -> None:
     return _STORAGE.complete.publish(
-        root_fd, plan.attempt_id, (plan, supervisor_fingerprint)
-    )
-
-
-def _settle_complete_repair_intent(
-    root_fd: int, plan: CodingWorkerPayloadDebtPlanV1, supervisor_fingerprint: str
-) -> None:
-    return _STORAGE.complete.settle(
         root_fd, plan.attempt_id, (plan, supervisor_fingerprint)
     )
 
@@ -791,12 +763,6 @@ def _publish_unmarked_repair_intent(
     root_fd: int, review: CodingWorkerUnmarkedPayloadDebtReviewV1
 ) -> None:
     return _STORAGE.unmarked.publish(root_fd, review.attempt_id, review)
-
-
-def _settle_unmarked_repair_intent(
-    root_fd: int, review: CodingWorkerUnmarkedPayloadDebtReviewV1
-) -> None:
-    return _STORAGE.unmarked.settle(root_fd, review.attempt_id, review)
 
 
 _stage_exists = _STORAGE._stage_exists

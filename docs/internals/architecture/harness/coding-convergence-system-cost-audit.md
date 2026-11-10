@@ -461,3 +461,11 @@ Coding430源112352行，系统1969源648381行（含GUI），较Goal−25403/+13
 预算getter、label、类型/lazy导入、native adapter及strict hooks全部计入；使用既有
 consume_file替换原EOF循环，无新manager/端口，普通load/save保持。非系统净去重。
 另外1967生产源与13资源SHA不变；测试/压缩观察和文档另计，见[A123](key-designs/settings-snapshot-read-custody-convergence.md)。
+
+## A124：退出七个未消费的旧转发
+
+Code三个源89→75（−14）、379→364（−15）、882→848（−34），合计−63，Core0。
+系统648318、Coding430源112289；较Goal−25466/+13524，距15K97289。无新生产/测试
+源码或数据夹具；九个有动态消费者的薄壳保持，未以token单次出现判死码。
+另外1966生产源与13资源SHA不变；三源剩余nonimport AST同。A123+A124合计Code−176/
+系统−18；本批是真实删除旧绑定成本，未重复计算原已共享执行程序。见[A124](key-designs/worker-history-responsibility-convergence.md#a124七个已退出主路的私有薄壳)。

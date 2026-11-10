@@ -1,5 +1,7 @@
 # COD-RESP-GOAL-002：Coding 领域化与公共机制职责归一
 
+- A124：删除七个已退出主路且无消费者的私有薄壳，保留动态probe实际依赖；Code/系统−63、Core0，完整Goal仍partial，见[A124](key-designs/worker-history-responsibility-convergence.md#a124七个已退出主路的私有薄壳)。
+
 - A123：完整无写入settings快照读取归原Config.store，复用原Resources消费器；Code−113/Core+158/系统+45，完整Goal仍partial，见[A123](key-designs/settings-snapshot-read-custody-convergence.md)。
 
 - A122：完整Windows persisted-base读取/复读归原PackageProduct，Code−58/Core+107/系统+49；完整Goal仍partial，见[A122](key-designs/worker-history-responsibility-convergence.md#a122完整windows持久base读取与复读归原packageproduct)。

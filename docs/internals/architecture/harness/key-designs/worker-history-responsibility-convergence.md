@@ -991,3 +991,29 @@ context/notes、晚parse/import/limits及所有退出首错。模型不证真实
 format/mypy过、docs9及依赖图通过，430源/28组与1967其它生产源/13资源SHA已核。
 check plan未选AI；不重复跑原覆盖率失败。实施owner按三实际视角接受本有界范围，
 完整Goal/其它Hosting/AI覆盖率/构造差距及KD003/KD011/A33边界保持。
+
+## A124：七个已退出主路的私有薄壳
+
+- Authority: bounded implementation acceptance under COD-RESP-GOAL-002.
+- Design status: accepted for seven unused private wrappers only.
+- Implementation status: full P1–P4 Goal remains partial.
+- Owner: Coding / existing Worker history and payload owners.
+
+删除history_rotate_v2._seal_under_guard、history_retention._attempt_reference，
+以及payload._empty_repair_fields/_complete_repair_fields和三类_settle_*_repair_intent。
+原真实封口、attempt投影与恢复直接复用既有Publication/History/PayloadStorage，
+没有回借这些壳；删后其余nonimport模块AST同，仅另退出四无用import。
+
+不能仅按token出现次数判死码：两固定probe通过动态名称消费九个names/read/publish
+壳，真实record_digest还用_unmarked_repair_fields，本批均保留；Windows墓碑函数
+也有journal动态import，未删除。没有新owner/机制、测试改线或接口兼容壳。
+
+三个源−14/−15/−34=Code/系统−63，Core0。旧/新原163项均162通过、同1个
+complete:read-short失败，完整failure.message相等；额外全对象差分均仅JSONDecodeError
+cause.message两种文案，与旧固定fixture不符。不改oracle/断言、不称163全绿，也不
+在未证实根因时归咎Python版本或filesystem；原受支持恢复程序未随删壳变化。
+
+树外`coding-convergence-continue/a124-obsolete-worker-adapters`保存完整原三源/候选、
+静态与动态消费者审计、old/new XML/精确差分及三独立设计/实际评审。Ruff/format/
+mypy3通过；当前计量见[成本账](../coding-convergence-system-cost-audit.md#a124退出七个未消费的旧转发)。
+不新增PR gate/覆盖/平台，保留所有其它欠账与15K目标；本批只清除先前共享后遗留成本。

@@ -26,7 +26,17 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A123完整settings快照读取归位）
+## 当前状态（2026-11-10，A124退出七个无消费者薄壳）
+
+已共享主路直接执行Publication/History/PayloadStorage；删除Code七个未被消费的
+旧转发和四个无用import，九个真实动态probe依赖及_unmarked_repair_fields保持。
+Code/系统−63、Core0；Coding112289/系统648318，较Goal−25466/+13524，距15K97289。
+原/新消费者均162过、同1项complete:read-short解析cause文案失败；全对象精确差分
+同，未改fixture/断言或门禁。其它验证及边界见[A124](key-designs/worker-history-responsibility-convergence.md#a124七个已退出主路的私有薄壳)。
+A123+A124合计Code−176/系统−18，未把旧机制再计去重。完整P1–P4仍active/partial，
+原Hosting/AI覆盖率/构造及KD003/KD011/A33状态保持。
+
+## A123历史交付（2026-11-10，完整settings快照读取归位）
 
 原Config.store私有完整读取程序复用Resources.consume_file，保八字段身份、原
 missing/EOF/latecap及FD→Windows parent关闭→strictJSON→rawSHA顺序；Code保

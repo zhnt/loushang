@@ -9,7 +9,6 @@ from __future__ import annotations
 import sys
 from hashlib import sha256
 
-from loushang.harness.journal._rooted_io import RootedFile
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -27,19 +26,6 @@ class CodingWorkerV2SealError(RuntimeError):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
-
-
-def _seal_under_guard(
-    rooted: RootedFile,
-    *,
-    empty_supervisor_checkpointed: bool,
-) -> tuple[int, ...]:
-    return HistoryPublication.seal_v1_under_guard(
-        rooted,
-        empty_supervisor_checkpointed=empty_supervisor_checkpointed,
-        error_type=CodingWorkerV2SealError,
-        max_segment_bytes=_MAX_SEGMENT_BYTES,
-    )
 
 
 def seal_coding_product_worker_v1_history_for_v2(

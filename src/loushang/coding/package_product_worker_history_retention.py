@@ -28,9 +28,6 @@ from loushang.harness.worker.history._retention import (
     matching_attempt_gc_refs,
     receipt_gate_reference_issue,
 )
-from loushang.harness.worker.history._retention import (
-    attempt_reference as _make_attempt_reference,
-)
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 
 from .package_product_backup_types import (
@@ -129,18 +126,6 @@ class CodingWorkerAttemptReferenceV1:
     native_platform: Literal["linux"]
     gate_revision: int
     gate_phase: Literal["intent", "bound"]
-
-
-def _attempt_reference(
-    gate: CodingWorkerStartGateRecordV1 | None,
-    receipt: CodingWorkerReceiptRecordV1 | None,
-) -> CodingWorkerAttemptReferenceV1 | None:
-    return _make_attempt_reference(
-        gate,
-        receipt,
-        product_id="coding",
-        reference_type=CodingWorkerAttemptReferenceV1,
-    )
 
 
 def _matching_gc_revision_refs(
