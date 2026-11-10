@@ -3,8 +3,9 @@ import { useTranslation } from "react-i18next";
 import { UiIcon } from "./UiIcon";
 import type { ModelChoice, SessionModels, ThinkingLevel } from "./client/model";
 
-export function ModelPicker({ models, disabled, busy, onSelect }: {
+export function ModelPicker({ models, emptyLabel, disabled, busy, onSelect }: {
   readonly models: SessionModels | null;
+  readonly emptyLabel: "none" | "loading" | "unavailable" | "empty" | "choose";
   readonly disabled: boolean;
   readonly busy: boolean;
   readonly onSelect: (id: string, level?: ThinkingLevel) => Promise<SessionModels | null>;
@@ -17,6 +18,7 @@ export function ModelPicker({ models, disabled, busy, onSelect }: {
   const menu = useRef<HTMLDivElement>(null);
   const current = models?.models.find((choice) => choice.id === models.currentId);
   const thinking = models?.thinking;
+  const currentLabel = current ? label(current) : t(`models.${emptyLabel}`);
   const open = stage !== null && !disabled;
 
   useEffect(() => {
@@ -83,7 +85,7 @@ export function ModelPicker({ models, disabled, busy, onSelect }: {
     <button type="button" ref={trigger} className="model-trigger" aria-label={t("models.label")}
       aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined}
       aria-describedby="model-current-label" aria-disabled={busy || undefined} disabled={disabled}
-      title={current ? label(current) : t("models.none")}
+      title={currentLabel}
       onClick={() => { if (!busy) setStage(open ? null : "model"); }}
       onKeyDown={(event) => {
         if (!busy && !open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
@@ -92,7 +94,7 @@ export function ModelPicker({ models, disabled, busy, onSelect }: {
         }
       }}>
       <span id="model-current-label" className="model-current-label">
-        <span>{current ? label(current) : t("models.none")}</span>
+        <span>{currentLabel}</span>
         {thinking ? <span className="thinking-badge">{t(`models.levels.${thinking.currentLevel}`)}</span> : null}
       </span>
       {!disabled ? <UiIcon name="chevron-down" /> : null}

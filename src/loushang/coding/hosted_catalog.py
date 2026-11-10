@@ -194,8 +194,9 @@ class _Record:
 class CodingHostedCandidateBindingV1:
     """One already-open transcript; Product Session construction takes it once."""
 
-    def __init__(self, record: _Record, manager: SessionManager) -> None:
+    def __init__(self, record: _Record, manager: SessionManager, *, created: bool = False) -> None:
         self.record = record
+        self.created = created
         self._manager: SessionManager | None = manager
         self._dispose: Callable[[], Awaitable[None]] | None = (
             manager.dispose_runtime_profile
@@ -236,7 +237,7 @@ class CodingHostedResumeSourceV1:
         ResolvedRuntimeProfile,
         RuntimeProfileBinding,
     ]
-    _require_current: Callable[[], None] = field(repr=False)
+    _require_accepting: Callable[[], None] = field(repr=False)
     _closed: bool = False
 
     @property
@@ -251,7 +252,28 @@ class CodingHostedResumeSourceV1:
     def require_current_source(self) -> None:
         if self._closed:
             raise CodingHostedCatalogError()
-        self._require_current()
+        self._require_accepting()
+        if _revision(self.record.path) != hashlib.sha256(
+            self.history.source_fingerprint.encode()
+        ).hexdigest():
+            raise CodingHostedCatalogError()
+
+    async def refresh_after_model_change(self, manager: SessionManager) -> None:
+        """Refresh the detached view from the original Writer before releasing it."""
+        from .hosted_session import CodingHostedHistoryBindingV1
+
+        previous = self.history_binding
+        history = await settled_io(
+            read_coding_resume_snapshot, self.record.path,
+            max_bytes=MAX_CODING_RESUME_HISTORY_BYTES, selected_leaf_id=manager.leaf_id,
+        )
+        if (
+            history.header_preview.header != self.record.header
+            or history.records != tuple(manager.get_entries())
+        ):
+            raise CodingHostedCatalogError()
+        self.history_binding = CodingHostedHistoryBindingV1(self.record.identity, history)
+        await previous.close()
 
     async def close(self) -> None:
         if self._closed:
@@ -298,7 +320,7 @@ class CodingHostedHistoryCandidateBindingV1:
             history_binding=self.take_binding(),
             manager_type=self._manager_type,
             writer_factory=self._writer_factory,
-            _require_current=self.require_current_source,
+            _require_accepting=self._require_accepting,
         )
 
     def require_current_source(self) -> None:
@@ -559,7 +581,9 @@ class CodingHostedSessionCatalogV1:
             # Recheck root identity after the read-only catalog observation.
             with session.sync_operation_scope():
                 pass
-            candidate = _Candidate(record, CodingHostedCandidateBindingV1(record, manager))
+            candidate = _Candidate(
+                record, CodingHostedCandidateBindingV1(record, manager, created=expected is None)
+            )
             self._accepting()
             self._pending_sessions.pop(id(session))
             return candidate
@@ -957,7 +981,7 @@ class CodingHostedSessionCatalogV1:
                 if record is None:
                     raise CodingHostedCatalogError()
                 return _Candidate(
-                    record, CodingHostedCandidateBindingV1(record, manager)
+                    record, CodingHostedCandidateBindingV1(record, manager, created=True)
                 )
             except BaseException:
                 await manager.dispose_runtime_profile()

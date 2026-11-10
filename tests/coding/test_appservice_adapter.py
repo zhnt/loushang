@@ -107,6 +107,9 @@ def _run(coroutine: Awaitable[object]) -> object:
 
 
 class _Control:
+    def get_model_selection(self) -> ModelSelection:
+        return ModelSelection("provider", "endpoint", "model")
+
     def __init__(self, session_id: str) -> None:
         self.session_id = session_id
         self.session_name = "Coding session"

@@ -547,8 +547,19 @@ class AppClientScopeV1:
         session = await self._session(
             request.attachment_id, request.controller_generation, request.member_id
         )
-        value = await session.select_model(request.model_id, request.thinking_level)
-        self._attachment(request.attachment_id, request.controller_generation)
+        control = SessionSnapshotRequestV1(
+            request.attachment_id, request.controller_generation, request.member_id,
+        )
+
+        async def select() -> SessionModelsV1:
+            self._require_current_session(control, session)
+            if self._service._execution_registry is None:
+                return await session.select_model(request.model_id, request.thinking_level)
+            with self.resume_subject_scope(control):
+                return await session.select_model(request.model_id, request.thinking_level)
+
+        value = await self._owner._operations.execute(select, key=session.identity.session_id)
+        self._require_current_session(control, session)
         return value
 
     lookup_resume_input = _lookup_scoped_resume_input

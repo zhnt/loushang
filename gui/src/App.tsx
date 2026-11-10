@@ -138,7 +138,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
   const syncPendingRef = useRef(true);
   const [remainingSteps, setRemainingSteps] = useState(fixture?.remainingFixtureSteps() ?? 0);
   const [controlPending, setControlPending] = useState<"submit" | "interrupt" | null>(null);
-  const [modelResult, setModelResult] = useState<{ scope: string; models: SessionModels } | null>(null);
+  const [modelResult, setModelResult] = useState<{ scope: string; query: string; models: SessionModels | null } | null>(null);
   const modelRequest = useRef(0);
   const [modelPending, setModelPending] = useState(false);
   const [createPending, setCreatePending] = useState(false);
@@ -299,8 +299,16 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
   const modelScope = connected && selectedId && state.remote.source.kind === "live"
     ? JSON.stringify([selectionKey, state.remote.source.serviceInstanceId, state.remote.source.connectionEpoch, selectedId])
     : null;
-  const sessionModels = modelScope !== null && modelResult?.scope === modelScope ? modelResult.models : null;
+  const modelQuery = JSON.stringify([modelScope, selected?.execution?.id, selected?.execution?.status]);
   const modelRunning = selected?.status === "running";
+  const confirmedModels = modelResult?.scope === modelScope && (modelRunning || modelResult.query === modelQuery)
+    ? modelResult
+    : null;
+  const sessionModels = confirmedModels?.models ?? null;
+  const modelLabel = !modelScope || !client.sessionModels || modelRunning ? "none"
+    : !confirmedModels ? "loading"
+    : !sessionModels ? "unavailable"
+    : sessionModels.models.length === 0 ? "empty" : "choose";
   const canChangeModel = Boolean(client.selectModel && sessionModels && (
     sessionModels.models.some((model) => model.id !== sessionModels.currentId)
     || (sessionModels.thinking?.availableLevels.length ?? 0) > 1
@@ -309,17 +317,17 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     if (!modelScope || !selectedId || modelRunning || !client.sessionModels) return;
     let active = true;
     const request = ++modelRequest.current;
+    setModelResult(null);
     void client.sessionModels(selectedId).then((models) => {
-      if (active && request === modelRequest.current) setModelResult({ scope: modelScope, models });
+      if (active && request === modelRequest.current) setModelResult({ scope: modelScope, query: modelQuery, models });
     }).catch(() => {
       if (active && request === modelRequest.current) {
-        setModelResult(null);
+        setModelResult({ scope: modelScope, query: modelQuery, models: null });
         setNotice({ key: "notice.modelsUnavailable" });
       }
     });
     return () => { active = false; };
-    // A restored runtime publishes its confirmed model only after activation.
-  }, [client, selectedId, modelScope, modelRunning, selected?.execution?.id, selected?.execution?.status]);
+  }, [client, selectedId, modelScope, modelQuery, modelRunning]);
   useEffect(() => {
     if (!awaitingPublication) return;
     const session = state.remote.sessions[awaitingPublication.sessionId];
@@ -341,6 +349,10 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     || (state.remote.source.kind === "live" && state.remote.connection === "connected")
   );
   const mutationsAllowed = controlsAllowed && !awaitingPublication && !modelPending;
+  const submitAllowed = mutationsAllowed && (
+    state.remote.source.kind === "fixture"
+    || sessionModels?.models.some((model) => model.id === sessionModels.currentId)
+  );
   useLayoutEffect(() => {
     transcriptPosition.current = state.local.transcriptScrollTop;
   }, [state.local.transcriptScrollTop]);
@@ -372,7 +384,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
   );
 
   async function submit(): Promise<void> {
-    if (!selected || syncPendingRef.current || controlPendingRef.current || !mutationsAllowed || selected.status === "running") return;
+    if (!selected || syncPendingRef.current || controlPendingRef.current || !submitAllowed || selected.status === "running") return;
     const text = state.local.drafts[selected.id] ?? "";
     if (!text.trim()) {
       setNotice({ key: "notice.emptyPrompt" });
@@ -443,11 +455,16 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
         ? await client.selectModel(selected.id, modelId)
         : await client.selectModel(selected.id, modelId, level);
       if (request !== modelRequest.current) return null;
-      setModelResult({ scope: modelScope, models });
       const choice = models.models.find((model) => model.id === models.currentId);
-      setNotice(level === undefined ? { key: "notice.modelChanged", params: { model: choice?.label ?? modelId } } : { key: "notice.thinkingChanged" });
+      if (!choice || choice.id !== modelId) throw new Error("Unconfirmed model selection");
+      setModelResult({ scope: modelScope, query: modelQuery, models });
+      setNotice(level === undefined ? { key: "notice.modelChanged", params: { model: choice.label } } : { key: "notice.thinkingChanged" });
       return models;
     } catch {
+      if (request !== modelRequest.current) return null;
+      if (level === undefined && sessionModels) {
+        setModelResult({ scope: modelScope, query: modelQuery, models: { currentId: null, models: sessionModels.models } });
+      }
       setNotice({ key: level === undefined ? "notice.modelRejected" : "notice.thinkingRejected" });
       return null;
     } finally {
@@ -667,6 +684,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
                     <ModelPicker
                       key={modelScope ?? selected.id}
                       models={sessionModels}
+                      emptyLabel={modelLabel}
                       disabled={!canChangeModel || modelRunning || Boolean(awaitingPublication) || Boolean(controlPending)}
                       busy={modelPending}
                       onSelect={selectModel}
@@ -676,7 +694,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
                       type={selected.status === "running" ? "button" : "submit"}
                       aria-label={selected.status === "running" ? t("session:composer.interrupt") : t("session:composer.send")}
                       title={selected.status === "running" ? t("session:composer.stopHint") : t("session:composer.sendHint")}
-                      disabled={selected.status === "running" ? !controlsAllowed : !mutationsAllowed || !(state.local.drafts[selected.id] ?? "").trim()}
+                      disabled={selected.status === "running" ? !controlsAllowed : !submitAllowed || !(state.local.drafts[selected.id] ?? "").trim()}
                       onClick={selected.status === "running" ? () => void interrupt() : undefined}
                     >
                       {selected.status === "running" ? <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" /></svg>

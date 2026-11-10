@@ -285,7 +285,7 @@ class _SessionOwner:
         if not callable(callback):
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         snapshot = await self.snapshot()
-        if snapshot.running:
+        if snapshot.running or (self._execution is not None and self._execution.active is not None):
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         args = (model_id,) if thinking_level is None else (model_id, thinking_level)
         value = await self._invoke_async(callback, *args)

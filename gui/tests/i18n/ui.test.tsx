@@ -84,6 +84,10 @@ it("localizes live UI and rejected submissions while retaining raw content and t
     snapshot: async () => snapshot,
     subscribe: () => () => {},
     submitText: submit,
+    sessionModels: async () => ({
+      currentId: "test:primary:model",
+      models: [{ id: "test:primary:model", provider: "test", endpointId: "primary", modelId: "model", label: "Test model", supportsThinking: false }],
+    }),
     interrupt: async () => ({ accepted: true }),
   };
   const user = userEvent.setup();

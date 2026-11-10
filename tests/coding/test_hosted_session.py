@@ -21,6 +21,7 @@ from loushang.apphost import (
     SessionCreateRequestV1,
 )
 from loushang.appserver.protocol import (
+    AppServiceError,
     InteractionOutcomeV1,
     SessionEventKindV1,
     SessionScopeV1,
@@ -465,6 +466,11 @@ def test_hosted_history_candidate_transfers_through_original_factory_without_run
                 assert snapshot.identity.session_id == key.session_id
                 assert snapshot.title == "New Session"
                 assert snapshot.records[-1].text == "Historical session is read-only."
+                assert (await hosted.list_models()).current_id is None
+                with pytest.raises(ValueError, match="model_unavailable"):
+                    await hosted.select_model("faux:anthropic-messages:faux-model")
+                with pytest.raises(AppServiceError):
+                    await hosted.start_turn("read-only input")
                 await opened.close()
                 await claimed.close()
                 await candidate.close()

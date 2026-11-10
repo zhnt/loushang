@@ -152,6 +152,8 @@ export default interface Resources {
     },
     "models": {
       "back": "Models",
+      "choose": "Select a model",
+      "empty": "No models available",
       "endpoint": "Endpoint: {{endpoint}}",
       "label": "Session model",
       "levels": {
@@ -162,6 +164,7 @@ export default interface Resources {
         "off": "Default",
         "xhigh": "Extra high"
       },
+      "loading": "Loading models…",
       "none": "Model information unavailable",
       "option": "{{provider}} · {{model}}",
       "thinking": "Reasoning effort",

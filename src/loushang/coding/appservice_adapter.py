@@ -39,12 +39,12 @@ from loushang.harness.session import (
     SessionPromptRequest,
 )
 from loushang.harness.session.model_selection import (
-    apply_session_model_selection,
     get_session_model_selection,
     iter_available_model_details,
     model_choice_data_from_details,
 )
 
+from .model_selection import apply_model_selection
 from .product_plan import CODING_PRODUCT_ID
 
 
@@ -127,6 +127,7 @@ class CodingHostedSessionV1:
 
     __slots__ = (
         "_binding",
+        "_model_lock",
         "_close_lock",
         "_close_task",
         "_cursor",
@@ -175,6 +176,7 @@ class CodingHostedSessionV1:
         self._unsubscribed = False
         self._close_task: asyncio.Task[None] | None = None
         self._close_lock = asyncio.Lock()
+        self._model_lock = asyncio.Lock()
         if control is None:
             self._unsubscribe = lambda: None
             return
@@ -220,7 +222,10 @@ class CodingHostedSessionV1:
 
     async def start_turn(self, text: str) -> None:
         self._require_open()
-        await self._require_operations().prompt(request=self._prompt_request(text))
+        operations = self._require_operations()
+        if (await self.list_models()).current_id is None or self._model_lock.locked():
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        await operations.prompt(request=self._prompt_request(text))
 
     def steer_turn(self, text: str) -> None:
         self._require_open()
@@ -295,6 +300,11 @@ class CodingHostedSessionV1:
         self, model_id: str, thinking_level: str | None = None,
     ) -> SessionModelsV1:
         self._require_open()
+        async with self._model_lock:
+            return await self._select_model(model_id, thinking_level)
+
+    async def _select_model(self, model_id: str, thinking_level: str | None) -> SessionModelsV1:
+        self._require_open()
         control = self._binding.control
         if getattr(control, "is_streaming", False):
             raise RuntimeError("coding_model_change_while_running")
@@ -316,9 +326,11 @@ class CodingHostedSessionV1:
         selected = next(
             (choice.selection for choice in choices if choice.value == model_id), None
         )
-        if selected is None:
+        if not is_usable_model_selection(normalize_model_selection(selected)):
             raise ValueError("coding_model_unavailable")
-        await apply_session_model_selection(control, selected)
+        result = await apply_model_selection(control, selected)
+        if result.persistence_error is not None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from result.persistence_error
         return await self.list_models()
 
     async def close(self) -> None:
