@@ -1,5 +1,7 @@
 # COD-RESP-GOAL-002：Coding 领域化与公共机制职责归一
 
+- A122：完整Windows persisted-base读取/复读归原PackageProduct，Code−58/Core+107/系统+49；完整Goal仍partial，见[A122](key-designs/worker-history-responsibility-convergence.md#a122完整windows持久base读取与复读归原packageproduct)。
+
 - A121：完整Windows live-stage重验证归原PackageProduct；Code−102/Core+111/系统+9，完整Goal仍partial，见[A121](key-designs/worker-history-responsibility-convergence.md#a121完整windows-live-stage验证归原packageproduct)。
 
 - A120：完整Windows审批目录native创建与关闭归原Resources，Code−48/Core+59/系统+11；完整Goal仍partial，见[A120](key-designs/windows-approval-root-custody-convergence.md)。

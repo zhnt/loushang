@@ -56,6 +56,7 @@ from loushang.harness.worker.history._windows_recovery import (
     WindowsRecoveryAttemptV1,
     project_windows_recovery_attempts,
 )
+from loushang.harness.worker.history._windows_sources import WindowsHistoryNames
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 from loushang.harness.worker.payload._windows_stage_io import (
     FileIdentity,
@@ -68,6 +69,112 @@ from loushang.harness.worker.payload._windows_stage_io import (
 from loushang.harness.worker.payload._windows_stage_io import identity as _file_identity
 from loushang.harness.worker.payload._windows_stage_retirement import close_opened
 from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
+
+_PersistedCheckpointT = TypeVar("_PersistedCheckpointT")
+_PersistedBasesT = TypeVar("_PersistedBasesT")
+_PersistedCutoverT = TypeVar("_PersistedCutoverT")
+
+
+def read_windows_product_worker_persisted_bases(
+    product: WindowsLocalWheelProductSessionOwner,
+    root: int,
+    *,
+    require_cutover: bool,
+    io: WindowsPrivateReceiptIO,
+    history_names: WindowsHistoryNames,
+    checkpoint_name: str,
+    base_files: tuple[tuple[str, str], ...],
+    cutover_name: str,
+    limits: Callable[[], tuple[int, int, int]],
+    decode_checkpoint: Callable[[bytes], _PersistedCheckpointT],
+    make_result: Callable[[_PersistedCheckpointT, tuple[bytes, ...]], _PersistedBasesT],
+    cutover_codec: Callable[
+        [], Callable[[bytes, _PersistedBasesT], _PersistedCutoverT]
+    ],
+) -> tuple[_PersistedBasesT, _PersistedCutoverT | None]:
+    """Read and recheck fixed persisted history under the caller's GC gate."""
+
+    product.assert_root_gc_authority_current()
+    with WindowsPrivateDirectoryAcl() as acl:
+        acl.validate(root)
+        io._require_simple_attributes(os.fstat(root), directory=True)
+        io._require_no_named_directory_streams(root)
+        if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
+            raise ValueError("Windows Worker persisted root changed")
+        names = tuple(windows_listdir_at(root))
+        if require_cutover:
+            if names.count(cutover_name) != 1:
+                raise ValueError("Windows Worker cutover marker is absent")
+            known_names = tuple(name for name in names if name != cutover_name)
+        else:
+            known_names = names
+        history_names.require_known(known_names)
+        if any(name.casefold().endswith(".stage") for name in names):
+            raise ValueError("Windows Worker persisted stage remains")
+        checkpoint_raw = io._read_file(
+            root, acl, checkpoint_name, maximum_bytes=limits()[0]
+        )
+        if checkpoint_raw is None:
+            raise ValueError("Windows Worker persisted checkpoint is absent")
+        checkpoint = decode_checkpoint(checkpoint_raw)
+        raw_bases = tuple(
+            io._read_file(root, acl, name, maximum_bytes=limits()[1])
+            for _, name in base_files
+        )
+        if any(raw is None for raw in raw_bases):
+            raise ValueError("Windows Worker persisted base is absent")
+        opt_in, receipt, supervisor, c5, launch_intent, native = (
+            raw for raw in raw_bases if raw is not None
+        )
+        result = make_result(
+            checkpoint, (opt_in, receipt, supervisor, c5, launch_intent, native)
+        )
+        cutover = None
+        cutover_raw = None
+        if require_cutover:
+            decode_cutover = cutover_codec()
+
+            cutover_raw = io._read_file(
+                root,
+                acl,
+                cutover_name,
+                maximum_bytes=limits()[2],
+            )
+            if cutover_raw is None:
+                raise ValueError("Windows Worker cutover marker is absent")
+            cutover = decode_cutover(cutover_raw, result)
+        if (
+            io._read_file(
+                root,
+                acl,
+                checkpoint_name,
+                maximum_bytes=limits()[0],
+            )
+            != checkpoint_raw
+            or tuple(
+                io._read_file(root, acl, name, maximum_bytes=limits()[1])
+                for _, name in base_files
+            )
+            != raw_bases
+            or (
+                require_cutover
+                and io._read_file(
+                    root,
+                    acl,
+                    cutover_name,
+                    maximum_bytes=limits()[2],
+                )
+                != cutover_raw
+            )
+            or tuple(windows_listdir_at(root)) != names
+            or not os.path.samestat(os.fstat(root), product.state_root.lstat())
+        ):
+            raise ValueError("Windows Worker persisted bases changed")
+        acl.validate(root)
+        io._require_simple_attributes(os.fstat(root), directory=True)
+        io._require_no_named_directory_streams(root)
+    product.assert_root_gc_authority_current()
+    return result, cutover
 
 
 class _IntentRecord(Protocol):

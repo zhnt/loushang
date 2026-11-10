@@ -446,3 +446,10 @@ Code600→498（−102），原PackageProduct Windows attempt739→850（+111）
 Coding430源112523行，系统1969源648287行（含GUI），较Goal−25232/+13493，距15K97523。
 完整程序归位，不把原marker/root/stream leaf的既有共享或三个私alias退出报新算法去重。
 另外1967生产源与13资源SHA不变；测试、gzip数据及文档另计，见[A121](key-designs/worker-history-responsibility-convergence.md#a121完整windows-live-stage验证归原packageproduct)。
+
+## A122：Windows持久base完整读取与复读
+
+Code315→257（−58），原PackageProduct Windows driver850→957（+107），系统+49。
+Coding430源112465行，系统1969源648336行（含GUI），较Goal−25290/+13542，距15K97465。
+纯codec/limits/lazycutover绑定、签名/导入全部计账；原ReceiptIO和names早已共享，不重计。
+另外1967生产源及13资源SHA不变；测试/gzip与文档另计，见[A122](key-designs/worker-history-responsibility-convergence.md#a122完整windows持久base读取与复读归原packageproduct)。

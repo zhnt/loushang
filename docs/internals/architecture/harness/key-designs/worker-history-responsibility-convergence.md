@@ -939,3 +939,55 @@ Code−102/Core+111/系统+9（含所有签名、导入、局部绑定及薄入�
 在树外`coding-convergence-continue/a121-whole-operation-selection`；最后综合接受在
 原Goal授权内完成。完整P1–P4/≤15K与其它Hosting/AI覆盖率/构造差距不因本片关闭，
 KD003未实施、KD011/A33待用户未采用保持。
+
+## A122：完整Windows持久base读取与复读归原PackageProduct
+
+- Authority: bounded Windows persisted-reader placement under COD-RESP-GOAL-002，完整Goal仍partial。
+- Design status: accepted，三个实际视角及实施owner已核源码与终态并有界接受。
+- Implementation status: implemented，限本读/parse/recheck闭包与下列证据。
+- Owner: 原PackageProduct Windows driver；Resources保实际ReceiptIO，Worker保names规则。
+- Method: clean local archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
+
+A121已定位的117行程序现在完整归原driver：current→ACL/attr/stream→rootpath→names/
+cutover-count/known/stage拒绝→checkpoint读后立即parse→六base全部读完才missing/
+解包→顺序decode与真实result构造→可选lazycutover binding/read/decode/校验→原有序
+短路复读→最终ACL/attr/stream→ACL退出→current。Code保os/type/coding/root入口及
+外层quiescence/active-runtime/GC/root借用/末current；不授予切换或删除权。
+
+不强套WindowsHistorySourceCapture：其sort/全source选择/总预算/digest-only返回/
+更强metadata和最终set比较并不等价。原_read_file等本来是同一WindowsPrivateReceiptIO
+实例的bound方法，Core直接持该actual实例及WindowsHistoryNames，未重复写物理读取。
+命名/文件布局为原纯数据；limits纯getter在原每次read位置求值，不缓存预算。两次
+product.state_root原有Core authority效果、lstat/fstat顺序与最后原tuple(names)相等
+比较保持，不加排序或把snapshot coherence改为同一set。整个原OR逐项短路保持。
+
+Code仅提供checkpoint decoder、一个纯六base/result lambda及lazycutover codec getter。
+无新Protocol、DTO、scope、manager、codec registry或Code IO阶段回调。lambda用真实
+原类型按原kwargs次序解码/构造，7字段DTO及semantic exact-type/join验证保持；Core
+只持三TypeVar，不把record降格为dict/Any。getter在result构造之后、cutover IO之前
+执行原相对import；文件读后closure才调用实际class.from_bytes及实例require方法，
+False路线不调用getter。保lazy cycle/首错顺序，不承诺私热改class/global反射时点。
+
+完整A稿−60/+119/系统+59，B合并纯codec后−58/+108/+50；最终isort少1Core行，实际
+Code315→257−58、Core850→957+107、系统+49。所有适配计入；是完整中性程序归位，
+非系统净减，不拿此前IO共享当新增收益。Coding112465/系统648336，15K仍差97465。
+原公开DTO、两public reader/外层和所有Core其它定义（含A121 live-stage）AST保持；
+反展开pure绑定后guard后完整操作AST同，import排序单列，不隐藏搬迁成本。
+
+旧树未改时冻结171条原观察并经原实际读入口重放171过，原值/marker9消费者过。
+模型用真实空Desired/semantic/preparation/packageReview/checkpoint/六base/result/
+cutover纯构造，物理read/ACL/metadata/current/GC/root效果受控；无Journal随机ID。
+130故障case/138触发点与37拒绝、4成功保完整DTO图、calls/options、error/cause/
+context/notes、晚parse/import/limits及所有退出首错。模型不证真实cap读边界、FD
+普查、Windows Kernel或跨进程竞争；CancelledError为同步注入，非Task.cancel。
+相对import调用可观测，但测试已加载cutover模块，不夸称cold module initializer。
+
+实际联合374过/1capture占位skip（同171+原值9+semantic join2+导入165+C50/C51/C54原27）；
+持久同171另重放全部通过，不重复累计为342独立case。gzip17942B解压逐字等原979729B/
+171records，未从候选重录；显式probe不增默认PR gate/check/platform。源码/原期望/
+模型、A/B成本、three-view设计/实码、source frame/430行28组及JUnit都在树外
+`coding-convergence-continue/a122-windows-persisted-bases`。仓库carrier481行/16529B，只有import整理、格式变化及一个无用纯base_names赋值退出；
+逆去该赋值后其余完整nonimport AST同原driver，所有断言与原对象保持。双源Ruff/
+format/mypy过、docs9及依赖图通过，430源/28组与1967其它生产源/13资源SHA已核。
+check plan未选AI；不重复跑原覆盖率失败。实施owner按三实际视角接受本有界范围，
+完整Goal/其它Hosting/AI覆盖率/构造差距及KD003/KD011/A33边界保持。

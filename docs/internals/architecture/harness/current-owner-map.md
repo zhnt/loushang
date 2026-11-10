@@ -49,6 +49,12 @@ marker/root/stream leaves and the existing stage-intent shape; Coding keeps
 selection/currentness, bound-request admission and the thin verification entry.
 No new evidence writer, runtime state or Code IO callback is introduced. See [A121](key-designs/worker-history-responsibility-convergence.md#a121完整windows-live-stage验证归原packageproduct).
 
+PackageProduct's Windows driver also owns the complete persisted-history read
+and ordered recheck under the caller's GC gate. It directly reuses the existing
+ReceiptIO and history-name rules; Coding retains concrete value/semantic codecs,
+entry admission and quiescence/GC acquisition. The result is read evidence,
+without cutover or deletion authority. See [A122](key-designs/worker-history-responsibility-convergence.md#a122完整windows持久base读取与复读归原packageproduct).
+
 ## Scope
 
 Harness is the cross-Product execution substrate. It owns reusable mechanisms,
