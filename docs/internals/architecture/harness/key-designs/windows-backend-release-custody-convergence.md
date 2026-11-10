@@ -102,3 +102,6 @@ baseline同一断言亦失败，相同文件SHA/命中，A93新增Core无禁用3
 与[H5旧规范](../../hosting/harness-worker-adapter-h5.md)的default-dark/非Worker consumer
 约束存在现存失配，须独立协调；本片没有放宽测试或冒充全绿。它仍是完整Goal的
 未关闭架构事项。KD003未实施，KD011/A33待用户且未采用；P1–P4全量仍partial。
+
+A119按本A93已接受依赖协调C50旧消费者库存，生产净0；具体可选边界与验证见
+[A119](worker-history-responsibility-convergence.md#a119协调两项c50旧消费者库存)。

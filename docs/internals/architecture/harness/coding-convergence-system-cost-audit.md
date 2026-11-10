@@ -425,3 +425,10 @@ Coding430源112673行，系统1969源648267行（含GUI Rust/TS），较Goal−2
 方法签名、绑定、typing/import及全部薄兼容都计入。其它1964源与13资源SHA不变。
 C54只为确切可选selector成员缩小原限制，不新增required/check/assert/路线；
 测试、旧观察与验证限制见[A118](key-designs/worker-history-responsibility-convergence.md#a118收据持久事务与同义扫描收敛)。
+
+## A119：两项旧C50库存协调
+
+生产净0，仍1969源648267行、Coding430源112673行；不重复计A93/A107/A118收益。
+仅两个原consumer等式的左侧减精确可选path，guard核该path全部Worker-prefix的
+resolved imports属于已审module/member上界；原RHS、扫描、74断言及9测试函数保持。
+不存在新增required/check/route或旧pass变新fail；验证与限制见[A119](key-designs/worker-history-responsibility-convergence.md#a119协调两项c50旧消费者库存)。

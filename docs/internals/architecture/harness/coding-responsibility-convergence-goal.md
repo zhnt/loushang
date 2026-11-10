@@ -1,5 +1,7 @@
 # COD-RESP-GOAL-002：Coding 领域化与公共机制职责归一
 
+- A119：协调A93/A107对应的两项旧C50库存限制，生产净0；不新增门禁或精简收益，见[A119](key-designs/worker-history-responsibility-convergence.md#a119协调两项c50旧消费者库存)。
+
 - A118：POSIX完整收据持久事务归原ReceiptHistory，三个latest扫描合一；Code−45/Core+50/系统+5，完整Goal仍partial，见[A118](key-designs/worker-history-responsibility-convergence.md#a118收据持久事务与同义扫描收敛)。
 
 ## 状态与依据

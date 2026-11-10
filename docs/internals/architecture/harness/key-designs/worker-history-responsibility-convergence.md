@@ -858,3 +858,27 @@ C50库存/构造等差距继续保留。
 持久显式`probe_worker_receipt_issue_ordering_compatibility.py`用同31原对象重放31过；
 336行probe及33行/50785B固定JSON另计，非生产源码。旧pretty记录仅逐对象等值压紧，
 无期望重录。原nonce hook净+1、C54精确可选协调净+15；不增加默认PR发现或门禁。
+
+## A119：协调两项C50旧消费者库存
+
+- Authority: bounded inventory reconciliation of accepted A93/A107, not a new runtime boundary。
+- Design status: accepted，三实际视角及实施owner已核原检查终态并有界接受。
+- Implementation status: test-only implemented，生产净0，完整Goal仍partial。
+- Owner: 原C50库存检查；方法沿本地clean archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
+
+A118扩大检查时C50两个原集合等式失败，额外项分别是原PackageProduct backend
+release（A93）和Code initial-seal薄入口（A107）。前批已接受的职责是依据，失败
+本身不授权任意放开依赖。生产源及scanner不改，完整消费扫描保持；只从既有集合
+减去精确可选path，其全部raw resolved Worker-prefix imports必须落在对应上界：
+backend只准_native_approval及_DIGEST/_NativeApprovalMethods/_NativeDecision/
+_NativeReviewMethods，seal只准_publication及HistoryPublication。未知Worker模块、
+成员、通配、其它path均无该例外；subset允许删除不再使用的成员，无新增存在性条件。
+
+原required RHS和74断言/9测试函数保持；旧pass时可选path本来不在observed中，
+新guard不求值，结果仍pass。新path或其依赖全部退出仍可pass；原required缺失仍fail。
+这是缩小旧限制，不增PR gate、不改workflow/阈值/平台/路线。测试净+31，生产0；
+无需重跑无变化的业务机制来宣称新的迁移收益。其它Hosting/AI等历史欠账不关闭。
+
+原source frame、测试原像、三设计/实际复核、反事实与JUnit在树外
+`coding-convergence-continue/a119-c50-inventory`。C50/C51/C54原27项已全部通过，
+只关闭上述两项已证旧库存失败；不宣称所有架构检查或完整Goal验收通过。

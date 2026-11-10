@@ -853,7 +853,24 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
             for imported in _imports(path)
         )
     }
-    assert worker_consumers == {
+    optional_backend_release = {
+        path
+        for path in worker_consumers
+        if path == HARNESS_ROOT / "package_product/_windows_worker_backend_release.py"
+        and {
+            imported
+            for imported in resolved_imports(path)
+            if imported.startswith("loushang.harness.worker")
+        }
+        <= {
+            "loushang.harness.worker.history._native_approval",
+            "loushang.harness.worker.history._native_approval._DIGEST",
+            "loushang.harness.worker.history._native_approval._NativeApprovalMethods",
+            "loushang.harness.worker.history._native_approval._NativeDecision",
+            "loushang.harness.worker.history._native_approval._NativeReviewMethods",
+        }
+    }
+    assert worker_consumers - optional_backend_release == {
         SANDBOX_RUNTIME,
         HARNESS_ROOT / "package_product/product_worker_candidate.py",
         HARNESS_ROOT / "package_product/product_worker_wheel_admission.py",
@@ -906,7 +923,21 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
             for imported in _imports_containing(path, "worker")
         )
     }
-    assert coding_worker_consumers == {
+    optional_initial_seal = {
+        path
+        for path in coding_worker_consumers
+        if path == CODING_ROOT / "package_product_worker_history_rotate_v2.py"
+        and {
+            imported
+            for imported in resolved_imports(path)
+            if imported.startswith("loushang.harness.worker")
+        }
+        <= {
+            "loushang.harness.worker.history._publication",
+            "loushang.harness.worker.history._publication.HistoryPublication",
+        }
+    }
+    assert coding_worker_consumers - optional_initial_seal == {
         CODING_CANARY,
         CODING_APPHOST_PRODUCT,
         CODING_APPHOST_CANARY,

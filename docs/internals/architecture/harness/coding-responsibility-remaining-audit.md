@@ -1,5 +1,7 @@
 # Coding 全量剩余职责与保留成本复核 A72
 
+- A119：协调A93/A107对应的两项旧C50库存限制，生产净0；不新增门禁或精简收益，见[A119](key-designs/worker-history-responsibility-convergence.md#a119协调两项c50旧消费者库存)。
+
 - A118：POSIX完整收据持久事务归原ReceiptHistory，三个latest扫描合一；Code−45/Core+50/系统+5，完整Goal仍partial，见[A118](key-designs/worker-history-responsibility-convergence.md#a118收据持久事务与同义扫描收敛)。
 
 - A94后续：H5原operator边界协调，生产净0；保留5项扩大Hosting基线欠账，完整P1–P4仍未完成，见[当前状态](coding-responsibility-convergence-progress.md)。

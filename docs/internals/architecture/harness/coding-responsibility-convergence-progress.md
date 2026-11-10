@@ -26,7 +26,14 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A118 receipt持久事务归原history）
+## 当前状态（2026-11-10，A119协调C50已接受owner库存）
+
+A118发现的两项旧C50消费者清单失败，按A93 PackageProduct backend值依赖及A107
+initial-seal薄入口已接受边界协调；仅精确可选path/member上界减集，原required/
+scanner/74断言及路线保持，非新增门禁。生产净0；Coding112673/系统648267、距15K
+97673不变。实际验证与范围见[A119](key-designs/worker-history-responsibility-convergence.md#a119协调两项c50旧消费者库存)。其它Hosting/AI覆盖率、构造等旧差距及完整P1–P4仍partial，KD003未实施、KD011/A33未采用。
+
+## A118历史交付（2026-11-10，receipt持久事务归原history）
 
 POSIX完整append-position锁内查latest→reuse或新sequence/nonce/receipt→append归
 原ReceiptHistory，Code保GC/current/opt-in/derive权威准入；三个同义扫描复用原值
