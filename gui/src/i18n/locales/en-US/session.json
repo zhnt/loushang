@@ -94,5 +94,5 @@
     "details": "Diagnostic details"
   },
   "emptySession": "No Session is available.",
-  "opening": "Opening loushang…"
+  "opening": "Opening {{appName}}…"
 }

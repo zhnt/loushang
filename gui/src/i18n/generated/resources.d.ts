@@ -197,7 +197,7 @@ export default interface Resources {
       "thinkingRejected": "Could not change reasoning effort.",
       "unknownSubmission": "Submission outcome is unknown. The draft was preserved; resynchronize before retrying."
     },
-    "opening": "Opening loushang…",
+    "opening": "Opening {{appName}}…",
     "sync": {
       "disconnected": "Disconnected.",
       "fixture": "Synchronizing fixture…",
@@ -216,8 +216,8 @@ export default interface Resources {
     }
   },
   "shell": {
-    "about": "About loushang",
-    "aboutDescription": "loushang — a workspace for conversations and work.",
+    "about": "About {{appName}}",
+    "aboutDescription": "{{appName}} — a workspace for conversations and work.",
     "aboutRuntime": "Available features depend on the connected service. Offline fixture data is labelled in the interface.",
     "accountId": "Local account ID",
     "accountMenu": "Account menu",
@@ -257,7 +257,7 @@ export default interface Resources {
     "hostSettings": "Host",
     "insertNewline": "Insert a new line",
     "language": "Interface language",
-    "languageDescription": "Choose the language used in loushang.",
+    "languageDescription": "Choose the language used in {{appName}}.",
     "mainMenu": "Main menu",
     "markdownSaveFailed": "The Markdown preference changed for this window but could not be saved.",
     "markdownTheme": "Markdown theme",
@@ -279,7 +279,7 @@ export default interface Resources {
     "pinPanel": "Toggle panel pinning",
     "previousSidebarItem": "Previous sidebar item",
     "previousTab": "Previous tab",
-    "quitApp": "Quit loushang",
+    "quitApp": "Quit {{appName}}",
     "redo": "Redo",
     "resizeUnavailable": "Window resize notifications unavailable",
     "restore": "Restore window",
@@ -313,7 +313,6 @@ export default interface Resources {
       "localHost": "Local Host",
       "manageLabel": "Manage Hosts",
       "none": "No Host selected",
-      "quitLabel": "Quit",
       "reconnectLabel": "Reconnect",
       "running": "Running",
       "service": "Service",

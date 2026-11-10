@@ -1,4 +1,5 @@
 import { i18n } from "./i18n";
+import { appName } from "./branding";
 import { useTranslation } from "react-i18next";
 import { AccountMenu } from "./AccountMenu";
 import { SettingsDialog } from "./SettingsDialog";
@@ -756,7 +757,7 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
     <aside className="session-rail" aria-label={t("workspace:sidebar.navigation")}>
       <div className="brand-row">
         {/* i18next-instrument-ignore-next-line: product name */}
-        <span className="brand-name"><strong>loushang</strong><UiIcon name="chevron-down" /></span>
+        <span className="brand-name"><strong>{appName}</strong><UiIcon name="chevron-down" /></span>
         <div className="brand-actions">
           <button className="brand-search" type="button" aria-label={t("workspace:sidebar.searchUnavailable")} title={t("workspace:sidebar.searchHint")} disabled><UiIcon name="search" /></button>
           <button className="frame-icon" type="button" aria-label={shellText("toggleSidebar")} title={shellText("toggleSidebarHint")} aria-expanded="true" onClick={onToggleSidebar}><PanelIcon side="left" /></button>

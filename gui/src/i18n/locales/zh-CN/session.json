@@ -92,5 +92,5 @@
     "details": "诊断详情"
   },
   "emptySession": "没有可用的会话。",
-  "opening": "正在打开 loushang…"
+  "opening": "正在打开 {{appName}}…"
 }

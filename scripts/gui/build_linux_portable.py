@@ -11,6 +11,8 @@ import subprocess
 import tarfile
 from pathlib import Path
 
+from native_tools import gui_binary
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -29,7 +31,7 @@ def main() -> None:
     package = output / "loushang-linux-x86_64"
     if package.exists():
         parser.error(f"refusing to overwrite existing package: {package}")
-    native = ROOT / "gui/src-tauri/target/release/harness-gui"
+    native = gui_binary(ROOT / "gui/src-tauri/target/release")
     if not native.is_file():
         parser.error("run npm --prefix gui run build first")
     python = run("uv", "python", "find", "--system", "--managed-python", "3.11")

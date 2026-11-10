@@ -105,7 +105,9 @@ fn apply(app: &AppHandle, projection: TrayProjection) -> tauri::Result<()> {
     state.current.set_text(projection.current_label)?;
     state.show.set_text(projection.show_label)?;
     state.web.set_text(projection.web_label)?;
-    state.quit.set_text(projection.quit_label)?;
+    state
+        .quit
+        .set_text(projection.quit_label.replace('&', "&&"))?;
     let web_url = projection.web_url.filter(|value| safe_web_url(value));
     state.web.set_enabled(web_url.is_some())?;
     *state.web_url.lock().unwrap() = web_url;
@@ -183,7 +185,9 @@ pub async fn sync_tray(app: AppHandle, projection: TrayProjection) -> Result<(),
 }
 
 pub fn setup(app: &App) -> tauri::Result<()> {
-    let user = MenuItem::new(app, "loushang", false, None::<&str>)?;
+    let product_name = &app.package_info().name;
+    let menu_name = product_name.replace('&', "&&");
+    let user = MenuItem::new(app, &menu_name, false, None::<&str>)?;
     let current = MenuItem::new(
         app,
         "⚪ 未选择 Host / No Host selected",
@@ -198,7 +202,13 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let web = MenuItem::with_id(app, "tray-web", "打开 Web / Open Web", false, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "tray-quit", "退出 / Quit", true, None::<&str>)?;
+    let quit = MenuItem::with_id(
+        app,
+        "tray-quit",
+        format!("退出 / Quit {menu_name}"),
+        true,
+        None::<&str>,
+    )?;
     let hosts = Submenu::new(app, "管理 Host / Manage Hosts", false)?;
     let quit_separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
@@ -216,7 +226,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         ],
     )?;
     let mut builder = TrayIconBuilder::with_id("main-tray")
-        .tooltip("loushang")
+        .tooltip(product_name)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {

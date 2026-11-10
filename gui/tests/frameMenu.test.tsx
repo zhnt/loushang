@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { FrameMenu } from "../src/FrameMenu";
+import { appName } from "../src/branding";
 
 beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -59,7 +60,7 @@ it("toggles view state and opens useful help", async () => {
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Help" })).toHaveFocus();
   await user.click(screen.getByRole("button", { name: "Help" }));
-  await user.click(screen.getByRole("menuitem", { name: "About loushang" }));
+  await user.click(screen.getByRole("menuitem", { name: `About ${appName}` }));
   expect(screen.getByRole("dialog")).toHaveTextContent("Offline fixture");
 });
 

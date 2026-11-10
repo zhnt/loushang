@@ -1,5 +1,6 @@
 import enShell from "../i18n/locales/en-US/shell.json";
 import zhShell from "../i18n/locales/zh-CN/shell.json";
+import { appName } from "../branding";
 import { useEffect, useRef } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -20,7 +21,6 @@ export interface TrayHost {
   webUrl?: string;
 }
 export interface TrayModel { userName: string; language: string; hosts: TrayHost[] }
-const labels = { zh: zhShell.tray, en: enShell.tray };
 const dots: Record<TrayConnection, string> = { connected: "🟢", connecting: "🟡", disconnected: "🔴", unknown: "⚪" };
 export function availableTrayAction(host: TrayHost, action: TrayAction): boolean {
   if (action === "info") return true;
@@ -33,15 +33,17 @@ export function availableTrayAction(host: TrayHost, action: TrayAction): boolean
   return host.service === "running" && host.canStop !== false;
 }
 export function trayProjection(model: TrayModel, revision: number) {
-  const text = labels[model.language.startsWith("zh") ? "zh" : "en"];
-  const separator = model.language.startsWith("zh") ? "：" : ": ";
+  const chinese = model.language.startsWith("zh");
+  const shell = chinese ? zhShell : enShell;
+  const text = shell.tray;
+  const separator = chinese ? "：" : ": ";
   const current = model.hosts.find((host) => host.selected);
   const status = current && current.connection !== "connected" ? ` · ${text[current.connection]}` : "";
   return {
     revision, userName: model.userName || text.user,
     currentLabel: current ? `${text.current}${separator}${dots[current.connection]} ${current.name}${status}` : `⚪ ${text.none}`,
     showLabel: text.showLabel, webLabel: text.webLabel, manageLabel: text.manageLabel,
-    quitLabel: text.quitLabel, enableLabel: text.enableLabel, infoLabel: text.infoLabel,
+    quitLabel: shell.quitApp.replace("{{appName}}", () => appName), enableLabel: text.enableLabel, infoLabel: text.infoLabel,
     reconnectLabel: text.reconnectLabel, stopLabel: text.stopLabel,
     webUrl: current?.webUrl ?? null,
     hosts: model.hosts.map((host) => ({

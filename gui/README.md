@@ -75,14 +75,21 @@ Optional `host.json`:
 The current delivery covers local Web access. Remote deployment and account
 login are deferred; see the [open design questions](../docs/internals/architecture/gui-web-config-open-questions.md).
 
-## Application icons
+## Application branding
 
-The user-facing product name is `loushang`, configured by Tauri's `productName`
-and window title, the HTML title and the React brand/loading text. Internal
-Cargo/npm package names remain `harness-gui` / `@loushang/harness-gui`, and the
-application identifier stays `ai.loushang.harnessgui`. On Linux, verify the
-application-menu and Dock labels after installing the bundle; an unregistered
-development executable may still be labelled by its binary name.
+Change two fields in [Tauri configuration](src-tauri/tauri.conf.json) to build
+a renamed GUI. Both default to `loushang-gui`.
+
+- `productName` sets the desktop window title, tray labels, React shell text,
+  and browser tab title. It can contain spaces.
+- `mainBinaryName` sets the release executable name. Use a portable filename
+  such as `my-studio`, without an extension. Tauri adds `.exe` on Windows.
+
+Run `npm --prefix gui run build` for the desktop and `npm --prefix gui run
+build:web` for a separate Web distribution. Development builds run the Cargo
+target `harness-gui`. Cargo, npm and the application identifier are defined
+independently of branding. Installing distinct branded editions side by side
+requires separate application identities and data paths.
 
 The built-in Loushang artwork replaces the Tauri starter icons for native
 packaging and window defaults. Browser previews use the same artwork as a
@@ -139,12 +146,11 @@ requiring Rust or building assets. Use `check:full` for Rust/native/toolchain
 changes; it retains the toolchain doctor, web build, tests and Rust checks.
 Layout playback and native packaging remain on-demand acceptance commands.
 `build` creates the native executable with the frontend embedded. On Linux,
-stage it as a standalone program using the default Cargo output path:
+run the standalone program using the default Cargo output path:
 
 ```sh
 npm --prefix gui run build
-install -m 755 gui/src-tauri/target/release/harness-gui /tmp/loushang-gui
-/tmp/loushang-gui
+gui/src-tauri/target/release/loushang-gui
 ```
 
 Use `build:web` for a separate `gui/dist` to serve in browsers. The Rust
@@ -159,7 +165,7 @@ unknown arguments disable live availability rather than falling back with
 ambiguous authority.
 
 ```text
-gui/src-tauri/target/release/harness-gui.exe --loushang-app-record-root C:\path\to\admitted\connection --loushang-mux-name GUI-work
+gui/src-tauri/target/release/loushang-gui.exe --loushang-app-record-root C:\path\to\admitted\connection --loushang-mux-name GUI-work
 ```
 
 Linux also supports the same explicit connection arguments:
