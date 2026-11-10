@@ -465,11 +465,7 @@ class CodingFencedProductReadOnlyPreviewOwner:
             raise TypeError("Coding Plugin lifecycle layout is required")
         epoch = resolve_coding_package_epoch_layout(layout)
         runtime = PackageProductPosixFencedRuntimeOwner.open(
-            authority_root=epoch.authority_root,
-            control_root=epoch.control_root,
-            store_id=epoch.store_id,
-            epochs_root_name=epoch.epochs_root_name,
-            read_only=True,
+            **epoch.fenced_runtime_open_kwargs(), read_only=True
         )
         try:
             if workspace_guard is not None:

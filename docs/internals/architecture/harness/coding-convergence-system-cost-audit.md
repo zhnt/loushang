@@ -538,3 +538,11 @@ Coding −16，Harness 0，系统 −16。备份记录是 Coding 产品数据合
 当前430份 Coding 源码112000行，1969份系统源码648341行。
 较 Goal 起点分别为 −25755 和 +13547，距15K尚有97000行。
 恢复绑定提取草稿的预估净增26行未计入。见[A131](key-designs/private-data-lifecycle-convergence.md#a131两平台备份记录共用)。
+
+
+## A132 共用 fenced runtime 布局映射
+
+原25处打开参数组装合为 Coding 布局的一个映射。Coding 新增43行、删除119行，
+净减76行。Harness 和其他组件净变化0行。当前430份 Coding 源码111924行，
+1969份系统源码648265行。较 Goal 起点分别为 −25831 和 +13471，距15K尚有96924行。
+见[A132](coding-responsibility-convergence-progress.md#a132共用fenced-runtime布局映射)。

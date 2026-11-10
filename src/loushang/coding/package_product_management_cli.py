@@ -243,11 +243,7 @@ class _ProductCliOwner:
         self.assert_workspace_current()
         epoch = resolve_coding_package_epoch_layout(self.layout)
         runtime = PackageProductPosixFencedRuntimeOwner.open(
-            authority_root=epoch.authority_root,
-            control_root=epoch.control_root,
-            store_id=epoch.store_id,
-            epochs_root_name=epoch.epochs_root_name,
-            read_only=read_only,
+            **epoch.fenced_runtime_open_kwargs(), read_only=read_only
         )
         try:
             self.assert_workspace_current()

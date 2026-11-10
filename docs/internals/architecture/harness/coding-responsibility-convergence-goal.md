@@ -1,5 +1,7 @@
 # COD-RESP-GOAL-002：Coding 领域化与公共机制职责归一
 
+- A132 统一25处 fenced runtime 布局映射，Coding 和系统源码各减少76行。见[A132](coding-responsibility-convergence-progress.md#a132共用fenced-runtime布局映射)。
+
 - A131 合并 POSIX 与 Windows 的备份记录逻辑，Coding 和系统源码各减少16行。见[A131](key-designs/private-data-lifecycle-convergence.md#a131两平台备份记录共用)。
 
 - A130：九个公开from_bytes转发直接复用原Decoder；Code−36/Core+2/系统−34，Data/Schema/IO原样，见[A130](key-designs/worker-history-responsibility-convergence.md#a130九个公开codec入口直接复用)。

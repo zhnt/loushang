@@ -93,11 +93,7 @@ class CodingArchPrivateDataReadOwner:
             raise ValueError("Coding Arch read Product scope changed")
         epoch_layout = resolve_coding_package_epoch_layout(layout)
         epoch = PackageProductPosixFencedRuntimeOwner.open(
-            authority_root=epoch_layout.authority_root,
-            control_root=epoch_layout.control_root,
-            store_id=epoch_layout.store_id,
-            epochs_root_name=epoch_layout.epochs_root_name,
-            read_only=True,
+            **epoch_layout.fenced_runtime_open_kwargs(), read_only=True
         )
         try:
             _assert_workspace(workspace, workspace_identity)

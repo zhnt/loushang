@@ -899,12 +899,7 @@ def open_coding_fenced_product_application_owner(
         else PackageProductPosixFencedRuntimeOwner
     )
     _require_current_coding_product_admission(require_current_admission)
-    epoch_runtime = epoch_owner_type.open(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
-    )
+    epoch_runtime = epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs())
     try:
         state = open_coding_package_product_state(
             lifecycle, epoch_runtime, require_current_admission=require_current_admission,
@@ -937,10 +932,7 @@ def admit_coding_external_data_wheel(
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
+        **epoch.fenced_runtime_open_kwargs()
     )
     try:
         switch = epoch_runtime.cutover_result.switch_receipt
@@ -967,10 +959,7 @@ def admit_coding_external_dependency_wheel(
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
+        **epoch.fenced_runtime_open_kwargs()
     )
     try:
         switch = epoch_runtime.cutover_result.switch_receipt
@@ -1002,12 +991,7 @@ def admit_coding_external_worker_wheel(
         if os.name == "nt"
         else PackageProductPosixFencedRuntimeOwner
     )
-    epoch_runtime = epoch_owner_type.open(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
-    )
+    epoch_runtime = epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs())
     try:
         switch = epoch_runtime.cutover_result.switch_receipt
         if switch is None:
@@ -1086,10 +1070,7 @@ def bootstrap_coding_accepted_disabled_only_product_plugins(
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
+        **epoch.fenced_runtime_open_kwargs()
     )
     try:
         receipt = accept_coding_first_b_disabled_only(
@@ -1405,18 +1386,11 @@ def _retry_fresh_coding_product_bootstrap_for_session(
     _require_current_coding_product_admission(require_current_admission)
     runtime = (
         PackageProductWindowsFencedRuntimeOwner.open(
-            authority_root=epoch.authority_root,
-            control_root=epoch.control_root,
-            store_id=epoch.store_id,
-            epochs_root_name=epoch.epochs_root_name,
+            **epoch.fenced_runtime_open_kwargs()
         )
         if os.name == "nt"
         else PackageProductPosixFencedRuntimeOwner.open(
-            authority_root=epoch.authority_root,
-            control_root=epoch.control_root,
-            store_id=epoch.store_id,
-            epochs_root_name=epoch.epochs_root_name,
-            read_only=True,
+            **epoch.fenced_runtime_open_kwargs(), read_only=True
         )
     )
     try:
