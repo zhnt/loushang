@@ -137,7 +137,6 @@ from loushang.harness.resources.packages.product_contract import (
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime.registration import (
-    OwnerGenerationRetirementReceipt,
     RegistrationLease,
     RegistrationOwner,
 )
@@ -151,7 +150,6 @@ from loushang.harness.session._resume_continuation import (
 from loushang.harness.session.bash import UserBashHookResult, UserBashRequest
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityOwnerGenerationBinding,
-    StagedSessionCapabilityOwnerGeneration,
 )
 from loushang.harness.session.changelog import read_changelog_for_cwd
 from loushang.harness.session.command_controller import (
@@ -167,6 +165,7 @@ from loushang.harness.session.legacy_side_question import (
 )
 from loushang.harness.session.model_call import SessionModelCallCapabilityConsumer
 from loushang.harness.session.plugin_lifecycle._publication import (
+    OwnerContributions,
     _owner_set_publication,
     _OwnerPublicationHooks,
     _single_owner_publication,
@@ -1837,17 +1836,26 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
     def _create_coding_owner_publication_bindings(
         self,
     ) -> tuple[_OwnerPublicationHooks, ...]:
+        def base_owner_contributions() -> OwnerContributions | None:
+            assembly = self._coding_base_plugin_assembly
+            if assembly is None or assembly.management_lease is None:
+                return None
+            return assembly.management_lease.owner_contributions
+
+        def capability_plugin_ids() -> Iterable[str]:
+            assembly = self._coding_capability_plugin_assembly
+            return () if assembly is None else assembly.management_leases
+
         base = self._coding_base_plugin_assembly
         capability = self._coding_capability_plugin_assembly
         self._coding_base_owner_publication = (
             _single_owner_publication(
                 base.management_lease,
-                lambda generations, candidate, prepared: (
-                    self._capture_coding_base_owner_retirement_receipts(
-                        generations,
-                        candidate=candidate,
-                        prepared=prepared,
-                    )
+                plugin_id="coding.base",
+                owner_contributions=base_owner_contributions,
+                resource_owner_prefix="resources.",
+                missing_candidate_message=(
+                    "Coding base Resource owner generation is not mounted"
                 ),
             )
             if base is not None and base.management_lease is not None
@@ -1856,12 +1864,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         self._coding_capability_owner_publication = (
             _owner_set_publication(
                 capability.management_leases,
-                lambda generations, _candidate, prepared: (
-                    self._capture_coding_capability_owner_retirement_receipts(
-                        generations,
-                        prepared=prepared,
-                    )
-                ),
+                capability_plugin_ids,
             )
             if capability is not None
             else None
@@ -1879,10 +1882,9 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         publication = self._coding_base_owner_publication
         if publication is not None:
             publication.require_published(
-                lambda: self._capture_coding_base_owner_retirement_receipts(
+                lambda: (
                     self._capability_owner_generations,
-                    candidate=self._mounted_resource_candidate,
-                    prepared=False,
+                    self._mounted_resource_candidate,
                 )
             )
 
@@ -1890,101 +1892,8 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         publication = self._coding_capability_owner_publication
         if publication is not None:
             publication.require_published(
-                lambda: self._capture_coding_capability_owner_retirement_receipts(
-                    self._capability_owner_generations,
-                    prepared=False,
-                )
+                lambda: (self._capability_owner_generations, None)
             )
-
-    def _capture_coding_capability_owner_retirement_receipts(
-        self,
-        owner_generations: tuple[
-            StagedSessionCapabilityOwnerGeneration,
-            ...,
-        ],
-        *,
-        prepared: bool,
-    ) -> dict[str, tuple[OwnerGenerationRetirementReceipt, ...]]:
-        assembly = self._coding_capability_plugin_assembly
-        if assembly is None:
-            return {}
-        return {
-            plugin_id: tuple(
-                sorted(
-                    [
-                        (
-                            generation.capture_prepared_retirement_receipt()
-                            if prepared
-                            else generation.capture_retirement_receipt()
-                        )
-                        for generation in owner_generations
-                        if generation.binding.plugin_id == plugin_id
-                    ],
-                    key=lambda item: (
-                        item.owner_reference,
-                        item.owner_generation_reference,
-                        item.retirement_handle,
-                    ),
-                )
-            )
-            for plugin_id in assembly.management_leases
-        }
-
-    def _capture_coding_base_owner_retirement_receipts(
-        self,
-        owner_generations: tuple[
-            StagedSessionCapabilityOwnerGeneration,
-            ...,
-        ],
-        *,
-        candidate: StagedResourceCompositionCandidate | None,
-        prepared: bool,
-    ) -> tuple[OwnerGenerationRetirementReceipt, ...]:
-        receipts = [
-            (
-                generation.capture_prepared_retirement_receipt()
-                if prepared
-                else generation.capture_retirement_receipt()
-            )
-            for generation in owner_generations
-            if generation.binding.plugin_id == "coding.base"
-        ]
-        assembly = self._coding_base_plugin_assembly
-        if assembly is None or assembly.management_lease is None:
-            return ()
-        resource_contribution_ids = tuple(
-            sorted(
-                {
-                    contribution_id
-                    for owner_reference, contribution_ids in (
-                        assembly.management_lease.owner_contributions
-                    )
-                    if owner_reference.startswith("resources.")
-                    for contribution_id in contribution_ids
-                }
-            )
-        )
-        if resource_contribution_ids:
-            if candidate is None:
-                raise RuntimeError(
-                    "Coding base Resource owner generation is not mounted"
-                )
-            receipts.append(
-                candidate.resource_owner_generation_retirement_receipt(
-                    contribution_ids=resource_contribution_ids,
-                )
-            )
-        canonical = tuple(
-            sorted(
-                receipts,
-                key=lambda item: (
-                    item.owner_reference,
-                    item.owner_generation_reference,
-                    item.retirement_handle,
-                ),
-            )
-        )
-        return canonical
 
     async def _dispose_session_runtime_profile(self) -> None:
         primary_error: BaseException | None = None

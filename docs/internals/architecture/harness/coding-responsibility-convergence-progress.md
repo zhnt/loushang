@@ -6,7 +6,22 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A89完整Reserved capture实际复用）
+## 当前状态（2026-11-10，A90完整owner receipt捕获/发布接缝）
+
+Code两套完整receipt捕获体已退出，原Session publication直接调用实际generation/
+Resource candidate程序，复用已有三键identity作稳定排序。Code保产品选择、两个
+纯字段projection和两个惰性facts getter；原target/fanout、flags/error、Graph准备/
+提交与退休资格仍由原实例/调用方保持，没有新manager/Protocol/缓存或厚IO回调。
+最终Code−91、原接收+71、系统−20（结构−18/格式−2），当前Coding430源113864行、
+系统1967源647636行，其余1965源及13资源SHA同。三独立实物视角有界接受；原固定/
+R2候选/实际source guard与56场景、145原消费者、14 SDK均有终态证据，见
+[KD009 §21](key-designs/startup-session-assembly-convergence.md#21-a90原publication直接捕获完整receipt)。
+R1补充集成78过/1 SDK目录准入失败保留；冻结旧源复现同unsafe，使用现有私有
+tmp fixture后实际R2完整SDK14过，没有修改产品目录准入。完整P1–P4/≤15K仍
+active/partial，距15K尚98864行；publication以外bootstrap/刷新/其它生命周期和
+P1/P3/P4剩余保持，KD011/A33待用户且未采用，KD003仍未实施。
+
+## A89历史交付（2026-11-10，完整Reserved capture实际复用）
 
 Reserved、settled-unlaunched及retirement recapture的完整重复捕获体已退出Code，
 直接复用A88原PackageProduct capture；complete/crash路径同批接入原标准ExitStack，

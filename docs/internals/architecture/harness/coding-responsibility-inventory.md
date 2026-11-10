@@ -7,6 +7,7 @@
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
 当前430个Python文件均重新计量并核SHA；原审计列与候选处置保留供追溯。当前行数包括已接通但尚待最终切片验证的源码；各批接受范围以执行记录为准。
+A90两Code receipt捕获体退出，原publication直接执行，Code−91/接收+71/系统−20；见[KD009 §21](key-designs/startup-session-assembly-convergence.md#21-a90原publication直接捕获完整receipt)。
 A89 Reserved完整capture复用A88，同批保真实DTO寿命；Code减65/接收减7/系统减72，当前接受范围见[交付](key-designs/windows-stage-capture-custody-convergence.md#a89完整reserved捕获复用与共同寿命)。
 A88完整stage capture归原PackageProduct，Code减90/接收加131/系统加41；见[交付](key-designs/windows-stage-capture-custody-convergence.md)。
 A82核实全系统增长口径并退出无消费者私有history壳；当前成本见[审计](coding-convergence-system-cost-audit.md)。
@@ -433,7 +434,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [sandbox.py](../../../../src/loushang/coding/sandbox.py) | C06 | 292 | R/M | C06 其余根目录入口与策略 | 924f1e5005ba | 292 | 924f1e5005ba |
 | [sdk_surface.py](../../../../src/loushang/coding/sdk_surface.py) | C06 | 61 | R/M | C06 其余根目录入口与策略 | 2754110e8568 | 61 | 2754110e8568 |
 | [session/__init__.py](../../../../src/loushang/coding/session/__init__.py) | C15 | 26 | M | C15 AgentSession Product 绑定 | eea355c9a1d2 | 26 | eea355c9a1d2 |
-| [session/agent_session.py](../../../../src/loushang/coding/session/agent_session.py) | C15 | 2,372 | M | C15 AgentSession Product 绑定 | 8d708cb4b055 | 2,101 | cd580e8789c2 |
+| [session/agent_session.py](../../../../src/loushang/coding/session/agent_session.py) | C15 | 2,372 | M | C15 AgentSession Product 绑定 | 8d708cb4b055 | 2,010 | a5632193afa3 |
 | [session_manager.py](../../../../src/loushang/coding/session_manager.py) | C03 | 1,403 | M | C03 Resume 与 SessionManager | 60b22db73913 | 783 | b013dbe9526e |
 | [tool_pack.py](../../../../src/loushang/coding/tool_pack.py) | C01 | 266 | K | C01 启动、Plugin 与资源装配 | 14a6cfdd5298 | 266 | 14a6cfdd5298 |
 | [ui/__init__.py](../../../../src/loushang/coding/ui/__init__.py) | C16 | 1 | R/K | C16 Native UI Product 绑定 | 60db0b21525c | 1 | 60db0b21525c |
@@ -480,7 +481,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C12 | 25 | 7,180 |
 | C13 | 21 | 5,668 |
 | C14 | 13 | 3,628 |
-| C15 | 2 | 2,127 |
+| C15 | 2 | 2,036 |
 | C16 | 14 | 2,179 |
 | C17 | 3 | 1,030 |
 | C18 | 5 | 874 |
@@ -494,4 +495,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 113,955 |
+| 合计 | 430 | 113,864 |

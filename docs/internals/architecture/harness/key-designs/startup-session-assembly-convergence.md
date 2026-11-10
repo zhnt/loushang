@@ -4,6 +4,7 @@
 - Design status: accepted（R2 §5、§10清理R2、§12回执交接及原owner复用）；已完成三独立视角增量复核。其余8092行范围的具体接口仍须逐项细化/评审，不预支接受。
 - Implementation status: partial；§5 owner publication首批已接入，原21组观察对照及75项实际集成通过；§10清理路径亦已接入、固定44组及实际34节点通过；§12回执交接已接入，原47节点通过/失败集合保持、16固定观察通过，保留10项迁前失败，三视角代码终态已核；其余启动装配仍待收敛。本件不重复KD007已完成的租约、账本和family生命周期。
 - Owner: Harness Session/Runtime/Resources及Coding原owner；跨域技术合同由共同架构owner综合接受。
+- A90当前增量：§21完整receipt捕获已复用原publication并获三独立实际视角有界接受；完整启动装配仍partial。
 - 依据：[完整Goal](../coding-responsibility-convergence-goal.md)、[Current Owner Map](../current-owner-map.md)、[KD007](plugin-session-lifecycle-convergence.md)。
 - 方法：本地干净archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`；未验证远程版本。
 - 实物起点：Harness lane `harness/coding-responsibility-convergence` 未提交工作树，Code125729/系统637682/1892源。原件和全量指纹保存在产品树外`p2-startup-assembly/start.json`，HEAD不能代替实物。
@@ -668,3 +669,66 @@ Root读三份实际代码报告并核完整XML后有界接受本片；详见
 
 源码/原件/三阶段独立评审/类型修复和全部证据存产品树外
 `p2-live-resume-convergence`；`actual-proof.json`区分当前安装与待验收状态。
+
+## 21. A90原publication直接捕获完整receipt
+
+起点`7bd316b6ab4dc9f33b1f48478d39f84c28509bb4`，完整1967源/13资源已冻结。
+原易失publication flags/prepare/commit/retire早已共享，本片不重计该成果。剩余
+Code两个完整collector仍在按plugin捕获generation、prepared/live分流、联接Resource
+receipt和三键稳定排序；原owner只接Code操作回调的结果。
+
+现由原Session/plugin_lifecycle `_publication`直接调用实际generation和Resource
+candidate方法。唯一generation捕获helper供single/group两真实路径复用。R1另建
+canonical helper，R2查到原`_owner_evidence._receipt_identity`恰为同三键，遂删除
+新增wrapper，直接以原identity调用builtin stable sorted。既有Ledger canonical
+另含contribution_ids第四键，保持原样，不能替换这里的稳定三键合同。
+
+Code两collector及其完整回调退出；仍有四个纯getter：当前base contributions、
+当前capability mapping，以及两条fallback的惰性(generations,candidate) facts。
+它们没有loop/IO/receipt方法调用。Code保plugin_id/prefix/error文字及实际assembly
+选择；不能称零callbacks。没有新Protocol、manager、generation缓存或第二状态。
+原target持绑定时lease(s)，capture仍读当前字段，两者不互相替换。
+
+base先mint匹配generation再读contributions；None丢弃已捕结果并返空，空tuple则
+保留generation。Resource IDs才set+sorted，非空才检查candidate并追加实际receipt。
+group按当前mapping原次序逐key扫描全部generation，保空tuple项/重复及同三键
+稳定次序，不能改成single-pass bucket或四键排序。prepared/live入口保持原样。
+
+require先检查原has_targets，再清空并抛同一个stored error；仅receipts假时才读
+facts并由自身capture。cap facts不读candidate。每次commit失败覆盖原error；成功
+只设published而不清旧error。prepare重复不重置成功flags；require直接发布失败
+不新存error；原Graph前准备/后提交、dispose资格与retire顺序保持。46个Code保留
+方法及原fanout/Protocol整AST同，Core状态类除require捕获接缝外其它方法AST同。
+
+| 实际范围 | 原行 | 当前行 | 净变化 |
+| --- | ---: | ---: | ---: |
+| Code AgentSession | 2101 | 2010 | −91 |
+| 原Session publication | 168 | 239 | +71 |
+| 系统生产源码 | 647656 | 647636 | −20 |
+
+接口、纯getter、类型/import/格式全计；接收体正常格式前241行，结构+73/格式−2，
+故系统结构−18/格式−2。Code430源113864行；其余1965源及13资源SHA保持。系统仍
+较Goal基线+12842，Code距15K尚98864，不宣称完整P2或Goal完成。
+
+树外`a90-p2-owner-capture`保原source/fixture/proofs和完整候选。原21协调场景曾
+stub collectors，不能证明本片真实捕获；本次56场景不替换collector，实际执行
+StagedGeneration commit/capture/dispose及Resource candidate receipt方法，底层
+lease/admission/Graph端口受控。保完整receipt FQN/fields、每步状态、错误链/同对象
+消耗、完整有序trace及mapping keys直接断言。pending-error一项加强为原空receipts
+仍有error并禁止facts：首次抛原error清错，第二次才LookupError；其旧raw保留，
+另外55项逐对象不变。原固定57（含guard）过47.93s、R2候选57过56.50s、实际R2
+持久56+guard过40.09s，只有预定两源SHA变化，所有loaded origins均核定。
+
+实际原消费者145过160.62s，完整SDK14过418.69s，仓库持久56过12.31s，普通mypy
+两源与Ruff/format通过。R1补充集成78过/1 SDK unsafe失败529.18s保留；冻结旧源
+同SDK复现相同transcript_writer:unsafe（32.82s）。使用既有私有tmp输入fixture后
+实际R2完整SDK14过，未改目录准入/产品路径或测试断言。运行期间曾只读核实同一
+进程folio IO等待，待其终态后才切换R2源码，没有因观察超时重跑同一活动进程。
+
+新增显式probe705行，lossless gzip14781字节（SHA256
+`cb0a8bb1aa0e08d34e70b6180b31054ca240d12f11b4c3964fc8c149e18c6d87`），解压逐字
+等原fixture SHA `6bf0213bb05d785b959b9cfc9152686cdd6ed12d8a97c1acbc18cfd8e2964451`。
+没有归一输入/错误/值或候选生成期望；原Scenario/cases/predicates AST保留，未扩
+默认发现/CI route/平台/门禁。Root按授权综合三视角接受实际R2；真实Task.cancel、
+真实Graph/持久journal全面验证及完整P1–P4仍不由本有限模型证明，原KD011/A33/
+KD003边界不变。

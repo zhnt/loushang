@@ -311,6 +311,12 @@ Plugin integration. Original AgentProductSession hooks consume optional empty-by
 bindings. Coding selects domain receipts and retains actual retirement qualifications;
 its assembly delegates to the same ordered lease-set fanout. Persistent evidence,
 Graph, registration and authorization remain with their original owners.
+The same publication owner now captures complete prepared/live generation receipts
+and the required Resource receipt, retaining original lazy reads and retry state.
+It reuses the existing three-field receipt identity; the Ledger's four-field
+canonicalization remains separate. Coding supplies Product keys/error text and
+four pure data getters; its two operational capture bodies are removed. See
+[A90](key-designs/startup-session-assembly-convergence.md#21-a90原publication直接捕获完整receipt).
 Session also owns the original shared construction cleanup algorithm and the three
 fixed Plugin composition cleanup lifecycles (failed preparation, untransferred
 preparation and published assembly). They use the same adopted facade fields,

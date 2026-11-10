@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Generic, Protocol, TypeVar
 
 from loushang.harness.capabilities import StagedResourceCompositionCandidate
@@ -11,9 +11,12 @@ from loushang.harness.session.capability_composition_inputs import (
     StagedSessionCapabilityOwnerGeneration,
 )
 
+from ._owner_evidence import _receipt_identity
+
 OwnerReceipts = tuple[OwnerGenerationRetirementReceipt, ...]
 OwnerReceiptGroups = Mapping[str, OwnerReceipts]
 OwnerGenerations = tuple[StagedSessionCapabilityOwnerGeneration, ...]
+OwnerContributions = tuple[tuple[str, tuple[str, ...]], ...]
 ReceiptT = TypeVar("ReceiptT")
 ReceiptContraT = TypeVar("ReceiptContraT", contravariant=True)
 OwnerCapture = Callable[
@@ -64,7 +67,7 @@ class _OwnerLeaseSet:
 
 
 class _OwnerPublication(Generic[ReceiptT]):
-    """One receipt value, flags and first pending publication error.
+    """One receipt value, flags and one pending publication error.
 
     This owns no journal or Graph. The original callers retain stage/commit
     order and the actual graph-retirement qualification for each group.
@@ -126,7 +129,12 @@ class _OwnerPublication(Generic[ReceiptT]):
             else:
                 self._published = True
 
-    def require_published(self, capture: Callable[[], ReceiptT]) -> None:
+    def require_published(
+        self,
+        inputs: Callable[
+            [], tuple[OwnerGenerations, StagedResourceCompositionCandidate | None]
+        ],
+    ) -> None:
         if self._has_targets is not None and not self._has_targets():
             return
         error = self._error
@@ -134,7 +142,8 @@ class _OwnerPublication(Generic[ReceiptT]):
             self._error = None
             raise error
         if not self._receipts:
-            self._receipts = capture()
+            generations, candidate = inputs()
+            self._receipts = self._capture(generations, candidate, False)
         if not self._prepared:
             self._target.prepare_owner_generations(self._receipts)
             self._prepared = True
@@ -153,16 +162,78 @@ class _OwnerPublication(Generic[ReceiptT]):
         self._retired = True
 
 
+def _capture_generation_receipts(
+    generations: OwnerGenerations, plugin_id: str, prepared: bool
+) -> list[OwnerGenerationRetirementReceipt]:
+    return [
+        (
+            generation.capture_prepared_retirement_receipt()
+            if prepared
+            else generation.capture_retirement_receipt()
+        )
+        for generation in generations
+        if generation.binding.plugin_id == plugin_id
+    ]
+
+
 def _single_owner_publication(
-    lease: _OwnerEvidenceTarget[OwnerReceipts], capture: OwnerCapture[OwnerReceipts]
+    lease: _OwnerEvidenceTarget[OwnerReceipts],
+    *,
+    plugin_id: str,
+    owner_contributions: Callable[[], OwnerContributions | None],
+    resource_owner_prefix: str,
+    missing_candidate_message: str,
 ) -> _OwnerPublication[OwnerReceipts]:
-    # The original lease already is the narrow target; no forwarding wrapper.
+    def capture(
+        generations: OwnerGenerations,
+        candidate: StagedResourceCompositionCandidate | None,
+        prepared: bool,
+    ) -> OwnerReceipts:
+        receipts = _capture_generation_receipts(generations, plugin_id, prepared)
+        owners = owner_contributions()
+        if owners is None:
+            return ()
+        resource_ids = tuple(
+            sorted(
+                {
+                    contribution_id
+                    for owner_reference, contribution_ids in owners
+                    if owner_reference.startswith(resource_owner_prefix)
+                    for contribution_id in contribution_ids
+                }
+            )
+        )
+        if resource_ids:
+            if candidate is None:
+                raise RuntimeError(missing_candidate_message)
+            receipts.append(
+                candidate.resource_owner_generation_retirement_receipt(
+                    contribution_ids=resource_ids,
+                )
+            )
+        return tuple(sorted(receipts, key=_receipt_identity))
+
     return _OwnerPublication(lease, capture, ())
 
 
 def _owner_set_publication(
     leases: Mapping[str, _OwnerEvidenceTarget[OwnerReceipts]],
-    capture: OwnerCapture[OwnerReceiptGroups],
+    plugin_ids: Callable[[], Iterable[str]],
 ) -> _OwnerPublication[OwnerReceiptGroups]:
+    def capture(
+        generations: OwnerGenerations,
+        _candidate: StagedResourceCompositionCandidate | None,
+        prepared: bool,
+    ) -> OwnerReceiptGroups:
+        return {
+            plugin_id: tuple(
+                sorted(
+                    _capture_generation_receipts(generations, plugin_id, prepared),
+                    key=_receipt_identity,
+                )
+            )
+            for plugin_id in plugin_ids()
+        }
+
     target = _OwnerLeaseSet(leases)
     return _OwnerPublication(target, capture, {}, target.has_targets)

@@ -223,3 +223,14 @@ archive. These are explicit local probes and add no default discovery or PR gate
 
 Explicit local paths: [probe_goal_delegation_values.py](../../../tests/coding/probe_goal_delegation_values.py)
 and [probe_goal_delegation_runtime.py](../../../tests/coding/probe_goal_delegation_runtime.py).
+
+
+A90 adds [probe_owner_receipt_publication_compatibility.py](../../../tests/coding/probe_owner_receipt_publication_compatibility.py):
+56 frozen-original capture/prepare/publish/retry/qualified-retirement scenarios,
+using actual generation and Resource receipt methods with controlled lease,
+Graph and admission ports. Ordered trace, exception identity, mapping key order
+and all direct original predicates remain compared. The gzip fixture is a
+lossless copy of original values; no identity/input projection is applied.
+This explicit local probe adds no default discovery or PR gate. SDK storage
+smoke on this machine uses the existing private input plugin above; see
+[A90 validation and limits](../architecture/harness/key-designs/startup-session-assembly-convergence.md#21-a90原publication直接捕获完整receipt).

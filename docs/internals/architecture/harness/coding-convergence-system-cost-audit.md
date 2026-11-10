@@ -187,3 +187,13 @@ Code113955/系统647656，相对Goal基线系统仍+12862；不能把这31行说
 本片接收体重建为正常格式前618行（结构+9）→正常格式602（格式−16）；Code两源
 −65没有本轮格式变化。故系统物理−72分为结构−56/格式−16，不把全部物理行差
 冒称逻辑去重。另加404行显式测试及9102字节原观察fixture，测试/文档成本另列。
+
+## A90后续：原publication直接完整捕获receipt
+
+Code AgentSession2101→2010（−91），原publication168→239（+71），系统−20。
+两个完整Code捕获程序退出，原state/fanout仍唯一；四Code getter仅纯数据投影。
+R2直接复用已有三键identity，删除R1新增canonical wrapper；原四键Ledger不改。
+接收体格式前241→239，故结构净−18/格式−2。当前Code113864/系统647636，仍较
+Goal系统基线+12842；不把本片当整个系统简化完成。显式测试705行与14781字节
+lossless原fixture另列，不扩PR gate。全合同/失败与输入修正见
+[KD009 §21](key-designs/startup-session-assembly-convergence.md#21-a90原publication直接捕获完整receipt)。
