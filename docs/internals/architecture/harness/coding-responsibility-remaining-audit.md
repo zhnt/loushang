@@ -6,6 +6,7 @@
 - Design status: current-gap review；下面候选接口尚未接受或实施。
 - Implementation status: A71已提交；本工作件不新增生产实现或精简收益。
 - Owner: Coding及各原组件owner；三独立视角复核，实施owner综合事实。
+- A116：完整规划waiter/cache寿命归原Session；C17整体仍未关闭，见[A116](key-designs/session-planning-slot-custody-convergence.md)。
 - A115：完整Windows临时cutover目录custody归原Resources；C09仍未关闭，见[A115](key-designs/windows-cutover-temporary-custody-convergence.md)。
 - A114：已接受Catalog/Session依赖对应的3项旧RCP2库存失败经精确可选清单协调关闭；生产0，不关闭其它差距，见[KD009 §27](key-designs/startup-session-assembly-convergence.md#27-a114协调三项既有catalog依赖清单)。
 - A113：captured Product声明完整中性投影归原Session，Code保信任/owner政策；不关闭C01，见[A113](key-designs/product-selected-contribution-projection.md)。
@@ -38,7 +39,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
-数量按A115当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
+数量按A116当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
@@ -59,7 +60,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C14 Arch | 13/3,608 | P2/P4 | Python AST/import分类/图查询及cache、读取适配 | 保编码分析；核cache/IO与原Workspace/Resources的边界，不把领域算法换目录 |
 | C15 AgentSession产品绑定 | 2/2,036 | P2 | 原AgentProductSession/Graph/publication/retirement已实际复用 | 构造、选择见证/receipt及产品hooks仍混合；公开入口可薄化，不能声称整类是第二引擎 |
 | C16 Native UI产品绑定 | 14/2,179 | P4 | 原HarnessTUI conversation/controller/surface为实际机制 | 保产品文案/主题/领域动作；以公共观察替代私有字段耦合，不复制UI状态权威 |
-| C17 AgentSessionRuntime绑定 | 3/981 | P2/P3 | 原ProductSessionRuntime/SessionLifecycleRuntime已接入；prepared任务/consume/abort/drain仍有custody | 扩原runtime的完整任务/debt寿命是候选；当前没有可直接替代的整API |
+| C17 AgentSessionRuntime绑定 | 3/904 | P2/P3 | 原Session已承接A75 prepared、A106 history、A116 planning寿命；Code保Resume准入/Plan/fresh校验与关闭政策 | 按剩余领域与准入逐路径核实保留成本；不重开已共享Task机制，不据本片关闭整C17 |
 | C18 交互命令与预热 | 5/874 | P4 | 原Command/Session/展示机制已共享 | 保语法与业务动作；公共控制/观察端口代替跨owner私有访问 |
 | C19 压缩Profile | 4/440 | P4 | 原compaction runtime已接入 | 保编码摘要内容/标签；不为纯绑定再建抽象 |
 | C20 诊断Profile | 3/233 | P4 | 原Diagnostics owner及序列化已共享 | 保产品投影与来源，不建第二诊断存储 |
@@ -71,7 +72,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C26 配置/路径兼容导出 | 2/52 | P4 | 原Config owner已复用 | 保产品路径选择与支持中的导出，退出需合同证据 |
 | C27 版本检查 | 2/50 | P4 | 产品更新选择与原公共机制绑定 | 保必要产品选择，不为50行再建服务 |
 | C28 资源命名空间 | 5/5 | P4 | 支持中的Python布局标记 | 保真实加载/导出路径，空壳不是第二引擎 |
-| 合计 | **430/112,878** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
+| 合计 | **430/112,801** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
 
 ## 保留账：语义、兼容成本与当前实现必须分开
 

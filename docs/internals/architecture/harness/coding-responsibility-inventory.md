@@ -6,6 +6,7 @@
 - Owner: Coding / shared-layer architecture；静态分析 Codex。
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
+A116完整规划waiter/cache寿命归原Session（Code−77/Core+98/系统+21）；见[A116](key-designs/session-planning-slot-custody-convergence.md)。
 A115完整Windows临时cutover目录归原Resources（Code−71/Core+91/系统+20）；见[A115](key-designs/windows-cutover-temporary-custody-convergence.md)。
 A113捕获Product声明证据投影归原Session（Code−129/Core+157/系统+28）；见[A113](key-designs/product-selected-contribution-projection.md)。
 A111两缓存temp发布程序合一（Code−20/Harness净+17/系统−3）；见[A111](key-designs/cache-publication-convergence.md)。
@@ -445,7 +446,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [resume_permission_confirmation.py](../../../../src/loushang/coding/resume_permission_confirmation.py) | C03 | 203 | M | C03 Resume 与 SessionManager | 52bd39c82949 | 203 | 52bd39c82949 |
 | [runtime/__init__.py](../../../../src/loushang/coding/runtime/__init__.py) | C17 | 7 | M | C17 AgentSessionRuntime Product 绑定 | 0e0b928bb2e0 | 7 | 0e0b928bb2e0 |
 | [runtime/agent_session_runtime.py](../../../../src/loushang/coding/runtime/agent_session_runtime.py) | C17 | 917 | M | C17 AgentSessionRuntime Product 绑定 | bb545ecdb45d | 780 | 5347b9ec6cc1 |
-| [runtime/resume_planning.py](../../../../src/loushang/coding/runtime/resume_planning.py) | C17 | 194 | M | C17 AgentSessionRuntime Product 绑定 | b656eb2d13e8 | 194 | b656eb2d13e8 |
+| [runtime/resume_planning.py](../../../../src/loushang/coding/runtime/resume_planning.py) | C17 | 194 | M | C17 AgentSessionRuntime Product 绑定 | b656eb2d13e8 | 117 | 5e2e59cdfa33 |
 | [runtime_capability_admission.py](../../../../src/loushang/coding/runtime_capability_admission.py) | C01 | 350 | M | C01 启动、Plugin 与资源装配 | 858c6823b287 | 350 | 858c6823b287 |
 | [sandbox.py](../../../../src/loushang/coding/sandbox.py) | C06 | 292 | R/M | C06 其余根目录入口与策略 | 924f1e5005ba | 292 | 924f1e5005ba |
 | [sdk_surface.py](../../../../src/loushang/coding/sdk_surface.py) | C06 | 61 | R/M | C06 其余根目录入口与策略 | 2754110e8568 | 61 | 2754110e8568 |
@@ -499,7 +500,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C14 | 13 | 3,608 |
 | C15 | 2 | 2,036 |
 | C16 | 14 | 2,179 |
-| C17 | 3 | 981 |
+| C17 | 3 | 904 |
 | C18 | 5 | 874 |
 | C19 | 4 | 440 |
 | C20 | 3 | 233 |
@@ -511,4 +512,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 112,878 |
+| 合计 | 430 | 112,801 |

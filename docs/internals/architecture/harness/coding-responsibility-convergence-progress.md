@@ -26,7 +26,17 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A115 Windows临时目录custody归位）
+## 当前状态（2026-11-10，A116规划waiter/cache归原Session）
+
+原单槽对象继承Session内的完整Task/cache寿命，保原六字段与一请求factory，Code
+留baseline/预算/弱引用key/当前source-owner判据；无新manager/调度/阶段回调。
+Code−77/Core+98/系统+21，是职责迁移；当前Coding112801/系统648205，较Goal−24954/
++13411，距15K97801。固定源码后221过/1原Windows skip（32原消费者+165边界+
+21旧观察+实际Hosted后台+peer2），两原warning保持；初安装交叠结果不计验收。
+完整成本、来源、原观察和限制见[A116](key-designs/session-planning-slot-custody-convergence.md)。完整P1–P4保持active/partial；
+Hosting/AI覆盖率/构造等欠账与KD003/KD011/A33原边界不变。
+
+## A115历史交付（2026-11-10，Windows临时目录custody归位）
 
 完整ACL/FD/identity/短写/flush/yield/清理程序归原Resources Windows cutover，Code
 保原CM签名、enter guard及filename/错误政策；短写直接复用原write_all，无新状态/

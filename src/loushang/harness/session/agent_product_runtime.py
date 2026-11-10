@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from dataclasses import replace
 from pathlib import Path
-from typing import Generic, Protocol, TypeVar, cast
+from typing import Any, ClassVar, Generic, Protocol, TypeVar, cast
 
 from loushang.foundation.json import JSONValue
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -63,6 +63,104 @@ class _SessionHistoryPreview(Protocol):
 
 
 HistoryPreviewT = TypeVar("HistoryPreviewT", bound=_SessionHistoryPreview)
+
+
+PlanningT = TypeVar("PlanningT")
+
+
+class _SessionPlanningSlot(Generic[PlanningT]):
+    """Own one Session waiter reference and a completed data-only result."""
+
+    _error_prefix: ClassVar[str]
+
+    def __init__(self) -> None:
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._task: asyncio.Task[PlanningT] | None = None
+        self._key: tuple[object, ...] | None = None
+        self._plan: PlanningT | None = None
+        self._closed = False
+        self._transition = asyncio.Lock()
+
+    def _on_loop(self) -> None:
+        loop = asyncio.get_running_loop()
+        if self._loop is None:
+            self._loop = loop
+        elif self._loop is not loop:
+            raise RuntimeError(f"{self._error_prefix}_loop_changed")
+
+    async def _start_work(
+        self,
+        key: tuple[object, ...],
+        work_factory: Callable[[], Coroutine[Any, Any, PlanningT]],
+    ) -> None:
+        async with self._transition:
+            if self._closed:
+                raise RuntimeError(f"{self._error_prefix}_closed")
+            if key == self._key and (self._task is not None or self._plan is not None):
+                return
+            await self._discard_reference()
+            self._key = key
+            work = work_factory()
+            try:
+                task = asyncio.create_task(work)
+            except BaseException:
+                work.close()
+                raise
+            self._task = task
+
+            def complete(done: asyncio.Task[PlanningT]) -> None:
+                if done.cancelled():
+                    result = None
+                else:
+                    # Observe errors without a foreground waiter.
+                    error = done.exception()
+                    result = done.result() if error is None else None
+                if self._task is done:
+                    self._task = None
+                    if not self._closed and self._key == key:
+                        self._plan = result
+
+            task.add_done_callback(complete)
+
+    async def discard(self) -> None:
+        """Drop cached data and settle this slot's Resource waiter reference."""
+
+        self._on_loop()
+        async with self._transition:
+            await self._discard_reference()
+
+    async def _discard_reference(self) -> None:
+        self._plan = None
+        self._key = None
+        task = self._task
+        if task is None:
+            return
+        task.cancel()
+        cancellation = None
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError as error:
+                caller = asyncio.current_task()
+                if caller is not None and caller.cancelling():
+                    cancellation = error
+            except Exception:
+                break
+        if self._task is task:
+            self._task = None
+        if cancellation is not None:
+            raise cancellation
+
+    async def close(self) -> None:
+        if self._closed and self._task is None:
+            return
+        if self._loop is None:
+            self._closed = True
+            return
+        self._on_loop()
+        async with self._transition:
+            self._closed = True
+            await self._discard_reference()
 
 
 def build_agent_session_lifecycle_hooks(

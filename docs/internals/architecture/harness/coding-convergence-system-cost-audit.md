@@ -397,3 +397,11 @@ Code−71/Core+91/系统+20；Coding112878/系统648184（含GUI Rust/TS），�
 其余为完整平台custody迁移。其余1967源/13资源SHA同；测试/文档另计。
 原5消费者过，新5+165边界过，22native skip；117受控旧观察新/旧均过，非物理
 Windows/资源普查，见[A115](key-designs/windows-cutover-temporary-custody-convergence.md)。完整Goal仍partial。
+
+
+## A116：完整规划waiter/cache归Session，系统+21
+
+Code−77/Core+98/系统+21；Coding112801/系统648205（含GUI），较Goal−24954/+13411，
+距15K97801；其余1967源/13资源同。原两消费者已共用一个算法，不计两算法去重，
+不把原Resource native任务机制或A106重算收益。固定源码221过/1原skip；测试/夹具
+及文档成本另计，完整边界及原型拒绝史比较见[A116](key-designs/session-planning-slot-custody-convergence.md)。完整Goal仍partial。

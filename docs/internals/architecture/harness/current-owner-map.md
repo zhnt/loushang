@@ -19,6 +19,12 @@ including the optional projection file, exact identities and nested cleanup.
 Coding retains its prefix/filename/diagnostic policy and public context entry.
 The writer reuses the existing Journal short-write loop. See [A115](key-designs/windows-cutover-temporary-custody-convergence.md).
 
+The existing Agent Product Session runtime owns the planning slot's single waiter
+reference, completed data cache and loop/cancel/close lifetime. Coding's subclass
+keeps the original six fields in that same object and binds domain requests,
+freshness policy and diagnostic prefix. Resource retains native jobs/capacity;
+there is no second scheduler. See [A116](key-designs/session-planning-slot-custody-convergence.md).
+
 ## Scope
 
 Harness is the cross-Product execution substrate. It owns reusable mechanisms,
