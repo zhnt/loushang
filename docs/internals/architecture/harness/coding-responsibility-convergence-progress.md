@@ -6,7 +6,18 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A107初始Worker封口归位）
+## A108候选处置（2026-11-10，未采用）
+
+六个平面值类的完整RecordSchema复用原型已在树外完成并经三独立视角核实。
+所有schema、独立编码顺序表和导入计入后，六文件分别+7/+6/+3/+5/−5/+1，
+Coding及系统净+17、Core0；11个schema/encoder绑定没有替代额外的IO、状态或
+资源寿命机制。因此不采用整批，不为单个−5行拆片，也不扩Core排序接口压成本。
+候选保持属性读取顺序及OptIn原exact形状检查/实际cls，但未执行导入或运行验证；
+拒绝依据是完整成本与职责收益，不是声称兼容测试失败。原型、完整旧源、成本及
+三视角处置保存在树外`coding-convergence-continue/a108-flat-record-traversal`。
+生产修改及精简收益均为0；完整Goal仍active/partial，下面A107数值保持。
+
+## 当前生产状态（2026-11-10，A107初始Worker封口归位）
 
 初始V1五流封口的完整Rooted程序已归原HistoryPublication，直接复用原五锁循环；
 默认False的commit/retire保持严格缺锁拒绝，合格empty-supervisor才走原恢复分支。
