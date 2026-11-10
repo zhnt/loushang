@@ -6,7 +6,21 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A103普通孤儿恢复职责归位）
+## 当前状态（2026-11-10，A104 native fallback职责归位）
+
+本地 native fallback 的整条固定深度 FD/根身份/枚举/关闭程序已归原 Resources
+filesystem discovery，Code 保16键纯投影、正则/预算/诊断和原错误身份。直接使用
+普通Source会读内容/递归/排序，故最小扩原 owner；两只读根属性 Protocol 保惰性
+读取且不新增 Catalog 私有依赖。Code−110/Core+178/系统+68，属于职责归位，非
+系统净精简。当前 Coding113393/系统648046，距15K尚98393；相对 Goal−24362/+13252。
+其余1966源及13资源 SHA 同。原消费者5与243冻结观察联合248过，另 Loader39过；
+Catalog原模块2过/1失败，在冻结旧源复现同一遗漏消费者清单，保持欠账且不改gate。
+两源限定 mypy、Ruff及当前依赖图检查通过；真实/受控边界及完整成本见
+[A104](key-designs/native-fallback-metadata-custody-convergence.md)。完整 P1–P4仍active/partial，
+五项 Hosting、AI coverage、部分构造/绑定及原 Catalog清单欠账未关；KD003未实施，
+KD011/A33待用户且未采用。
+
+## A103历史交付（2026-11-10，普通孤儿恢复职责归位）
 
 普通 Session 孤儿恢复的完整 GC/FD/根与 Worker 证据/registry repair 程序已归原
 PackageProduct，Code 保前缀、标签、两薄入口及原 factory 拒绝→恢复→重试。复用原

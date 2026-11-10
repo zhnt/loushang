@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import errno
 import json
+import os
+import stat
 from collections.abc import Callable
 from pathlib import Path
+from re import Pattern
+from typing import Protocol, TypeVar
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._loader_descriptor_parsing import (
@@ -501,3 +506,176 @@ def _read_text_file(
                 )
             ],
         )
+
+
+_MetadataRow = TypeVar("_MetadataRow")
+
+
+class _NativeFallbackRoots(Protocol):
+    """Only the declared native roots, read lazily after platform admission."""
+
+    @property
+    def project_resource_root(self) -> Path: ...
+
+    @property
+    def user_resource_roots(self) -> tuple[Path, ...]: ...
+
+
+def _discover_native_fallback_metadata(
+    receipt: _NativeFallbackRoots,
+    *,
+    max_rows: int,
+    name_pattern: Pattern[str],
+    diagnostic_prefix: str,
+    authority_error: type[RuntimeError],
+    row_factory: Callable[[str, str, str, str], _MetadataRow],
+) -> tuple[list[_MetadataRow], set[str]]:
+    """Observe fixed-depth names without author bytes or Catalog selection.
+
+    Own every root/descriptor check and close; the product supplies only its
+    name/budget policy, diagnostic binding and pure returned-value projection.
+    """
+
+    rows: list[_MetadataRow] = []
+    diagnostics: set[str] = {f"{diagnostic_prefix}native_metadata_fallback"}
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        diagnostics.add(f"{diagnostic_prefix}native_fallback_unsupported")
+        return rows, diagnostics
+    roots = [(receipt.project_resource_root, "project_local", "workspace")]
+    roots.extend((root, "user_global", "user") for root in receipt.user_resource_roots)
+    if len(roots) > 16:
+        roots = roots[:16]
+        diagnostics.add(f"{diagnostic_prefix}source_truncated")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | nofollow
+    for root, source_class, scope in roots:
+        if len(rows) >= max_rows:
+            diagnostics.add(f"{diagnostic_prefix}source_truncated")
+            break
+        try:
+            before = root.lstat()
+            if not stat.S_ISDIR(before.st_mode) or root.resolve(strict=True) != root:
+                raise authority_error("declared root is unsafe")
+            root_fd = os.open(root, flags)
+        except FileNotFoundError:
+            diagnostics.add(f"{diagnostic_prefix}native_root_unavailable")
+            continue
+        except OSError as exc:
+            if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
+                raise authority_error("declared root became a link") from exc
+            diagnostics.add(f"{diagnostic_prefix}native_root_unavailable")
+            continue
+        opened = before
+        try:
+            opened = os.fstat(root_fd)
+            if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+                raise authority_error("declared root changed on open")
+            for dirname, resource_kind, suffix in (
+                ("skills", "skill", None),
+                ("prompts", "prompt", ".md"),
+                ("themes", "theme", ".json"),
+            ):
+                if len(rows) >= max_rows:
+                    diagnostics.add(f"{diagnostic_prefix}source_truncated")
+                    break
+                try:
+                    directory_fd = os.open(dirname, flags, dir_fd=root_fd)
+                except FileNotFoundError:
+                    continue
+                except OSError as exc:
+                    if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
+                        try:
+                            current = os.stat(
+                                dirname, dir_fd=root_fd, follow_symlinks=False
+                            )
+                        except OSError:
+                            raise authority_error(
+                                "native directory changed during open"
+                            ) from exc
+                        if stat.S_ISLNK(current.st_mode):
+                            raise authority_error(
+                                "native directory became a link"
+                            ) from exc
+                    diagnostics.add(f"{diagnostic_prefix}native_root_unavailable")
+                    continue
+                try:
+                    with os.scandir(directory_fd) as entries:
+                        for index, entry in enumerate(entries):
+                            if index >= max_rows or len(rows) >= max_rows:
+                                diagnostics.add(f"{diagnostic_prefix}source_truncated")
+                                break
+                            try:
+                                if suffix is None:
+                                    if not entry.is_dir(follow_symlinks=False):
+                                        diagnostics.add(
+                                            f"{diagnostic_prefix}native_entry_skipped"
+                                        )
+                                        continue
+                                    if name_pattern.fullmatch(entry.name) is None:
+                                        diagnostics.add(
+                                            f"{diagnostic_prefix}native_entry_skipped"
+                                        )
+                                        continue
+                                    child_fd = os.open(
+                                        entry.name, flags, dir_fd=directory_fd
+                                    )
+                                    try:
+                                        metadata = os.stat(
+                                            "SKILL.md",
+                                            dir_fd=child_fd,
+                                            follow_symlinks=False,
+                                        )
+                                    finally:
+                                        os.close(child_fd)
+                                    name = f"{entry.name}/SKILL.md"
+                                else:
+                                    if not entry.name.endswith(suffix):
+                                        continue
+                                    if (
+                                        name_pattern.fullmatch(
+                                            entry.name[: -len(suffix)]
+                                        )
+                                        is None
+                                    ):
+                                        diagnostics.add(
+                                            f"{diagnostic_prefix}native_entry_skipped"
+                                        )
+                                        continue
+                                    metadata = os.stat(
+                                        entry.name,
+                                        dir_fd=directory_fd,
+                                        follow_symlinks=False,
+                                    )
+                                    name = entry.name
+                                if not stat.S_ISREG(metadata.st_mode):
+                                    diagnostics.add(
+                                        f"{diagnostic_prefix}native_entry_skipped"
+                                    )
+                                    continue
+                            except OSError as exc:
+                                if exc.errno == errno.ELOOP:
+                                    raise authority_error(
+                                        "native child became a link"
+                                    ) from exc
+                                diagnostics.add(
+                                    f"{diagnostic_prefix}native_entry_skipped"
+                                )
+                                continue
+                            rows.append(
+                                row_factory(name, resource_kind, source_class, scope)
+                            )
+                finally:
+                    os.close(directory_fd)
+        finally:
+            os.close(root_fd)
+            try:
+                after = root.lstat()
+                if (
+                    not stat.S_ISDIR(after.st_mode)
+                    or (after.st_dev, after.st_ino) != (opened.st_dev, opened.st_ino)
+                    or root.resolve(strict=True) != root
+                ):
+                    raise authority_error("declared root changed during read")
+            except OSError as exc:
+                raise authority_error("declared root disappeared") from exc
+    return rows, diagnostics

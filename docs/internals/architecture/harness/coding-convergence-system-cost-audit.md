@@ -306,3 +306,13 @@ Coding1820→1743（−77），原 Harness Product runtime2277→2398（+121）�
 系统1968源647978，相对 Goal−24252/+13184；距15K98503。其余1966源/13资源同 SHA。
 这是职责归位而非全系统精简，详见[A103](key-designs/ordinary-orphan-recovery-convergence.md)。
 显式本地 probe/冻结 JSONL、文档另计，不扩默认 PR gate；Windows 原生仍未验证。
+
+
+## A104：完整 metadata fallback 文件系统程序
+
+Code669→559（−110），原Resources filesystem503→681（+178），系统净+68。全部
+2-property Protocol/TypeVar、参数、纯16键投影、imports与格式均计入；是完整资源
+操作归位，不是算法去重。当前430源113393/系统1968源648046，较Goal−24362/+13252，
+距15K98393。其余1966源及13资源 SHA 同；原测试改2挂点但不改断言/覆盖，新显式
+probe202+JSONL243行（777286 bytes）另计，不扩默认gate。完整验证与限制见
+[A104](key-designs/native-fallback-metadata-custody-convergence.md)。旧Catalog清单失败仍在。

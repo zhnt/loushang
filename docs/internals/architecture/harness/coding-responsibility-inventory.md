@@ -6,6 +6,7 @@
 - Owner: Coding / shared-layer architecture；静态分析 Codex。
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
+A104完整native fallback归原Resources（Coding−110/Core+178/系统+68）；见[A104](key-designs/native-fallback-metadata-custody-convergence.md)。
 A103完整普通孤儿恢复归原 Product（Coding−77/Core+121/系统+44）；见[A103](key-designs/ordinary-orphan-recovery-convergence.md)。
 A101精确Task观察去重（Coding−14/系统−32）；见[KD004 A101](key-designs/owned-task-join-convergence.md#a101同一原模块的task观察操作去重)。
 A100 scoped-model失败交接复用同Session custody（Coding+7/Core+29，非精简）；见[KD009 §23](key-designs/startup-session-assembly-convergence.md#23-a100scoped-model失败交接复用原session清理责任)。
@@ -397,7 +398,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [plugin_author_smoke.py](../../../../src/loushang/coding/plugin_author_smoke.py) | C05 | 740 | V | C05 显式 canary 与作者验证入口 | 1f7948784509 | 740 | 1f7948784509 |
 | [plugin_dependency_grants.py](../../../../src/loushang/coding/plugin_dependency_grants.py) | C01 | 98 | K | C01 启动、Plugin 与资源装配 | 2a98643f66b4 | 106 | 08d6d2e724ea |
 | [plugin_enablement_compatibility.py](../../../../src/loushang/coding/plugin_enablement_compatibility.py) | C01 | 317 | M | C01 启动、Plugin 与资源装配 | c4be279ad128 | 317 | c4be279ad128 |
-| [plugin_local_discovery.py](../../../../src/loushang/coding/plugin_local_discovery.py) | C01 | 669 | M | C01 启动、Plugin 与资源装配 | 6d30b2520bb1 | 669 | 6d30b2520bb1 |
+| [plugin_local_discovery.py](../../../../src/loushang/coding/plugin_local_discovery.py) | C01 | 669 | M | C01 启动、Plugin 与资源装配 | 6d30b2520bb1 | 559 | 6edcff87f3de |
 | [plugin_management_cli.py](../../../../src/loushang/coding/plugin_management_cli.py) | C06 | 282 | R/M | C06 其余根目录入口与策略 | b59458d089c7 | 282 | b59458d089c7 |
 | [plugin_management_command_rpc.py](../../../../src/loushang/coding/plugin_management_command_rpc.py) | C06 | 92 | R/M | C06 其余根目录入口与策略 | a07e5767300a | 92 | a07e5767300a |
 | [plugin_management_command_sdk.py](../../../../src/loushang/coding/plugin_management_command_sdk.py) | C06 | 226 | R/M | C06 其余根目录入口与策略 | fbcec2b38b99 | 226 | fbcec2b38b99 |
@@ -475,7 +476,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 
 | 组 | 当前文件 | 当前物理行 |
 | --- | ---: | ---: |
-| C01 | 22 | 12,993 |
+| C01 | 22 | 12,883 |
 | C02 | 28 | 8,031 |
 | C03 | 15 | 4,132 |
 | C04 | 2 | 2,956 |
@@ -503,4 +504,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 113,503 |
+| 合计 | 430 | 113,393 |

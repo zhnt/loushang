@@ -219,12 +219,12 @@ def test_native_fallback_refuses_root_replacement_before_open(
             swapped = True
         return original_open(path, flags, *args, **kwargs)
 
-    monkeypatch.setattr(discovery.os, "open", swap_at_open)
+    monkeypatch.setattr(os, "open", swap_at_open)
     try:
         with pytest.raises(discovery._NativeFallbackAuthorityError):
             discovery._fallback_native_metadata(receipt)
     finally:
-        monkeypatch.setattr(discovery.os, "open", original_open)
+        monkeypatch.setattr(os, "open", original_open)
         if workspace.is_symlink():
             workspace.unlink()
             parked.rename(workspace)

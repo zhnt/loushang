@@ -6,6 +6,7 @@
 - Design status: current-gap review；下面候选接口尚未接受或实施。
 - Implementation status: A71已提交；本工作件不新增生产实现或精简收益。
 - Owner: Coding及各原组件owner；三独立视角复核，实施owner综合事实。
+- A104：native fallback整FD/根身份程序归原Resources，Code保政策/纯投影；不关闭C01，旧Catalog清单欠账保持，见[A104](key-designs/native-fallback-metadata-custody-convergence.md)。
 - A103：普通 Session 孤儿恢复完整物理程序已归原 Product，Code 保资格政策/薄入口；不关闭整个 C10，见[A103](key-designs/ordinary-orphan-recovery-convergence.md)。
 - A93后续：完整Windows backend review/install/read及approval current归原PackageProduct，Code保公开值/产品政策；不关闭整个P1。现存H5规范/原Session operator事实失配待协调，见[A93](key-designs/windows-backend-release-custody-convergence.md)。
 - A92后续：原Continuity激活lease算法已直接复用，Code行数不变/系统−28；不关闭整个C04/P3，也不实施KD003 bytes输入。当前事实见[A92](key-designs/activation-lease-lifecycle-convergence.md)。
