@@ -6,12 +6,9 @@ or ordinary Session routing authority. An incomplete stage stays as debt.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 
-from loushang.foundation.json import _unique_json_object_hook
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -29,9 +26,6 @@ from loushang.harness.resources.packages._private_tree_windows import (
     private_windows_directory,
 )
 from loushang.harness.resources.packages._tree_observation import logical_tree_members
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     inspect_windows_product_private_directory_identity,
     prepare_windows_product_private_directory_chain,
@@ -45,7 +39,9 @@ from .package_installation_private_data import (
 )
 from .package_private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
-    backup_id,
+    _backup_receipt,
+    _backup_retention_revision,
+    _WindowsArchBackupCodec,
     backup_parent,
 )
 from .package_private_data_deletion_preview import (
@@ -57,53 +53,6 @@ from .package_private_data_windows_preview import (
     _native_io,
 )
 from .package_product_backup_types import require_coding_arch_backup_writer
-
-_MAX_MANIFEST_BYTES = 4 * 1024 * 1024
-
-
-class _WindowsArchBackupCodec:
-    max_manifest_bytes = _MAX_MANIFEST_BYTES
-    files_name = "files"
-    manifest_name = "manifest.json"
-    stage_suffix = ".staging"
-
-    def encode(
-        self,
-        key: PluginInstallationKeyV1,
-        source: CodingArchPrivateDataTargetSnapshotV1,
-        receipt: CodingArchPrivateDataBackupReceiptV1,
-    ) -> bytes:
-        # Windows preserves its original no-extra-key-check encoding contract.
-        return (
-            canonical_json_bytes(
-                {"receipt": receipt.to_dict(), "source": source.to_dict()}
-            )
-            + b"\n"
-        )
-
-    def decode(
-        self, raw: bytes
-    ) -> tuple[
-        CodingArchPrivateDataBackupReceiptV1, CodingArchPrivateDataTargetSnapshotV1
-    ]:
-        try:
-            document = json.loads(
-                bytes(raw).decode("utf-8"), object_pairs_hook=_unique_object
-            )
-        except (UnicodeError, json.JSONDecodeError) as exc:
-            raise ValueError("Coding Arch backup manifest is invalid") from exc
-        if type(document) is not dict or set(document) != {"receipt", "source"}:
-            raise ValueError("Coding Arch backup manifest fields are invalid")
-        source = CodingArchPrivateDataTargetSnapshotV1.from_dict(document["source"])
-        receipt = CodingArchPrivateDataBackupReceiptV1.from_dict(document["receipt"])
-        if (
-            receipt.source_target_id != source.target_id
-            or receipt.backup_id != backup_id(receipt.installation_key, source)
-            or bytes(raw) != canonical_json_bytes(document) + b"\n"
-        ):
-            raise ValueError("Coding Arch backup manifest identity changed")
-        return receipt, source
-
 
 _archive_io = WindowsPrivateArchiveIO(
     _native_io,
@@ -146,16 +95,7 @@ class CodingWindowsArchPrivateDataBackupOwner:
             source = _capture_windows_target_snapshot(
                 source_root, expected_root=expected_root
             )
-            receipt = CodingArchPrivateDataBackupReceiptV1(
-                installation_key=key,
-                source_target_id=source.target_id,
-                backup_id=backup_id(key, source),
-                file_count=sum(item.kind == "file" for item in source.members),
-                byte_count=sum(
-                    item.identity[3] for item in source.members if item.kind == "file"
-                ),
-                receipt_id="arch-backup:" + backup_id(key, source),
-            )
+            receipt = _backup_receipt(key, source)
             parent_path = backup_parent(self.layout, key)
             prepare_windows_product_private_directory_chain(
                 self.layout.package_root, "installation-backups", parent_path.name
@@ -296,17 +236,9 @@ class CodingWindowsArchPrivateDataBackupOwner:
                 receipts = ()
                 status = "unknown"
                 expiry_receipt_id = None
-            revision = sha256(
-                b"loushang.coding-arch-backup-retention/v1\0"
-                + canonical_json_bytes(
-                    {
-                        "expiryPhase": status,
-                        "expiryReceiptId": expiry_receipt_id,
-                        "receipts": [item.to_dict() for item in receipts],
-                        "trust": trust,
-                    }
-                )
-            ).hexdigest()
+            revision = _backup_retention_revision(
+                status, expiry_receipt_id, receipts, trust
+            )
         self.product.assert_private_data_read_authority_current()
         return PluginBackupRetentionSnapshotV1(
             owner_revision="coding-arch-backup:" + revision,
@@ -366,11 +298,6 @@ def _verify_archive(
     acl: WindowsPrivateDirectoryAcl,
 ) -> None:
     _archive_io.verify_archive(parent_fd, parent_path, name, key, source, receipt, acl)
-
-
-_unique_object = _unique_json_object_hook(
-    lambda: "Coding Arch backup manifest has duplicate fields",
-)
 
 
 __all__ = ["CodingWindowsArchPrivateDataBackupOwner"]

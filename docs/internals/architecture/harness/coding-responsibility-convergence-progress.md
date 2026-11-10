@@ -35,7 +35,16 @@ START native_revision==2特殊校验在草稿中遗漏。未装Product，生产�
 [A129](key-designs/worker-history-responsibility-convergence.md#a129完整windows退休闭包原型未采用)。
 完整Goal仍active/partial；A129当时仍用A128已接受计量，不以树外原型报减少。
 
-## 当前状态（2026-11-10，A130公开Codec入口直接复用）
+## 当前状态（2026-11-10，A131两平台备份记录共用）
+
+两平台的备份清单字段校验、规范字节、回执和保留状态摘要归入同一个 Coding 记录模块。
+Coding 和系统源码各减少16行。当前 Coding 112000 行，系统648341行。
+较 Goal 起点分别减少25755行和增加13547行，距15K目标仍差97000行。
+22项清单编码及解码观测与旧版逐字一致。组合回归49项通过，2项库存探针修复旧注入点后复跑通过。
+另有42项 Windows 冻结探针和165项架构边界检查通过。
+完整 P1–P4 仍在进行。见[A131](key-designs/private-data-lifecycle-convergence.md#a131两平台备份记录共用)。
+
+## A130历史交付（2026-11-10，公开Codec入口直接复用）
 
 九个单跳from_bytes方法退出，五个直接继承原BaseWire公开Self方法，四个复用原
 StageWire解码器的具名公开classmethod。原Data/Schema/解码体及业务IO不变，Code−36/

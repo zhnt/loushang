@@ -530,3 +530,11 @@ classmethod与私别名，Code−36/Core+2/系统−34；无新生产模块/测�
 430 Code源112016、1969系统源648357，较Goal−25739/+13563，距15K97016。
 其它1959源码/13资源逐SHA同；文档另计。原Decoder/物理IO不重复记收益。
 验证及有界反射合同见[A130](key-designs/worker-history-responsibility-convergence.md#a130九个公开codec入口直接复用)，完整Goal仍active/partial。
+
+
+## A131 两平台备份记录共用
+
+Coding −16，Harness 0，系统 −16。备份记录是 Coding 产品数据合同，在原记录模块去重。
+当前430份 Coding 源码112000行，1969份系统源码648341行。
+较 Goal 起点分别为 −25755 和 +13547，距15K尚有97000行。
+恢复绑定提取草稿的预估净增26行未计入。见[A131](key-designs/private-data-lifecycle-convergence.md#a131两平台备份记录共用)。

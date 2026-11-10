@@ -290,3 +290,24 @@ A48 将 POSIX 恢复固定程序归同一原 Archive 组件，复用原 Tree IO 
 
 
 A50 在原 R3 组件边界内直接使用既有能力：Windows恢复／过期预览复用Archive._parent_scope，恢复Journal／过期恢复查询复用PM最新同Installation删除凭据函数。两个Core均不改；Code仍决定目标／计划／确认关联与原暂存错误，不迁移Root lineage政策或已共享DTO。原FD／错误顺序与不回借旧凭据保持，无新运行角色或存储协议；成本和验证见[推进记录](../coding-convergence-progress.md#windows-预览与删除屏障直接复用原组件a50)。完整Goal和原数量要求未改变。
+
+
+## A131 两平台备份记录共用
+
+POSIX 与 Windows 原归档入口使用同一个 Coding 记录模块提供清单规范编码、字段和身份
+验证、回执生成以及保留状态摘要。各自的 JSON 解码及错误策略仍由两个具体 codec 表达。
+POSIX 在 epoch 复核后计算摘要，Windows 在原 GC 读锁内计算摘要。Windows 对同一份
+不可变快照计算一次备份 ID，作为回执的两个字段共用。Harness 原归档读写是两平台的执行 owner。
+
+初版草稿的编码参数序有误，重复键异常文本也误用了 Windows 版本。评审后恢复原参数顺序
+及各自异常文本，再接入源码。22项旧版与新版的清单输出及异常对照逐字节一致。原测试
+和 Windows 手动探针直接引用原定义函数，仍使用原断言和 fixture。组合回归49项通过，
+2项 Windows 库存探针因指向 A130 已不存在的 Coding 私有注入点失败。修复探针指向
+现有 Harness 执行位置后，3项库存探针全部通过，原断言和 fixture 保留。
+另有42项受控 Windows 探针及165项架构边界检查通过。Windows 原生运行未覆盖。
+
+POSIX 恢复归档绑定提取暂缓。普通借用描述符的原型使 Coding 减少1行、Harness 增加27行。
+生成器形式还会改变进入作用域前的 StopIteration 传播。生产版本继续使用已有恢复流程。
+
+三份生产文件净变化为 −68、+125、−73。Coding 与系统各净减16行，Harness 净0。
+其余1966份生产源码与13份资源逐字节一致。证据在树外 a131-private-archive。

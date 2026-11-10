@@ -7,12 +7,9 @@ retention from their own receipts.
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
-from hashlib import sha256
 
-from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -36,9 +33,6 @@ from loushang.harness.resources.packages._private_tree_posix import (
     PrivatePosixTreeIO,
     verify_private_tree,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
@@ -50,9 +44,9 @@ from .package_installation_private_data import (
 )
 from .package_private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
-)
-from .package_private_data_backup_records import (
-    backup_id as _backup_id,
+    _ArchBackupCodec,
+    _backup_receipt,
+    _backup_retention_revision,
 )
 from .package_private_data_backup_records import (
     backup_parent as _backup_parent,
@@ -72,45 +66,6 @@ _mkdir_at = _private_io.mkdir
 _open_private_dir = _private_io.open_directory
 _open_private_path = _private_io.open_path
 _write_or_verify_file = _private_io.write_file
-
-
-class _ArchBackupCodec:
-    max_manifest_bytes = 4 * 1024 * 1024
-    files_name = "files"
-    manifest_name = "manifest.json"
-    stage_suffix = ".staging"
-
-    def encode(
-        self,
-        key: PluginInstallationKeyV1,
-        source: CodingArchPrivateDataTargetSnapshotV1,
-        receipt: CodingArchPrivateDataBackupReceiptV1,
-    ) -> bytes:
-        if receipt.installation_key != key:
-            raise ValueError("Coding Arch backup Installation changed")
-        return (
-            canonical_json_bytes(
-                {"receipt": receipt.to_dict(), "source": source.to_dict()}
-            )
-            + b"\n"
-        )
-
-    def decode(
-        self, raw: bytes
-    ) -> tuple[
-        CodingArchPrivateDataBackupReceiptV1, CodingArchPrivateDataTargetSnapshotV1
-    ]:
-        document = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_object)
-        if type(document) is not dict or set(document) != {"receipt", "source"}:
-            raise ValueError("Coding Arch backup manifest fields are invalid")
-        source = CodingArchPrivateDataTargetSnapshotV1.from_dict(document["source"])
-        receipt = CodingArchPrivateDataBackupReceiptV1.from_dict(document["receipt"])
-        if (
-            receipt.source_target_id != source.target_id
-            or receipt.backup_id != _backup_id(receipt.installation_key, source)
-        ):
-            raise ValueError("Coding Arch backup manifest target changed")
-        return receipt, source
 
 
 _archive_codec = _ArchBackupCodec()
@@ -143,17 +98,7 @@ class CodingArchPrivateDataBackupOwner:
             )
             if source.root_identity is None:
                 raise ValueError("Coding Arch private-data source is absent")
-            backup_id = _backup_id(key, source)
-            receipt = CodingArchPrivateDataBackupReceiptV1(
-                installation_key=key,
-                source_target_id=source.target_id,
-                backup_id=backup_id,
-                file_count=sum(item.kind == "file" for item in source.members),
-                byte_count=sum(
-                    item.identity[3] for item in source.members if item.kind == "file"
-                ),
-                receipt_id="arch-backup:" + backup_id,
-            )
+            receipt = _backup_receipt(key, source)
             return retain_private_archive(
                 source_root,
                 source,
@@ -265,17 +210,9 @@ class CodingArchPrivateDataBackupReadSource:
             trust = "untrusted"
             expiry_phase = "unknown"
         self.epoch_runtime.assert_current()
-        revision = sha256(
-            b"loushang.coding-arch-backup-retention/v1\0"
-            + canonical_json_bytes(
-                {
-                    "expiryPhase": expiry_phase,
-                    "expiryReceiptId": expiry_receipt_id,
-                    "receipts": [item.to_dict() for item in receipts],
-                    "trust": trust,
-                }
-            )
-        ).hexdigest()
+        revision = _backup_retention_revision(
+            expiry_phase, expiry_receipt_id, receipts, trust
+        )
         return PluginBackupRetentionSnapshotV1(
             owner_revision="coding-arch-backup:" + revision,
             records=(
@@ -329,11 +266,6 @@ def _verify_files(root_fd: int, source: CodingArchPrivateDataTargetSnapshotV1) -
     verify_private_tree(
         root_fd, source.members, label="Coding Arch", max_read_bytes=_MAX_READ_BYTES
     )
-
-
-_unique_object = _unique_json_object_hook(
-    lambda: "Coding Arch backup manifest has a duplicate JSON key",
-)
 
 
 __all__ = [

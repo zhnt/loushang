@@ -175,20 +175,15 @@ def observe(platform, case, monkeypatch):
         monkeypatch.setattr(code, "os", fakeos)
     monkeypatch.setattr(native, "os", fakeos)
     if platform == "windows":
-        for module in (code, native):
-            monkeypatch.setattr(
-                module, "inspect_windows_product_private_directory_identity", inspect
-            )
-            monkeypatch.setattr(module, "WindowsPrivateDirectoryAcl", ACL)
-            monkeypatch.setattr(module, "open_windows_directory", opened)
-            if hasattr(module, "windows_listdir_at"):
-                monkeypatch.setattr(module, "windows_listdir_at", names)
-        monkeypatch.setattr(code, "_directory_identity", identity)
+        monkeypatch.setattr(
+            native, "inspect_windows_product_private_directory_identity", inspect
+        )
+        monkeypatch.setattr(native, "WindowsPrivateDirectoryAcl", ACL)
+        monkeypatch.setattr(native, "open_windows_directory", opened)
+        monkeypatch.setattr(native, "windows_listdir_at", names)
         monkeypatch.setattr(
             type(code._native_io), "directory_identity", lambda self, fd: identity(fd)
         )
-        monkeypatch.setattr(code, "_read_archive_manifest", read)
-        monkeypatch.setattr(code, "_verify_archive", verify)
         monkeypatch.setattr(
             type(code._archive_io), "read_manifest", lambda self, *args: read(*args)
         )

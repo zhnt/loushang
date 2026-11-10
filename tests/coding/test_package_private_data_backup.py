@@ -32,6 +32,7 @@ from loushang.coding.package_private_data_backup_expiry import (
 from loushang.coding.package_private_data_backup_expiry_journal import (
     CodingArchPrivateDataBackupExpiryJournal,
 )
+from loushang.coding.package_private_data_backup_records import backup_id
 from loushang.coding.package_private_data_deletion_owner import (
     CodingArchPrivateDataDeletionOwner,
 )
@@ -72,6 +73,9 @@ from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionCoordinator,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 
 
 def test_private_data_v1_manifest_and_ids_remain_compatible() -> None:
@@ -84,10 +88,10 @@ def test_private_data_v1_manifest_and_ids_remain_compatible() -> None:
     assert source.target_id == fixture["target_id"]
     assert absent.target_id == fixture["absent_target_id"]
     assert (
-        backup_module._backup_id(receipt.installation_key, source) == receipt.backup_id
+        backup_id(receipt.installation_key, source) == receipt.backup_id
     )
     assert (
-        backup_module.canonical_json_bytes(
+        canonical_json_bytes(
             {"receipt": receipt.to_dict(), "source": source.to_dict()}
         )
         + b"\n"

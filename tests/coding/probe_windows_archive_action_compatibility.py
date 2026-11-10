@@ -17,12 +17,18 @@ import loushang.coding.package_private_data_windows_backup as coding
 from loushang.coding.package_private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
 )
+from loushang.coding.package_private_data_backup_records import (
+    backup_id as backup_id_for,
+)
 from loushang.coding.package_private_data_deletion_preview import (
     CodingArchPrivateDataTargetSnapshotV1,
 )
 from loushang.harness.plugin_management import _private_data_backup_windows as action
 from loushang.harness.resources.packages import _file_consumption
 from loushang.harness.resources.packages import _private_tree_windows as native
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 
 CASES = (
     "fresh",
@@ -88,7 +94,7 @@ def observe(case):
     ).installation_key
     base = Path("/archive-probe")
     source_path, parent = base / "source", base / "backups" / "owner"
-    backup_id = coding.backup_id(key, source)
+    backup_id = backup_id_for(key, source)
     stage, final = parent / (backup_id + ".staging"), parent / backup_id
     nodes, handles, offsets, trace = {}, {}, {}, []
     counter = 100
@@ -319,7 +325,7 @@ def observe(case):
         make(
             path / "manifest.json",
             False,
-            coding.canonical_json_bytes(
+            canonical_json_bytes(
                 {"receipt": receipt.to_dict(), "source": source.to_dict()}
             )
             + b"\n",
