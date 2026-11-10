@@ -5,6 +5,15 @@ import { HarnessGui } from "../../src/App";
 import { createMockAppClient } from "../support/mockAppClient";
 import type { ClientSnapshot, FixturePlaybackPort, SessionModels, ThinkingLevel } from "../../src/client/model";
 
+const liveModel = {
+  id: "test:primary:model",
+  provider: "test",
+  endpointId: "primary",
+  modelId: "model",
+  label: "Test model",
+  supportsThinking: false,
+};
+
 function withSnapshot(client: FixturePlaybackPort, snapshot: ClientSnapshot): FixturePlaybackPort {
   return {
     snapshot: async () => snapshot,
@@ -93,6 +102,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       subscribeSnapshots: (listener) => { publish = listener; return () => undefined; },
       submitText: submit,
       interrupt: async () => ({ accepted: false }),
+      sessionModels: async () => ({ currentId: liveModel.id, models: [liveModel] }),
     }} />);
     const input = await screen.findByRole("textbox", { name: "Message for GUI development" });
     await user.type(input, "Keep this message");
@@ -279,7 +289,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.getByRole("button", { name: "Advance fixture" })).toBeDisabled();
   });
 
-  it("enables controlled live submission and hides fixture controls", async () => {
+  it("requires a model for live submission and preserves the draft while selecting it", async () => {
     const user = userEvent.setup();
     const fixture = createMockAppClient();
     const snapshot = await fixture.snapshot();
@@ -310,6 +320,8 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       subscribe: () => () => undefined,
       submitText,
       interrupt: async () => ({ accepted: false }),
+      sessionModels: async () => ({ currentId: null, models: [liveModel] }),
+      selectModel: async (_sessionId, id) => ({ currentId: id, models: [liveModel] }),
     }} />);
     await screen.findByText("Live AppHost · controlled");
     expect(screen.queryByLabelText("Fixture playback controls")).not.toBeInTheDocument();
@@ -317,6 +329,19 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(input).toBeEnabled();
     expect(screen.getByRole("button", { name: "Account menu" })).toBeVisible();
     await user.type(input, "Talk to the real Agent");
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toBeDisabled();
+    await user.click(send);
+    input.focus();
+    await user.keyboard("{Enter}");
+    expect(submitText).not.toHaveBeenCalled();
+    expect(input).toHaveValue("Talk to the real Agent");
+
+    await user.click(screen.getByRole("button", { name: "Session model" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /test · model/ }));
+    expect(send).toBeEnabled();
+    expect(input).toHaveValue("Talk to the real Agent");
+    input.focus();
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
     expect(submitText).not.toHaveBeenCalled();
     (input as HTMLTextAreaElement).setSelectionRange(8, 17);
@@ -416,6 +441,9 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     }} />);
     expect(await screen.findByText("Model information unavailable")).toBeInTheDocument();
     await waitFor(() => expect(sessionModels).toHaveBeenCalledOnce());
+    const input = screen.getByRole("textbox", { name: "Message for GUI development" });
+    fireEvent.change(input, { target: { value: "Continue this session" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeEnabled());
     sessionModels.mockResolvedValue({ currentId: choice.id, models: [choice] });
     act(() => publish({
       ...restored,

@@ -341,6 +341,11 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     || (state.remote.source.kind === "live" && state.remote.connection === "connected")
   );
   const mutationsAllowed = controlsAllowed && !awaitingPublication && !modelPending;
+  // A deferred Session reports no model details until its first input restores the runtime.
+  const submitAllowed = mutationsAllowed && (
+    state.remote.source.kind === "fixture"
+    || (sessionModels !== null && (sessionModels.currentId !== null || sessionModels.models.length === 0))
+  );
   useLayoutEffect(() => {
     transcriptPosition.current = state.local.transcriptScrollTop;
   }, [state.local.transcriptScrollTop]);
@@ -372,7 +377,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
   );
 
   async function submit(): Promise<void> {
-    if (!selected || syncPendingRef.current || controlPendingRef.current || !mutationsAllowed || selected.status === "running") return;
+    if (!selected || syncPendingRef.current || controlPendingRef.current || !submitAllowed || selected.status === "running") return;
     const text = state.local.drafts[selected.id] ?? "";
     if (!text.trim()) {
       setNotice({ key: "notice.emptyPrompt" });
@@ -676,7 +681,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
                       type={selected.status === "running" ? "button" : "submit"}
                       aria-label={selected.status === "running" ? t("session:composer.interrupt") : t("session:composer.send")}
                       title={selected.status === "running" ? t("session:composer.stopHint") : t("session:composer.sendHint")}
-                      disabled={selected.status === "running" ? !controlsAllowed : !mutationsAllowed || !(state.local.drafts[selected.id] ?? "").trim()}
+                      disabled={selected.status === "running" ? !controlsAllowed : !submitAllowed || !(state.local.drafts[selected.id] ?? "").trim()}
                       onClick={selected.status === "running" ? () => void interrupt() : undefined}
                     >
                       {selected.status === "running" ? <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" /></svg>
