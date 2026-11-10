@@ -6,6 +6,7 @@
 - Design status: current-gap review；下面候选接口尚未接受或实施。
 - Implementation status: A71已提交；本工作件不新增生产实现或精简收益。
 - Owner: Coding及各原组件owner；三独立视角复核，实施owner综合事实。
+- A106：历史读取完整Task/read/drain归原Session；Code保领域reader及关闭政策，不关闭C17，见[A106](key-designs/resume-history-task-custody-convergence.md)。
 - A105：A104观察到的Catalog消费者清单失配已协调（生产增删0/原模块3过）；其它历史Catalog/Session欠账不销账，见[KD009 §24](key-designs/startup-session-assembly-convergence.md#24-a105协调两项已接受-catalog-消费者库存)。
 - A104：native fallback整FD/根身份程序归原Resources，Code保政策/纯投影；不关闭C01，旧Catalog清单欠账保持，见[A104](key-designs/native-fallback-metadata-custody-convergence.md)。
 - A103：普通 Session 孤儿恢复完整物理程序已归原 Product，Code 保资格政策/薄入口；不关闭整个 C10，见[A103](key-designs/ordinary-orphan-recovery-convergence.md)。

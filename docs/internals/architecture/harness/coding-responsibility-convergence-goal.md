@@ -27,7 +27,20 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-10，A105 Catalog库存协调）
+## 当前状态（2026-11-10，A106历史读取任务归位）
+
+历史读取的loop/容量/Task创建与失败close、保留/完成观察、shield/指纹/交付拒绝
+和drain已归原Session runtime，直接复用原Transcript source/IO及settled_io；Code保
+原领域reader/DTO、预算与错误政策、关闭顺序和薄入口。无新manager；原Catalog
+TaskScope/join策略非等价，不强套。Code−49/Core+84/系统+35，职责归位而非算法去重。
+当前Coding113344/系统648081，距15K尚98344，相对Goal−24411/+13287；其余1966源
+及13资源SHA同。旧37回归过，候选扩大77过/36warning；旧21固定观察与候选21回放
+均过（来源/SHA守卫），范围与限制见[A106](key-designs/resume-history-task-custody-convergence.md)。
+另原UI/托管26项、导入边界165项及文档9项通过。两源Ruff/限定mypy/依赖图通过；
+完整P1–P4仍active/partial，五项Hosting、AI coverage、
+早期构造/Package绑定和其它历史失败未关闭。KD003未实施，KD011/A33待用户未采用。
+
+## A105历史交付（2026-11-10，Catalog库存协调）
 
 两项此前接受的原 Session/Catalog owner 现纳入旧消费者库存：只从已观察集合中
 按精确路径和各自公共导入子集作可选减集。原7必需成员、PRIVATE存在条件、scanner

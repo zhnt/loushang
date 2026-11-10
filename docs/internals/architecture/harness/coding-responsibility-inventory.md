@@ -6,6 +6,7 @@
 - Owner: Coding / shared-layer architecture；静态分析 Codex。
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
+A106历史读取Task/read/drain归原Session（Coding−49/Core+84/系统+35）；见[A106](key-designs/resume-history-task-custody-convergence.md)。
 A105协调两项已接受Catalog消费者库存，生产增删0/全源SHA同；见[KD009 §24](key-designs/startup-session-assembly-convergence.md#24-a105协调两项已接受-catalog-消费者库存)。
 A104完整native fallback归原Resources（Coding−110/Core+178/系统+68）；见[A104](key-designs/native-fallback-metadata-custody-convergence.md)。
 A103完整普通孤儿恢复归原 Product（Coding−77/Core+121/系统+44）；见[A103](key-designs/ordinary-orphan-recovery-convergence.md)。
@@ -438,7 +439,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [resume_model_outcome.py](../../../../src/loushang/coding/resume_model_outcome.py) | C03 | 134 | M | C03 Resume 与 SessionManager | 75ba0b4973c8 | 134 | 75ba0b4973c8 |
 | [resume_permission_confirmation.py](../../../../src/loushang/coding/resume_permission_confirmation.py) | C03 | 203 | M | C03 Resume 与 SessionManager | 52bd39c82949 | 203 | 52bd39c82949 |
 | [runtime/__init__.py](../../../../src/loushang/coding/runtime/__init__.py) | C17 | 7 | M | C17 AgentSessionRuntime Product 绑定 | 0e0b928bb2e0 | 7 | 0e0b928bb2e0 |
-| [runtime/agent_session_runtime.py](../../../../src/loushang/coding/runtime/agent_session_runtime.py) | C17 | 917 | M | C17 AgentSessionRuntime Product 绑定 | bb545ecdb45d | 829 | ae1c4a51a037 |
+| [runtime/agent_session_runtime.py](../../../../src/loushang/coding/runtime/agent_session_runtime.py) | C17 | 917 | M | C17 AgentSessionRuntime Product 绑定 | bb545ecdb45d | 780 | 5347b9ec6cc1 |
 | [runtime/resume_planning.py](../../../../src/loushang/coding/runtime/resume_planning.py) | C17 | 194 | M | C17 AgentSessionRuntime Product 绑定 | b656eb2d13e8 | 194 | b656eb2d13e8 |
 | [runtime_capability_admission.py](../../../../src/loushang/coding/runtime_capability_admission.py) | C01 | 350 | M | C01 启动、Plugin 与资源装配 | 858c6823b287 | 350 | 858c6823b287 |
 | [sandbox.py](../../../../src/loushang/coding/sandbox.py) | C06 | 292 | R/M | C06 其余根目录入口与策略 | 924f1e5005ba | 292 | 924f1e5005ba |
@@ -493,7 +494,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C14 | 13 | 3,628 |
 | C15 | 2 | 2,036 |
 | C16 | 14 | 2,179 |
-| C17 | 3 | 1,030 |
+| C17 | 3 | 981 |
 | C18 | 5 | 874 |
 | C19 | 4 | 440 |
 | C20 | 3 | 233 |
@@ -505,4 +506,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 113,393 |
+| 合计 | 430 | 113,344 |

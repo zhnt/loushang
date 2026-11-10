@@ -324,3 +324,13 @@ probe202+JSONL243行（777286 bytes）另计，不扩默认gate。完整验证�
 系统648046，相对Goal−24362/+13252、距15K98393，精简收益0。仅原清单测试净增24
 行，保3节点/8断言/7必需成员；属于已授权门禁scope reduction而非新失败条件。
 逆AST、76反事实及原完整模块3过终态见[KD009 §24](key-designs/startup-session-assembly-convergence.md#24-a105协调两项已接受-catalog-消费者库存)。
+
+
+## A106：原 Session 接管完整历史读取任务程序
+
+Coding829→780（−49）、原Session454→538（+84），系统净+35；包括全部初始化、
+Protocol/TypeVar、参数/薄入口与格式。没有重复算法消除，不重计原settled_io/
+TranscriptIO，reader仍为Code领域适配。当前430源113344/系统1968源648081，
+相对Goal−24411/+13287，距15K98344；其余1966源/13资源SHA同。显式probe205+
+JSONL21行（4632 bytes）另计，不进默认PR gate。完整验证及限制见
+[A106](key-designs/resume-history-task-custody-convergence.md)。

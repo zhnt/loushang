@@ -23,7 +23,6 @@ from loushang.coding.session_manager import (
 from loushang.foundation.json import JSONValue
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.runtime import copy_file_exclusive
 from loushang.harness.runtime.session_operations import SessionOperationResult
 from loushang.harness.session import AgentProductSessionRuntime
@@ -34,9 +33,6 @@ from loushang.harness.session.lifecycle import (
 from loushang.harness.session.multiagent import compose_multiagent_before_release
 from loushang.harness.session.transcript_lifecycle import ResolvedDiscoveredSessionFile
 from loushang.harness.transcript import AgentTranscriptFileError
-from loushang.harness.transcript.session_catalog import (
-    session_file_authority_fingerprint,
-)
 
 from .._resume_cleanup import (
     CodingResumeContinuationCleanupFailure,
@@ -187,9 +183,7 @@ class AgentSessionRuntime(
         )
         self._product_owner_selection = product_owner_selection
         self._embedded_resume_approval_owner: InteractiveApprovalResolver | None = None
-        self._resume_history_reads: set[asyncio.Task[CodingResumeHistoryPreview | CodingResumeRecentPage]] = set()
-        self._resume_history_loop: asyncio.AbstractEventLoop | None = None
-        self._resume_history_closed = False
+        self._initialize_session_history_reads()
         self._resume_planning = ResumePlanningSlot()
         self._configured_resume_planning: _ConfiguredResumePlanning | None = None
         transcript_type = (
@@ -695,62 +689,19 @@ class AgentSessionRuntime(
         return await self._preview_resume_data(session_id, read)
 
     async def _preview_resume_data(
-        self, session_id: str | Path,
+        self,
+        session_id: str | Path,
         reader: Callable[[ResolvedDiscoveredSessionFile], _ResumePreview],
     ) -> _ResumePreview:
-        if self._resume_history_closed:
-            raise RuntimeError("coding_resume_history_closed")
-        loop = asyncio.get_running_loop()
-        if self._resume_history_loop is None:
-            self._resume_history_loop = loop
-        elif self._resume_history_loop is not loop:
-            raise RuntimeError("coding_resume_history_loop_changed")
-        if len(self._resume_history_reads) >= 2:
-            raise RuntimeError("coding_resume_history_capacity_exceeded")
-        source = self.resolve_discovered_session_source(session_id)
-
-        async def read() -> _ResumePreview:
-            if session_file_authority_fingerprint(source.path) != source.authority_fingerprint:
-                raise ValueError("coding_resume_history_stale")
-            return await settled_io(reader, source)
-
-        work = read()
-        try:
-            task = asyncio.create_task(work)
-        except BaseException:
-            work.close()
-            raise
-        native_read = cast("asyncio.Task[CodingResumeHistoryPreview | CodingResumeRecentPage]", task)
-        self._resume_history_reads.add(native_read)
-
-        def settled(completed: asyncio.Task[CodingResumeHistoryPreview | CodingResumeRecentPage]) -> None:
-            self._resume_history_reads.discard(completed)
-            if not completed.cancelled():
-                completed.exception()  # Observe errors after a waiter leaves.
-
-        native_read.add_done_callback(settled)
-        history = await asyncio.shield(task)
-        if self._resume_history_closed:
-            raise RuntimeError("coding_resume_history_closed")
-        if (
-            history.source_fingerprint != source.authority_fingerprint
-            or session_file_authority_fingerprint(source.path) != history.source_fingerprint
-        ):
-            raise ValueError("coding_resume_history_stale")
-        return history
+        return await self._preview_session_history_data(
+            session_id,
+            reader,
+            max_reads=2,
+            error_prefix="coding_resume_history",
+        )
 
     async def _drain_resume_history_reads(self) -> None:
-        cancellation: asyncio.CancelledError | None = None
-        for task in tuple(self._resume_history_reads):
-            while not task.done():
-                try:
-                    await asyncio.shield(task)
-                except asyncio.CancelledError as error:
-                    cancellation = error
-                except Exception:
-                    break  # The read caller or completion callback observes it.
-        if cancellation is not None:
-            raise cancellation
+        await self._drain_session_history_reads()
 
     async def dispose_session_runtime(
         self,

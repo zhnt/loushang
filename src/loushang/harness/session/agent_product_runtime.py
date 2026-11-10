@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
-from typing import Generic, TypeVar, cast
+from typing import Generic, Protocol, TypeVar, cast
 
 from loushang.foundation.json import JSONValue
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -17,6 +18,7 @@ from loushang.harness.extensions.context import (
     SessionShutdownEvent,
     SessionStartEvent,
 )
+from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.runtime import FileCopy, VerifiedFileCopy, copy_file_exclusive
 from loushang.harness.session.composition import SessionExtensionCompositionPort
 from loushang.harness.session.diagnostics import (
@@ -44,11 +46,23 @@ from loushang.harness.session.product_runtime import (
 )
 from loushang.harness.session.transcript_lifecycle import (
     ProductTranscriptSessionBinding,
+    ResolvedDiscoveredSessionFile,
 )
 from loushang.harness.transcript import ProductTranscriptSession
+from loushang.harness.transcript.session_catalog import (
+    session_file_authority_fingerprint,
+)
 
 SessionT = TypeVar("SessionT")
 TranscriptT = TypeVar("TranscriptT", bound=ProductTranscriptSession)
+
+
+class _SessionHistoryPreview(Protocol):
+    @property
+    def source_fingerprint(self) -> str: ...
+
+
+HistoryPreviewT = TypeVar("HistoryPreviewT", bound=_SessionHistoryPreview)
 
 
 def build_agent_session_lifecycle_hooks(
@@ -336,6 +350,76 @@ class AgentProductSessionRuntime(
         )
         if current_session is not None:
             prepare_current_agent_session(current_session, self)
+
+    def _initialize_session_history_reads(self) -> None:
+        self._resume_history_reads: set[asyncio.Task[_SessionHistoryPreview]] = set()
+        self._resume_history_loop: asyncio.AbstractEventLoop | None = None
+        self._resume_history_closed = False
+
+    async def _preview_session_history_data(
+        self,
+        session_id: str | Path,
+        reader: Callable[[ResolvedDiscoveredSessionFile], HistoryPreviewT],
+        *,
+        max_reads: int,
+        error_prefix: str,
+    ) -> HistoryPreviewT:
+        if self._resume_history_closed:
+            raise RuntimeError(f"{error_prefix}_closed")
+        loop = asyncio.get_running_loop()
+        if self._resume_history_loop is None:
+            self._resume_history_loop = loop
+        elif self._resume_history_loop is not loop:
+            raise RuntimeError(f"{error_prefix}_loop_changed")
+        if len(self._resume_history_reads) >= max_reads:
+            raise RuntimeError(f"{error_prefix}_capacity_exceeded")
+        source = self.resolve_discovered_session_source(session_id)
+
+        async def read() -> HistoryPreviewT:
+            if (
+                session_file_authority_fingerprint(source.path)
+                != source.authority_fingerprint
+            ):
+                raise ValueError(f"{error_prefix}_stale")
+            return await settled_io(reader, source)
+
+        work = read()
+        try:
+            task = asyncio.create_task(work)
+        except BaseException:
+            work.close()
+            raise
+        native_read = cast("asyncio.Task[_SessionHistoryPreview]", task)
+        self._resume_history_reads.add(native_read)
+
+        def settled(completed: asyncio.Task[_SessionHistoryPreview]) -> None:
+            self._resume_history_reads.discard(completed)
+            if not completed.cancelled():
+                completed.exception()  # Observe errors after a waiter leaves.
+
+        native_read.add_done_callback(settled)
+        history = await asyncio.shield(task)
+        if self._resume_history_closed:
+            raise RuntimeError(f"{error_prefix}_closed")
+        if (
+            history.source_fingerprint != source.authority_fingerprint
+            or session_file_authority_fingerprint(source.path) != history.source_fingerprint
+        ):
+            raise ValueError(f"{error_prefix}_stale")
+        return history
+
+    async def _drain_session_history_reads(self) -> None:
+        cancellation: asyncio.CancelledError | None = None
+        for task in tuple(self._resume_history_reads):
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError as error:
+                    cancellation = error
+                except Exception:
+                    break  # The read caller or completion callback observes it.
+        if cancellation is not None:
+            raise cancellation
 
     def _agent_session_diagnostics_runtime(
         self,
