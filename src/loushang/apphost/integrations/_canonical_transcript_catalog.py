@@ -214,14 +214,33 @@ class _CanonicalTranscriptCatalogMethods(
         return self._project_catalog_record(scope, path, revision, header)
 
     async def _open_legacy_record(self, record: RecordT) -> CandidateT:
-        return await _open_legacy_canonical_record(
-            record,
-            revision=self._source_revision,
-            error=self._catalog_error,
-            factory=self._legacy_factory,
-            manager_type=self._legacy_manager_type,
-            candidate=self._candidate_from_manager,
+        revision = self._source_revision
+        error = self._catalog_error
+        factory = self._legacy_factory
+        manager_type = self._legacy_manager_type
+        candidate = self._candidate_from_manager
+        if revision(record.path) != record.projection.reference.revision:
+            raise error()
+        context = AgentTranscriptLifecycleContext(
+            session_dir=record.scope.session_dir,
+            cwd=str(record.scope.cwd),
+            persist=True,
+            header=record.header,
+            session_file=record.path,
         )
+        manager = manager_type()(
+            lifecycle_session=await factory().restore_context(context)
+        )
+        try:
+            if (
+                manager.header != record.header
+                or revision(record.path) != record.projection.reference.revision
+            ):
+                raise error()
+            return candidate(record, manager)
+        except BaseException:
+            await manager.dispose_runtime_profile()
+            raise
 
     def _on_loop(self) -> None:
         loop = asyncio.get_running_loop()
@@ -591,43 +610,6 @@ class _CanonicalTranscriptCatalogMethods(
             except BaseException:
                 await manager.dispose_runtime_profile()
                 raise
-
-
-async def _open_legacy_canonical_record(
-    record: RecordT,
-    *,
-    revision: Callable[[Path], str],
-    error: Callable[[], RuntimeError],
-    factory: Callable[
-        [], AgentTranscriptSessionFactory[BindingInputT, ProductBindingT]
-    ],
-    manager_type: Callable[
-        [], type[ProductTranscriptSession[BindingInputT, ProductBindingT]]
-    ],
-    candidate: Callable[
-        [RecordT, ProductTranscriptSession[BindingInputT, ProductBindingT]], CandidateT
-    ],
-) -> CandidateT:
-    if revision(record.path) != record.projection.reference.revision:
-        raise error()
-    context = AgentTranscriptLifecycleContext(
-        session_dir=record.scope.session_dir,
-        cwd=str(record.scope.cwd),
-        persist=True,
-        header=record.header,
-        session_file=record.path,
-    )
-    manager = manager_type()(lifecycle_session=await factory().restore_context(context))
-    try:
-        if (
-            manager.header != record.header
-            or revision(record.path) != record.projection.reference.revision
-        ):
-            raise error()
-        return candidate(record, manager)
-    except BaseException:
-        await manager.dispose_runtime_profile()
-        raise
 
 
 class _ManagedCanonicalTranscriptCatalogMethods(

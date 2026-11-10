@@ -122,3 +122,12 @@ Code源153→113，接收侧无新增，整模块在仅移除两定义后的AST�
 UnderGuard/Registered分派及C5静态绑定均核实保持。原143固定观察通过（23.09s），
 未改反射probe或任何期望。三个独立视角窄接受；不把40行解释为9k成本债已解决。
 当前Coding114129/系统647730，完整Goal保持partial。
+
+
+## A84后续：legacy-open转交层退出
+
+原AppHost Catalog唯一调用的私有global helper并回原方法，739→721。保五个
+boundcallable入口捕获顺序，随后操作体AST原样；整模块在逆变换后与旧源AST相同。
+原构造在try外、restore/readback/候选失败和dispose覆盖合同不改。原66固定观察
+通过（27.36s），测试/期望不改，单源静态检查及三实际视角窄接受。系统/接收侧
+各−18、Code0，没有新增组件/接口；当前系统647712、Code114129，完整Goal继续。

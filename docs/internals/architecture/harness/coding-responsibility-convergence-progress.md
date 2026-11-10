@@ -6,7 +6,19 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A83 cleanup authority私有转发退出）
+## 当前状态（2026-11-10，A84 Catalog legacy-open单消费者间接层退出）
+
+将唯一消费者的私有legacy-open helper并回同一原AppHost owner方法，删除中间
+调用/五项callable参数搬运及泛型签名。入口仍依原顺序捕获五个boundcallable，
+随后完整操作体AST与旧helper相同；构造/restore仍在try外，失败dispose及覆盖
+边界保持。全模块逆向AST证明通过，公开API/DTO/持久字节/状态权威不变。
+原31值与35完整custody观察共66过（27.36s），probe/fixture/断言未改；单源
+mypy/Ruff/format通过，三视角实际窄接受。接收侧/系统−18，Code0，无新接口。
+当前系统1967源647712行、Coding430文件114129行；其余1966源SHA与13资源同。
+这是具体少一层调用，不代表系统累计增长或完整P1–P4/15K已经解决。后续继续
+核A80实际构造绑定/虚拟getter、A78装配及A56效果回借，原兼容/恢复义务保持。
+
+## A83历史交付（2026-11-10，cleanup authority私有转发退出）
 
 按A82成本审计退出两个仅原样super调用的私有覆盖，直接继承原Core验证程序。
 Code cleanup authority源153→113；公开方法/DTO/authority身份及Core源码保持，

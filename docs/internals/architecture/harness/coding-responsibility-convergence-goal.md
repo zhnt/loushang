@@ -27,7 +27,19 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-10，A83 cleanup authority私有转发退出）
+## 当前状态（2026-11-10，A84 Catalog legacy-open单消费者间接层退出）
+
+将唯一消费者的私有legacy-open helper并回同一原AppHost owner方法，删除中间
+调用/五项callable参数搬运及泛型签名。入口仍依原顺序捕获五个boundcallable，
+随后完整操作体AST与旧helper相同；构造/restore仍在try外，失败dispose及覆盖
+边界保持。全模块逆向AST证明通过，公开API/DTO/持久字节/状态权威不变。
+原31值与35完整custody观察共66过（27.36s），probe/fixture/断言未改；单源
+mypy/Ruff/format通过，三视角实际窄接受。接收侧/系统−18，Code0，无新接口。
+当前系统1967源647712行、Coding430文件114129行；其余1966源SHA与13资源同。
+这是具体少一层调用，不代表系统累计增长或完整P1–P4/15K已经解决。后续继续
+核A80实际构造绑定/虚拟getter、A78装配及A56效果回借，原兼容/恢复义务保持。
+
+## A83历史交付（2026-11-10，cleanup authority私有转发退出）
 
 按A82成本审计退出两个仅原样super调用的私有覆盖，直接继承原Core验证程序。
 Code cleanup authority源153→113；公开方法/DTO/authority身份及Core源码保持，
