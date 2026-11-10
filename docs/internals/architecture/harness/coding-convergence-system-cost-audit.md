@@ -432,3 +432,10 @@ C54只为确切可选selector成员缩小原限制，不新增required/check/ass
 仅两个原consumer等式的左侧减精确可选path，guard核该path全部Worker-prefix的
 resolved imports属于已审module/member上界；原RHS、扫描、74断言及9测试函数保持。
 不存在新增required/check/route或旧pass变新fail；验证与限制见[A119](key-designs/worker-history-responsibility-convergence.md#a119协调两项c50旧消费者库存)。
+
+## A120：Windows审批目录完整native custody
+
+Code781→733（−48），既有Resources Windows IO828→887（+59），系统+11。
+Coding430源112625行，系统1969源648278行（含GUI），较Goal−25130/+13484，距15K97625。
+接口、导入、薄入口及docstring全部计入；原Resume及composition消费者本来共用同一程序，不报三算法去重。
+其它1967生产源及13资源不变；测试/文档另计，验证限制见[A120](key-designs/windows-approval-root-custody-convergence.md)。

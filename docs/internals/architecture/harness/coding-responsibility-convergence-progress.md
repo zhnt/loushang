@@ -26,7 +26,16 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A119协调C50已接受owner库存）
+## 当前状态（2026-11-10，A120 Windows审批目录custody归位）
+
+完整祖先查找/创建竞争/ACL/identity/created-only flush与原ExitStack关闭归原
+Resources Windows IO；Code保原输入、product-private/max8/label及平台/POSIX政策。
+Code−48/Core+59/系统+11，Coding112625/系统648278，较Goal−25130/+13484，距15K97625。
+这是完整IO职责归位，非系统净减或三份算法去重；来源/验证/限制见[A120](key-designs/windows-approval-root-custody-convergence.md)。
+完整P1–P4继续active/partial；Hosting/AI覆盖率/构造等欠账、KD003未实施和KD011/A33
+待用户未采用保持。A119两C50库存失败已关闭，未重计精简收益。
+
+## A119历史交付（2026-11-10，协调C50已接受owner库存）
 
 A118发现的两项旧C50消费者清单失败，按A93 PackageProduct backend值依赖及A107
 initial-seal薄入口已接受边界协调；仅精确可选path/member上界减集，原required/

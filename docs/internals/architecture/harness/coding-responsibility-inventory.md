@@ -1,5 +1,7 @@
 # Coding 逐文件职责与处置清单 R2
 
+- A120：完整Windows审批目录native创建与关闭归原Resources，Code−48/Core+59/系统+11；完整Goal仍partial，见[A120](key-designs/windows-approval-root-custody-convergence.md)。
+
 - A118：POSIX完整收据持久事务归原ReceiptHistory，三个latest扫描合一；Code−45/Core+50/系统+5，完整Goal仍partial，见[A118](key-designs/worker-history-responsibility-convergence.md#a118收据持久事务与同义扫描收敛)。
 
 - Authority: descriptive inventory；处置建议为 proposed。
@@ -75,7 +77,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [_plugins/coding_base/__init__.py](../../../../src/loushang/coding/_plugins/coding_base/__init__.py) | C22 | 1 | K | C22 内置 Plugin 内容 | 39dbaf55f33f | 1 | 39dbaf55f33f |
 | [_plugins/coding_lsp_default/__init__.py](../../../../src/loushang/coding/_plugins/coding_lsp_default/__init__.py) | C22 | 1 | K | C22 内置 Plugin 内容 | a1c04e3ef742 | 1 | a1c04e3ef742 |
 | [_plugins/coding_lsp_default/definition.py](../../../../src/loushang/coding/_plugins/coding_lsp_default/definition.py) | C22 | 60 | K | C22 内置 Plugin 内容 | 40f1c97219d2 | 60 | 40f1c97219d2 |
-| [_product_capability_plugin_composition.py](../../../../src/loushang/coding/_product_capability_plugin_composition.py) | C01 | 781 | M | C01 启动、Plugin 与资源装配 | d6b4d65c94c5 | 781 | d6b4d65c94c5 |
+| [_product_capability_plugin_composition.py](../../../../src/loushang/coding/_product_capability_plugin_composition.py) | C01 | 781 | M | C01 启动、Plugin 与资源装配 | d6b4d65c94c5 | 733 | cd4ea0cf6271 |
 | [_product_worker_canary.py](../../../../src/loushang/coding/_product_worker_canary.py) | C05 | 1,323 | V | C05 显式 canary 与作者验证入口 | eab63edf23d0 | 854 | f47c7d90b1c9 |
 | [_resource_catalog_adapter.py](../../../../src/loushang/coding/_resource_catalog_adapter.py) | C01 | 1,094 | M | C01 启动、Plugin 与资源装配 | 2b8769dc3b26 | 445 | f18b7d57d369 |
 | [_resource_catalog_shadow.py](../../../../src/loushang/coding/_resource_catalog_shadow.py) | C01 | 52 | C | C01 启动、Plugin 与资源装配 | e859f501846e | 52 | e859f501846e |
@@ -487,7 +489,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 
 | 组 | 当前文件 | 当前物理行 |
 | --- | ---: | ---: |
-| C01 | 22 | 12,754 |
+| C01 | 22 | 12,706 |
 | C02 | 28 | 8,031 |
 | C03 | 15 | 4,132 |
 | C04 | 2 | 2,956 |
@@ -515,4 +517,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 112,673 |
+| 合计 | 430 | 112,625 |

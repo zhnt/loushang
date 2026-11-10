@@ -37,6 +37,12 @@ Product/Session/opt-in/native/discovery admission. All three latest-record scans
 share the existing receipt value component; Windows keeps its distinct sequence,
 capacity, native custody and byte format. See [A118](key-designs/worker-history-responsibility-convergence.md#a118收据持久事务与同义扫描收敛).
 
+Resources' existing Windows private-tree IO owns bounded private-directory chain
+creation from the nearest existing ancestor, including its ACLs and descriptor
+cleanup. Coding binds the approval-state target, budget and diagnostics and keeps
+platform/entry admission. This does not admit or repair a Product root; the
+stronger fenced Product chain API remains separate. See [A120](key-designs/windows-approval-root-custody-convergence.md).
+
 ## Scope
 
 Harness is the cross-Product execution substrate. It owns reusable mechanisms,

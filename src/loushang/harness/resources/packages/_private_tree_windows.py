@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import stat
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager, nullcontext
+from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -66,6 +66,65 @@ def private_windows_directory(
             yield descriptor
             if revalidate_on_success:
                 owner.validate(descriptor)
+
+
+def prepare_private_windows_directory_chain(
+    target: Path, *, max_missing: int, label: str
+) -> Path:
+    """Create a bounded private chain from its nearest existing ancestor.
+
+    The caller selects the target and budget; existing ancestors are not repaired.
+    """
+
+    missing: list[str] = []
+    existing = target
+    while not existing.exists():
+        if existing.parent == existing or len(missing) >= max_missing:
+            raise ValueError(f"{label} parent is unavailable")
+        missing.append(existing.name)
+        existing = existing.parent
+    with (
+        ExitStack() as stack,
+        WindowsPrivateDirectoryAcl() as private_acl,
+        WindowsPrivateDirectoryAcl(inherit_children=True) as leaf_acl,
+    ):
+        parent_fd = open_windows_directory(existing, read_control=True)
+        stack.callback(os.close, parent_fd)
+        identity = os.fstat(parent_fd)
+        if (identity.st_dev, identity.st_ino) != (
+            existing.stat().st_dev,
+            existing.stat().st_ino,
+        ):
+            raise OSError(f"{label} parent changed")
+        if not missing:
+            leaf_acl.validate(parent_fd)
+        for index, name in enumerate(reversed(missing)):
+            acl = leaf_acl if index == len(missing) - 1 else private_acl
+            created = False
+            try:
+                child_fd = open_windows_directory(
+                    name,
+                    dir_fd=parent_fd,
+                    create_new=True,
+                    security_descriptor=acl.security_descriptor,
+                    read_control=True,
+                )
+                created = True
+            except FileExistsError:
+                child_fd = open_windows_directory(
+                    name, dir_fd=parent_fd, read_control=True
+                )
+            stack.callback(os.close, child_fd)
+            acl.validate(child_fd)
+            if created:
+                windows_flush_directory(parent_fd)
+            parent_fd = child_fd
+        if (identity.st_dev, identity.st_ino) != (
+            existing.stat().st_dev,
+            existing.stat().st_ino,
+        ):
+            raise OSError(f"{label} parent changed")
+    return target
 
 
 def supports_simple_windows_attributes(
