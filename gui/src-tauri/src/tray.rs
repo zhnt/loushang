@@ -13,6 +13,12 @@ use tauri::{
 pub struct TrayHost {
     id: String,
     label: String,
+    service_label: String,
+    enable: bool,
+    reconnect: bool,
+    start: bool,
+    start_label: String,
+    stop: bool,
 }
 
 #[derive(Clone, Deserialize)]
@@ -25,15 +31,20 @@ pub struct TrayProjection {
     web_label: String,
     manage_label: String,
     quit_label: String,
+    enable_label: String,
+    info_label: String,
+    reconnect_label: String,
+    stop_label: String,
     web_url: Option<String>,
     hosts: Vec<TrayHost>,
 }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct HostSelection {
+struct HostAction {
     revision: u32,
     host_id: String,
+    action: String,
 }
 
 struct TrayState {
@@ -44,7 +55,7 @@ struct TrayState {
     web: MenuItem<tauri::Wry>,
     quit: MenuItem<tauri::Wry>,
     host_section: Mutex<Vec<MenuItemKind<tauri::Wry>>>,
-    host_selections: Mutex<HashMap<String, HostSelection>>,
+    actions: Mutex<HashMap<String, HostAction>>,
     web_url: Mutex<Option<String>>,
 }
 
@@ -98,26 +109,41 @@ fn apply(app: &AppHandle, projection: TrayProjection) -> tauri::Result<()> {
     let web_url = projection.web_url.filter(|value| safe_web_url(value));
     state.web.set_enabled(web_url.is_some())?;
     *state.web_url.lock().unwrap() = web_url;
-    // Keep only one native submenu. Selecting a Host opens its controls in
-    // the window so AppIndicator never has to stack two inline submenus.
     let hosts = Submenu::new(app, projection.manage_label, !projection.hosts.is_empty())?;
-    let mut host_selections = HashMap::new();
+    let mut actions = HashMap::new();
     for (index, host) in projection.hosts.iter().enumerate() {
-        let id = format!("tray-host-{}-{index}", projection.revision);
-        hosts.append(&MenuItem::with_id(
+        let submenu = Submenu::new(app, &host.label, true)?;
+        submenu.append(&MenuItem::new(
             app,
-            &id,
-            &host.label,
-            true,
+            &host.service_label,
+            false,
             None::<&str>,
         )?)?;
-        host_selections.insert(
-            id,
-            HostSelection {
-                revision: projection.revision,
-                host_id: host.id.clone(),
-            },
-        );
+        for (action, label, enabled) in [
+            ("enable", &projection.enable_label, host.enable),
+            ("info", &projection.info_label, true),
+            ("reconnect", &projection.reconnect_label, host.reconnect),
+            ("start", &host.start_label, host.start),
+            ("stop", &projection.stop_label, host.stop),
+        ] {
+            // Show only the applicable start/stop action, or both disabled if unknown.
+            if (action == "start" && host.stop) || (action == "stop" && host.start) {
+                continue;
+            }
+            let id = format!("tray-host-{}-{index}-{action}", projection.revision);
+            submenu.append(&MenuItem::with_id(app, &id, label, enabled, None::<&str>)?)?;
+            if enabled {
+                actions.insert(
+                    id,
+                    HostAction {
+                        revision: projection.revision,
+                        host_id: host.id.clone(),
+                        action: action.into(),
+                    },
+                );
+            }
+        }
+        hosts.append(&submenu)?;
     }
     let section = vec![
         hosts.kind(),
@@ -132,7 +158,7 @@ fn apply(app: &AppHandle, projection: TrayProjection) -> tauri::Result<()> {
         state.root.append(item)?;
     }
     *previous = section;
-    *state.host_selections.lock().unwrap() = host_selections;
+    *state.actions.lock().unwrap() = actions;
     Ok(())
 }
 
@@ -198,16 +224,18 @@ pub fn setup(app: &App) -> tauri::Result<()> {
             "tray-web" => open_web(app),
             "tray-quit" => app.exit(0),
             id => {
-                let selection = app
+                let action = app
                     .state::<TrayState>()
-                    .host_selections
+                    .actions
                     .lock()
                     .unwrap()
                     .get(id)
                     .cloned();
-                if let Some(selection) = selection {
-                    show_main_window(app);
-                    let _ = app.emit_to("main", "gui://tray-host-selected", selection);
+                if let Some(action) = action {
+                    if action.action == "info" || action.action == "stop" {
+                        show_main_window(app);
+                    }
+                    let _ = app.emit_to("main", "gui://tray-host-action", action);
                 }
             }
         })
@@ -233,7 +261,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         web,
         quit: quit.clone(),
         host_section: Mutex::new(vec![hosts.kind(), quit_separator.kind(), quit.kind()]),
-        host_selections: Mutex::default(),
+        actions: Mutex::default(),
         web_url: Mutex::default(),
     });
     if let Some(window) = app.get_webview_window("main") {

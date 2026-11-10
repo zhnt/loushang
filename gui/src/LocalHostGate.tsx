@@ -185,7 +185,7 @@ export default function LocalHostGate() {
       ? activateHost(connectionId.current, false) : perform(action, path, instanceId),
   });
   useSystemTray({ userName: account?.name ?? "", language: i18n.resolvedLanguage ?? "en-US", hosts: trayHosts.hosts },
-    (id) => trayHosts.action(id, "info"), (error) => { setTrayError(error); requestHostSettings((value) => value + 1); });
+    trayHosts.action, (error) => { setTrayError(error); requestHostSettings((value) => value + 1); });
 
   if (legacy) return <App account={account} />;
   const reason = host.errorCode ?? (host.state === "running" ? connectionError : null);
@@ -245,7 +245,6 @@ export default function LocalHostGate() {
   return <><HarnessGui client={client} account={account} hostSettings={hostSettings}
     hostSettingsRequest={hostSettingsRequest} onConnectionChange={setConnection} />
     <TrayHostDialog details={trayHosts.details} error={trayHosts.error}
-      host={trayHosts.hosts.find((entry) => entry.id === trayHosts.details?.entry.id)} onAction={trayHosts.action}
       onClose={() => { trayHosts.closeDetails(); trayHosts.clearError(); }} onConfirm={trayHosts.confirmStop} />
   </>;
 }
