@@ -26,7 +26,15 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A120 Windows审批目录custody归位）
+## 当前状态（2026-11-10，A121 Windows live-stage完整验证归位）
+
+原PackageProduct Windows attempt driver执行完整ACL/root/stage/children/executable/
+marker验证与关闭；复用原Worker leaf与既有只读shape，无新Protocol/DTO/Code IO回调。
+Code保GC/selection/currentness/bound-request及薄验证入口；三个无用私绑定退出。
+Code−102/Core+111/系统+9，Coding112523/系统648287，较Goal−25232/+13493，距15K97523。
+联合403过/1capture skip，持久124另重放过；具体范围及非native限制见[A121](key-designs/worker-history-responsibility-convergence.md#a121完整windows-live-stage验证归原packageproduct)。完整P1–P4仍active/partial；Hosting/AI覆盖率/构造等旧差距保持，KD003未实施、KD011/A33待用户未采用。
+
+## A120历史交付（2026-11-10，Windows审批目录custody归位）
 
 完整祖先查找/创建竞争/ACL/identity/created-only flush与原ExitStack关闭归原
 Resources Windows IO；Code保原输入、product-private/max8/label及平台/POSIX政策。

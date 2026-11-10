@@ -882,3 +882,60 @@ _NativeReviewMethods，seal只准_publication及HistoryPublication。未知Worke
 原source frame、测试原像、三设计/实际复核、反事实与JUnit在树外
 `coding-convergence-continue/a119-c50-inventory`。C50/C51/C54原27项已全部通过，
 只关闭上述两项已证旧库存失败；不宣称所有架构检查或完整Goal验收通过。
+
+## A121：完整Windows live-stage验证归原PackageProduct
+
+- Authority: bounded placement revision of A13 under COD-RESP-GOAL-002；完整Goal仍partial。
+- Design status: accepted，三个实际视角及实施owner已核源码、终态及有界职责。
+- Implementation status: implemented，限完整live-stage重验证及下述证据。
+- Owner: 原PackageProduct Windows attempt driver；Worker/Resources保原叶机制与事实。
+- Method: clean local archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
+
+原430源/28组再核并实读较大的bootstrap/preview/managed入口，没有把Coding编译、
+默认政策或已共享机制当删除预算。确认两完整残留：本片103行live-stage验证、另117行
+persisted-bases读/parse/cutover/重读；后者仍候选，不捆绑codec或callback池。
+
+A13保留历史原分工；本片明确修订其_verify_stage_marker操作体位置。Code保两个
+真实入口：bind请求的verify_current及launch-intent commit所用薄验证入口，连同
+原exact CodeLease/type/runtime绑定、GC/currentness/selection/weak bound-request
+政策。PackageProduct原driver接实际Core Product、receipt、既有_StageCaptureIntent
+只读shape及runtime对象，执行整个原ACL→borrow root→validate/root→stage/children/
+executable/marker→final root→finally close程序。不是将完整Product传给Worker叶，
+也不改A13其它retirement/capture的借入FD边界。
+
+无新Protocol、DTO、factory、状态、manager或Code IO回调。runtime参数只提前传
+实际frozen CodeLease.runtime槽的对象引用，两个真实入口均准入该具体类型；
+executable_size与receipt.fingerprint仍在原IO位置求值。不为任意私Proxy getter、
+热改私global/FQN增加接口。Core两local partial只绑定原leaf的error/type前缀，原
+marker_bytes与root/stream实现直接复用，不重计其先前共享收益。
+
+initial=False仍只跳过stage/child/executable/marker ACL，root始终validate；不转更严
+WindowsStageInspection/read_checked_file，不增属性/nlink/hash/重复读取或post-stat。
+marker仍单次os.read(len(expected)+1)，size只在旧位置读，后续runtime.verify仍由原
+caller执行。stage identity比较先完成两个fstat取值再比较，不等才短路后续or；children反序close
+首错会停止余下children，外层stage/root/ACL仍按原with/finally处理。expected bytes
+在marker ACL/streams之后才形成；不得提前复算receipt hash。product.state_root本身
+有现成Core authority叶效果，两次仍在原scope/位置，不当成可任意提前的纯Path。
+
+Code_verify_stage_marker签名保薄适配，公开6字段Lease/错误类及全部其它定义保持。
+退出dead stream partial与仅供probe的_marker_bytes/_write_all alias及unused imports；
+原materialize仍用_require_root，继续保留。原stage probe仅导入实际Core helpers并迁
+两marker/一write调用，逆变换后整module AST同，原6断言/fixture/cases/raises不变。
+所有原Core非import定义原样；展开两partial/常量和runtime字段绑定后完整操作AST同。
+
+Code−102/Core+111/系统+9（含所有签名、导入、局部绑定及薄入口），非系统净减。
+原79stage探针过；旧树尚未替换时捕获124场景并在原实际入口重放124过，不从候选
+录期望。新联合403过：同124+原stage79+launch-intent值8+导入165+C50/C51/C54原27，
+另1capture占位skip。仓库持久同124另过，不重复计为248独立场景。105故障case/111
+确切触发点验证成功/拒绝、晚size/hash、初始/非初始、短marker与复合close/outer错。
+
+模型复用原NativeModel及真实Receipt/Runtime/Lease类型，FD/ACL/root/path/native
+效果受控，是Linux-host Windows边界程序证据；close故障为先pop后lost-ack模型，
+不涵盖所有pre-close OS效应；同步CancelledError注入不证明真实Task.cancel或Kernel
+竞争/Windows原生ACL/FD普查。公开平台dispatch以未变AST证明，不由私入口模型外推。
+显式probe不增默认PR gate；gzip9987B解压逐字等原614049B/124record，非重录期望。
+
+完整源码frame、三个设计及实际视角、旧记录、时序/异常图、模型原像、JUnit和成本
+在树外`coding-convergence-continue/a121-whole-operation-selection`；最后综合接受在
+原Goal授权内完成。完整P1–P4/≤15K与其它Hosting/AI覆盖率/构造差距不因本片关闭，
+KD003未实施、KD011/A33待用户未采用保持。

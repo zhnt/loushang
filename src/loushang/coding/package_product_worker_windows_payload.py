@@ -18,11 +18,8 @@ from hashlib import sha256
 from weakref import WeakKeyDictionary
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_directory,
-    open_windows_regular_file_at,
-    windows_listdir_at,
-    windows_stat_at,
+from loushang.harness.package_product._worker_windows_attempt import (
+    verify_windows_product_worker_live_stage,
 )
 from loushang.harness.resources.plugins.locators import (
     canonical_plugin_relative_path,
@@ -40,11 +37,6 @@ from loushang.harness.worker.payload._selected_payload import (
 from loushang.harness.worker.payload._windows_stage_io import (
     create_windows_payload_stage,
     require_payload_root,
-    require_payload_streams,
-    write_payload_bytes,
-)
-from loushang.harness.worker.payload._windows_stage_io import (
-    marker_bytes as _marker_bytes,
 )
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
@@ -476,101 +468,17 @@ def _verify_stage_marker(
     entrypoint: str,
     initial: bool,
 ) -> None:
-    product = receipt_owner.product_owner
-    stage_name = "worker-payload-" + payload_lease.attempt_id
-    with WindowsPrivateDirectoryAcl() as acl:
-        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-            acl.validate(root)
-            _require_root(product.state_root, root)
-            stage = open_windows_directory(
-                stage_name, dir_fd=root, share_delete=False, read_control=True
-            )
-            try:
-                if initial:
-                    acl.validate(stage)
-                _require_no_named_streams(stage, directory=True)
-                if (
-                    os.fstat(stage).st_dev,
-                    os.fstat(stage).st_ino,
-                ) != payload_lease.stage_identity or not os.path.samestat(
-                    windows_stat_at(root, stage_name), os.fstat(stage)
-                ):
-                    raise CodingWindowsWorkerPayloadMaterializationError(
-                        "coding_worker_payload_stage_changed"
-                    )
-                top_name = entrypoint.split("/", 1)[0]
-                if set(windows_listdir_at(stage)) != {_MARKER, top_name}:
-                    raise CodingWindowsWorkerPayloadMaterializationError(
-                        "coding_worker_payload_stage_changed"
-                    )
-                parts = entrypoint.split("/")
-                current = stage
-                children: list[int] = []
-                try:
-                    for index, name in enumerate(parts[:-1]):
-                        child = open_windows_directory(
-                            name,
-                            dir_fd=current,
-                            share_delete=False,
-                            read_control=True,
-                        )
-                        children.append(child)
-                        if initial:
-                            acl.validate(child)
-                        _require_no_named_streams(child, directory=True)
-                        if set(windows_listdir_at(child)) != {parts[index + 1]}:
-                            raise CodingWindowsWorkerPayloadMaterializationError(
-                                "coding_worker_payload_stage_changed"
-                            )
-                        current = child
-                    executable = open_windows_regular_file_at(
-                        current,
-                        parts[-1],
-                        create_new=False,
-                        write=False,
-                        read_control=True,
-                    )
-                    try:
-                        if initial:
-                            acl.validate(executable)
-                        _require_no_named_streams(executable, directory=False)
-                        if (
-                            os.fstat(executable).st_size
-                            != payload_lease.runtime.executable_size
-                        ):
-                            raise CodingWindowsWorkerPayloadMaterializationError(
-                                "coding_worker_payload_stage_changed"
-                            )
-                    finally:
-                        os.close(executable)
-                finally:
-                    for child in reversed(children):
-                        os.close(child)
-                marker = open_windows_regular_file_at(
-                    stage, _MARKER, create_new=False, write=False, read_control=True
-                )
-                try:
-                    if initial:
-                        acl.validate(marker)
-                    _require_no_named_streams(marker, directory=False)
-                    expected = _marker_bytes(
-                        attempt_id=payload_lease.attempt_id,
-                        entrypoint=entrypoint,
-                        owner_id=payload_lease.owner_id,
-                        payload_digest=payload_lease.payload_digest,
-                        payload_size=payload_lease.runtime.executable_size,
-                        receipt_fingerprint=receipt.fingerprint,
-                        stage_identity=payload_lease.stage_identity,
-                    )
-                    if os.read(marker, len(expected) + 1) != expected:
-                        raise CodingWindowsWorkerPayloadMaterializationError(
-                            "coding_worker_payload_marker_changed"
-                        )
-                finally:
-                    os.close(marker)
-                _require_root(product.state_root, root)
-            finally:
-                os.close(stage)
+    verify_windows_product_worker_live_stage(
+        receipt_owner.product_owner,
+        receipt=receipt,
+        payload_lease=payload_lease,
+        runtime=payload_lease.runtime,
+        entrypoint=entrypoint,
+        initial=initial,
+        marker_name=_MARKER,
+        error_type=CodingWindowsWorkerPayloadMaterializationError,
+        error_prefix="coding_worker_payload",
+    )
 
 
 _require_root = partial(
@@ -578,16 +486,6 @@ _require_root = partial(
     error_type=CodingWindowsWorkerPayloadMaterializationError,
     error_prefix="coding_worker_payload",
 )
-
-
-_require_no_named_streams = partial(
-    require_payload_streams,
-    error_type=CodingWindowsWorkerPayloadMaterializationError,
-    error_prefix="coding_worker_payload",
-)
-
-
-_write_all = write_payload_bytes
 
 
 __all__ = [

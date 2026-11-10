@@ -439,3 +439,10 @@ Code781→733（−48），既有Resources Windows IO828→887（+59），系统
 Coding430源112625行，系统1969源648278行（含GUI），较Goal−25130/+13484，距15K97625。
 接口、导入、薄入口及docstring全部计入；原Resume及composition消费者本来共用同一程序，不报三算法去重。
 其它1967生产源及13资源不变；测试/文档另计，验证限制见[A120](key-designs/windows-approval-root-custody-convergence.md)。
+
+## A121：完整Windows live-stage重验证
+
+Code600→498（−102），原PackageProduct Windows attempt739→850（+111），系统+9。
+Coding430源112523行，系统1969源648287行（含GUI），较Goal−25232/+13493，距15K97523。
+完整程序归位，不把原marker/root/stream leaf的既有共享或三个私alias退出报新算法去重。
+另外1967生产源与13资源SHA不变；测试、gzip数据及文档另计，见[A121](key-designs/worker-history-responsibility-convergence.md#a121完整windows-live-stage验证归原packageproduct)。

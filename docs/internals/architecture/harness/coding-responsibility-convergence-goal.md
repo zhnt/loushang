@@ -1,5 +1,7 @@
 # COD-RESP-GOAL-002：Coding 领域化与公共机制职责归一
 
+- A121：完整Windows live-stage重验证归原PackageProduct；Code−102/Core+111/系统+9，完整Goal仍partial，见[A121](key-designs/worker-history-responsibility-convergence.md#a121完整windows-live-stage验证归原packageproduct)。
+
 - A120：完整Windows审批目录native创建与关闭归原Resources，Code−48/Core+59/系统+11；完整Goal仍partial，见[A120](key-designs/windows-approval-root-custody-convergence.md)。
 
 - A119：协调A93/A107对应的两项旧C50库存限制，生产净0；不新增门禁或精简收益，见[A119](key-designs/worker-history-responsibility-convergence.md#a119协调两项c50旧消费者库存)。

@@ -12,6 +12,7 @@ import re
 import stat
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from typing import Generic, Protocol, Self, TypeVar
@@ -31,6 +32,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     open_windows_directory,
+    open_windows_regular_file_at,
     windows_listdir_at,
     windows_stat_at,
 )
@@ -42,7 +44,10 @@ from loushang.harness.worker._windows_provisioning_journal import (
     WindowsWorkerProvisioningAttemptV1,
     WindowsWorkerProvisioningStateJournal,
 )
-from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
+from loushang.harness.worker.contracts import (
+    ManagedWorkerLaunchRequestV1,
+    WorkerRuntimeBindingV1,
+)
 from loushang.harness.worker.history._receipts import _ReceiptRecordMethods
 from loushang.harness.worker.history._windows_product_journals import (
     WindowsActivationStateJournal,
@@ -56,6 +61,9 @@ from loushang.harness.worker.payload._windows_stage_io import (
     FileIdentity,
     LaunchIntent,
     WindowsStageInspection,
+    marker_bytes,
+    require_payload_root,
+    require_payload_streams,
 )
 from loushang.harness.worker.payload._windows_stage_io import identity as _file_identity
 from loushang.harness.worker.payload._windows_stage_retirement import close_opened
@@ -505,6 +513,109 @@ class _StageCaptureIntent(LaunchIntent, Protocol):
 
 
 StageReviewT = TypeVar("StageReviewT")
+
+
+def verify_windows_product_worker_live_stage(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    receipt: ProductWorkerActivationReceiptV1,
+    payload_lease: _StageCaptureIntent,
+    runtime: WorkerRuntimeBindingV1,
+    entrypoint: str,
+    initial: bool,
+    marker_name: str,
+    error_type: type[RuntimeError],
+    error_prefix: str,
+) -> None:
+    """Verify a live stage under the original Product root and ACL custody."""
+
+    require_root = partial(
+        require_payload_root, error_type=error_type, error_prefix=error_prefix
+    )
+    require_streams = partial(
+        require_payload_streams, error_type=error_type, error_prefix=error_prefix
+    )
+    stage_name = "worker-payload-" + payload_lease.attempt_id
+    with WindowsPrivateDirectoryAcl() as acl:
+        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+            acl.validate(root)
+            require_root(product.state_root, root)
+            stage = open_windows_directory(
+                stage_name, dir_fd=root, share_delete=False, read_control=True
+            )
+            try:
+                if initial:
+                    acl.validate(stage)
+                require_streams(stage, directory=True)
+                if (
+                    os.fstat(stage).st_dev,
+                    os.fstat(stage).st_ino,
+                ) != payload_lease.stage_identity or not os.path.samestat(
+                    windows_stat_at(root, stage_name), os.fstat(stage)
+                ):
+                    raise error_type(error_prefix + "_stage_changed")
+                top_name = entrypoint.split("/", 1)[0]
+                if set(windows_listdir_at(stage)) != {marker_name, top_name}:
+                    raise error_type(error_prefix + "_stage_changed")
+                parts = entrypoint.split("/")
+                current = stage
+                children: list[int] = []
+                try:
+                    for index, name in enumerate(parts[:-1]):
+                        child = open_windows_directory(
+                            name,
+                            dir_fd=current,
+                            share_delete=False,
+                            read_control=True,
+                        )
+                        children.append(child)
+                        if initial:
+                            acl.validate(child)
+                        require_streams(child, directory=True)
+                        if set(windows_listdir_at(child)) != {parts[index + 1]}:
+                            raise error_type(error_prefix + "_stage_changed")
+                        current = child
+                    executable = open_windows_regular_file_at(
+                        current,
+                        parts[-1],
+                        create_new=False,
+                        write=False,
+                        read_control=True,
+                    )
+                    try:
+                        if initial:
+                            acl.validate(executable)
+                        require_streams(executable, directory=False)
+                        if os.fstat(executable).st_size != runtime.executable_size:
+                            raise error_type(error_prefix + "_stage_changed")
+                    finally:
+                        os.close(executable)
+                finally:
+                    for child in reversed(children):
+                        os.close(child)
+                marker = open_windows_regular_file_at(
+                    stage, marker_name, create_new=False, write=False, read_control=True
+                )
+                try:
+                    if initial:
+                        acl.validate(marker)
+                    require_streams(marker, directory=False)
+                    expected = marker_bytes(
+                        attempt_id=payload_lease.attempt_id,
+                        entrypoint=entrypoint,
+                        owner_id=payload_lease.owner_id,
+                        payload_digest=payload_lease.payload_digest,
+                        payload_size=runtime.executable_size,
+                        receipt_fingerprint=receipt.fingerprint,
+                        stage_identity=payload_lease.stage_identity,
+                    )
+                    if os.read(marker, len(expected) + 1) != expected:
+                        raise error_type(error_prefix + "_marker_changed")
+                finally:
+                    os.close(marker)
+                require_root(product.state_root, root)
+            finally:
+                os.close(stage)
 
 
 def capture_windows_product_worker_stage(

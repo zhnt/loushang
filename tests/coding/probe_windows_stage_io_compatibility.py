@@ -34,6 +34,10 @@ from loushang.coding.package_product_worker_windows_partial_stage_review import 
 from loushang.coding.package_product_worker_windows_reserved_review import (
     CodingWindowsWorkerReservedNoEffectReviewV1,
 )
+from loushang.harness.worker.payload._windows_stage_io import (
+    marker_bytes,
+    write_payload_bytes,
+)
 
 pytestmark = pytest.mark.skipif(
     sys.platform != "linux", reason="Linux synthetic Windows IO baseline"
@@ -324,7 +328,7 @@ def observe_stage(role, case, patch):
     intent = CodingWindowsWorkerLaunchIntentV1(
         ATTEMPT, (1, 10), "b" * 64, "c" * 64, "d" * 64, "e" * 64, digest, "owner", 1
     )
-    marker = payload._marker_bytes(
+    marker = marker_bytes(
         attempt_id=ATTEMPT,
         entrypoint="bin/worker.exe",
         owner_id="owner",
@@ -532,7 +536,7 @@ def observe_bytes(case, patch):
                 "owner",
                 1,
             )
-            body = payload._marker_bytes(
+            body = marker_bytes(
                 attempt_id=ATTEMPT,
                 entrypoint="bin/worker.exe",
                 owner_id="owner",
@@ -567,7 +571,7 @@ def observe_bytes(case, patch):
             native.setattr(os, "write", writer)
 
             def action():
-                return payload._write_all(descriptor, b"payload")
+                return write_payload_bytes(descriptor, b"payload")
 
         error = observed_error(action)
         return dict(error=error, value=value, events=fs.events)

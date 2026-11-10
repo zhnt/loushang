@@ -43,6 +43,12 @@ cleanup. Coding binds the approval-state target, budget and diagnostics and keep
 platform/entry admission. This does not admit or repair a Product root; the
 stronger fenced Product chain API remains separate. See [A120](key-designs/windows-approval-root-custody-convergence.md).
 
+PackageProduct's existing Windows attempt driver owns complete live-stage
+verification under the original ACL and borrowed Product root. It reuses Worker
+marker/root/stream leaves and the existing stage-intent shape; Coding keeps
+selection/currentness, bound-request admission and the thin verification entry.
+No new evidence writer, runtime state or Code IO callback is introduced. See [A121](key-designs/worker-history-responsibility-convergence.md#a121完整windows-live-stage验证归原packageproduct).
+
 ## Scope
 
 Harness is the cross-Product execution substrate. It owns reusable mechanisms,
