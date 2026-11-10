@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 from loushang.harness.journal import JournalLoadPolicy
 from loushang.harness.worker.history._windows_record_journals import (
     WindowsReceiptRecords,
@@ -46,6 +44,7 @@ class CodingWindowsWorkerReceiptJournal(
     _max_bytes = staticmethod(lambda: _MAX_BYTES)
     _max_events = staticmethod(lambda: _MAX_RECEIPTS)
     _append_error = "Windows Worker receipt append made no progress"
+    _root_error = "Windows Worker receipt requires a pinned Product root"
     _record_type = CodingWorkerReceiptRecordV1
 
     def records(self, *, directory_fd: int) -> tuple[CodingWorkerReceiptRecordV1, ...]:
@@ -65,11 +64,6 @@ class CodingWindowsWorkerReceiptJournal(
             policy=policy,
             opt_in_decision_digest=opt_in_decision_digest,
         )
-
-    @staticmethod
-    def _require_root(directory_fd: int) -> None:
-        if os.name != "nt" or type(directory_fd) is not int or directory_fd < 0:
-            raise OSError("Windows Worker receipt requires a pinned Product root")
 
 
 __all__ = ["CodingWindowsWorkerReceiptJournal"]

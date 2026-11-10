@@ -35,6 +35,22 @@ START native_revision==2特殊校验在草稿中遗漏。未装Product，生产�
 [A129](key-designs/worker-history-responsibility-convergence.md#a129完整windows退休闭包原型未采用)。
 完整Goal仍active/partial；A129当时仍用A128已接受计量，不以树外原型报减少。
 
+## A137共用Worker日志读取与追加
+
+Windows 的授权、回执和原生发布审批日志共用绑定、解码、规范编码、字节容量检查、
+初始化和追加后根复核。共享绑定在各自原有的 ExitStack 内调用，原资源 IO owner
+继续提供 ACL、锁与比较追加。各日志在原位置判断重放、事件容量和记录构造。原根校验
+文本及公开入口签名保留。
+
+POSIX 两个当前授权入口共用根目录读取，保留各自的 GC guard 和原 V1/V2 来源。
+POSIX 和 Windows 共用最新授权的反向查找。原 Windows IO 探针的挂点随 `os` 校验
+移至实际 owner，继续使用原预期数据和断言。337 条受控新旧观察逐字节一致，396 项
+既有回归、183 项架构检查、6 个改动模块的类型检查、Ruff、依赖图和文档约束均通过。
+Windows 原生运行未覆盖。运行记录在树外 `a137-worker-journal-custody`。
+
+Coding 减19行，Harness 增7行，系统净减12行。当前 Coding 111876行，系统648254行。
+较 Goal 起点分别减少25879行和增加13460行，距15K还差96876行。P1–P4仍在进行。
+
 ## A136共用Worker授权重放与代次检查
 
 两平台共用 Coding 的候选授权值判断。同一授权重放会把原 opt-in 对象交回原账本，

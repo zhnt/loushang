@@ -6,12 +6,14 @@ remain with WindowsJournalFileIO; these programs confer no Product authority.
 
 from __future__ import annotations
 
+import os
 import re
 import secrets
 from collections.abc import Callable
 from contextlib import ExitStack
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, Literal, Protocol, TypeVar
+from typing import BinaryIO, Generic, Literal, Protocol, TypeVar
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.resources.packages._windows_journal_file import (
@@ -26,7 +28,13 @@ from loushang.harness.worker.product_activation import (
 )
 
 from ._native_approval import _A, _N, _NativeFactory, _next_native_approval_decision
-from ._opt_in import _OPAQUE, _OptInDecisionMethods, _OptInMutation, _OptInValue
+from ._opt_in import (
+    _OPAQUE,
+    _OptInDecisionMethods,
+    _OptInMutation,
+    _OptInValue,
+    latest_opt_in_decision,
+)
 from ._receipts import _ReceiptRecordMethods, latest_receipt_record
 
 
@@ -44,6 +52,15 @@ class _Decoder(Protocol[_R_co]):
     ) -> tuple[_R_co, ...]: ...
 
 
+@dataclass(frozen=True, slots=True)
+class _BoundRecordAppend(Generic[_R]):
+    acl: WindowsPrivateDirectoryAcl
+    lock_handle: BinaryIO
+    raw: bytes | None
+    initialized: bool
+    records: tuple[_R, ...]
+
+
 class _WindowsRecords(Generic[_R]):
     _name: str
     _label: str
@@ -53,6 +70,7 @@ class _WindowsRecords(Generic[_R]):
     _max_bytes: Callable[[], int]
     _max_events: Callable[[], int]
     _append_error: str
+    _root_error: str
 
     def __init__(self, path: Path, *, scope_id: str) -> None:
         if (
@@ -120,9 +138,33 @@ class _WindowsRecords(Generic[_R]):
             changed_error=lambda: self._failure("state_root_changed"),
         )
 
-    @staticmethod
-    def _require_root(directory_fd: int) -> None:
-        raise NotImplementedError("the original platform admission is required")
+    @classmethod
+    def _require_root(cls, directory_fd: int) -> None:
+        if os.name != "nt" or type(directory_fd) is not int or directory_fd < 0:
+            raise OSError(cls._root_error)
+
+    def _bind_record_append(
+        self, directory_fd: int, custody: ExitStack
+    ) -> _BoundRecordAppend[_R]:
+        acl, lock_handle, raw, initialized = self._file_io.bind_append_snapshot(
+            directory_fd,
+            custody=custody,
+            assert_visible_root=lambda: self._assert_visible_root(directory_fd),
+            prepare_lock=lambda root, acl: self._prepare_lock(root, acl),
+        )
+        records = () if raw is None else self._decode(raw)
+        return _BoundRecordAppend(acl, lock_handle, raw, initialized, records)
+
+    def _append_bound_record(
+        self, directory_fd: int, bound: _BoundRecordAppend[_R], record: _R
+    ) -> None:
+        line = canonical_json_bytes(record.to_dict()) + b"\n"
+        if len(bound.raw or b"") + len(line) > self._max_bytes():
+            raise self._failure("capacity")
+        if not bound.initialized:
+            self._file_io.mark_initialized(bound.lock_handle)
+        self._file_io.append(directory_fd, bound.acl, expected=bound.raw, line=line)
+        self._assert_visible_root(directory_fd)
 
 
 _D = TypeVar("_D", bound=_OptInDecisionMethods)
@@ -133,6 +175,7 @@ _T = TypeVar("_T", bound=_ReceiptRecordMethods)
 class WindowsOptInRecords(_WindowsRecords[_D], Generic[_D, _P]):
     _record_type: type[_D]
     _opt_in_type: type[_P]
+    _latest = staticmethod(latest_opt_in_decision)
 
     @staticmethod
     def _require_plugin_id(plugin_id: str) -> None:
@@ -156,13 +199,9 @@ class WindowsOptInRecords(_WindowsRecords[_D], Generic[_D, _P]):
             raise ValueError("Windows Worker opt-in command is invalid")
         self._require_root(directory_fd)
         with ExitStack() as custody:
-            acl, lock_handle, raw, initialized = self._file_io.bind_append_snapshot(
-                directory_fd,
-                custody=custody,
-                assert_visible_root=lambda: self._assert_visible_root(directory_fd),
-                prepare_lock=lambda root, acl: self._prepare_lock(root, acl),
-            )
-            events = () if raw is None else self._decode(raw)
+            bound = self._bind_record_append(directory_fd, custody)
+            events = bound.records
+
             def failure(code: str) -> RuntimeError:
                 return self._failure(code)
 
@@ -170,10 +209,7 @@ class WindowsOptInRecords(_WindowsRecords[_D], Generic[_D, _P]):
             if replay is not None:
                 self._assert_visible_root(directory_fd)
                 return replay
-            previous = next(
-                (event for event in reversed(events) if event.plugin_id == plugin_id),
-                None,
-            )
+            previous = self._latest(events, plugin_id)
             generation, kill = mutation.next_generation(
                 previous, failure=failure
             )
@@ -189,13 +225,7 @@ class WindowsOptInRecords(_WindowsRecords[_D], Generic[_D, _P]):
                 action=action,
                 opt_in=opt_in,
             )
-            line = canonical_json_bytes(decision.to_dict()) + b"\n"
-            if len(raw or b"") + len(line) > self._max_bytes():
-                raise self._failure("capacity")
-            if not initialized:
-                self._file_io.mark_initialized(lock_handle)
-            self._file_io.append(directory_fd, acl, expected=raw, line=line)
-            self._assert_visible_root(directory_fd)
+            self._append_bound_record(directory_fd, bound, decision)
             return decision
 
 
@@ -218,13 +248,8 @@ class WindowsReceiptRecords(_WindowsRecords[_T], Generic[_T]):
             raise ValueError("Windows Worker receipt issue input is invalid")
         self._require_root(directory_fd)
         with ExitStack() as custody:
-            acl, lock_handle, raw, initialized = self._file_io.bind_append_snapshot(
-                directory_fd,
-                custody=custody,
-                assert_visible_root=lambda: self._assert_visible_root(directory_fd),
-                prepare_lock=lambda root, acl: self._prepare_lock(root, acl),
-            )
-            records = () if raw is None else self._decode(raw)
+            bound = self._bind_record_append(directory_fd, custody)
+            records = bound.records
             latest = latest_receipt_record(records, policy)
             if (
                 latest is not None
@@ -246,13 +271,7 @@ class WindowsReceiptRecords(_WindowsRecords[_T], Generic[_T]):
                 opt_in_decision_digest=opt_in_decision_digest,
                 receipt=receipt,
             )
-            line = canonical_json_bytes(record.to_dict()) + b"\n"
-            if len(raw or b"") + len(line) > self._max_bytes():
-                raise self._failure("capacity")
-            if not initialized:
-                self._file_io.mark_initialized(lock_handle)
-            self._file_io.append(directory_fd, acl, expected=raw, line=line)
-            self._assert_visible_root(directory_fd)
+            self._append_bound_record(directory_fd, bound, record)
             return receipt
 
 
@@ -281,13 +300,8 @@ class WindowsNativeApprovalRecords(_WindowsRecords[_N], Generic[_A, _N]):
             raise ValueError("Windows Worker native approval command is invalid")
         self._require_root(directory_fd)
         with ExitStack() as custody:
-            acl, lock_handle, raw, initialized = self._file_io.bind_append_snapshot(
-                directory_fd,
-                custody=custody,
-                assert_visible_root=lambda: self._assert_visible_root(directory_fd),
-                prepare_lock=lambda root, acl: self._prepare_lock(root, acl),
-            )
-            events = () if raw is None else self._decode(raw)
+            bound = self._bind_record_append(directory_fd, custody)
+            events = bound.records
             decision, replay = _next_native_approval_decision(
                 events,
                 operation_id=operation_id,
@@ -302,11 +316,5 @@ class WindowsNativeApprovalRecords(_WindowsRecords[_N], Generic[_A, _N]):
             if replay:
                 self._assert_visible_root(directory_fd)
                 return decision
-            line = canonical_json_bytes(decision.to_dict()) + b"\n"
-            if len(raw or b"") + len(line) > self._max_bytes():
-                raise self._failure("capacity")
-            if not initialized:
-                self._file_io.mark_initialized(lock_handle)
-            self._file_io.append(directory_fd, acl, expected=raw, line=line)
-            self._assert_visible_root(directory_fd)
+            self._append_bound_record(directory_fd, bound, decision)
             return decision

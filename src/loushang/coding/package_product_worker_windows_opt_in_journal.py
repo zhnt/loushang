@@ -7,7 +7,6 @@ Worker activation receipt.
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 from typing import Literal
@@ -47,6 +46,7 @@ class CodingWindowsWorkerOptInJournal(
     _max_bytes = staticmethod(lambda: _MAX_BYTES)
     _max_events = staticmethod(lambda: _MAX_EVENTS)
     _append_error = "Windows Worker opt-in append made no progress"
+    _root_error = "Windows Worker opt-in requires a pinned Product root"
     _record_type = CodingWorkerOptInDecisionV1
     _opt_in_type = CodingWorkerOptInV1
 
@@ -59,10 +59,7 @@ class CodingWindowsWorkerOptInJournal(
     ) -> CodingWorkerOptInDecisionV1 | None:
         self._require_plugin_id(plugin_id)
         events = self.history_read_only(directory_fd=directory_fd)
-        return next(
-            (event for event in reversed(events) if event.plugin_id == plugin_id),
-            None,
-        )
+        return self._latest(events, plugin_id)
 
     def history_read_only(
         self, *, directory_fd: int
@@ -88,11 +85,6 @@ class CodingWindowsWorkerOptInJournal(
             action=action,
             opt_in=opt_in,
         )
-
-    @staticmethod
-    def _require_root(directory_fd: int) -> None:
-        if os.name != "nt" or type(directory_fd) is not int or directory_fd < 0:
-            raise OSError("Windows Worker opt-in requires a pinned Product root")
 
     @staticmethod
     def _require_plugin_id(plugin_id: str) -> None:

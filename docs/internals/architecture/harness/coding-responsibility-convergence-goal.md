@@ -1,5 +1,7 @@
 # COD-RESP-GOAL-002：Coding 领域化与公共机制职责归一
 
+- A137 三类 Windows Worker 日志共用绑定和追加，Coding 减19行，系统减12行。见[A137](coding-responsibility-convergence-progress.md#a137共用worker日志读取与追加)。
+
 - A136 共用 Worker 授权重放与代次检查，Coding 减9行，Harness 增15行。见[A136](coding-responsibility-convergence-progress.md#a136共用worker授权重放与代次检查)。
 
 - A135 两平台共用 Worker 回执与所有者校验，Coding 与系统源码各减10行。见[A135](coding-responsibility-convergence-progress.md#a135两平台共用worker回执复核)。

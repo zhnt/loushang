@@ -40,6 +40,7 @@ from ._opt_in import (
     _OptInReplayFields,
     _OptInValue,
     fold_opt_in_events,
+    latest_opt_in_decision,
     opt_in_line,
     parse_opt_in_segment,
 )
@@ -107,23 +108,18 @@ class OptInJournal(Generic[_DecisionT, _ProjectionT, _PolicyT]):
         """Read the latest Product decision under the shared selection gate."""
 
         self._require_plugin_id(plugin_id)
-        with self._gc_gate.guard(), self._bound_journal(create_lock=False) as rooted:
-            if self._v2_owner_exists(rooted):
-                _events, _history, replay = self._load_v2_state(rooted)
-                return self._latest(
-                    cast(tuple[_DecisionT, ...], replay.latest_decisions), plugin_id
-                )
-            events, _history = self._load_history(rooted)
-            return self._latest(events, plugin_id)
+        with self._gc_gate.guard():
+            return self._current_under_gc_guard(plugin_id)
 
     def current_read_only(self, plugin_id: str) -> _DecisionT | None:
         """Inspect an existing Product decision without creating owner state."""
 
         self._require_plugin_id(plugin_id)
-        with (
-            self._gc_gate.read_guard(),
-            self._bound_journal(create_lock=False) as rooted,
-        ):
+        with self._gc_gate.read_guard():
+            return self._current_under_gc_guard(plugin_id)
+
+    def _current_under_gc_guard(self, plugin_id: str) -> _DecisionT | None:
+        with self._bound_journal(create_lock=False) as rooted:
             if self._v2_owner_exists(rooted):
                 _events, _history, replay = self._load_v2_state(rooted)
                 return self._latest(
@@ -527,12 +523,7 @@ class OptInJournal(Generic[_DecisionT, _ProjectionT, _PolicyT]):
         fold_opt_in_events(result, scope_id=self._scope_id, error_type=self._error_type)
         return result, history
 
-    @staticmethod
-    def _latest(events: tuple[_DecisionT, ...], plugin_id: str) -> _DecisionT | None:
-        return next(
-            (event for event in reversed(events) if event.plugin_id == plugin_id),
-            None,
-        )
+    _latest = staticmethod(latest_opt_in_decision)
 
     @staticmethod
     def _require_plugin_id(plugin_id: str) -> None:

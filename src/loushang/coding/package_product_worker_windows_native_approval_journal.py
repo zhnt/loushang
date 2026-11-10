@@ -7,7 +7,6 @@ installs a release, or grants launch authority.
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 from typing import Literal
@@ -52,6 +51,7 @@ class CodingWindowsWorkerNativeApprovalJournal(
     _max_bytes = staticmethod(lambda: _MAX_BYTES)
     _max_events = staticmethod(lambda: _MAX_EVENTS)
     _append_error = "Windows Worker native approval append stalled"
+    _root_error = "Windows Worker approval requires a pinned Product root"
     _create_decision = staticmethod(CodingWorkerNativeApprovalDecisionV1.create)
     _approval_type = CodingWorkerNativeReleaseApprovalV1
 
@@ -87,11 +87,6 @@ class CodingWindowsWorkerNativeApprovalJournal(
             action=action,
             approval=approval,
         )
-
-    @staticmethod
-    def _require_root(directory_fd: int) -> None:
-        if os.name != "nt" or type(directory_fd) is not int or directory_fd < 0:
-            raise OSError("Windows Worker approval requires a pinned Product root")
 
 
 __all__ = ["CodingWindowsWorkerNativeApprovalJournal"]

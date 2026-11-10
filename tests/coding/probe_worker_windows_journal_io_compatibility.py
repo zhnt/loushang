@@ -231,6 +231,14 @@ def observe(kind, case, root, monkeypatch):
                         "loushang.harness.worker.history._windows_product_journals"
                     )
                 )
+            elif importlib.util.find_spec(
+                "loushang.harness.worker.history._windows_record_journals"
+            ):
+                targets.append(
+                    importlib.import_module(
+                        "loushang.harness.worker.history._windows_record_journals"
+                    )
+                )
             if backend:
                 targets.append(
                     importlib.import_module(
@@ -247,7 +255,8 @@ def observe(kind, case, root, monkeypatch):
                 }.items():
                     if hasattr(target, attr):
                         patch.setattr(target, attr, value)
-                patch.setattr(target, "os", namespace)
+                if hasattr(target, "os"):
+                    patch.setattr(target, "os", namespace)
             for target in targets:
                 if hasattr(target, "windows_listdir_at"):
                     patch.setattr(target, "windows_listdir_at", listdir)

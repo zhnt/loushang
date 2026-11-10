@@ -254,6 +254,14 @@ class _OptInMutation:
         return generation, kill
 
 
+def latest_opt_in_decision(
+    events: tuple[_DecisionT, ...], plugin_id: str
+) -> _DecisionT | None:
+    return next(
+        (event for event in reversed(events) if event.plugin_id == plugin_id), None
+    )
+
+
 def fold_opt_in_events(
     events: tuple[_DecisionT, ...],
     *,
