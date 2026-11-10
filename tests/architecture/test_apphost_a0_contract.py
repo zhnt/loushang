@@ -358,7 +358,23 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
         for path in Path("src/loushang").rglob("*.py")
         if not path.is_relative_to(APPHOST_ROOT) and _imports_apphost(path)
     }
-    assert consumers == {
+    # A127: optional consumers of the accepted same-instance execution bridge.
+    # Preserve the original required inventory; absent adapters add no condition.
+    optional_execution = {
+        path for path in consumers
+        if path in {
+            Path("src/loushang/coding/_hosted_execution_work.py"),
+            Path("src/loushang/coding/hosted_resume.py"),
+        }
+        and {
+            name for name in _resolved_imports(path)
+            if name == "loushang.apphost" or name.startswith("loushang.apphost.")
+        } <= {
+            "loushang.apphost.integrations.session_control",
+            "loushang.apphost.integrations.session_control._HostedAgentExecutionWork",
+        }
+    }
+    assert consumers - optional_execution == {
         # G1: desktop composition over the existing managed lifecycle owners.
         Path("src/loushang/coding/gui_local_host.py"),
         Path("src/loushang/coding/apphost_canary.py"),

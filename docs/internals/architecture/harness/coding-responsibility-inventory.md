@@ -1,5 +1,7 @@
 # Coding 逐文件职责与处置清单 R2
 
+- A127：普通/Resume托管Work共同观察、分发与结清归原AppHost集成；Code保两条策略边界，Code−93/AppHost+118/系统+25，完整Goal仍partial，见[A127](key-designs/hosted-work-custody-convergence.md)。
+
 - A126：完整model Work配置寿命归原HarnessWork规划集成，Code保纯profile；Code−41/Core+71/系统+30，完整Goal仍partial，见[A126](key-designs/planning-work-configuration-custody-convergence.md)。
 
 - A125：两平台expiry命名共享原Coding记录模块，四条真实调用链接通；Code/系统−24、Core0，完整Goal仍partial，见[A125](coding-convergence-system-cost-audit.md#a125两平台expiry命名同域去重)。
@@ -72,7 +74,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [_capability_plugin_specs.py](../../../../src/loushang/coding/_capability_plugin_specs.py) | C01 | 103 | K | C01 启动、Plugin 与资源装配 | b2bceae8d220 | 103 | b2bceae8d220 |
 | [_cleanup.py](../../../../src/loushang/coding/_cleanup.py) | C06 | 28 | R/M | C06 其余根目录入口与策略 | caf6c413edb5 | 6 | 15c1bd02b27e |
 | [_external_data_product_composition.py](../../../../src/loushang/coding/_external_data_product_composition.py) | C06 | 235 | R/M | C06 其余根目录入口与策略 | d8ff1ffebf39 | 235 | d8ff1ffebf39 |
-| [_hosted_execution_work.py](../../../../src/loushang/coding/_hosted_execution_work.py) | C02 | 133 | B | C02 托管与受管运行接入 | 0d4663c3d314 | 214 | 3cfa365f63f3 |
+| [_hosted_execution_work.py](../../../../src/loushang/coding/_hosted_execution_work.py) | C02 | 133 | B | C02 托管与受管运行接入 | 0d4663c3d314 | 159 | bf96b8746e65 |
 | [_hosted_goal_config.py](../../../../src/loushang/coding/_hosted_goal_config.py) | C02 | 58 | B | C02 托管与受管运行接入 | 349bf3d60a48 | 58 | 349bf3d60a48 |
 | [_hosted_goal_work.py](../../../../src/loushang/coding/_hosted_goal_work.py) | C02 | 183 | B | C02 托管与受管运行接入 | a3e7095f4397 | 183 | a3e7095f4397 |
 | [_hosted_method_config.py](../../../../src/loushang/coding/_hosted_method_config.py) | C02 | 100 | B | C02 托管与受管运行接入 | 4da687adf6e0 | 100 | 4da687adf6e0 |
@@ -194,7 +196,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [hosted_local.py](../../../../src/loushang/coding/hosted_local.py) | C02 | 402 | B | C02 托管与受管运行接入 | b4c35194f8f2 | 214 | a4a8a05a4379 |
 | [hosted_method.py](../../../../src/loushang/coding/hosted_method.py) | C02 | 138 | B | C02 托管与受管运行接入 | 3413931a783f | 138 | 3413931a783f |
 | [hosted_method_application.py](../../../../src/loushang/coding/hosted_method_application.py) | C02 | 52 | B | C02 托管与受管运行接入 | df02bc67924c | 52 | df02bc67924c |
-| [hosted_resume.py](../../../../src/loushang/coding/hosted_resume.py) | C02 | 709 | B | C02 托管与受管运行接入 | 4d862cfad9ec | 751 | 686e2508b64b |
+| [hosted_resume.py](../../../../src/loushang/coding/hosted_resume.py) | C02 | 709 | B | C02 托管与受管运行接入 | 4d862cfad9ec | 713 | 4e7dd51533ee |
 | [hosted_session.py](../../../../src/loushang/coding/hosted_session.py) | C02 | 598 | B | C02 托管与受管运行接入 | 24f236328066 | 655 | 0a41b6837ed5 |
 | [interaction/__init__.py](../../../../src/loushang/coding/interaction/__init__.py) | C18 | 1 | K/M | C18 交互命令与预热 | b9cd83b1e2d9 | 1 | b9cd83b1e2d9 |
 | [interaction/goal.py](../../../../src/loushang/coding/interaction/goal.py) | C18 | 287 | K/M | F07：公共观察/控制；保留命令语义 | c780d0713b77 | 287 | c780d0713b77 |
@@ -502,7 +504,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | 组 | 当前文件 | 当前物理行 |
 | --- | ---: | ---: |
 | C01 | 22 | 12,706 |
-| C02 | 28 | 8,031 |
+| C02 | 28 | 7,938 |
 | C03 | 15 | 4,132 |
 | C04 | 2 | 2,956 |
 | C05 | 6 | 3,565 |
@@ -529,4 +531,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 112,224 |
+| 合计 | 430 | 112,131 |

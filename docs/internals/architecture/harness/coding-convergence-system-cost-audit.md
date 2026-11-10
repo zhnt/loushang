@@ -497,3 +497,14 @@ Code237→196（−41），原HarnessWork.planning68→139（+71），系统+30�
 430 Code源112224，1969系统源648324，较Goal−25531/+13530，距15K97224。
 其它1967源/13资源同；测试272行/gzip1432B与文档另列。本片是完整职责归位而非
 重复算法净删除；A125+A126合计Code−65/系统+6。验证、AI旧失败及边界见[A126](key-designs/planning-work-configuration-custody-convergence.md)。
+
+## A127：托管Work共同观察/分发/结清
+
+两个Code源214→159（−55）、751→713（−38），原AppHost集成433→551（+118），
+系统+25；类型、同实例绑定、策略边界、导入及原题目/权限内容保留成本全部计入。
+430 Code源112131，1969系统源648349，较Goal−25624/+13555，距15K97131。
+其它1966源/13资源同；测试、gzip和文档另计。共享outcome/retirement并归位通用
+Agent/Session↔AppService桥接，不将完整Code.activate报删或以Core目录减记专属政策。
+冷模块closure普通Work927→940（+13）、集成345→346（+1），Resume986不变；
+新增AppHost→Agent为TYPE_CHECKING边且已写入生成图。完整验证、初失败及门禁
+精确减集证明见[A127](key-designs/hosted-work-custody-convergence.md)；本批AI未选中，旧覆盖率失败不因此关闭。

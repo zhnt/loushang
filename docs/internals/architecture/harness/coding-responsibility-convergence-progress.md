@@ -26,7 +26,19 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A126完整model Work配置寿命归位）
+## 当前状态（2026-11-10，A127托管Work共同机制归位）
+
+原AppHost.session_control同实例私有Work实现共同Agent观察、两种具体Session分发、
+turn清除/结清及subscription retirement；Code保原两run的try/title/cancel/直接activate。
+Code−93/AppHost+118/系统+25，Coding112131/系统648349，较Goal−25624/+13555，
+距15K97131。未造activate回调、Task、mode flags或第二state owner；非系统净精简。
+原消费者76过/1skip；实际125过/2skip（76+48+origin）、持久48另通过，原/新真实
+Deferred首输入各1过。架构批186过/1新消费者清单失败，精确可选减集后该原节点通过，
+原23required/34assert保留；图新TYPE_CHECKING Agent边已更新验证。冷入口有明确
+加载增长，见[A127](key-designs/hosted-work-custody-convergence.md)。AI本批未选中，A126覆盖率失败仍保留，不称全部门禁绿。
+完整P1–P4仍active/partial；其它Hosting/构造与KD003/KD011/A33原边界保持。
+
+## A126历史交付（2026-11-10，完整model Work配置寿命归位）
 
 原HarnessWork.planning的私有Work适配执行同一实例的reservation/allowance/configure/
 delegate/idle/release/fence/leave程序，直接用原Session/Allowance/Work owners；Code原

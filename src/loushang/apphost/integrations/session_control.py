@@ -10,9 +10,10 @@ import asyncio
 import inspect
 from collections.abc import Callable
 from contextlib import suppress
-from typing import Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
 
 from loushang.ai.model import model_selection_ref, normalize_model_selection
+from loushang.ai.types import AssistantMessage
 from loushang.apphost.application import _method_descriptor
 from loushang.apphost.contracts import SessionBindingKeyV1
 from loushang.appserver.protocol import (
@@ -28,6 +29,8 @@ from loushang.appserver.protocol import (
     TranscriptRecordV1,
 )
 from loushang.appservice import HostedSessionEventListenerV1
+from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
+from loushang.appservice.execution_guard import ExecutionControlV1
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.session import (
     SessionControlPort,
@@ -40,6 +43,12 @@ from loushang.harness.session.model_selection import (
     iter_available_model_details,
     model_choice_data_from_details,
 )
+
+if TYPE_CHECKING:
+    from loushang.agent import AbortSignal
+    from loushang.agent.types import AgentEvent
+    from loushang.harness.session._resume_continuation import _ResumeContinuationSession
+    from loushang.harness.session.agent_product import AgentProductSession
 
 
 class _SnapshotProjection(Protocol):
@@ -431,3 +440,112 @@ def _thinking_settings(control: object) -> SessionThinkingV1 | None:
     if current not in levels or levels == ('off',):
         return None
     return SessionThinkingV1(current, levels)
+
+
+class _HostedAgentExecutionWork:
+    """Same-instance Agent observation and Session dispatch at the AppHost bridge."""
+
+    session: AgentProductSession
+    text: str
+    _cancel_requested: Callable[[], bool]
+    _interrupted: bool
+    _agent_outcome: ExecutionOutcomeV1 | None
+    _unsubscribe: Callable[[], None] | None
+    _unbind_turn: Callable[[], None] | None
+
+    def _outcome_observer(self) -> Callable[[AgentEvent, AbortSignal], None]:
+        def observe(event: AgentEvent, _signal: AbortSignal) -> None:
+            if event["type"] == "agent_end":
+                for message in reversed(event["messages"]):
+                    if isinstance(message, AssistantMessage):
+                        self._agent_outcome = _assistant_outcome(message)
+                        break
+
+        return observe
+
+    async def _execute_hosted_prompt(
+        self, control: ExecutionControlV1
+    ) -> ExecutionOutcomeV1:
+        self._unsubscribe = self.session.agent.subscribe(self._outcome_observer())
+        self._unbind_turn = control.bind_turn_interrupt(
+            lambda: self.session.abort() if self.session.is_streaming else False
+        )
+        result = await self.session.execute_prompt(
+            self.text, source="appservice", check_cancelled=self._checkpoint
+        )
+        if result.failure_code is not None:
+            return ExecutionOutcomeV1(
+                ExecutionStatusV1.FAILED, error_code=result.failure_code
+            )
+        if not result.accepted:
+            return ExecutionOutcomeV1(
+                ExecutionStatusV1.FAILED, error_code="input_not_accepted"
+            )
+        if not result.model_started:
+            return ExecutionOutcomeV1(ExecutionStatusV1.SUCCEEDED)
+        if self._agent_outcome is None:
+            return ExecutionOutcomeV1(
+                ExecutionStatusV1.FAILED, error_code="missing_agent_outcome"
+            )
+        return self._agent_outcome
+
+    async def _execute_published_input(
+        self,
+        control: ExecutionControlV1,
+        session: _ResumeContinuationSession[Any],
+        attempt_id: str,
+        input_record_id: str,
+    ) -> ExecutionOutcomeV1:
+        self._unsubscribe = session.agent.subscribe(self._outcome_observer())
+        self._unbind_turn = control.bind_turn_interrupt(
+            lambda: session.abort() if session.is_streaming else False
+        )
+        await session._run_published_resume_input(
+            attempt_id=attempt_id,
+            input_record_id=input_record_id,
+        )
+        return self._agent_outcome or ExecutionOutcomeV1(
+            ExecutionStatusV1.FAILED, error_code="missing_agent_outcome"
+        )
+
+    async def _settle_hosted_prompt(self) -> None:
+        await self.session.settle_execution(interrupted=self._interrupted)
+        self._retire_subscription()
+
+    async def _settle_published_input(
+        self, session: AgentProductSession | None
+    ) -> None:
+        if session is not None:
+            await session.settle_execution(interrupted=self._interrupted)
+        self._retire_subscription()
+
+    def _retire_subscription(self) -> None:
+        if self._unsubscribe is not None:
+            self._unsubscribe()
+            self._unsubscribe = None
+
+    def _abort_hosted_prompt(self) -> None:
+        self.session.abort()
+        self.session.abort_retry()
+        self.session.abort_command()
+        self.session.abort_compaction()
+        self.session.abort_branch_summary()
+
+    def _clear_turn(self) -> None:
+        if self._unbind_turn is not None:
+            self._unbind_turn()
+            self._unbind_turn = None
+
+    def _checkpoint(self) -> None:
+        if self._cancel_requested():
+            raise asyncio.CancelledError
+
+
+def _assistant_outcome(message: AssistantMessage) -> ExecutionOutcomeV1:
+    if message.stop_reason == "aborted":
+        return ExecutionOutcomeV1(ExecutionStatusV1.INTERRUPTED)
+    if message.stop_reason == "error":
+        return ExecutionOutcomeV1(
+            ExecutionStatusV1.FAILED, error_code="assistant_response_error"
+        )
+    return ExecutionOutcomeV1(ExecutionStatusV1.SUCCEEDED)

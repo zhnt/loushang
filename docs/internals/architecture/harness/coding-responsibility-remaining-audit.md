@@ -1,5 +1,7 @@
 # Coding 全量剩余职责与保留成本复核 A72
 
+- A127：普通/Resume托管Work共同观察、分发与结清归原AppHost集成；Code保两条策略边界，Code−93/AppHost+118/系统+25，完整Goal仍partial，见[A127](key-designs/hosted-work-custody-convergence.md)。
+
 - A126：完整model Work配置寿命归原HarnessWork规划集成，Code保纯profile；Code−41/Core+71/系统+30，完整Goal仍partial，见[A126](key-designs/planning-work-configuration-custody-convergence.md)。
 
 - A125：两平台expiry命名共享原Coding记录模块，四条真实调用链接通；Code/系统−24、Core0，完整Goal仍partial，见[A125](coding-convergence-system-cost-audit.md#a125两平台expiry命名同域去重)。
@@ -58,13 +60,13 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
-数量按A126当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
+数量按A127当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
 |---|---:|---|---|---|
 | C01 启动、Plugin/资源装配 | 22/12,706 | P2 | 原Construction/Session、Catalog/Graph已实际接入；Code剩跨阶段选择、审批、刷新与交接 | 拆清领域选择和完整共用程序；不把bootstrap3531行或装配回调池当删除预算 |
-| C02 托管与受管接入 | 28/8,031 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用；Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝 |
+| C02 托管与受管接入 | 28/7,938 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用；Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝 |
 | C03 Resume与SessionManager | 15/4,132 | P2/P3 | 原Transcript/Session lifecycle、live恢复已复用；Code保版本化输入/装配与授权政策 | 按new/resume/fork/reopen完整合同再拆；不重建提交器或自动重试 |
 | C04 Continuity | 2/2,956 | P3 | 原Continuity provider/runtime及A68 payload custody已接入；Code来源/导入/恢复桥仍在 | KD003 bytes import未实施；区分纯准入与读取/借用/abort寿命，不提前采用KD011 |
 | C05 Canary及作者验证入口 | 6/3,565 | P1/P3/P4 | 原Worker attempt及托管owner已有接入；Code保真实SDK/CLI验证入口和产品场景 | 存在真实运行消费者，不能按canary/smoke命名删除；剩余协调须随实际场景替代 |

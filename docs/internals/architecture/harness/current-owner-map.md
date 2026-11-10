@@ -69,6 +69,15 @@ retains the phase/step/tool and diagnostic profile on its original class; existi
 Session admission/configuration and call allowance remain the sole underlying
 owners. Verification has a different finally contract and is unchanged. See [A126](key-designs/planning-work-configuration-custody-convergence.md).
 
+AppHost's existing optional Session control integration owns the same Work
+instance's Agent outcome observation, interrupt binding, concrete prompt or
+published-input dispatch and Session/subscription retirement. It calls the
+original Harness Session methods; Coding keeps the distinct run boundaries,
+Resume admission/activation and title/cancellation policies. There is no new
+Session, Task, Work manager or activation callback. The new direct Agent edge
+is type-only inside this optional integration, not the standard-library core.
+See [A127](key-designs/hosted-work-custody-convergence.md).
+
 ## Scope
 
 Harness is the cross-Product execution substrate. It owns reusable mechanisms,

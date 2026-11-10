@@ -1,5 +1,7 @@
 # COD-RESP-GOAL-002：Coding 领域化与公共机制职责归一
 
+- A127：普通/Resume托管Work共同观察、分发与结清归原AppHost集成；Code保两条策略边界，Code−93/AppHost+118/系统+25，完整Goal仍partial，见[A127](key-designs/hosted-work-custody-convergence.md)。
+
 - A126：完整model Work配置寿命归原HarnessWork规划集成，Code保纯profile；Code−41/Core+71/系统+30，完整Goal仍partial，见[A126](key-designs/planning-work-configuration-custody-convergence.md)。
 
 - A125：两平台expiry命名共享原Coding记录模块，四条真实调用链接通；Code/系统−24、Core0，完整Goal仍partial，见[A125](coding-convergence-system-cost-audit.md#a125两平台expiry命名同域去重)。
