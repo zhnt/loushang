@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from loushang.harness.journal import JournalLoadPolicy
+from loushang.harness.plugin_management.assembly import bind_plugin_desired_state
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
@@ -105,12 +106,9 @@ class CodingArchPrivateDataReadOwner:
                 or metadata.st_uid != os.geteuid()
             ):
                 raise ValueError("Coding Arch read Product state is unsafe")
-            gate = PluginPackageGcReservationJournal(
-                state_root / "gc-reservations.jsonl", load_policy=_READ_POLICY
-            )
-            desired = PluginDesiredStateLedger(
+            desired_binding = bind_plugin_desired_state(
+                state_root / "gc-reservations.jsonl",
                 state_root / "desired-state.jsonl",
-                gc_gate=gate,
                 load_policy=_READ_POLICY,
             )
             epoch.assert_current()
@@ -122,8 +120,8 @@ class CodingArchPrivateDataReadOwner:
                 epoch_runtime=epoch,
                 state_root=state_root,
                 state_identity=(metadata.st_dev, metadata.st_ino),
-                gc_gate=gate,
-                desired_state=desired,
+                gc_gate=desired_binding.gc_reservations,
+                desired_state=desired_binding.desired,
             )
             owner.assert_current()
             return owner

@@ -35,6 +35,22 @@ START native_revision==2特殊校验在草稿中遗漏。未装Product，生产�
 [A129](key-designs/worker-history-responsibility-convergence.md#a129完整windows退休闭包原型未采用)。
 完整Goal仍active/partial；A129当时仍用A128已接受计量，不以树外原型报减少。
 
+## A133共用GC与Desired账本装配
+
+原 Plugin Management 装配先构造 GC 账本，再把同一实例绑定到 Desired。管理列表、
+预览和 Arch 私有数据读取复用这段装配，各入口原有的严格读策略、目录检查、epoch
+核对和关闭责任保留。需要在两个构造步骤之间完成备份准入的写路径仍按原顺序执行。
+
+初版元组解包使现有单写者扫描器漏报。修订版使用具名绑定，原扫描器能在四个装配
+调用方识别模拟的 commit 和 commit_update。构造位置断言接受原6处或合并后的3处
+精确集合，单写者规则和原反例保持。三项独立复核通过。
+
+Coding 减10行，Harness 增15行，系统净增5行。当前 Coding 111914行，系统648270行。
+较 Goal 起点分别减少25841行和增加13476行，距15K目标还差96914行。完整 P1–P4
+仍在进行。最终实现的11项既有回归、4个改动模块的类型检查、Ruff、依赖图和文档约束均通过。
+回归覆盖无锁文件、部分写入尾部、工作区替换、未完成操作、GC 预留及旧运行时注册。
+运行证据在树外 `a133-desired-ledger-binding`。
+
 ## A132共用fenced runtime布局映射
 
 Coding 布局集中组装原 fenced runtime 的四个参数。19处 POSIX、3处 Windows 和3处

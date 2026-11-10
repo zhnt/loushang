@@ -55,6 +55,27 @@ class PluginRuntimeLedgerBindings:
     packages: PluginPackageLifecycleLedger
 
 
+@dataclass(frozen=True, slots=True)
+class PluginDesiredStateBindings:
+    gc_reservations: PluginPackageGcReservationJournal
+    desired: PluginDesiredStateLedger
+
+
+def bind_plugin_desired_state(
+    gc_path: str | Path,
+    desired_state_path: str | Path,
+    *,
+    load_policy: JournalLoadPolicy | None,
+) -> PluginDesiredStateBindings:
+    """Bind Desired state to the GC gate that protects its references."""
+
+    gate = PluginPackageGcReservationJournal(gc_path, load_policy=load_policy)
+    desired = PluginDesiredStateLedger(
+        desired_state_path, gc_gate=gate, load_policy=load_policy
+    )
+    return PluginDesiredStateBindings(gate, desired)
+
+
 def bind_plugin_management_core(
     *,
     gc_reservations_path: str | Path,
@@ -65,14 +86,8 @@ def bind_plugin_management_core(
     migration_journal_path: str | Path,
     load_policy: JournalLoadPolicy | None = None,
 ) -> PluginManagementCoreBindings:
-    gc_reservations = PluginPackageGcReservationJournal(
-        gc_reservations_path,
-        load_policy=load_policy,
-    )
-    desired = PluginDesiredStateLedger(
-        desired_state_path,
-        gc_gate=gc_reservations,
-        load_policy=load_policy,
+    desired_binding = bind_plugin_desired_state(
+        gc_reservations_path, desired_state_path, load_policy=load_policy
     )
     intents = PluginRetirementIntentLedger(
         retirement_intents_path,
@@ -84,7 +99,7 @@ def bind_plugin_management_core(
         load_policy=load_policy,
     )
     management = PluginManagementService(
-        desired_state=desired,
+        desired_state=desired_binding.desired,
         operation_journal_path=operation_journal_path,
         retirement_intents=intents,
         retirement_sets=retirement_sets,
@@ -95,8 +110,8 @@ def bind_plugin_management_core(
         load_policy=load_policy,
     )
     return PluginManagementCoreBindings(
-        gc_reservations=gc_reservations,
-        desired=desired,
+        gc_reservations=desired_binding.gc_reservations,
+        desired=desired_binding.desired,
         intents=intents,
         retirement_sets=retirement_sets,
         management=management,

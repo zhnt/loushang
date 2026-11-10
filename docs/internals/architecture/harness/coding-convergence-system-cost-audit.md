@@ -546,3 +546,10 @@ Coding −16，Harness 0，系统 −16。备份记录是 Coding 产品数据合
 净减76行。Harness 和其他组件净变化0行。当前430份 Coding 源码111924行，
 1969份系统源码648265行。较 Goal 起点分别为 −25831 和 +13471，距15K尚有96924行。
 见[A132](coding-responsibility-convergence-progress.md#a132共用fenced-runtime布局映射)。
+
+
+## A133 共用 GC 与 Desired 账本装配
+
+Coding 新增18行、删除28行。Harness 新增26行、删除11行。系统净增5行。
+具名绑定让两账本的关系由原装配组件表达，同时保留现有单写者扫描覆盖。
+当前430份 Coding 源码111914行，1969份系统源码648270行。见[A133](coding-responsibility-convergence-progress.md#a133共用gc与desired账本装配)。

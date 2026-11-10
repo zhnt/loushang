@@ -1,5 +1,7 @@
 # Coding 逐文件职责与处置清单 R2
 
+- A133 三个读取入口共用原 Plugin Management 的 GC 与 Desired 装配，Coding 减10行、Harness 增15行。见[A133](coding-responsibility-convergence-progress.md#a133共用gc与desired账本装配)。
+
 - A132 统一25处 fenced runtime 布局映射，Coding 和系统源码各减少76行。见[A132](coding-responsibility-convergence-progress.md#a132共用fenced-runtime布局映射)。
 
 - A131 合并 POSIX 与 Windows 的备份记录逻辑，Coding 和系统源码各减少16行。见[A131](key-designs/private-data-lifecycle-convergence.md#a131两平台备份记录共用)。
@@ -289,7 +291,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_private_data_deletion_journal.py](../../../../src/loushang/coding/package_private_data_deletion_journal.py) | C08 | 403 | M | C08 插件私有数据生命周期 | ab35480c5292 | 119 | 10ae5cd84e76 |
 | [package_private_data_deletion_owner.py](../../../../src/loushang/coding/package_private_data_deletion_owner.py) | C08 | 335 | M | C08 插件私有数据生命周期 | 128575d2bb6a | 188 | 9362ad25c56d |
 | [package_private_data_deletion_preview.py](../../../../src/loushang/coding/package_private_data_deletion_preview.py) | C08 | 360 | M | C08 插件私有数据生命周期 | 7ba10c207e55 | 158 | dda1cdf96e64 |
-| [package_private_data_read_owner.py](../../../../src/loushang/coding/package_private_data_read_owner.py) | C08 | 420 | M | C08 插件私有数据生命周期 | 305ec56336c6 | 285 | 2b687f66ed2f |
+| [package_private_data_read_owner.py](../../../../src/loushang/coding/package_private_data_read_owner.py) | C08 | 420 | M | C08 插件私有数据生命周期 | 305ec56336c6 | 283 | fc8eb1fdf027 |
 | [package_private_data_restore.py](../../../../src/loushang/coding/package_private_data_restore.py) | C08 | 536 | M | C08 插件私有数据生命周期 | d77777f3e7f2 | 366 | 12787d1d244b |
 | [package_private_data_restore_confirmation.py](../../../../src/loushang/coding/package_private_data_restore_confirmation.py) | C08 | 326 | M | C08 插件私有数据生命周期 | 84f44f1155d4 | 249 | fc7c6cc8285e |
 | [package_private_data_restore_journal.py](../../../../src/loushang/coding/package_private_data_restore_journal.py) | C08 | 364 | M | C08 插件私有数据生命周期 | 9d6aea123669 | 192 | 75c1d9a0b286 |
@@ -310,8 +312,8 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_private_data_windows_restore_preview.py](../../../../src/loushang/coding/package_private_data_windows_restore_preview.py) | C08 | 180 | M | C08 插件私有数据生命周期 | e4845513e143 | 143 | 6b6f42f0070b |
 | [package_product_backup_types.py](../../../../src/loushang/coding/package_product_backup_types.py) | C08 | 259 | M | C08 插件私有数据生命周期 | 6ddc9d882c1c | 207 | d2dd305ee9f8 |
 | [package_product_cli.py](../../../../src/loushang/coding/package_product_cli.py) | C10 | 467 | M | C10 包分发与 Product 管理 | 99e20c686e5f | 467 | 99e20c686e5f |
-| [package_product_management_cli.py](../../../../src/loushang/coding/package_product_management_cli.py) | C10 | 548 | M | C10 包分发与 Product 管理 | fa812374945e | 544 | cfd962494b8d |
-| [package_product_preview.py](../../../../src/loushang/coding/package_product_preview.py) | C10 | 668 | M | C10 包分发与 Product 管理 | 9a98648bd20d | 664 | be6bd4a614b9 |
+| [package_product_management_cli.py](../../../../src/loushang/coding/package_product_management_cli.py) | C10 | 548 | M | C10 包分发与 Product 管理 | fa812374945e | 539 | ce7c00c33ddb |
+| [package_product_preview.py](../../../../src/loushang/coding/package_product_preview.py) | C10 | 668 | M | C10 包分发与 Product 管理 | 9a98648bd20d | 661 | 7d6efd1494c9 |
 | [package_product_repair.py](../../../../src/loushang/coding/package_product_repair.py) | C10 | 321 | M | C10 包分发与 Product 管理 | 2c060b56dfaf | 321 | 2c060b56dfaf |
 | [package_product_repair_rpc.py](../../../../src/loushang/coding/package_product_repair_rpc.py) | C10 | 49 | M | C10 包分发与 Product 管理 | 74413ce3f304 | 49 | 74413ce3f304 |
 | [package_product_repair_ui.py](../../../../src/loushang/coding/package_product_repair_ui.py) | C10 | 86 | M | C10 包分发与 Product 管理 | f38309028385 | 86 | f38309028385 |
@@ -518,9 +520,9 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
 | C07 | 112 | 21,691 |
-| C08 | 31 | 6,695 |
+| C08 | 31 | 6,693 |
 | C09 | 34 | 9,523 |
-| C10 | 12 | 5,435 |
+| C10 | 12 | 5,427 |
 | C11 | 25 | 9,278 |
 | C12 | 25 | 7,056 |
 | C13 | 21 | 5,668 |
@@ -539,4 +541,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 111,924 |
+| 合计 | 430 | 111,914 |
