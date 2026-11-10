@@ -1,8 +1,4 @@
-"""Explicit G16 management and interactive attach commands.
-
-Development entry: python -m loushang.coding.cli.mux. No command discovers or
-starts a background application. Client exit is not application stop.
-"""
+"""Explicit local Mux commands and Linux user service control."""
 
 from __future__ import annotations
 
@@ -29,6 +25,8 @@ from loushang.appserver.protocol import (
     MuxSelectorV1,
     MuxSpaceV1,
 )
+
+from . import mux_service
 
 
 def _emit(value: dict[str, object], stream: TextIO) -> None:
@@ -159,12 +157,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--connection-root",
-        required=True,
         type=Path,
         help="exact private connection-record directory; parent must exist",
     )
     parser.add_argument(
-        "--endpoint", required=True, help="explicit application endpoint name"
+        "--endpoint", help="explicit application endpoint name"
     )
     commands = parser.add_subparsers(dest="action", required=True)
     serve = commands.add_parser(
@@ -181,6 +178,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     serve.add_argument(
         "--describe", action="store_true", help="print path-free selectors without IO"
+    )
+    serve.add_argument(
+        "--systemd", action="store_true", help="signal readiness to the systemd user manager"
     )
     commands.add_parser("list", help="list named muxes without attaching")
     create = commands.add_parser("create", help="create an empty named mux")
@@ -203,18 +203,34 @@ def _parser() -> argparse.ArgumentParser:
         "stop",
         help="request application stop; acknowledgement is not completed cleanup",
     )
+    service = commands.add_parser("service", help="control a Linux systemd user service")
+    service.add_argument("operation", choices=mux_service.OPERATIONS)
+    service.add_argument("--unit", type=mux_service.unit_name, default=mux_service.DEFAULT_UNIT)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
+    if args.action == "service":
+        if args.connection_root is not None or args.endpoint is not None:
+            parser.error("service selects a systemd unit with --unit")
+        return mux_service.control(args.operation, args.unit)
+    if args.connection_root is None or args.endpoint is None:
+        parser.error("--connection-root and --endpoint are required for this command")
     output = sys.stdout
     if args.action == "attach" and (not sys.stdin.isatty() or not output.isatty()):
         parser.error("interactive attach requires terminal input and output")
     try:
         root = args.connection_root.expanduser().resolve()
         if args.action == "serve":
+            notify_socket = None
+            if args.systemd:
+                if args.describe or sys.platform != "linux":
+                    parser.error("--systemd requires a Linux service launch without --describe")
+                notify_socket = os.environ.pop("NOTIFY_SOCKET", "")
+                if not notify_socket.startswith(("/", "@")):
+                    parser.error("--systemd requires the systemd notification socket")
             # Management/help paths do not import the real Product/model bootstrap.
             from ..hosted_bootstrap import CodingHostedLaunchV1
             from ..hosted_local import CodingLocalCommandV1, CodingLocalLaunchV1
@@ -235,14 +251,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _emit(launch.describe(), output)
                 return 0
             command = CodingLocalCommandV1(launch)
-            return _execute(
-                lambda: command.run(
-                    ready=lambda: _emit(
-                        {"status": "ready", **launch.describe()}, output
-                    )
-                ),
-                lambda: command.cleanup_pending,
-            )
+
+            def ready() -> None:
+                _emit({"status": "ready", **launch.describe()}, output)
+
+            async def serve() -> None:
+                if notify_socket is None:
+                    await command.run(ready=ready)
+                else:
+                    await mux_service.run_host(command, notify_socket, ready)
+
+            return _execute(serve, lambda: command.cleanup_pending)
         client = _ClientCommand(
             root, args.endpoint, args.action, getattr(args, "name", None), output
         )
