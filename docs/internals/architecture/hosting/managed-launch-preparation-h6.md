@@ -2,6 +2,9 @@
 
 ## Status
 
+The activation status below applies to the generic H5c route. The separately
+accepted explicit native operator is bounded under Current below.
+
 - ID: `HOST-H6`
 - Scope: `hosting`
 - Parent: `loushang`
@@ -29,11 +32,16 @@ sealed-descriptor implementation is a cross-platform contract.
 
 ### Current
 
+#### Original H6 Baseline (History)
+
+The following inventory describes the original H6 responsibility baseline. It
+does not revoke later separately accepted native Product/Session paths.
+
 - H1--H4 own process, endpoint, and atomic child-session mechanics.
 - H5 supplies a default-dark Harness Worker adapter, and H6.4 preserves an
   injected private managed-preparation seam while adding only Worker semantic
-  verification. No production composition supplies an eligible native Worker
-  profile.
+  verification. At that baseline no production composition supplied an eligible
+  native Worker profile.
 - Harness privately captures a Linux executable and cwd with retained file
   descriptors and passes them through a private Process Host request subtype.
 - `hosting_compat` refuses that request because Hosting v1 has no safe way to
@@ -41,6 +49,18 @@ sealed-descriptor implementation is a cross-platform contract.
 - Windows Hosting proves Job Object process lifetime and strict endpoint-handle
   inheritance, but no equivalent immutable executable/cwd plus required
   containment preparation is accepted for the Worker route.
+
+#### Current Bounded Native Adoption
+
+The existing explicit Product operator query, whose whole lifetime was retained
+in Session by [A63](../harness/key-designs/worker-product-runtime-convergence.md#26-a63完整单次查询接通原session),
+uses its admitted native profile and start gate through the original Worker
+Hosting adapter. [H5's current adoption boundary](harness-worker-adapter-h5.md#current-bounded-adoption-explicit-operator-query)
+identifies the one accepted private Session program. It does not instantiate the
+H5c selector/router or enable an ordinary startup route. H6.5b's separately
+recorded C5.5c Harness friend consumer remains a distinct platform-specific scope.
+Neither acceptance substitutes mutable paths for Current sealed descriptors,
+grants Sandbox/Approval authority to Hosting, or proves general rollout/rollback.
 
 ### Proposed target
 
@@ -434,17 +454,20 @@ of publication are asserted for every case.
 | `H6-WINDOWS-NATIVE` | retained Windows adversarial preparation/containment report passes without fallback |
 | `H6-HARNESS-PARITY` | the private bridge preserves managed capture and the existing Worker semantic fence without claiming native Worker compatibility |
 | `H6-NO-AUTHORITY` | Hosting imports, vocabulary, and observations contain no Harness/Product security meaning |
-| `H6-DARK` | non-Worker production modules do not compose the path and owner default remains Current |
+| `H6-DARK` | unaccepted non-Worker consumers remain forbidden; the separately adopted A63 operator does not change the generic Current default |
 
 ## Activation Fence
 
 H6 is necessary but not sufficient for PLC9C5. Product/native Worker activation
 requires a separate Product-owned change that consumes H6 evidence, binds an
 exact domain adapter and generation owner, supplies recovery and rollback
-receipts, and passes native cross-entrypoint conformance. Until that review:
+receipts, and passes native cross-entrypoint conformance. The bounded native
+operator adoption above is not that general rollout. For the generic route:
 
 - `WorkerHostingActivationV1.owner` remains `"current"` by default;
 - a selected Hosting failure never falls back within the same attempt;
 - no environment variable, auto-detection, or missing configuration enables
   the Hosting Worker owner; and
-- the PLC9C5 Product-activation/platform absence guard remains intact.
+- the PLC9C5 Product-activation/platform absence guard remains intact for this
+  generic route outside separately accepted native scopes; the precise H5 consumer
+  check records the A63 exception.

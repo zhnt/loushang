@@ -6,7 +6,24 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A93完整Windows backend custody）
+## 当前状态（2026-11-10，A94 H5当前边界协调）
+
+A63之前的显式Product query已直接采用Hosting adapter；A63将完整程序归原Session，
+旧H5仅扫描Harness而遗漏原Code位置，故历史“无生产装配”不能继续作为全局Current。
+本批只接受原Session operator文件中的adapter符号，另两个selector/router符号、
+其他文件与Hosting反向依赖禁令保持；没有新增gate、运行路由或生产接口。
+H5/H6及Hosting索引协调Current/History，generic Current默认、sealed-descriptor缺口、
+no-fallback与独立native范围不变；operator仍遵循原可失败cleanup，不承诺必结清。
+生产1968源码及13资源逐字节SHA不变：Coding113579、系统647772；本批生产净0，
+累计Coding−24176/系统+12978，距15K尚98579行，不计作代码精简。
+最终受影响检查25过，文档9过，Hosting原lint及35文件mypy过。扩大Hosting实跑
+505过/8失败/53skip/4deselected，其中本次3处固定文本失败已修并包含于最终25；
+其余5个原边界/清单问题在冻结HEAD复现，保持未关闭，不宣称全Hosting green。
+详见[H5 A94记录](../hosting/harness-worker-adapter-h5.md#a94-reconciliation-evidence)。
+完整P1–P4/领域化/≤15K仍active/partial，KD003未实施，KD011/A33待用户且未采用。
+下一批核Arch缓存完整IO直接复用的安全/兼容/成本，候选尚未采用。
+
+## A93历史交付（2026-11-10，完整Windows backend custody）
 
 原PackageProduct接管candidate Wheel/member/hash、material review、install/read重验及
 approval current的完整资源程序；直接复用原Hosting、Wheel、ReceiptIO、ApprovalRecords。

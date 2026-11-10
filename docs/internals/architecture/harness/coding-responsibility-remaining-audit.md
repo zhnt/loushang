@@ -1,5 +1,7 @@
 # Coding 全量剩余职责与保留成本复核 A72
 
+- A94后续：H5原operator边界协调，生产净0；保留5项扩大Hosting基线欠账，完整P1–P4仍未完成，见[当前状态](coding-responsibility-convergence-progress.md)。
+
 - Authority: descriptive audit under COD-RESP-GOAL-002；不替代已接受Target。
 - Design status: current-gap review；下面候选接口尚未接受或实施。
 - Implementation status: A71已提交；本工作件不新增生产实现或精简收益。

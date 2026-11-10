@@ -231,3 +231,12 @@ Code release205→129（−76）、installed234→148（−86）、approval owne
 新增932行显式探针、40390字节lossless原fixture、1处原native测试hook转接及文档
 另列；原assert AST同，不扩gate。完整旧值/失败来源及H5旧失败见
 [A93](key-designs/windows-backend-release-custody-convergence.md)。
+
+## A94后续：H5既有显式operator边界协调
+
+生产源码/资源零变化；1968源及13资源SHA与A93同。Coding113579/系统647772，
+累计−24176/+12978；本批不计精简收益。成本仅为现有H5测试的精确一文件/一符号
+减域及Current/History/交付文档协调，不增加gate或运行机制。三视角有界接受、
+最终受影响25过、文档9过；扩大Hosting结果及仍开放5项基线问题见
+[H5 A94证据](../hosting/harness-worker-adapter-h5.md#a94-reconciliation-evidence)。
+原A93失败记录保历史，不回写旧结果；完整Goal仍未达标。
