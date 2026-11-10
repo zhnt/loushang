@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useEffect, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import LocalHostGate from "../src/LocalHostGate";
-const backend = vi.hoisted(() => ({ invoke: vi.fn(), settings: vi.fn(), create: vi.fn(), createNative: vi.fn(), listeners: new Map<string, (event: any) => void>() }));
+const backend = vi.hoisted(() => ({ invoke: vi.fn(), settings: vi.fn(), create: vi.fn(), listeners: new Map<string, (event: any) => void>() }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: backend.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: async (name: string, callback: (event: any) => void) => {
   backend.listeners.set(name, callback);
@@ -12,7 +12,7 @@ vi.mock("../src/client/hostApi", () => ({
   sharedSettings: (request: any) => backend.settings(request),
   webRequest: (request: any, id?: string) => backend.settings({ operation: "host/request", connectionId: id, request }),
 }));
-vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: async () => false, createNativeLiveClient: backend.createNative }));
+vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: async () => false }));
 vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: backend.create }));
 vi.mock("../src/App", () => ({ default: () => null, HarnessGui: ({ client, hostSettings, hostSettingsRequest, onConnectionChange }: {
   client: { id: string } | null; hostSettings: ReactNode; hostSettingsRequest: number; onConnectionChange: (state: string) => void;
@@ -31,7 +31,6 @@ let selected: string;
 beforeEach(() => {
   selected = "local";
   backend.invoke.mockReset(); backend.settings.mockReset(); backend.create.mockReset(); backend.listeners.clear();
-  backend.createNative.mockReset().mockReturnValue({ id: "native" });
   HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   HTMLDialogElement.prototype.close = function () { this.open = false; };
   backend.create.mockImplementation((workspace, id) => ({ workspace, id }));
@@ -42,8 +41,7 @@ beforeEach(() => {
     };
     const id = request.connectionId ?? selected;
     const input = request.operation === "host/request" ? request.request : request;
-    if (input.operation === "environment") return { supported: true, workspace: `/${id}`, remote: true, connectionId: id };
-    if (input.operation === "remember-workspace") return {};
+    if (input.operation === "environment") return { supported: true, workspace: `/${id}`, connectionId: id };
     if (input.operation === "manage") return { state: "running", errorCode: null, workspace: `/${id}`, instanceId: `${id}-instance` };
     throw new Error("Unexpected request");
   });
@@ -63,29 +61,26 @@ describe("tray selection integration", () => {
   it("opens Host settings from Start when the local Host cannot be reached and starts a newly chosen workspace", async () => {
     const settings = backend.settings.getMockImplementation()!;
     backend.settings.mockImplementation(async (request) => {
-      if (request.operation === "environment") return { supported: true, workspace: "/local", remote: false, connectionId: "local" };
-      return settings(request);
-    });
-    const invoke = backend.invoke.getMockImplementation()!;
-    backend.invoke.mockImplementation(async (command, args) => {
-      if (command === "local_host_action" && args.request.action === "connect") return {
+      const action = request.connectionId === "local" ? request.request?.action : null;
+      if (action === "connect") return {
         state: "unknown", errorCode: "connection_unavailable", instanceId: "old-instance", workspace: "/local",
       };
-      if (command === "local_host_action" && args.request.action === "start") return {
-        state: "running", errorCode: null, instanceId: "new-instance", workspace: args.request.workspace,
+      if (action === "start") return {
+        state: "running", errorCode: null, instanceId: "new-instance", workspace: request.request.workspace,
       };
-      return invoke(command, args);
+      return settings(request);
     });
     render(<LocalHostGate />);
     await waitFor(() => expect(projection()?.hosts[0]).toMatchObject({ start: true, startLabel: "Start…" }));
     click("local", "start");
     expect(await screen.findByRole("region", { name: "Host settings" })).toBeVisible();
     expect(screen.getByRole("alert")).toHaveTextContent("connection_unavailable");
-    expect(backend.invoke).not.toHaveBeenCalledWith("local_host_action", { request: expect.objectContaining({ action: "start" }) });
+    expect(backend.settings.mock.calls.some(([request]) => request.request?.action === "start")).toBe(false);
     fireEvent.change(screen.getByDisplayValue("/local"), { target: { value: "/new-workspace" } });
     fireEvent.click(screen.getByRole("button", { name: /start and connect/i }));
-    await waitFor(() => expect(backend.createNative).toHaveBeenCalledOnce());
-    expect(backend.invoke).toHaveBeenCalledWith("local_host_action", { request: { action: "start", workspace: "/new-workspace" } });
+    await waitFor(() => expect(backend.create).toHaveBeenCalledWith("/new-workspace", "local"));
+    expect(backend.settings).toHaveBeenCalledWith({ operation: "host/request", connectionId: "local",
+      request: { operation: "manage", action: "start", workspace: "/new-workspace" } });
   });
   it("switches the bound client and Web destination while retaining the mounted draft", async () => {
     render(<LocalHostGate />);

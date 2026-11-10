@@ -14,15 +14,21 @@ React uses the same validated snapshot projection as the native bridge.
 
 ## Shared local storage and browser access
 
-`npm --prefix gui run dev:web` starts Vite and a private Python proxy. The proxy
-reuses or starts one shared adapter per user directory.
-`npm --prefix gui run dev` starts the same Web server plus the Tauri window.
-Open Settings → Host to select a workspace and explicitly start/connect its Host.
+`npm --prefix gui run dev` starts Vite in desktop mode and opens the Tauri
+window. Rust reads the saved connections and talks directly to the selected
+Host's HTTP endpoint. The desktop executable and its development entry require
+no Python interpreter. Start the Host's Web endpoint separately for local use.
+
+`npm --prefix gui run dev:web` starts the browser development surface with its
+Python proxy. The proxy reuses or starts one shared adapter per user directory.
+Open Settings → Host to select a workspace and explicitly start/connect its Host
+through the running adapter.
 Both surfaces show the same shell and initial panel layout (native window controls
 remain desktop-only). The development API accepts only same-origin loopback
 requests with the client header. Stopping Vite closes its proxy; the shared adapter and managed Hosts continue
-running so other clients remain connected. The Python environment must contain the installed
-project dependencies; `LOUSHANG_GUI_PYTHON` can select its interpreter.
+running so other clients remain connected. The browser development proxy needs
+the installed Python project dependencies. `LOUSHANG_GUI_PYTHON` selects its
+interpreter.
 
 Storage below `LOUSHANG_HOME` (default `~/.loushang`) follows existing ownership:
 
@@ -132,8 +138,17 @@ See [tray acceptance](tests/playback/tray-acceptance.md) for validation scope.
 requiring Rust or building assets. Use `check:full` for Rust/native/toolchain
 changes; it retains the toolchain doctor, web build, tests and Rust checks.
 Layout playback and native packaging remain on-demand acceptance commands.
-`build` creates a native
-executable without producing installers. The Rust fixture-bridge feature is retained only for protocol tests.
+`build` creates the native executable with the frontend embedded. On Linux,
+stage it as a standalone program using the default Cargo output path:
+
+```sh
+npm --prefix gui run build
+install -m 755 gui/src-tauri/target/release/harness-gui /tmp/loushang-gui
+/tmp/loushang-gui
+```
+
+Use `build:web` for a separate `gui/dist` to serve in browsers. The Rust
+fixture-bridge feature is retained only for protocol tests.
 
 ## Controlled live launch
 
@@ -155,14 +170,15 @@ gui/src-tauri/target/debug/harness-gui \
   --loushang-mux-name main
 ```
 
-For a debug build, start `npm run dev:web` in `gui/` first; its configured
+For a debug build, start `npm run dev:web -- --mode desktop` in `gui/` first. Its configured
 WebView URL is `http://localhost:1420`. A standalone packaged build uses the
 embedded frontend. With explicit connection arguments, the Host and Mux must
 already exist through the managed management entry. Reconnect attaches the
 original Mux and reads its existing members.
 
-Without explicit connection arguments, Linux native launch offers local Host
-management. Select an existing absolute Workspace directory, then choose
+Without explicit connection arguments, the native window reads `connections.json`
+and opens even when the selected endpoint is unavailable. With the local Host's
+Web endpoint running, select an existing absolute Workspace directory, then choose
 **Start and connect** or connect to its running Host. Startup uses the existing
 managed coordinator and admitted Mux creation; an empty Mux receives the existing
 default Session initialization. Closing the GUI only disconnects the client.
@@ -170,15 +186,11 @@ Stop and restart require confirmation because they interrupt active executions;
 restart preserves Session history but does not resume an interrupted execution.
 An unconfirmed instance is never automatically replaced.
 
-`npm run dev` selects this checkout's `.venv` Python when available. Native
-launchers can set `LOUSHANG_GUI_PYTHON` to an interpreter containing this checkout
-or an installed Loushang package; the fallback is `python3`. The short-lived
-Product management entrypoint is `loushang.coding.gui_local_host`. Python and Rust
-must come from compatible builds. Managed storage retains its existing private
-directory and trusted-ancestor requirements; do not place its roots under
-group-writable shared directories. Windows and macOS local lifecycle management
-remain unsupported; explicit valid connection modes retain their own platform
-support boundaries.
+Local and remote management requests go to the selected Host API. The browser
+and desktop write the same v1 connection settings using the shared SQLite lock.
+Managed storage retains its existing private-directory and trusted-ancestor
+requirements. Explicit local record arguments continue to use the native
+AppClient on supported platforms.
 
 Linux record admission uses no-follow directory/file descriptors, current-user
 ownership, private 0700/0600 modes, single-link regular files, bounded reads and
