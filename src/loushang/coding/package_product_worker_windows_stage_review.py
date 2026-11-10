@@ -143,10 +143,6 @@ class CodingWindowsWorkerStageReviewV1(_WindowsStageReviewWireMethods):
     def to_bytes(self) -> bytes:
         return canonical_json_bytes(self.to_dict())
 
-    @classmethod
-    def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerStageReviewV1:
-        return cls._from_record_bytes(raw)
-
     @property
     def fingerprint(self) -> str:
         return sha256(

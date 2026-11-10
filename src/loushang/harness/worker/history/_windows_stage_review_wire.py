@@ -48,7 +48,7 @@ class _WindowsStageReviewWireMethods:
         )
 
     @classmethod
-    def _from_record_bytes(cls, raw: bytes) -> Self:
+    def from_bytes(cls, raw: bytes) -> Self:
         if type(raw) is not bytes or not raw or len(raw) > cls._record_maximum():
             raise cls._record_error(cls._record_error_code)
         kind = cls._record_kind
@@ -102,6 +102,8 @@ class _WindowsStageReviewWireMethods:
             return record
         except (KeyError, TypeError, ValueError, UnicodeError) as error:
             raise cls._record_error(cls._record_error_code) from error
+
+    _from_record_bytes = from_bytes
 
     def to_bytes(self) -> bytes:
         raise NotImplementedError

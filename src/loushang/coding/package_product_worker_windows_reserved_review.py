@@ -137,10 +137,6 @@ class CodingWindowsWorkerReservedNoEffectReviewV1(_WindowsStageReviewWireMethods
             }
         )
 
-    @classmethod
-    def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerReservedNoEffectReviewV1:
-        return cls._from_record_bytes(raw)
-
     @property
     def fingerprint(self) -> str:
         return sha256(

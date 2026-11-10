@@ -133,10 +133,6 @@ class CodingWindowsWorkerLaunchIntentV1(_BaseWireMethods):
     def to_bytes(self) -> bytes:
         return canonical_json_bytes(self.to_dict())
 
-    @classmethod
-    def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerLaunchIntentV1:
-        return cls._from_wire_bytes(raw)
-
 
 CodingWindowsWorkerLaunchIntentV1._wire_schema = RecordSchema.for_dataclass(
     CodingWindowsWorkerLaunchIntentV1,

@@ -143,10 +143,6 @@ class CodingWindowsWorkerHistoryPreparationV1(_BaseWireMethods):
             record_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
         )
 
-    @classmethod
-    def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerHistoryPreparationV1:
-        return cls._from_wire_bytes(raw)
-
     def require_semantic_read(
         self, semantic: CodingWindowsWorkerHistorySemanticReadV1
     ) -> None:

@@ -116,10 +116,6 @@ class CodingWindowsWorkerStageRetirementReceiptV1(_BaseWireMethods):
             }
         )
 
-    @classmethod
-    def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerStageRetirementReceiptV1:
-        return cls._from_wire_bytes(raw)
-
 
 CodingWindowsWorkerStageRetirementReceiptV1._wire_schema = RecordSchema.for_dataclass(
     CodingWindowsWorkerStageRetirementReceiptV1,

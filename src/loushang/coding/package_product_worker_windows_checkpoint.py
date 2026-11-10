@@ -199,10 +199,6 @@ class CodingWindowsWorkerHistoryCheckpointV1(_BaseWireMethods):
         return raw
 
     @classmethod
-    def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerHistoryCheckpointV1:
-        return cls._from_wire_bytes(raw)
-
-    @classmethod
     def from_guarded_read(
         cls,
         prepared: CodingWindowsWorkerHistoryPreparationV1,

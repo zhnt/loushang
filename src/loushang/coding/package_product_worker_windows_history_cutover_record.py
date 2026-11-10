@@ -102,10 +102,6 @@ class CodingWindowsWorkerHistoryCutoverRecordV1(_BaseWireMethods):
         return raw
 
     @classmethod
-    def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerHistoryCutoverRecordV1:
-        return cls._from_wire_bytes(raw)
-
-    @classmethod
     def from_persisted_bases(
         cls, persisted: CodingWindowsWorkerPersistedBasesV1
     ) -> CodingWindowsWorkerHistoryCutoverRecordV1:

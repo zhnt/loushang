@@ -26,7 +26,26 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A128 Method提交与结清归位）
+## A129外部原型未采用（2026-11-10，生产不变）
+
+Windows四类退休的完整durable/review/history/admission原型虽11源类型检查通过，
+但Code−877/Core+1815/系统+938及53绑定/38转发无足够简化收益；并发现unlaunched
+START native_revision==2特殊校验在草稿中遗漏。未装Product，生产源码/精简收益0；
+原42受控场景捕获与fresh旧重放不能证明未覆盖的数据条件。失败/拒绝与限制见
+[A129](key-designs/worker-history-responsibility-convergence.md#a129完整windows退休闭包原型未采用)。
+完整Goal仍active/partial；A129当时仍用A128已接受计量，不以树外原型报减少。
+
+## 当前状态（2026-11-10，A130公开Codec入口直接复用）
+
+九个单跳from_bytes方法退出，五个直接继承原BaseWire公开Self方法，四个复用原
+StageWire解码器的具名公开classmethod。原Data/Schema/解码体及业务IO不变，Code−36/
+Core+2/系统−34；当前Coding112016/系统648357，较Goal−25739/+13563，距15K97016。
+原73过；实际116过/1旧capture skip/3setup deselect（73+42冻结场景+来源），九类
+原字节/子类/公开patch及实例pickle观测一致。Ruff/mypy10/生成图及架构170过。
+AI本批未选，既有覆盖率失败仍保留；A129原型拒绝不计精简。详见[A130](key-designs/worker-history-responsibility-convergence.md#a130九个公开codec入口直接复用)。
+完整P1–P4仍active/partial；Hosting/构造、KD003未实施及KD011/A33待用户边界保持。
+
+## A128历史交付（2026-11-10，Method提交与结清归位）
 
 MethodInvocation保原构造/13状态字段、Method准备与AppService Outcome、原step/Session
 清理尾段；提交Task、recording查证与同一operation的cancel/wait/settle整程序归原

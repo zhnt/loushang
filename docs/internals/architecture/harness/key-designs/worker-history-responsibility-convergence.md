@@ -1017,3 +1017,34 @@ cause.message两种文案，与旧固定fixture不符。不改oracle/断言、�
 静态与动态消费者审计、old/new XML/精确差分及三独立设计/实际评审。Ruff/format/
 mypy3通过；当前计量见[成本账](../coding-convergence-system-cost-audit.md#a124退出七个未消费的旧转发)。
 不新增PR gate/覆盖/平台，保留所有其它欠账与15K目标；本批只清除先前共享后遗留成本。
+
+## A129：完整Windows退休闭包原型未采用
+
+四类退休及fresh-review/history/completed-admission闭包作树外原型，复用现有
+PackageProduct库存五薄端口、IntentRecords、ReceiptIO和Worker删除，不重计已共享
+机制。55显式函数/53绑定/38兼容转发；完整typed原型Code−877/Core+1815/系统+938，
+11源mypy过仍不能证明职责价值；独立评审认为接口代价无足够简化收益，故不采用。
+通用读取草稿还漏了unlaunched START的native_revision==2特殊校验；原Reserved DTO
+合法支持1/2，不能以改公开codec或期望掩盖。该语义阻断仅树外，Product原判断未动。
+原42场景/16故障/17触发及全轨迹、错误图已冻结，fresh旧重放43过；v2/v3只重定位
+真实owner挂点，旧期望不变。候选首轮42项均在observer已退出Code alias定位处失败，
+不是42个产品行为失败；未声称候选回归通过。原型、失败、值/兼容拒绝及完整成本在
+树外a129-windows-retirement-custody。生产精简0，不将完整C07/P1或Goal标完成。
+
+## A130：九个公开Codec入口直接复用
+
+五个Code记录的公开from_bytes原只转调BaseWire的同descriptor私名，现直接继承原
+公开Self方法。四个StageReview原只转调原StageWire解码，现由原owner把该方法命名为
+公开from_bytes并保原私别名，解码体、类绑定、预算、Schema、字段、Data/错误及IO不动。
+初版public alias导致shadow mypy泛型类访问歧义；改具名classmethod/私别名后shadow
+与实物10源都通过，初失败保留。整10模块逆AST仅九个转发删除和原decoder名称/别名。
+公开路径、raw参数及实际返回原DTO/子类保留；反射返回注解变Self，方法归属/own-dict/
+堆栈帧及私helper覆盖分派有差异，未发现实际消费者，未承诺任意private Meta ABI。
+
+原73消费者过；实际116过/1capture-only skip/3setup deselect（73+42同原冻结退休场景
++来源），未重录期望。九个真实原raw的规范字节、原DTO及子类构造、公开patch/undo、
+实例pickle4逐项同；反射差异另计。Ruff/mypy10/生成依赖图、架构170过。
+Code−36/原Worker codec+2/系统−34；1959其它源码和13资源SHA原同，未新增测试、
+夹具、门禁或生产模块。A129退休闭包未安装，未重计原Decoder/IO。AI本批未选，旧门禁
+失败保持。独立评审、实际源码帧与命令在树外a130-public-codec-entry-reuse。
+完整Goal仍partial，不能用此批替代P1–P4/15K验收。

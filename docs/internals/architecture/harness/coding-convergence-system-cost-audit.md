@@ -521,3 +521,12 @@ Task创建与shield/cancel、recording查证和同operation结清退出Code；�
 逐项同，mypy3/Ruff/图通过。AI935过但旧coverage门槛失败，精确同A126的79源SHA/
 逐行coverage，未改阈值。审计合计过期334行已按全量实测修复，不计精简收益。
 验证、成本与三独立接受限界见[A128](key-designs/method-plan-custody-convergence.md)。完整Goal仍active/partial。
+
+## A129与A130：拒绝高成本迁移，直接复用公开Codec入口
+
+A129树外完整退休原型Code−877/Core+1815/系统+938未采用：53绑定/38转发及
+native_revision==2漏校验，生产0。A130仅九个同义转发退出、原StageWire具名公开
+classmethod与私别名，Code−36/Core+2/系统−34；无新生产模块/测试/夹具/门禁。
+430 Code源112016、1969系统源648357，较Goal−25739/+13563，距15K97016。
+其它1959源码/13资源逐SHA同；文档另计。原Decoder/物理IO不重复记收益。
+验证及有界反射合同见[A130](key-designs/worker-history-responsibility-convergence.md#a130九个公开codec入口直接复用)，完整Goal仍active/partial。
