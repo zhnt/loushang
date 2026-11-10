@@ -66,7 +66,7 @@ Protocol声明占1,083物理行；它们不是全部可删成本，也不足以�
 
 | 实物 | 已核实的问题或必要边界 | 后续处置 |
 | --- | --- | --- |
-| A56普通Worker/Windows准备 | 没有第二份生命周期权威；Graph失败释放的一次性guard有实际竞争场景。仍有effectful Product端口，Windows cleanup保留Core→Code IO→Core往返 | 闭合真实操作程序，不能把所有callback标成纯值或再次加wrapper |
+| A56普通Worker/Windows准备 | 没有第二份生命周期权威；Graph失败释放的一次性guard有实际竞争场景。仍有effectful Product端口；Windows cleanup当前是Core→Code薄绑定→Core往返，物理IO已归Core（A87纠正） | 闭合真实操作程序，不能把所有callback标成纯值或再次加wrapper |
 | A65 builtin bootstrap | 240行程序无新增Task/锁/缓存，真实install与enable共用历史证明；本片+64 | 认可职责归位，保留完整成本，不当系统净去重 |
 | A78 Linux恢复 | Registry/RepairJournal/C5仍各自单一；1402行接收体和bindings/Code实际类构造增加阅读路径 | 核重复receipt精确查找、bindings反复装配和Core→Code薄构造→Core的必要性 |
 | A80 canonical Catalog | Factory交付前pending与Catalog交付后custody保护不同资源阶段，不能简单合并。23个抽象政策方法、额外mixin、Code薄转发确有接口成本 | 先合并只有一个消费者的legacy-open转发，再核常量getter及构造绑定；不删失败资源保留 |
@@ -151,3 +151,13 @@ __init__注入，原36个assert/raises及所有输入/期望保持；候选故�
 不改；三源mypy/Ruff/format及三实际视角窄接受。正常格式全部计账后Code−7、
 接收侧+2、系统−5；无新module/manager/state，当前Code114110/系统647687。
 新共享能力由两个真实消费者使用，但不因此宣称整体复杂度或完整Goal已经完成。
+
+
+## A87纠正：effectful薄绑定不等于Code厚IO程序
+
+三独立视角重新沿当前cleanup调用到物理叶子，确认A82概括‘仍留Code厚IO’过宽，
+属于审计判断纠正，不是新迁移成果。orphan/inventory/native/receipt/activation及
+原生Job观察的实际程序均已归原Core/Hosting；保留的Code准入/绑定/证明政策有
+多层接线成本，但不能据此重复实现采集器。两次独立native重读不能合并。真实
+未共享stage capture是另一个完整场景；尚无采用或减量证明。详见
+[当前路径](key-designs/windows-worker-cleanup-current-path.md)。本片生产源码零变化。

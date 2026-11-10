@@ -27,7 +27,20 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-10，A86 retained receipt精确查找实际复用）
+## 当前状态（2026-11-10，A87 Windows cleanup当前调用链复核）
+
+对A82的‘厚Code IO回借’判断作实物纠正：当前cleanup的orphan/inventory/native
+回调已是Code准入和薄装配，实际目录/FD/journal/Job操作均由原Core/Hosting执行。
+三独立视角沿叶子核实，不能重新迁移或新增collector并冒称收益。registry与GC锁
+边界、两次独立native读取和C5重验不可合并。Code的模式/身份/证明政策继续保留。
+真实不同残留是windows_stage_review完整stage capture物理闭包，候选接收者为
+现有PackageProduct结合原WindowsStageInspection；不使Worker反向依赖Product。
+方案尚未实施/接受，须先冻结旧行为及证明全部接收/适配成本，不预支减量。
+完整路径和限制见[当前链复核](key-designs/windows-worker-cleanup-current-path.md)。
+本片生产/测试/fixture零变动，完整1967源及13资源SHA同；Code114110/系统647687。
+只作静态审查，不声称运行或Windows原生验证。完整P1–P4/领域化/15K仍active/partial。
+
+## A86历史交付（2026-11-10，retained receipt精确查找实际复用）
 
 Code公开单条receipt读取与Core恢复的两处相同扫描，改为直接调用原ReceiptHistory
 的find_retained_record。两入口原Product/type/hash校验保留在history构造前；原
