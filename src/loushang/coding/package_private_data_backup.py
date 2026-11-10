@@ -216,10 +216,10 @@ class CodingArchPrivateDataBackupReadSource:
             raise ValueError("Coding Arch backup Product authority changed")
 
     def snapshot(self) -> PluginBackupRetentionSnapshotV1:
-        from .package_private_data_backup_expiry import _tombstone_name
         from .package_private_data_backup_expiry_journal import (
             CodingArchPrivateDataBackupExpiryJournal,
         )
+        from .package_private_data_backup_expiry_records import _tombstone_name
 
         self.epoch_runtime.assert_current()
         key = PluginInstallationKeyV1(

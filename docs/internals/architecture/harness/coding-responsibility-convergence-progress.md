@@ -26,7 +26,17 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A124退出七个无消费者薄壳）
+## 当前状态（2026-11-10，A125两平台expiry命名去重）
+
+完整相同的持久expiry命名程序共享既有Code records，两个expiry与两个backup snapshot
+调用链接通，无新Core机制；Code/系统−24。Coding112265/系统648294，较Goal−25490/
++13500，距15K97265。原59个独立消费者与新59同集合通过；类型/格式/依赖/文档通过。
+初四源候选漏Win snapshot旧import而会ImportError，未安装即拒；六源B纠正并计完整
+成本。冷模块入口集合不变，调用期lazy import排序/初始化路线有变化，未冒称原序。
+范围与限制见[A125](coding-convergence-system-cost-audit.md#a125两平台expiry命名同域去重)。较大配置寿命/托管程序仅在树外选题/原型，未计成果。
+完整P1–P4仍active/partial；Hosting/AI覆盖率/构造及KD003/KD011/A33原边界保持。
+
+## A124历史交付（2026-11-10，退出七个无消费者薄壳）
 
 已共享主路直接执行Publication/History/PayloadStorage；删除Code七个未被消费的
 旧转发和四个无用import，九个真实动态probe依赖及_unmarked_repair_fields保持。

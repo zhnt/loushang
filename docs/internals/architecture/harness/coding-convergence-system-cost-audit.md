@@ -469,3 +469,22 @@ Code三个源89→75（−14）、379→364（−15）、882→848（−34），
 源码或数据夹具；九个有动态消费者的薄壳保持，未以token单次出现判死码。
 另外1966生产源与13资源SHA不变；三源剩余nonimport AST同。A123+A124合计Code−176/
 系统−18；本批是真实删除旧绑定成本，未重复计算原已共享执行程序。见[A124](key-designs/worker-history-responsibility-convergence.md#a124七个已退出主路的私有薄壳)。
+
+## A125：两平台expiry命名同域去重
+
+两份原_tombstone_name整AST相同，共享既有backup_expiry_records，Plan/Confirmation/
+SHA/canonical原在此；公开DTO、receipt与schema不变，领域命名仍计Coding归属。
+六源−21/−22/+19/0/0/0=Code/系统−24，Core0，无新生产模块/测试/夹具。430 Code源
+112265，1969系统源648294，较Goal−25490/+13500，距15K97265；其它1963源/13资源同。
+
+初A四源漏Windows backup.snapshot真实lazy消费者，会ImportError，未装即拒；B将
+两个snapshot与原Windows事务lazy引用直取records，POSIX expiry也同源。原导入owner
+依赖退出，但Ruff重排两snapshot块内import，未保证原逐条导入序；Records原本仅
+types/schema初始化，无IO。两backup模块冷入口原/新分别501/504模块逐项同，首次
+snapshot初始化路线确变，不能把冷入口同等同调用期同。另一deletion域名称不同未合并。
+
+原47与补14共59独立节点（重叠2），实际59同集合全通过；覆盖原过期/重试恢复及
+snapshot状态；Windows观察使用POSIX效果和受控native端口，不构成原生Windows证明。Ruff/format/mypy6、依赖图和docs9通过，
+AI未选中，无新gate/平台/断言。三视角设计/实际、A拒绝及六源SHA保在树外
+`coding-convergence-continue/a125-expiry-name-dedup`。本批为真实同域算法去重，不替代
+完整P1–P4；既有单项JSON错误文本失败和其它旧差距未随此批关闭。

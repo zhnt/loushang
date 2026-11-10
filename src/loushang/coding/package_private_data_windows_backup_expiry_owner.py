@@ -7,14 +7,10 @@ are deleted. Durable Product receipts permit exact retry after either effect.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from typing import cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
 )
 
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
@@ -80,24 +76,6 @@ class CodingWindowsArchPrivateDataBackupExpiryOwner:
             CodingArchPrivateDataBackupExpiryReceiptV1,
             transaction.execute_expiry(plan, confirmation),
         )
-
-
-def _tombstone_name(
-    plan: CodingArchPrivateDataBackupExpiryPlanV1,
-    confirmation: CodingArchPrivateDataBackupExpiryConfirmationV1,
-) -> str:
-    return (
-        ".expiring-"
-        + sha256(
-            b"loushang.coding-arch-backup-expiry-tombstone/v1\0"
-            + canonical_json_bytes(
-                {
-                    "confirmationId": confirmation.confirmation_id,
-                    "planFingerprint": plan.fingerprint,
-                }
-            )
-        ).hexdigest()
-    )
 
 
 __all__ = ["CodingWindowsArchPrivateDataBackupExpiryOwner"]

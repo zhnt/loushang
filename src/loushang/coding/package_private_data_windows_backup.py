@@ -201,10 +201,10 @@ class CodingWindowsArchPrivateDataBackupOwner:
     def snapshot(self) -> PluginBackupRetentionSnapshotV1:
         """Project verified archives and receipt-backed expiry conservatively."""
 
+        from .package_private_data_backup_expiry_records import _tombstone_name
         from .package_private_data_windows_backup_expiry_journal import (
             CodingWindowsArchBackupExpiryTransaction,
         )
-        from .package_private_data_windows_backup_expiry_owner import _tombstone_name
         from .package_private_data_windows_restore_journal import (
             CodingWindowsArchPrivateDataRestoreTransaction,
         )

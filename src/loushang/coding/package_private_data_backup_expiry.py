@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -17,9 +16,6 @@ from loushang.harness.plugin_management.private_data_backup import (
     inspect_private_expiry_archive,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
 
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .package_installation_private_data import (
@@ -33,6 +29,7 @@ from .package_private_data_backup import (
 )
 from .package_private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryPlanV1,
+    _tombstone_name,
 )
 from .package_private_data_deletion_preview import (
     CodingArchPrivateDataDeletionPreview,
@@ -269,24 +266,6 @@ def _expiry_preview(
         desired_inventory_revision=desired.inventory_revision,
         archive_root_identity=identity,
         archive_target_id=archive_snapshot.target_id,
-    )
-
-
-def _tombstone_name(
-    plan: CodingArchPrivateDataBackupExpiryPlanV1,
-    confirmation: CodingArchPrivateDataBackupExpiryConfirmationV1,
-) -> str:
-    return (
-        ".expiring-"
-        + sha256(
-            b"loushang.coding-arch-backup-expiry-tombstone/v1\0"
-            + canonical_json_bytes(
-                {
-                    "confirmationId": confirmation.confirmation_id,
-                    "planFingerprint": plan.fingerprint,
-                }
-            )
-        ).hexdigest()
     )
 
 

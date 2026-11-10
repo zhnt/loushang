@@ -243,7 +243,7 @@ class CodingWindowsArchBackupExpiryTransaction(
         plan: CodingArchPrivateDataBackupExpiryPlanV1,
         confirmation: CodingArchPrivateDataBackupExpiryConfirmationV1,
     ) -> str:
-        from .package_private_data_windows_backup_expiry_owner import _tombstone_name
+        from .package_private_data_backup_expiry_records import _tombstone_name
 
         return _tombstone_name(plan, confirmation)
 

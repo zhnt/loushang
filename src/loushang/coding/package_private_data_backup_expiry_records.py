@@ -248,6 +248,25 @@ _SCHEMA_BACKUP_EXPIRY_RECEIPT_V1 = RecordSchema.for_dataclass(
     ),
 )
 
+
+def _tombstone_name(
+    plan: CodingArchPrivateDataBackupExpiryPlanV1,
+    confirmation: CodingArchPrivateDataBackupExpiryConfirmationV1,
+) -> str:
+    return (
+        ".expiring-"
+        + sha256(
+            b"loushang.coding-arch-backup-expiry-tombstone/v1\0"
+            + canonical_json_bytes(
+                {
+                    "confirmationId": confirmation.confirmation_id,
+                    "planFingerprint": plan.fingerprint,
+                }
+            )
+        ).hexdigest()
+    )
+
+
 __all__ = [
     "CodingArchPrivateDataBackupExpiryPlanV1",
     "CodingArchPrivateDataBackupExpiryConfirmationV1",

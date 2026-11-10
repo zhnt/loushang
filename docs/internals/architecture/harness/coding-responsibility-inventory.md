@@ -1,5 +1,7 @@
 # Coding 逐文件职责与处置清单 R2
 
+- A125：两平台expiry命名共享原Coding记录模块，四条真实调用链接通；Code/系统−24、Core0，完整Goal仍partial，见[A125](coding-convergence-system-cost-audit.md#a125两平台expiry命名同域去重)。
+
 - A124：删除七个已退出主路且无消费者的私有薄壳，保留动态probe实际依赖；Code/系统−63、Core0，完整Goal仍partial，见[A124](key-designs/worker-history-responsibility-convergence.md#a124七个已退出主路的私有薄壳)。
 
 - A123：完整无写入settings快照读取归原Config.store，复用原Resources消费器；Code−113/Core+158/系统+45，完整Goal仍partial，见[A123](key-designs/settings-snapshot-read-custody-convergence.md)。
@@ -266,10 +268,10 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_legacy_source_evidence.py](../../../../src/loushang/coding/package_legacy_source_evidence.py) | C09 | 142 | E | C09 历史兼容、迁移与快照证据 | 3fc875a324a0 | 140 | 200468832d50 |
 | [package_legacy_windows_receipt.py](../../../../src/loushang/coding/package_legacy_windows_receipt.py) | C09 | 289 | E | C09 历史兼容、迁移与快照证据 | ebb5b40e0b99 | 67 | ea1d662e1563 |
 | [package_pre_b_snapshot.py](../../../../src/loushang/coding/package_pre_b_snapshot.py) | C09 | 448 | E | C09 历史兼容、迁移与快照证据 | bf7cef184eb2 | 448 | bf7cef184eb2 |
-| [package_private_data_backup.py](../../../../src/loushang/coding/package_private_data_backup.py) | C08 | 645 | M | C08 插件私有数据生命周期 | 233a09f3c323 | 343 | e4ff1a50356c |
-| [package_private_data_backup_expiry.py](../../../../src/loushang/coding/package_private_data_backup_expiry.py) | C08 | 439 | M | C08 插件私有数据生命周期 | 91576e5df2d4 | 296 | 510d911e70c9 |
+| [package_private_data_backup.py](../../../../src/loushang/coding/package_private_data_backup.py) | C08 | 645 | M | C08 插件私有数据生命周期 | 233a09f3c323 | 343 | 1d088f5a9aaf |
+| [package_private_data_backup_expiry.py](../../../../src/loushang/coding/package_private_data_backup_expiry.py) | C08 | 439 | M | C08 插件私有数据生命周期 | 91576e5df2d4 | 275 | baca476c0061 |
 | [package_private_data_backup_expiry_journal.py](../../../../src/loushang/coding/package_private_data_backup_expiry_journal.py) | C08 | 365 | M | C08 插件私有数据生命周期 | 6a30e4025bcd | 190 | de96a7fc13d5 |
-| [package_private_data_backup_expiry_records.py](../../../../src/loushang/coding/package_private_data_backup_expiry_records.py) | C08 | 298 | M | C08 插件私有数据生命周期 | 4f3587739ef2 | 255 | bac8313a4256 |
+| [package_private_data_backup_expiry_records.py](../../../../src/loushang/coding/package_private_data_backup_expiry_records.py) | C08 | 298 | M | C08 插件私有数据生命周期 | 4f3587739ef2 | 274 | a801a08a3bf1 |
 | [package_private_data_backup_records.py](../../../../src/loushang/coding/package_private_data_backup_records.py) | C08 | 115 | M | C08 插件私有数据生命周期 | d5b20131323e | 98 | 29dec2901678 |
 | [package_private_data_backup_sdk.py](../../../../src/loushang/coding/package_private_data_backup_sdk.py) | C08 | 338 | M | C08 插件私有数据生命周期 | 54d135a1e6f1 | 338 | 54d135a1e6f1 |
 | [package_private_data_deletion_journal.py](../../../../src/loushang/coding/package_private_data_deletion_journal.py) | C08 | 403 | M | C08 插件私有数据生命周期 | ab35480c5292 | 119 | 10ae5cd84e76 |
@@ -281,10 +283,10 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_private_data_restore_journal.py](../../../../src/loushang/coding/package_private_data_restore_journal.py) | C08 | 364 | M | C08 插件私有数据生命周期 | 9d6aea123669 | 192 | 75c1d9a0b286 |
 | [package_private_data_restore_records.py](../../../../src/loushang/coding/package_private_data_restore_records.py) | C08 | 93 | M | C08 插件私有数据生命周期 | 23f5fb8d03a7 | 81 | c4e3b3002ffd |
 | [package_private_data_windows_archive_snapshot.py](../../../../src/loushang/coding/package_private_data_windows_archive_snapshot.py) | C08 | 254 | M | C08 插件私有数据生命周期 | 4c1ca1208e7b | 123 | bec6862c333f |
-| [package_private_data_windows_backup.py](../../../../src/loushang/coding/package_private_data_windows_backup.py) | C08 | 906 | M | C08 插件私有数据生命周期 | 6e8471c49953 | 376 | f42849cd1c01 |
+| [package_private_data_windows_backup.py](../../../../src/loushang/coding/package_private_data_windows_backup.py) | C08 | 906 | M | C08 插件私有数据生命周期 | 6e8471c49953 | 376 | 42bc7a75865b |
 | [package_private_data_windows_backup_client.py](../../../../src/loushang/coding/package_private_data_windows_backup_client.py) | C08 | 344 | M | C08 插件私有数据生命周期 | 602a215d2e2d | 344 | 602a215d2e2d |
-| [package_private_data_windows_backup_expiry_journal.py](../../../../src/loushang/coding/package_private_data_windows_backup_expiry_journal.py) | C08 | 427 | M | C08 插件私有数据生命周期 | 2f103b9d42fa | 314 | 038429b88b6d |
-| [package_private_data_windows_backup_expiry_owner.py](../../../../src/loushang/coding/package_private_data_windows_backup_expiry_owner.py) | C08 | 446 | M | C08 插件私有数据生命周期 | da3e5ffd2289 | 103 | 2f1e8c354029 |
+| [package_private_data_windows_backup_expiry_journal.py](../../../../src/loushang/coding/package_private_data_windows_backup_expiry_journal.py) | C08 | 427 | M | C08 插件私有数据生命周期 | 2f103b9d42fa | 314 | c81ff731f872 |
+| [package_private_data_windows_backup_expiry_owner.py](../../../../src/loushang/coding/package_private_data_windows_backup_expiry_owner.py) | C08 | 446 | M | C08 插件私有数据生命周期 | da3e5ffd2289 | 81 | 1bfcfe7f6a80 |
 | [package_private_data_windows_backup_expiry_preview.py](../../../../src/loushang/coding/package_private_data_windows_backup_expiry_preview.py) | C08 | 178 | M | C08 插件私有数据生命周期 | 6c62ff896dab | 164 | 47ac46b1ce06 |
 | [package_private_data_windows_backup_expiry_recovery.py](../../../../src/loushang/coding/package_private_data_windows_backup_expiry_recovery.py) | C08 | 164 | M | C08 插件私有数据生命周期 | 7692f6b5e893 | 140 | 00b06e0a9851 |
 | [package_private_data_windows_confirmation.py](../../../../src/loushang/coding/package_private_data_windows_confirmation.py) | C08 | 233 | M | C08 插件私有数据生命周期 | 9b8a4c5cd029 | 216 | a622a29f0ae8 |
@@ -504,7 +506,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
 | C07 | 112 | 21,727 |
-| C08 | 31 | 6,743 |
+| C08 | 31 | 6,719 |
 | C09 | 34 | 9,527 |
 | C10 | 12 | 5,469 |
 | C11 | 25 | 9,308 |
@@ -525,4 +527,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 112,289 |
+| 合计 | 430 | 112,265 |
