@@ -453,3 +453,11 @@ Code315→257（−58），原PackageProduct Windows driver850→957（+107）�
 Coding430源112465行，系统1969源648336行（含GUI），较Goal−25290/+13542，距15K97465。
 纯codec/limits/lazycutover绑定、签名/导入全部计账；原ReceiptIO和names早已共享，不重计。
 另外1967生产源及13资源SHA不变；测试/gzip与文档另计，见[A122](key-designs/worker-history-responsibility-convergence.md#a122完整windows持久base读取与复读归原packageproduct)。
+
+## A123：完整无写入settings快照读取
+
+Code359→246（−113），原Config.store52→210（+158），系统+45。
+Coding430源112352行，系统1969源648381行（含GUI），较Goal−25403/+13587，距15K97352。
+预算getter、label、类型/lazy导入、native adapter及strict hooks全部计入；使用既有
+consume_file替换原EOF循环，无新manager/端口，普通load/save保持。非系统净去重。
+另外1967生产源与13资源SHA不变；测试/压缩观察和文档另计，见[A123](key-designs/settings-snapshot-read-custody-convergence.md)。

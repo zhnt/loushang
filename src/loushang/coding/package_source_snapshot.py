@@ -6,21 +6,16 @@ import json
 import os
 import stat
 from collections.abc import Iterator, Mapping
-from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
-from hashlib import sha256
+from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from loushang.foundation.json import _unique_json_object_hook
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.config.store import _read_stable_json_patch
 from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
     _hold_windows_private_cutover_directory,
     _PinnedWindowsAuthority,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_regular_file_at,
-    windows_stat_at,
 )
 
 _SOURCE_KEYS = frozenset(
@@ -158,96 +153,11 @@ def read_coding_settings_patch_without_writes(
     """Read a settings patch before a Product owner creates its first lock."""
 
     _require_path(path, name="settings")
-    adapter: AbstractContextManager[_WindowsSettingsFile | _PosixSettingsFile] = (
-        _windows_settings_file(path)
-        if os.name == "nt"
-        else nullcontext(_PosixSettingsFile(path))
+    return _read_stable_json_patch(
+        path,
+        maximum_bytes=lambda: _MAX_SETTINGS_BYTES,
+        label="Coding Source settings",
     )
-    with ExitStack() as stack:
-        try:
-            source = stack.enter_context(adapter)
-            before = source.stat()
-        except FileNotFoundError:
-            return False, None, {}
-        getuid = getattr(os, "getuid", None)
-        if (
-            not stat.S_ISREG(before.st_mode)
-            or before.st_nlink != 1
-            or (callable(getuid) and before.st_uid != getuid())
-            or before.st_size > _MAX_SETTINGS_BYTES
-        ):
-            raise ValueError("Coding Source settings file is unsafe")
-        descriptor = source.open()
-        stack.callback(os.close, descriptor)
-        opened = os.fstat(descriptor)
-        if _stable_file_identity(opened) != _stable_file_identity(before):
-            raise ValueError("Coding Source settings changed during read")
-        raw = bytearray()
-        while chunk := os.read(descriptor, 64 * 1024):
-            raw.extend(chunk)
-            if len(raw) > _MAX_SETTINGS_BYTES:
-                raise ValueError("Coding Source settings file exceeds budget")
-        after = os.fstat(descriptor)
-        visible = source.stat()
-        if _stable_file_identity(after) != _stable_file_identity(
-            before
-        ) or _stable_file_identity(visible) != _stable_file_identity(before):
-            raise ValueError("Coding Source settings changed during read")
-    try:
-        decoded = json.loads(
-            raw.decode("utf-8"),
-            object_pairs_hook=_reject_duplicate_keys,
-            parse_constant=_reject_non_json_constant,
-        )
-    except (UnicodeError, ValueError) as exc:
-        raise ValueError("Coding Source settings are not strict JSON") from exc
-    if not isinstance(decoded, dict):
-        raise ValueError("Coding Source settings must be an object")
-    return True, sha256(raw).hexdigest(), decoded
-
-
-class _PosixSettingsFile:
-    def __init__(self, path: Path) -> None:
-        self._path = path
-
-    def stat(self) -> os.stat_result:
-        return self._path.lstat()
-
-    def open(self) -> int:
-        flags = (
-            os.O_RDONLY
-            | getattr(os, "O_NOFOLLOW", 0)
-            | getattr(os, "O_CLOEXEC", 0)
-            | getattr(os, "O_NONBLOCK", 0)
-        )
-        return os.open(self._path, flags)
-
-
-class _WindowsSettingsFile:
-    def __init__(self, parent: _PinnedWindowsAuthority, name: str) -> None:
-        self._parent = parent
-        self._name = name
-
-    def stat(self) -> os.stat_result:
-        # Use handle-based metadata on both sides of the identity comparison.
-        return windows_stat_at(self._parent.descriptor, self._name)
-
-    def open(self) -> int:
-        return open_windows_regular_file_at(
-            self._parent.descriptor, self._name, create_new=False, write=False
-        )
-
-
-@contextmanager
-def _windows_settings_file(path: Path) -> Iterator[_WindowsSettingsFile]:
-    parent = _PinnedWindowsAuthority.open(path.parent)
-    try:
-        yield _WindowsSettingsFile(parent, path.name)
-    finally:
-        try:
-            parent.assert_visible()
-        finally:
-            parent.close()
 
 
 def require_coding_fresh_settings_without_writes(*paths: Path) -> None:
@@ -273,32 +183,8 @@ def coding_settings_have_pre_b_inputs_without_writes(*paths: Path) -> bool:
     return False
 
 
-def _stable_file_identity(
-    metadata: os.stat_result,
-) -> tuple[int, int, int, int, int, int, int, int]:
-    return (
-        metadata.st_dev,
-        metadata.st_ino,
-        metadata.st_mode,
-        metadata.st_nlink,
-        metadata.st_uid,
-        metadata.st_size,
-        metadata.st_mtime_ns,
-        metadata.st_ctime_ns,
-    )
-
-
 def _looks_like_source_key(key: str) -> bool:
     return key in _SOURCE_KEYS or any(marker in key for marker in _SOURCE_KEY_MARKERS)
-
-
-_reject_duplicate_keys = _unique_json_object_hook(
-    lambda: "duplicate settings key",
-)
-
-
-def _reject_non_json_constant(value: str) -> object:
-    raise ValueError(f"invalid JSON constant: {value}")
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -352,6 +238,7 @@ def hold_coding_windows_private_cutover_directory(
         projection_contents=projection_contents,
     ) as directory:
         yield directory
+
 
 __all__ = [
     "hold_coding_pre_b_source_configuration",

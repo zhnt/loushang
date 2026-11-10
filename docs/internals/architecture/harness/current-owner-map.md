@@ -55,6 +55,13 @@ ReceiptIO and history-name rules; Coding retains concrete value/semantic codecs,
 entry admission and quiescence/GC acquisition. The result is read evidence,
 without cutover or deletion authority. See [A122](key-designs/worker-history-responsibility-convergence.md#a122完整windows持久base读取与复读归原packageproduct).
 
+Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
+including POSIX/Windows file custody and strict decoding after cleanup. It directly
+uses Resources' existing file consumer. Coding retains Source policy, original
+path admission, diagnostic label and byte budget through its public thin reader.
+Ordinary JsonConfigStore.load/save remain unchanged; lazy platform imports keep
+Config's cold module closure unchanged. See [A123](key-designs/settings-snapshot-read-custody-convergence.md).
+
 ## Scope
 
 Harness is the cross-Product execution substrate. It owns reusable mechanisms,

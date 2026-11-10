@@ -1,5 +1,7 @@
 # Coding 逐文件职责与处置清单 R2
 
+- A123：完整无写入settings快照读取归原Config.store，复用原Resources消费器；Code−113/Core+158/系统+45，完整Goal仍partial，见[A123](key-designs/settings-snapshot-read-custody-convergence.md)。
+
 - A122：完整Windows persisted-base读取/复读归原PackageProduct，Code−58/Core+107/系统+49；完整Goal仍partial，见[A122](key-designs/worker-history-responsibility-convergence.md#a122完整windows持久base读取与复读归原packageproduct)。
 
 - A121：完整Windows live-stage重验证归原PackageProduct；Code−102/Core+111/系统+9，完整Goal仍partial，见[A121](key-designs/worker-history-responsibility-convergence.md#a121完整windows-live-stage验证归原packageproduct)。
@@ -409,7 +411,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_windows_supervisor_base.py](../../../../src/loushang/coding/package_product_worker_windows_supervisor_base.py) | C07 | 282 | M | C07 插件 Worker 执行/持久化/恢复 | 7b61d5a66355 | 104 | 5735412a6101 |
 | [package_product_worker_windows_supervisor_journal.py](../../../../src/loushang/coding/package_product_worker_windows_supervisor_journal.py) | C07 | 403 | M | C07 插件 Worker 执行/持久化/恢复 | 009fdc92f3b4 | 50 | d97db7b700f4 |
 | [package_product_worker_windows_unlaunched_stage_retirement.py](../../../../src/loushang/coding/package_product_worker_windows_unlaunched_stage_retirement.py) | C07 | 438 | M | C07 插件 Worker 执行/持久化/恢复 | f21cd9031d90 | 383 | 1d9faed4d883 |
-| [package_source_snapshot.py](../../../../src/loushang/coding/package_source_snapshot.py) | C09 | 433 | E | C09 历史兼容、迁移与快照证据 | 3966088d6f93 | 359 | 20ef5b0cd748 |
+| [package_source_snapshot.py](../../../../src/loushang/coding/package_source_snapshot.py) | C09 | 433 | E | C09 历史兼容、迁移与快照证据 | 3966088d6f93 | 246 | e41d4545b5bc |
 | [platform/__init__.py](../../../../src/loushang/coding/platform/__init__.py) | C27 | 5 | K | C27 版本检查 Product 绑定 | 6af5d273482a | 5 | 6af5d273482a |
 | [platform/version_check.py](../../../../src/loushang/coding/platform/version_check.py) | C27 | 45 | K | C27 版本检查 Product 绑定 | 564c53288c45 | 45 | 564c53288c45 |
 | [plugin_author_smoke.py](../../../../src/loushang/coding/plugin_author_smoke.py) | C05 | 740 | V | C05 显式 canary 与作者验证入口 | 1f7948784509 | 740 | 1f7948784509 |
@@ -501,7 +503,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C06 | 26 | 4,460 |
 | C07 | 112 | 21,790 |
 | C08 | 31 | 6,743 |
-| C09 | 34 | 9,640 |
+| C09 | 34 | 9,527 |
 | C10 | 12 | 5,469 |
 | C11 | 25 | 9,308 |
 | C12 | 25 | 7,097 |
@@ -521,4 +523,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 112,465 |
+| 合计 | 430 | 112,352 |

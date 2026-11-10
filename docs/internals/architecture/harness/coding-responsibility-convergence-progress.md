@@ -26,7 +26,18 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A122 Windows持久base完整读取归位）
+## 当前状态（2026-11-10，A123完整settings快照读取归位）
+
+原Config.store私有完整读取程序复用Resources.consume_file，保八字段身份、原
+missing/EOF/latecap及FD→Windows parent关闭→strictJSON→rawSHA顺序；Code保
+路径与Source政策/预算/诊断，普通JsonConfigStore不变。Code−113/Core+158/系统+45，
+Coding112352/系统648381，较Goal−25403/+13587，距15K97352；不是系统净精简。
+旧77固定观察与新77逐项一致，持久77另重放；现有消费者21/架构165通过。首轮目录
+size失败来自临时测试根所在文件系统不同，保原记录后按原disk root重放通过，未改
+字段/期望或Product。完整成本、三视角及限制见[A123](key-designs/settings-snapshot-read-custody-convergence.md)。
+完整P1–P4仍active/partial；Hosting/AI覆盖率/构造及KD003/KD011/A33原边界保持。
+
+## A122历史交付（2026-11-10，Windows持久base完整读取归位）
 
 原PackageProduct driver执行完整current/ACL/root/names/checkpoint/六base/可选cutover
 读取及有序复读；直接用原ReceiptIO/names，无新引擎、Protocol、状态或Code IO回调。
