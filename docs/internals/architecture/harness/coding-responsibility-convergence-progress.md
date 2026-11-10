@@ -6,7 +6,22 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A101 Task观察去重）
+## 当前状态（2026-11-10，A102 canonical Catalog清单协调）
+
+A80已接受的原AppHost可选Catalog实现，现纳入两份遗漏的旧消费者清单。例外只
+针对一个精确路径和已审公共值导入；保留14原测试/79断言、25原必需消费者及其余
+门禁。只缩减旧失败范围，不新增必需路径或merge-failing条件；未改workflow/route。
+两完整清单模块14项通过；64静态反事实与整模块逆AST证明其余约束保持。
+详见[A102](key-designs/canonical-transcript-catalog-custody-convergence.md#a102-reconcile-the-existing-consumer-inventories)。
+生产变更0，全部1968源/13资源SHA同；当前Coding113580/系统647934、距15K98580。
+本片关闭A101观察到的两个清单失配，不把其等同五项Hosting大门全关，AI coverage
+原失败及更早部分构造/Package绑定缺口仍在。完整P1–P4仍active/partial；KD003
+未实施，KD011/A33待用户且未采用。精简收益0。
+交付验证：72项不同的原架构检查分批通过（14+59执行，1文档节点复核重复），
+文档9项及两测试Ruff检查通过；此前两个清单失败已在实际树关闭。Source/runtime
+未变，未重复整产品/AI suite，也不据此宣布其它欠账或完整Goal关闭。
+
+## A101历史交付（2026-11-10，Task观察去重）
 
 28个精确重复私有操作体已归原Foundation两观察函数；创建/取消/重试及资源owner
 原位，九个具有stdlib/固定依赖合同的源恢复原样。Coding−14、Foundation+9，其余

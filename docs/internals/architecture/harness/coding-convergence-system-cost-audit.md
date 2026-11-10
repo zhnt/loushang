@@ -287,3 +287,12 @@ Coding−14、AI−6、AppHost−11、AppService−4、Hosting−4、Harness−2
 尚98580。测试127行/冻结数据478行另计，无新PR gate；542相关检查过/1skip、70架构
 过/2原失败复现、AI935过但原新coverage均未达门槛，未覆盖行数相同。详见
 [KD004 A101](key-designs/owned-task-join-convergence.md#a101同一原模块的task观察操作去重)。
+
+
+## A102：已有Catalog消费者清单协调
+
+生产源码及兼容适配增删均0，全部1968源及13资源SHA保持；Coding113580/
+系统647934，相对Goal−24175/+13140，15K尚98580。仅两既有架构测试+29行及
+Current说明协调，精简收益0。例外精确限定A80已接受的同实例Catalog/公共值
+导入，不要求其必须存在，所有旧required成员/断言/路由保留；属于范围缩减而非
+新增PR条件，详见[A102](key-designs/canonical-transcript-catalog-custody-convergence.md#a102-reconcile-the-existing-consumer-inventories)。

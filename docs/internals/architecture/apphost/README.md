@@ -425,9 +425,12 @@ after Product/OEM admission, never through a derived module name.
   stale detach, dependency-ordered close, shutdown deadline/retry, re-entry,
   and hosted identity mapping;
 - `tests/architecture/test_apphost_a03_a04_architecture.py` proves that the
-  runtime stays in the standard-library-only core, the hosted edge remains the
-  sole AppHost-to-AppServer consumer, and the A0.4 structural ports remain
-  contract-only after G11;
+  runtime stays in the standard-library-only core, the hosted edge remains
+  wiring-only, and the A0.4 structural ports remain contract-only after G11.
+  A80's optional canonical Transcript catalog consumes reviewed protocol and
+  discovery values on the same original Product catalog instance; this adds no
+  hosted binder, service, transport or default entrypoint. See the
+  [accepted custody design](../harness/key-designs/canonical-transcript-catalog-custody-convergence.md);
 - `tests/coding/test_apphost_product.py` and
   `tests/architecture/test_hosted_product_runtime_g8_join.py` prove the exact
   G8 receipt, recovery, ownership, multi-profile/Session, fault, cleanup, and

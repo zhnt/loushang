@@ -267,3 +267,40 @@ active, with99506 physical Coding lines still above15K. No
 irreducible lower bound is established. KD003 stays unimplemented; KD011/A33 stay
 user-pending and unadopted. Remaining ordinary Worker, startup/Plugin/Session,
 hosted/Continuity and entry/history responsibilities continue under the full Goal.
+
+
+## A102: Reconcile The Existing Consumer Inventories
+
+A80 already accepted this optional AppHost integration as the owner of shared
+catalog operations and AppService discovery values, on the same actual Coding
+catalog instance. The two older AppHost/G11 consumer inventories omitted its exact
+private source path. Actual imports remain AppServer protocol values and the
+AppService discovery_ports module; no second Product adapter, hosted binder,
+service, transport, entrypoint or resource owner is introduced by this correction.
+
+Both existing checks now admit only that exact path while its corresponding
+imports remain within the reviewed public-value allowlist. The original scanners,
+14 test nodes, all79 assertions and all25 previously required G11 consumers remain.
+The AppServer guard is member-aware; G11 retains its original module-only
+scanner, without claiming to constrain individual AppService members.
+The optional set is selected only from already observed consumers; removing this
+helper or unused public-value imports does not fail. Other paths or unreviewed
+client/service/facade imports still fail. Reversing only the two optional exceptions
+reproduces both complete original test-module ASTs;64 static counterfactuals
+confirm old pass implies new pass, including every missing-required-member case.
+
+This is a strict gate scope reduction authorized by the workspace rule, not a new
+required check, assertion, trigger, platform, route or merge-failing condition.
+No approval for gate expansion is inferred or claimed. AppHost/AppServer stdlib
+core, default-dark rules, reverse-dependency guards and all other checks are intact.
+Production/source/data/API changes are0; all1968 production sources and13 resources
+retain their exact prior SHA. The two existing test modules add29 physical lines.
+The G11 entrypoint inventory is unchanged because this helper is not an entrypoint.
+
+The two full inventory modules pass14 existing cases. The additional batch passes
+59 cases, including one repeated current-document check, for72 distinct existing
+architecture checks; documentation9 and Ruff checks also pass. Root
+integrates the three independent responsibility/runtime/compatibility reviews for
+this bounded correction; the original source snapshots, test/AST proofs and results
+are retained outside Git in A102. This closes these two observed inventory failures,
+not the complete P1–P4 Goal or the five broader Hosting audit obligations.

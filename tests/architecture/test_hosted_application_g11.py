@@ -113,7 +113,20 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         if not path.is_relative_to(APPSERVICE)
         and _imports_prefix(_imports(path), "loushang.appservice")
     }
-    assert consumers == {
+    # A80's optional shared implementation adds no second Product adapter.
+    # Subtract only an admitted value consumer; do not require this helper to exist.
+    optional_catalog = {
+        consumer for consumer in consumers
+        if consumer == Path(
+            "src/loushang/apphost/integrations/_canonical_transcript_catalog.py"
+        )
+        and {
+            name for name in _imports(consumer)
+            if name == "loushang.appservice"
+            or name.startswith("loushang.appservice.")
+        } <= {"loushang.appservice.discovery_ports"}
+    }
+    assert consumers - optional_catalog == {
         CODING_ADAPTER,
         Path("src/loushang/apphost/application.py"),
         Path("src/loushang/apphost/continuity.py"),
