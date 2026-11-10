@@ -316,3 +316,11 @@ Code669→559（−110），原Resources filesystem503→681（+178），系统�
 距15K98393。其余1966源及13资源 SHA 同；原测试改2挂点但不改断言/覆盖，新显式
 probe202+JSONL243行（777286 bytes）另计，不扩默认gate。完整验证与限制见
 [A104](key-designs/native-fallback-metadata-custody-convergence.md)。旧Catalog清单失败仍在。
+
+
+## A105：已有 Catalog 消费者库存协调
+
+生产源码、接收/兼容适配均0变更；全部1968源/13资源 SHA 同A104。当前Coding113393/
+系统648046，相对Goal−24362/+13252、距15K98393，精简收益0。仅原清单测试净增24
+行，保3节点/8断言/7必需成员；属于已授权门禁scope reduction而非新失败条件。
+逆AST、76反事实及原完整模块3过终态见[KD009 §24](key-designs/startup-session-assembly-convergence.md#24-a105协调两项已接受-catalog-消费者库存)。

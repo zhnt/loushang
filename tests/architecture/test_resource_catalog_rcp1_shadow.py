@@ -10,7 +10,7 @@ from loushang.harness.resources._catalog_records import (
     ResourceSourceGenerationRef,
     ResourceSourceSnapshot,
 )
-from tests.architecture._source_imports import imported_modules
+from tests.architecture._source_imports import imported_modules, resolved_imports
 
 RESOURCE_ROOT = Path("src/loushang/harness/resources")
 ORCHESTRATION_ROOT = Path("src/loushang/harness/resource_catalog")
@@ -118,7 +118,31 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
     assert all(path.is_file() for path in PRIVATE_CATALOG_MODULES)
     production_paths = set(Path("src/loushang").rglob("*.py")) - PRIVATE_CATALOG_MODULES
 
-    assert {path for path in production_paths if _imports_catalog_module(path)} == {
+    consumers = {path for path in production_paths if _imports_catalog_module(path)}
+    reviewed_catalog_imports = {
+        ORCHESTRATION_ROOT / "_loader_inputs.py": {
+            "loushang.harness.resources._catalog_input_receipt",
+            "loushang.harness.resources._catalog_input_receipt.ResourceCatalogInputReceipt",
+            "loushang.harness.resources._catalog_embedded_source",
+            "loushang.harness.resources._catalog_embedded_source.capture_built_in_resource_package_files",
+        },
+        Path("src/loushang/harness/session/product_composition_assembly.py"): {
+            "loushang.harness.resources._catalog_input_receipt",
+            "loushang.harness.resources._catalog_input_receipt.ResourceCatalogInputReceipt",
+        },
+    }
+    optional_consumers = {
+        path
+        for path in consumers
+        if path in reviewed_catalog_imports
+        and {
+            module
+            for module in resolved_imports(path)
+            if module.startswith("loushang.harness.resources._catalog_")
+        }
+        <= reviewed_catalog_imports[path]
+    }
+    assert consumers - optional_consumers == {
         # Existing Product preview/discovery consume immutable Catalog data.
         Path("src/loushang/coding/package_product_preview.py"),
         Path("src/loushang/coding/plugin_local_discovery.py"),

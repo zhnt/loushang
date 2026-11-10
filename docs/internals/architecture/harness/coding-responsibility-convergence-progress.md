@@ -6,7 +6,18 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A104 native fallback职责归位）
+## 当前状态（2026-11-10，A105 Catalog库存协调）
+
+两项此前接受的原 Session/Catalog owner 现纳入旧消费者库存：只从已观察集合中
+按精确路径和各自公共导入子集作可选减集。原7必需成员、PRIVATE存在条件、scanner
+及3节点/8断言保持。76静态反事实与整模块逆AST证明未新增失败条件；无新PR gate。
+原完整模块1失败/2通过，实际修正后3项通过，关闭A104观察到的这一个清单失配。
+生产源码/兼容适配变更0，1968源及13资源SHA同；Coding113393/系统648046，距15K
+尚98393，精简收益0。详见[KD009 §24](key-designs/startup-session-assembly-convergence.md#24-a105协调两项已接受-catalog-消费者库存)。
+完整P1–P4仍active/partial；其它Catalog/Session历史失败、五项Hosting、AI coverage及
+部分构造/绑定欠账不由本片关闭。KD003未实施，KD011/A33待用户且未采用。
+
+## A104历史交付（2026-11-10，native fallback职责归位）
 
 本地 native fallback 的整条固定深度 FD/根身份/枚举/关闭程序已归原 Resources
 filesystem discovery，Code 保16键纯投影、正则/预算/诊断和原错误身份。直接使用

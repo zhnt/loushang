@@ -6,6 +6,7 @@
 - Owner: Coding / shared-layer architecture；静态分析 Codex。
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
+A105协调两项已接受Catalog消费者库存，生产增删0/全源SHA同；见[KD009 §24](key-designs/startup-session-assembly-convergence.md#24-a105协调两项已接受-catalog-消费者库存)。
 A104完整native fallback归原Resources（Coding−110/Core+178/系统+68）；见[A104](key-designs/native-fallback-metadata-custody-convergence.md)。
 A103完整普通孤儿恢复归原 Product（Coding−77/Core+121/系统+44）；见[A103](key-designs/ordinary-orphan-recovery-convergence.md)。
 A101精确Task观察去重（Coding−14/系统−32）；见[KD004 A101](key-designs/owned-task-join-convergence.md#a101同一原模块的task观察操作去重)。

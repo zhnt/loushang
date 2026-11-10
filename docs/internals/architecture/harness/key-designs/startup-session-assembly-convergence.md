@@ -812,3 +812,34 @@ R1外层错引内层process_session，由两评审发现，未安装；R1首次�
 明确撤回。R2修scope，R3改实际Session判型，R4恢复异常真实类匹配，原源及各版
 候选/SHA/失败和三视角报告保留树外A100。最初原行为探针未注册asyncio marker
 收集失败，改仓库既有asyncio.run后原观察通过，不修改Product guard掩盖失败。
+
+
+## 24. A105：协调两项已接受 Catalog 消费者库存
+
+本节仅更新现有清单检查，不改变生产接口或权威。§12 已接受原
+`resource_catalog/_loader_inputs.py` 的完整 receipt→Native/Package/Embedded spec
+交接及内置 capture；§14/A36 已接受原 `session/product_composition_assembly.py`
+的 receipt 包事实/seed/finalize。二者遗漏在更早 RCP1 消费者精确清单之外。前者
+确有已接受的 built-in bytes capture，并非两个模块都只消费纯 DTO。
+
+原检查现只从已观察消费者中筛出两个精确路径，且各自 Catalog 模块与符号导入
+为已审集合子集时才作可选减集。Session 仅 receipt 模块/类；Loader 另可使用原
+embedded 模块/公开 capture 函数。原七个必需消费者、PRIVATE_CATALOG_MODULES
+及其存在断言、原 scanner、字段合同及三个节点/八条断言都保持。可选模块不存在
+或删去不用的公共导入不会新增失败；其它路径或未审符号不能获得这次豁免。
+
+设旧观察集合 C、原必需集合 A、两个可选路径 E，新检查 C−O=A 且 O⊆C∩E。
+旧 C=A 时 A∩E 为空，短路后 O 为空且不读取可选路径，新检查仍通过。因此这是
+严格缩小门禁失败范围，不新增必需文件、覆盖、assertion、workflow、trigger、
+route、platform 或 merge-blocking 条件。没有推断任何门禁扩张批准。
+
+仅逆去三个局部赋值、断言左式减集和一个 scanner 工具导入，完整测试模块 AST
+与原文相同。76 个静态反事实检查覆盖两个路径的各类公开/未审导入、缺每个必需
+成员、未知路径、可选不存在与实际源码集合，无旧 pass→新 fail。当前原完整模块
+实际1失败/2通过，候选完整模块3通过；此前原失败证据保留，不重标历史 A104 全绿。
+
+生产源码及适配增删均0，1968源/13资源 SHA 同；Coding113393/系统648046、距15K
+尚98393行。测试净增24行，文档另计。三独立实际评审与 Root 有界技术接受、完整
+帧、逆 AST、反事实及 XML 保留在树外 A105。本节只关闭 A104 观察到的这一清单
+失配，不关闭其它 Catalog/Session 历史失败、五项 Hosting、AI coverage、早期构造/
+绑定缺口或完整 P1–P4。KD003 未实施，KD011/A33 待用户且未采用。
