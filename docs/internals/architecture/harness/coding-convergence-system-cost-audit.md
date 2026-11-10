@@ -248,3 +248,12 @@ Code/系统均−12：删除重复body/header15行，合并短路条件排版增
 原30项配置bootstrap回归通过。当前Coding113567/系统647760，较Goal起点−24188/
 +12966；仍有系统累计增长及完整15K差距，详见[当前执行记录](coding-responsibility-convergence-progress.md)。
 A95缓存和A96普通Session候选不采用，生产收益0，避免重复此前不经济的适配方案。
+
+## A98后续：未交付Session的原owner清理责任
+
+已复现交付前注册失败持有实际Product租约且无可达完整清理owner；本片修复恢复
+缺口，不计精简收益。Coding bootstrap+20（含薄getter/失败绑定）、原Session cleanup
++121、原TranscriptStore+29，兼容绑定已含Code不得重计，系统+170。测试两显式probe
+527行另计、不进默认PR route；54原/18新本地检查合计72过，另原SDK14过。当前Coding113587/
+系统647930，较Goal起点−24168/+13136；15K尚98587。完整边界、失败和证据限制见
+[KD009 §22](key-designs/startup-session-assembly-convergence.md#22-a98完成构造后的session交付失败责任)。

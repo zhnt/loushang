@@ -732,3 +732,52 @@ lease/admission/Graph端口受控。保完整receipt FQN/fields、每步状态�
 默认发现/CI route/平台/门禁。Root按授权综合三视角接受实际R2；真实Task.cancel、
 真实Graph/持久journal全面验证及完整P1–P4仍不由本有限模型证明，原KD011/A33/
 KD003边界不变。
+
+
+## 22. A98：完成构造后的Session交付失败责任
+
+- Authority: accepted bounded internal design and actual implementation；Root综合职责/复用、运行/失败、数据/兼容三独立实物视角接受。
+- Scope: 原Core construction result已返回后，到Coding Session或SDK Result真正交付前；不包括更早部分构造与Core scoped-model设置失败，不据此关闭整个P2。
+- Method: 本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`，不是上游同步声明。
+
+原入口在Session已绑定Product租约后安装multiagent。注册失败抛原错误，公开wrapper的
+unbound factory清理因binding已经发行而正确不动它；尚未返回的Session却未进入原
+异步LifecycleStore。因此既有before-release与Session dispose都没有可达候选。
+旧真实入口在受控注册失败下保留实际租约、拒绝同身份重试；仅实验捕获原对象并
+显式先关tree再关Session后，实际lease handle由未释放变已释放。该原观察已冻结。
+
+原Session `_cleanup`现保留一个完成构造、尚未交付的确切Session。显式异步清理
+只调用实际Core multiagent runtime的dispose（如已绑定）与同一Session.dispose；
+不冒称调用任意Product before-release hook。原单一pending Transcript条目可附
+此责任，Store先结清Session再dispose Transcript，失败不拆依赖，由原close重试。
+同Transcript带债务重入被拒绝，不能覆盖原条目。没有新全局registry或退休引擎。
+
+同步入口不创建任务/事件循环；调用者从原错误取得清理入口，进入合适的异步host后
+调用 `get_session_construction_cleanup(error).retry_cleanup()`。getter由Coding
+bootstrap薄导出。清理开始后只保一份Task，借原failure-first join处理等待者取消，
+失败保同owner，成功释放引用；Task提交拒绝显式关闭未提交coroutine。该句柄仅适用
+原进程，既有结构化错误投影与持久格式不新增协议。
+
+普通错误保原type/identity/args。私槽被占、同一错误被另一Session复用，或malformed
+冲突包装再次附着时，使用明确AttachmentError保原错误和本次owner；不得覆盖/串行
+结清另一个Root的责任。低层BaseException dict与精确Core类型查找不调用异常自定义
+属性。原公开构造签名、DTO字段、Header/receipt/持久wire及factory issued事实保持。
+
+成本为Coding bootstrap +20、原Core cleanup +121、原TranscriptStore +29，系统
+**+170**；不计精简或重复算法退出收益。当前Coding430源113587、系统1968源647930，
+相对Goal起点−24168/+13136，15K差距98587。两显式本地probe共527行，测试成本另计，
+不在默认PR测试route；原测试断言、gate和workflow未改。
+
+实际72项通过：54原消费者、12真实Store/Task配受控Session/Tree的合同检查、6真实
+Linux入口（sync/in-loop分别注册/Result包装失败四项，async Root自动清理/失败保留
+与close重试两项）。Ruff与相同三源mypy通过，全部源码仅三处变化、其余1965源及
+13资源SHA保持。原文件整体格式有历史差异，未作无关整文件重排；新Core及探针格式
+通过。证据不外推实际notice-drain取消、跨loop/thread、Windows、原生子进程crash
+或全部构造路径。完整Goal与原五项Hosting架构欠账仍未关闭。
+
+旧实验R1–R3脚本分别误用已关闭manager、未准备的UserInput和外层lease属性，失败
+保历史，未改Product准入；R4原观察通过。外置R3原消费者初跑50过/4失败，三项
+私有父目录问题在原源复现（两unsafe、一超时），使用合规nested input后三项过；
+另一Arch消费者因外置候选不在真实editable project root被拒，原源和实际安装均过。
+这些环境修正没有放宽guard。最终联合actual72/0失败/0skip，另原SDK14项全过，合计86个不同节点；详细三视角报告、全帧、
+源码起点、脚本、日志/XML及实际安装证明保在树外A98交付证据目录。

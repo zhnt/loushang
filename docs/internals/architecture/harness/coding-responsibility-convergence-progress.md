@@ -6,7 +6,23 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A97 Continuity迁移支路去重）
+## 当前状态（2026-11-10，A98未交付Session清理责任）
+
+完成Core构造后的multiagent安装/SDK Result包装失败，现保确切Session清理责任；
+原Store先关实际tree/Session再释放Transcript，失败保原pending条目供close重试。
+同步调用者取得进程内显式异步清理入口，原factory issued事实不改、不后台伪关闭。
+本批Coding+20/Core+150/系统+170，属于已复现恢复缺口修复，精简收益0；测试527行
+另计且不进默认PR route。72实际检查通过（54原/12受控Core/6真实Linux入口），
+另原SDK14项通过（合计86不同节点）；三独立实物视角接受，Ruff、相同三源mypy、
+依赖/文档检查与完整计量见
+[A98](key-designs/startup-session-assembly-convergence.md#22-a98完成构造后的session交付失败责任)。
+当前Coding430源113587、系统1968源647930，较Goal起点−24168/+13136；距15K尚
+98587。其余1965源及13资源SHA同；原公开签名/DTO/持久协议及原测试断言不改。
+更早部分构造/Core scoped-model失败、实际notice-drain取消及跨平台不由本片证明。
+完整P1–P4仍active/partial，五项Hosting架构欠账未关；KD003未实施，KD011/A33
+待用户且未采用。下一步继续完整职责退出与真实重复消除，不能把本片增长称精简。
+
+## A97历史交付（2026-11-10，Continuity迁移支路去重）
 
 配置Continuity的首次安装与缺失迁移记录两条支路，已合用原先完全相同的
 `migrate_legacy_enablement`及desired重读程序。`unseen or ... is None`保原短路：

@@ -25,6 +25,10 @@ from loushang.harness.diagnostics.types import (
     ErrorReport,
 )
 from loushang.harness.runtime import SessionOperationResult
+from loushang.harness.session._cleanup import (
+    SessionConstructionCleanup,
+    get_session_construction_cleanup,
+)
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.lifecycle import (
     ImportCandidate,
@@ -248,6 +252,12 @@ class ProductTranscriptSessionBinding(Generic[ProductTranscriptSessionT]):
         )
 
 
+@dataclass
+class _PendingTranscriptConstruction(Generic[TranscriptSessionT]):
+    transcript: TranscriptSessionT
+    cleanup: SessionConstructionCleanup | None = None
+
+
 class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, SessionT]):
     """Adapt Product transcript sessions to the common lifecycle store port.
 
@@ -269,7 +279,9 @@ class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, Session
         self._build_session = build_session
         self._validate_restored_transcript = validate_restored_transcript
         self._transcripts_by_session_id: dict[int, TranscriptSessionT] = {}
-        self._pending_transcripts: dict[int, TranscriptSessionT] = {}
+        self._pending_transcripts: dict[
+            int, _PendingTranscriptConstruction[TranscriptSessionT]
+        ] = {}
         self._closing = False
         self._active = 0
         self._idle = asyncio.Event()
@@ -278,7 +290,7 @@ class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, Session
 
     @property
     def pending_transcripts(self) -> tuple[TranscriptSessionT, ...]:
-        return tuple(self._pending_transcripts.values())
+        return tuple(item.transcript for item in self._pending_transcripts.values())
 
     @property
     def closing(self) -> bool:
@@ -300,10 +312,22 @@ class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, Session
             if not self._active:
                 self._idle.set()
 
+    def _retain_transcript(self, transcript: TranscriptSessionT) -> None:
+        pending = self._pending_transcripts.get(id(transcript))
+        if pending is not None:
+            if pending.cleanup is not None:
+                raise RuntimeError("transcript has pending Session construction cleanup")
+            return
+        self._pending_transcripts[id(transcript)] = _PendingTranscriptConstruction(transcript)
+
     async def _discard(self, transcript: TranscriptSessionT) -> None:
         async with self._cleanup_lock:
             if id(transcript) not in self._pending_transcripts:
                 return
+            pending = self._pending_transcripts[id(transcript)]
+            if pending.cleanup is not None:
+                await pending.cleanup.retry_cleanup()
+                pending.cleanup = None
             await _maybe_await(self._ports.dispose_transcript(transcript))
             self._pending_transcripts.pop(id(transcript))
 
@@ -353,7 +377,7 @@ class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, Session
         async def build(current: SessionT | None, transition: SessionLifecycleTransition) -> SessionT:
             with self._admission():
                 transcript = await operation()
-                self._pending_transcripts[id(transcript)] = transcript
+                self._retain_transcript(transcript)
                 try:
                     if self._validate_restored_transcript is not None:
                         await _maybe_await(self._validate_restored_transcript(transcript))
@@ -376,7 +400,7 @@ class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, Session
             transcript = await _maybe_await(
                 self._ports.restore_transcript(session_ref, cwd_override)
             )
-            self._pending_transcripts[id(transcript)] = transcript
+            self._retain_transcript(transcript)
             try:
                 if self._validate_restored_transcript is not None:
                     await _maybe_await(self._validate_restored_transcript(transcript))
@@ -420,7 +444,7 @@ class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, Session
         current_session: SessionT | None,
         transition: SessionLifecycleTransition,
     ) -> SessionT:
-        self._pending_transcripts[id(transcript)] = transcript
+        self._retain_transcript(transcript)
         try:
             if self._closing:
                 raise RuntimeError("transcript lifecycle store is closed")
@@ -428,6 +452,11 @@ class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, Session
                 self._build_session(transcript, current_session, transition)
             )
         except BaseException as error:
+            # Retain before the first await; an unsuccessful Session cleanup
+            # keeps its dependent Transcript in this original pending entry.
+            self._pending_transcripts[id(transcript)].cleanup = (
+                get_session_construction_cleanup(error)
+            )
             await self._discard_failed(transcript, error)
             raise
         self._transcripts_by_session_id[id(session)] = transcript

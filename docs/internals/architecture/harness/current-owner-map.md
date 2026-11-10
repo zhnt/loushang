@@ -879,3 +879,15 @@ identity/metadata/compatibility/view policy with thin entries. Its existing narr
 history-currentness guard retains effects; history preview/navigation is unchanged.
 [Bounded canonical evidence](key-designs/canonical-transcript-catalog-custody-convergence.md)
 records distinct owned/legacy failures, true thread completion and complete cost.
+
+## Failed completed-Session handoff (A98)
+
+The original Session construction cleanup retains one completed, undelivered
+Session. The original Transcript lifecycle pending entry settles that same
+custody before discarding its dependent transcript; failed close remains retryable.
+It calls the actual optional multiagent runtime and Session owners, with one
+retained task using the existing join primitive. Coding binds the two post-result
+failure boundaries and exposes the typed cleanup lookup. This adds no global
+registry, persisted owner or general before-release hook framework. Earlier
+constructor and scoped-model failure are separate obligations; see
+[A98](key-designs/startup-session-assembly-convergence.md#22-a98完成构造后的session交付失败责任).
