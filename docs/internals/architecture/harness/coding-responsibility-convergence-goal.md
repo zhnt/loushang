@@ -1,5 +1,7 @@
 # COD-RESP-GOAL-002：Coding 领域化与公共机制职责归一
 
+- A135 两平台共用 Worker 回执与所有者校验，Coding 与系统源码各减10行。见[A135](coding-responsibility-convergence-progress.md#a135两平台共用worker回执复核)。
+
 - A133 三个读取入口共用原 Plugin Management 的 GC 与 Desired 装配，Coding 减10行、Harness 增15行。见[A133](coding-responsibility-convergence-progress.md#a133共用gc与desired账本装配)。
 
 - A132 统一25处 fenced runtime 布局映射，Coding 和系统源码各减少76行。见[A132](coding-responsibility-convergence-progress.md#a132共用fenced-runtime布局映射)。

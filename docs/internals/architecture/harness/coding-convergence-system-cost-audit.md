@@ -553,3 +553,10 @@ Coding −16，Harness 0，系统 −16。备份记录是 Coding 产品数据合
 Coding 新增18行、删除28行。Harness 新增26行、删除11行。系统净增5行。
 具名绑定让两账本的关系由原装配组件表达，同时保留现有单写者扫描覆盖。
 当前430份 Coding 源码111914行，1969份系统源码648270行。见[A133](coding-responsibility-convergence-progress.md#a133共用gc与desired账本装配)。
+
+
+## A135 两平台共用 Worker 回执复核
+
+Coding 两文件分别净增35行和净减45行，合计新增124行、删除134行。Harness 净0，
+系统净减10行。当前430份 Coding 源码111904行，1969份系统源码648260行。
+该复核含 Coding 领域授权政策，源码仍计入 Coding。见[A135](coding-responsibility-convergence-progress.md#a135两平台共用worker回执复核)。

@@ -35,6 +35,24 @@ START native_revision==2特殊校验在草稿中遗漏。未装Product，生产�
 [A129](key-designs/worker-history-responsibility-convergence.md#a129完整windows退休闭包原型未采用)。
 完整Goal仍active/partial；A129当时仍用A128已接受计量，不以树外原型报减少。
 
+## A135两平台共用Worker回执复核
+
+Coding 的两种回执 owner 共用见证复核和授权所有者 ID 查询。两平台各自读取原历史、
+调用原策略推导，并保留各自的派生异常集合。POSIX 仍读 retained-only 历史；
+Windows 仍核对当前 Session，并在归还借用描述符后选择记录。所有者 ID 查询继续
+在同一外层 GC guard 下复核见证并重新读取 opt-in。原 Harness 锁、历史和描述符
+owner 直接复用。
+
+568项受控旧版与新版对照逐字节一致。对照覆盖成功与拒绝、资源归还、异常链、
+注入的取消异常和同一次查询的第二次授权读取。继承改变方法的定义位置及 traceback，派生异常
+集合在类初始化时绑定。原方法签名、实际绑定挂点与持久格式保留。
+原消费者及冻结回放44项通过，7项按现有筛选未选。176项架构检查、两源码类型检查、
+Ruff、依赖图和文档约束通过。Windows 原生运行未覆盖。
+运行记录在树外 `a135-worker-receipt-current`。
+
+Coding 和系统源码各减10行。当前 Coding 111904行，系统648260行，较 Goal 起点
+分别减少25851行和增加13466行，距15K还差96904行。完整 P1–P4 仍在进行。
+
 ## A134 Windows切换目录库存协调
 
 A115 的一处 Windows 临时目录读取点已登记。原库存检查和117项受控回放均通过，

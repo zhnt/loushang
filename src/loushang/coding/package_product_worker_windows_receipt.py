@@ -37,7 +37,6 @@ from loushang.harness.worker._native_profile_bridge import (
 from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
 from loushang.harness.worker.history._receipts import latest_receipt_record
 from loushang.harness.worker.product_activation import (
-    ActivationWitness,
     ProductWorkerActivationPolicyV1,
     ProductWorkerActivationReceiptV1,
 )
@@ -57,6 +56,7 @@ from .package_product_worker_receipt import (
     CodingWorkerReceiptRecordV1,
     CodingWorkerSelectedPayloadV1,
     CodingWorkerSessionDiscoveryReadPort,
+    _CodingWorkerReceiptAuthority,
 )
 from .package_product_worker_windows_installed_backend import (
     CodingWindowsWorkerInstalledBackendError,
@@ -71,11 +71,19 @@ from .package_product_worker_windows_receipt_journal import (
 )
 from .session_manager import SessionManager
 
-_STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 
-
-class CodingWindowsWorkerProductReceiptOwner:
+class CodingWindowsWorkerProductReceiptOwner(_CodingWorkerReceiptAuthority):
     """Join current Product selection, opt-in, and installed native closure."""
+
+    _stale_derivation_errors = (
+        CodingWorkerPolicySelectionError,
+        CodingWorkerReceiptError,
+        CodingWindowsWorkerInstalledBackendError,
+        PackageProductRuntimeActivationError,
+        PackageProductRuntimeReadError,
+        OSError,
+        ValueError,
+    )
 
     def __init__(
         self,
@@ -116,10 +124,10 @@ class CodingWindowsWorkerProductReceiptOwner:
             raise ValueError("Windows Worker Product receipt owners changed")
         product.assert_session_runtime_current(runtime)
         runtime.assert_selected_plugin_manifest_current(selected)
-        self._product = product
+        self._product: WindowsLocalWheelProductSessionOwner = product
         self._runtime = runtime
         self._selected = selected
-        self._opt_in = CodingWindowsWorkerProductOptInOwner(product)
+        self._opt_in: CodingWindowsWorkerProductOptInOwner = CodingWindowsWorkerProductOptInOwner(product)
         self._native = CodingWindowsWorkerInstalledBackendReader(product)
         self._session_discovery_reader = session_discovery_reader
         self._journal = CodingWindowsWorkerReceiptJournal(
@@ -168,50 +176,15 @@ class CodingWindowsWorkerProductReceiptOwner:
             self._product.assert_session_runtime_current(self._runtime)
             yield
 
-    def current_witness(
+    def _read_current_receipt_record(
         self, receipt: ProductWorkerActivationReceiptV1
-    ) -> ActivationWitness:
-        """Refuse fabricated, replaced, revoked, or stale Product receipts."""
-
-        with self._product.gc_gate.guard():
-            if (
-                not isinstance(receipt, ProductWorkerActivationReceiptV1)
-                or receipt.policy.session_id != self._runtime.session_id
-                or receipt.policy.product_runtime_id != self._runtime.product_runtime_id
-                or receipt.policy.plugin_id
-                != self._selected.snapshot.installation_key.plugin_id
-            ):
-                return _STALE_WITNESS
-            self._product.assert_session_runtime_current(self._runtime)
-            with (
-                self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
-            ):
-                records = self._journal.records(directory_fd=root)
-            record = self._latest(records, receipt.policy)
-            if record is None or record.receipt != receipt:
-                return _STALE_WITNESS
-            decision = self._opt_in.current(receipt.policy.plugin_id)
-            if (
-                decision is None
-                or decision.action != "allow"
-                or decision.decision_digest != record.opt_in_decision_digest
-            ):
-                return _STALE_WITNESS
-            try:
-                policy = self._derive(decision.opt_in)
-            except (
-                CodingWorkerPolicySelectionError,
-                CodingWorkerReceiptError,
-                CodingWindowsWorkerInstalledBackendError,
-                PackageProductRuntimeActivationError,
-                PackageProductRuntimeReadError,
-                OSError,
-                ValueError,
-            ):
-                return _STALE_WITNESS
-            if policy is None or policy.fingerprint != receipt.policy.fingerprint:
-                return _STALE_WITNESS
-            return receipt.authority_witness
+    ) -> CodingWorkerReceiptRecordV1 | None:
+        self._product.assert_session_runtime_current(self._runtime)
+        with (
+            self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
+        ):
+            records = self._journal.records(directory_fd=root)
+        return self._latest(records, receipt.policy)
 
     def latch_kill_switch(self, *, expected_generation: int) -> int:
         """Persist a Windows opt-in revocation before C5 retires its domain."""
@@ -383,24 +356,6 @@ class CodingWindowsWorkerProductReceiptOwner:
             ):
                 raise CodingWorkerReceiptError("coding_worker_receipt_stale")
             return payload, decision.opt_in.owner_id
-
-    def current_worker_owner_id(self, receipt: ProductWorkerActivationReceiptV1) -> str:
-        """Resolve the operator-approved domain owner from current Product state."""
-
-        with self._product.gc_gate.guard():
-            if (
-                not isinstance(receipt, ProductWorkerActivationReceiptV1)
-                or self.current_witness(receipt) != receipt.authority_witness
-            ):
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            decision = self._opt_in.current(receipt.policy.plugin_id)
-            if (
-                decision is None
-                or decision.action != "allow"
-                or not isinstance(decision.opt_in, CodingWorkerOptInV1)
-            ):
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            return decision.opt_in.owner_id
 
     def plan_current_native_attempt(
         self,
