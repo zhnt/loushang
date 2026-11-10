@@ -27,7 +27,23 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-10，A102）
+## 当前状态（2026-11-10，A103）
+
+普通 Session 孤儿恢复的完整 GC/FD/根与 Worker 证据/registry repair 程序已归原
+PackageProduct，Code 保前缀、标签、两薄入口及原 factory 拒绝→恢复→重试。复用原
+锁、根借用、GC 与 lease repair，无新 manager/状态或 Code IO 回借；双平台顺序、
+空集合差异、异常链和部分提交保原合同。Code−77/Core+121/系统+44，是职责归位，
+不是系统净精简。当前 Coding113503/系统647978，距15K尚98503；相对 Goal 起点
+−24252/+13184。其余1966源及13资源 SHA 不变。
+原消费者35过/48平台skip/7安全deselect，含实际 Linux orphan；旧181冻结观察及
+候选181回放均过，后续两次进程内 origin/SHA 守卫各181过，不重复计独立覆盖。
+受控 Windows 不冒充原生通过。两源 Ruff/限定 mypy 通过；详细限制和接受见
+[A103](key-designs/ordinary-orphan-recovery-convergence.md)。另原导入边界165项、文档9项及
+当前依赖图检查通过。完整 P1–P4仍 active/partial，
+五项 Hosting、AI coverage、部分构造/绑定欠账不由本片关闭。KD003 未实施，
+KD011/A33 待用户且未采用。
+
+## A102历史交付（2026-11-10）
 
 两项旧架构消费者清单现协调A80已接受的同实例Catalog实现，仅作精确路径/公共值
 条件下的门禁范围缩减。生产源码0变更，当前Coding113580/系统647934，距15K仍

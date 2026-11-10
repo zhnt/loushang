@@ -6,6 +6,7 @@
 - Owner: Coding / shared-layer architecture；静态分析 Codex。
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
+A103完整普通孤儿恢复归原 Product（Coding−77/Core+121/系统+44）；见[A103](key-designs/ordinary-orphan-recovery-convergence.md)。
 A101精确Task观察去重（Coding−14/系统−32）；见[KD004 A101](key-designs/owned-task-join-convergence.md#a101同一原模块的task观察操作去重)。
 A100 scoped-model失败交接复用同Session custody（Coding+7/Core+29，非精简）；见[KD009 §23](key-designs/startup-session-assembly-convergence.md#23-a100scoped-model失败交接复用原session清理责任)。
 A98完成构造后交付失败责任接通，bootstrap+20/Core+150，非精简；见[KD009 §22](key-designs/startup-session-assembly-convergence.md#22-a98完成构造后的session交付失败责任)。
@@ -279,7 +280,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_repair_rpc.py](../../../../src/loushang/coding/package_product_repair_rpc.py) | C10 | 49 | M | C10 包分发与 Product 管理 | 74413ce3f304 | 49 | 74413ce3f304 |
 | [package_product_repair_ui.py](../../../../src/loushang/coding/package_product_repair_ui.py) | C10 | 86 | M | C10 包分发与 Product 管理 | f38309028385 | 86 | f38309028385 |
 | [package_product_revisions.py](../../../../src/loushang/coding/package_product_revisions.py) | C10 | 442 | M | C10 包分发与 Product 管理 | 30e7ae99295b | 219 | 9818e5b9c3e5 |
-| [package_product_runtime.py](../../../../src/loushang/coding/package_product_runtime.py) | C10 | 1,996 | M | C10 包分发与 Product 管理 | 952f0b207e63 | 1,820 | 610687ddff85 |
+| [package_product_runtime.py](../../../../src/loushang/coding/package_product_runtime.py) | C10 | 1,996 | M | C10 包分发与 Product 管理 | 952f0b207e63 | 1,743 | f7a78bca05f6 |
 | [package_product_worker_activation_base_v2.py](../../../../src/loushang/coding/package_product_worker_activation_base_v2.py) | C07 | 235 | M | C07 插件 Worker 执行/持久化/恢复 | b3f853b2bbd9 | 40 | 292f936dd640 |
 | [package_product_worker_activation_history.py](../../../../src/loushang/coding/package_product_worker_activation_history.py) | C07 | 220 | M | C07 插件 Worker 执行/持久化/恢复 | 3e6790b5e95c | 53 | 099d09070547 |
 | [package_product_worker_activation_state.py](../../../../src/loushang/coding/package_product_worker_activation_state.py) | C07 | 114 | M | C07 插件 Worker 执行/持久化/恢复 | 2313329e19ac | 113 | eec2f762e20b |
@@ -483,7 +484,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C07 | 112 | 22,241 |
 | C08 | 31 | 6,743 |
 | C09 | 34 | 9,711 |
-| C10 | 12 | 5,546 |
+| C10 | 12 | 5,469 |
 | C11 | 25 | 9,308 |
 | C12 | 25 | 7,180 |
 | C13 | 21 | 5,668 |
@@ -502,4 +503,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 113,580 |
+| 合计 | 430 | 113,503 |

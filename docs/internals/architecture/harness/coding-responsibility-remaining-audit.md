@@ -6,6 +6,7 @@
 - Design status: current-gap review；下面候选接口尚未接受或实施。
 - Implementation status: A71已提交；本工作件不新增生产实现或精简收益。
 - Owner: Coding及各原组件owner；三独立视角复核，实施owner综合事实。
+- A103：普通 Session 孤儿恢复完整物理程序已归原 Product，Code 保资格政策/薄入口；不关闭整个 C10，见[A103](key-designs/ordinary-orphan-recovery-convergence.md)。
 - A93后续：完整Windows backend review/install/read及approval current归原PackageProduct，Code保公开值/产品政策；不关闭整个P1。现存H5规范/原Session operator事实失配待协调，见[A93](key-designs/windows-backend-release-custody-convergence.md)。
 - A92后续：原Continuity激活lease算法已直接复用，Code行数不变/系统−28；不关闭整个C04/P3，也不实施KD003 bytes输入。当前事实见[A92](key-designs/activation-lease-lifecycle-convergence.md)。
 - 后续：A73关闭下文候选的完整审批协调，A74关闭三类payload恢复协调（registered另合同仍待），A75关闭prepared-operation任务custody、A76关闭备份拓扑完整存储依赖、A77关闭完整Linux history proof/strict GC，A78关闭完整registered/crash恢复、cleanup evidence及POSIX C5 Store custody，A79关闭完整Product selected revision输入与installed member/Wheel bytes程序，A80关闭完整canonical Catalog协调/候选custody与Managed探针程序（history/navigation原位）；A81关闭完整delegated Goal Work/Session轮次关联、Task/取消/清理及固定history取得（Coding保领域选择/证据）；当前计量与未关闭职责见[执行状态](coding-responsibility-convergence-progress.md)，本文件其余数值保留A72审计切点。

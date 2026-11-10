@@ -6,7 +6,23 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A102 canonical Catalog清单协调）
+## 当前状态（2026-11-10，A103普通孤儿恢复职责归位）
+
+普通 Session 孤儿恢复的完整 GC/FD/根与 Worker 证据/registry repair 程序已归原
+PackageProduct，Code 保前缀、标签、两薄入口及原 factory 拒绝→恢复→重试。复用原
+锁、根借用、GC 与 lease repair，无新 manager/状态或 Code IO 回借；双平台顺序、
+空集合差异、异常链和部分提交保原合同。Code−77/Core+121/系统+44，是职责归位，
+不是系统净精简。当前 Coding113503/系统647978，距15K尚98503；相对 Goal 起点
+−24252/+13184。其余1966源及13资源 SHA 不变。
+原消费者35过/48平台skip/7安全deselect，含实际 Linux orphan；旧181冻结观察及
+候选181回放均过，后续两次进程内 origin/SHA 守卫各181过，不重复计独立覆盖。
+受控 Windows 不冒充原生通过。两源 Ruff/限定 mypy 通过；详细限制和接受见
+[A103](key-designs/ordinary-orphan-recovery-convergence.md)。另原导入边界165项、文档9项及
+当前依赖图检查通过。完整 P1–P4仍 active/partial，
+五项 Hosting、AI coverage、部分构造/绑定欠账不由本片关闭。KD003 未实施，
+KD011/A33 待用户且未采用。
+
+## A102历史交付（2026-11-10，canonical Catalog清单协调）
 
 A80已接受的原AppHost可选Catalog实现，现纳入两份遗漏的旧消费者清单。例外只
 针对一个精确路径和已审公共值导入；保留14原测试/79断言、25原必需消费者及其余

@@ -27,6 +27,8 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductRuntimeFactory,
     WindowsLocalWheelProductSessionOwner,
+    _repair_ordinary_posix_runtime_leases,
+    _repair_ordinary_windows_runtime_leases,
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
@@ -314,48 +316,12 @@ def _repair_ordinary_coding_orphan_runtime_leases(
         return
     if not isinstance(product, PosixLocalWheelProductSessionOwner):
         raise RuntimeError("Coding ordinary orphan recovery requires POSIX Product")
-    with product.gc_gate.guard(require_write=True):
-        product.assert_root_gc_authority_current()
-        root_fd = os.open(
-            product.state_root,
-            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-        )
-        try:
-            root_stat = os.fstat(root_fd)
-            product.assert_root_gc_authority_current()
-            current_stat = product.state_root.stat()
-            if (root_stat.st_dev, root_stat.st_ino) != (
-                current_stat.st_dev,
-                current_stat.st_ino,
-            ):
-                raise RuntimeError("Coding Product state root changed")
-            if any("worker" in name.casefold() for name in os.listdir(root_fd)):
-                raise RuntimeError("Coding Worker recovery requires explicit review")
-        finally:
-            os.close(root_fd)
-        if any(
-            binding.source_trust_class == "local-worker-candidate"
-            for binding in product.policy.bindings
-        ):
-            raise RuntimeError("Coding Worker recovery requires explicit review")
-        registry = owner.epoch_runtime.registry
-        fence = owner.epoch_runtime.cutover_result.fence
-        if fence is None:
-            raise RuntimeError("Coding Product epoch fence is unavailable")
-        for lease in registry.review_orphans(store_id=registry.store_id):
-            if (
-                not lease.runtime_id.startswith("coding-session:")
-                or lease.runtime_epoch != fence.epoch
-                or lease.store_root_identity != fence.fenced_root_identity
-            ):
-                raise RuntimeError("Coding orphan runtime requires explicit review")
-            owner.epoch_runtime.assert_current()
-            try:
-                registry.repair_orphan(lease.lease_id)
-            except PackageEpochRuntimeLeaseRegistryError as error:
-                if error.code != "package_epoch_lease_absent":
-                    raise
-        owner.epoch_runtime.assert_current()
+    _repair_ordinary_posix_runtime_leases(
+        product,
+        owner.epoch_runtime,
+        runtime_id_prefix="coding-session:",
+        error_prefix="Coding",
+    )
 
 
 def _repair_windows_ordinary_coding_orphan_runtime_leases(
@@ -363,55 +329,12 @@ def _repair_windows_ordinary_coding_orphan_runtime_leases(
     product: WindowsLocalWheelProductSessionOwner,
 ) -> None:
     """Recheck ordinary-only evidence under the Windows orphan and GC locks."""
-
-    registry = product.epoch_runtime.registry
-    fence = product.epoch_runtime.cutover_result.fence
-    if fence is None:
-        raise RuntimeError("Coding Product epoch fence is unavailable")
-    for expected in registry.review_orphans(store_id=registry.store_id):
-
-        @contextmanager
-        def validate_while_locked(lease, *, expected=expected):
-            if lease != expected:
-                raise RuntimeError("Coding orphan runtime changed")
-            with product.gc_gate.guard(require_write=True):
-                product.assert_root_gc_authority_current()
-                with product.epoch_runtime.borrow_product_state_root_descriptor():
-                    if any(
-                        "worker" in name.casefold()
-                        for name in os.listdir(product.state_root)
-                    ):
-                        raise RuntimeError(
-                            "Coding Worker recovery requires explicit review"
-                        )
-                    product.assert_root_gc_authority_current()
-                    if any(
-                        binding.source_trust_class == "local-worker-candidate"
-                        for binding in product.policy.bindings
-                    ):
-                        raise RuntimeError(
-                            "Coding Worker recovery requires explicit review"
-                        )
-                    if (
-                        not lease.runtime_id.startswith("coding-session:")
-                        or lease.runtime_epoch != fence.epoch
-                        or lease.store_root_identity != fence.fenced_root_identity
-                    ):
-                        raise RuntimeError(
-                            "Coding orphan runtime requires explicit review"
-                        )
-                    owner.epoch_runtime.assert_current()
-                    yield
-                    product.assert_root_gc_authority_current()
-
-        try:
-            registry.repair_orphan(
-                expected.lease_id, validation_guard=validate_while_locked
-            )
-        except PackageEpochRuntimeLeaseRegistryError as error:
-            if error.code != "package_epoch_lease_absent":
-                raise
-    owner.epoch_runtime.assert_current()
+    _repair_ordinary_windows_runtime_leases(
+        product,
+        owner.epoch_runtime,
+        runtime_id_prefix="coding-session:",
+        error_prefix="Coding",
+    )
 
 
 class CodingFencedProductApplicationSelection:

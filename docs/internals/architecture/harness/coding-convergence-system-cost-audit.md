@@ -296,3 +296,13 @@ Coding−14、AI−6、AppHost−11、AppService−4、Hosting−4、Harness−2
 Current说明协调，精简收益0。例外精确限定A80已接受的同实例Catalog/公共值
 导入，不要求其必须存在，所有旧required成员/断言/路由保留；属于范围缩减而非
 新增PR条件，详见[A102](key-designs/canonical-transcript-catalog-custody-convergence.md#a102-reconcile-the-existing-consumer-inventories)。
+
+
+## A103：完整普通孤儿恢复资格程序归原 Product
+
+Coding1820→1743（−77），原 Harness Product runtime2277→2398（+121），全系统净
++44。无重复算法消除；增长是原 owner 接收整条 FD/GC/根证据/repair 及类型与兼容
+适配的实付成本。两 Code 薄入口和全部格式成本均计入。当前 Coding430源113503、
+系统1968源647978，相对 Goal−24252/+13184；距15K98503。其余1966源/13资源同 SHA。
+这是职责归位而非全系统精简，详见[A103](key-designs/ordinary-orphan-recovery-convergence.md)。
+显式本地 probe/冻结 JSONL、文档另计，不扩默认 PR gate；Windows 原生仍未验证。
