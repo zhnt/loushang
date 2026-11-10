@@ -652,13 +652,10 @@ def own_scenario(case, root, monkeypatch, tests, recorder):
 
         with monkeypatch.context() as control:
             control.setattr(hosted._HOSTED_FACTORY, "restore_context", restore_capture)
-            control.setattr(
-                hosted,
-                "_HostedTranscript"
-                if case == "unowned-wrapper-outside-try"
-                else "_Candidate",
-                broken_wrapper,
-            )
+            if case == "unowned-wrapper-outside-try":
+                control.setattr(owner._legacy_transcript_type, "__init__", broken_wrapper)
+            else:
+                control.setattr(hosted, "_Candidate", broken_wrapper)
             if case == "unowned-close-overrides":
                 control.setattr(binder, "dispose", bad_dispose)
             try:

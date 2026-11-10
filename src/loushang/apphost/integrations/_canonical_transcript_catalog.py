@@ -105,6 +105,15 @@ class _CanonicalTranscriptCatalogMethods(
     _lock: asyncio.Lock
     _owned_factory: AgentTranscriptSessionFactory[BindingInputT, ProductBindingT] | None
     _pending_sessions: dict[int, AgentTranscriptLifecycleSession[ProductBindingT]]
+    _legacy_transcript_factory: AgentTranscriptSessionFactory[
+        BindingInputT, ProductBindingT
+    ]
+    _legacy_transcript_type: type[
+        ProductTranscriptSession[BindingInputT, ProductBindingT]
+    ]
+    _owned_transcript_type: type[
+        ProductTranscriptSession[BindingInputT, ProductBindingT]
+    ]
     _closing: bool
     _loop: asyncio.AbstractEventLoop | None
 
@@ -130,21 +139,6 @@ class _CanonicalTranscriptCatalogMethods(
         raise NotImplementedError
 
     def _session_name(self, request: SessionCreateRequestV1) -> str:
-        raise NotImplementedError
-
-    def _legacy_factory(
-        self,
-    ) -> AgentTranscriptSessionFactory[BindingInputT, ProductBindingT]:
-        raise NotImplementedError
-
-    def _legacy_manager_type(
-        self,
-    ) -> type[ProductTranscriptSession[BindingInputT, ProductBindingT]]:
-        raise NotImplementedError
-
-    def _owned_manager_type(
-        self,
-    ) -> type[ProductTranscriptSession[BindingInputT, ProductBindingT]]:
         raise NotImplementedError
 
     def _candidate_from_manager(
@@ -216,8 +210,8 @@ class _CanonicalTranscriptCatalogMethods(
     async def _open_legacy_record(self, record: RecordT) -> CandidateT:
         revision = self._source_revision
         error = self._catalog_error
-        factory = self._legacy_factory
-        manager_type = self._legacy_manager_type
+        factory = self._legacy_transcript_factory
+        manager_type = self._legacy_transcript_type
         candidate = self._candidate_from_manager
         if revision(record.path) != record.projection.reference.revision:
             raise error()
@@ -228,9 +222,7 @@ class _CanonicalTranscriptCatalogMethods(
             header=record.header,
             session_file=record.path,
         )
-        manager = manager_type()(
-            lifecycle_session=await factory().restore_context(context)
-        )
+        manager = manager_type(lifecycle_session=await factory.restore_context(context))
         try:
             if (
                 manager.header != record.header
@@ -299,7 +291,7 @@ class _CanonicalTranscriptCatalogMethods(
         self._pending_sessions[id(session)] = session
         try:
             self._accepting()
-            manager = self._owned_manager_type()(lifecycle_session=session)
+            manager = self._owned_transcript_type(lifecycle_session=session)
             assert manager.session_file is not None
             with session.sync_operation_scope():
                 record = self._read_record(scope, manager.session_file)
@@ -589,7 +581,7 @@ class _CanonicalTranscriptCatalogMethods(
                 )
                 return await self._candidate_from_owned(session, scope)
             try:
-                manager = await self._legacy_manager_type().new(
+                manager = await self._legacy_transcript_type.new(
                     session_dir=scope.session_dir,
                     cwd=str(scope.cwd),
                     session_id=session_id,

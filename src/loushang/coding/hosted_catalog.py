@@ -438,21 +438,6 @@ class CodingHostedSessionCatalogV1(
     def _session_name(self, request: SessionCreateRequestV1) -> str:
         return f"hosted-{_create_identity(request)}.jsonl"
 
-    def _legacy_factory(
-        self,
-    ) -> AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding]:
-        return _HOSTED_FACTORY
-
-    def _legacy_manager_type(
-        self,
-    ) -> type[ProductTranscriptSession[ResolvedRuntimeProfile, RuntimeProfileBinding]]:
-        return _HostedTranscript
-
-    def _owned_manager_type(
-        self,
-    ) -> type[ProductTranscriptSession[ResolvedRuntimeProfile, RuntimeProfileBinding]]:
-        return _OwnedHostedTranscript
-
     def _candidate_from_manager(
         self,
         record: _Record,
@@ -530,6 +515,9 @@ class CodingHostedSessionCatalogV1(
             raise ValueError("duplicate hosted scope")
         self._validate_scope_roots(scopes)
         self.scopes = scopes
+        self._legacy_transcript_factory = _HOSTED_FACTORY
+        self._legacy_transcript_type = _HostedTranscript
+        self._owned_transcript_type = _OwnedHostedTranscript
         self._records: dict[SessionCandidateRefV1, _Record] = {}
         self._lock = asyncio.Lock()
         self._owned_factory = (

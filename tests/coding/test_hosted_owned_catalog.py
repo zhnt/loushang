@@ -60,7 +60,10 @@ def test_owned_catalog_retains_raw_session_when_wrapper_and_cleanup_fail(tmp_pat
             raise OSError("test cleanup unavailable")
 
         with monkeypatch.context() as patch:
-            patch.setattr(module, "_OwnedHostedTranscript" if stage == "manager" else "_Candidate", fail)
+            if stage == "manager":
+                patch.setattr(owner._owned_transcript_type, "__init__", fail)
+            else:
+                patch.setattr(module, "_Candidate", fail)
             patch.setattr(runtime._binder, "dispose", failed_cleanup)
             with pytest.raises(ValueError, match="wrapper failed") as failure:
                 await owner.create_candidate(_intent(scope))

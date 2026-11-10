@@ -6,7 +6,22 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A84 Catalog legacy-open单消费者间接层退出）
+## 当前状态（2026-11-10，A85 Catalog实际factory/type绑定）
+
+退出三个仅返回原factory/类的虚拟getter；Code构造时持有同一实际对象/类，Core
+直接使用三个typedfields，不引入profile框架/新owner。owned raw先入pending再
+构造wrapper、legacy构造在try外、create失败恢复和原close借用边界保持。既有
+实例不再跟随私有module alias晚替换，这是明确接受的内部行为差异，不改公开
+DTO/API/持久格式。两原故障hook仅改注入实际class.__init__，完整输入/断言/期望
+保持。首64过/2挂点失效失败保留；纠正挂点后66固定及原三个Catalog模块共111过
+（42.36s）。另一次测试路径误写导致未收集，也保留为搭建失败，不当生产故障。
+Code931→919、Core721→713，分别−12/−8，系统−20；全部接口/格式计账。
+当前Coding430文件114117行、系统1967源647692行；其余1965源SHA与13资源同。
+两源mypy与Ruff、Core新增区format通过，Code原布局保留；三视角实际窄接受。
+完整P1–P4/15K仍未完成。后续从已定位的少层收益继续推进完整效果回借/装配闭包，
+不以这20行替代大范围剩余职责，KD011/A33及KD003边界保持。
+
+## A84历史交付（2026-11-10，Catalog legacy-open单消费者间接层退出）
 
 将唯一消费者的私有legacy-open helper并回同一原AppHost owner方法，删除中间
 调用/五项callable参数搬运及泛型签名。入口仍依原顺序捕获五个boundcallable，

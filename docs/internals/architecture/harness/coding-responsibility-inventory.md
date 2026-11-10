@@ -149,7 +149,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [extension_author.py](../../../../src/loushang/coding/extension_author.py) | C05 | 366 | V | C05 显式 canary 与作者验证入口 | cee4f5980761 | 366 | cee4f5980761 |
 | [hosted_application.py](../../../../src/loushang/coding/hosted_application.py) | C02 | 932 | B | C02 托管与受管运行接入 | 391f0fc90f4b | 747 | 3917a7d74492 |
 | [hosted_bootstrap.py](../../../../src/loushang/coding/hosted_bootstrap.py) | C02 | 316 | B | C02 托管与受管运行接入 | 20d1a3e2578e | 314 | f077f36acb66 |
-| [hosted_catalog.py](../../../../src/loushang/coding/hosted_catalog.py) | C02 | 1,221 | B | C02 托管与受管运行接入 | 1a07a14c6e43 | 931 | ffc81875f898 |
+| [hosted_catalog.py](../../../../src/loushang/coding/hosted_catalog.py) | C02 | 1,221 | B | C02 托管与受管运行接入 | 1a07a14c6e43 | 919 | 4cb2fad8a004 |
 | [hosted_continuity.py](../../../../src/loushang/coding/hosted_continuity.py) | C02 | 308 | B | C02 托管与受管运行接入 | b714d619b52d | 289 | d21b24f1d13f |
 | [hosted_execution.py](../../../../src/loushang/coding/hosted_execution.py) | C02 | 265 | B | C02 托管与受管运行接入 | 434428f1690d | 345 | 7c10da248cfa |
 | [hosted_goal.py](../../../../src/loushang/coding/hosted_goal.py) | C02 | 216 | B | C02 托管与受管运行接入 | 19f9feb3b57a | 216 | 19f9feb3b57a |
@@ -465,7 +465,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | 组 | 当前文件 | 当前物理行 |
 | --- | ---: | ---: |
 | C01 | 22 | 12,966 |
-| C02 | 28 | 8,055 |
+| C02 | 28 | 8,043 |
 | C03 | 15 | 4,132 |
 | C04 | 2 | 2,968 |
 | C05 | 6 | 3,565 |
@@ -492,4 +492,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 114,129 |
+| 合计 | 430 | 114,117 |
