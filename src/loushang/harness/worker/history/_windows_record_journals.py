@@ -27,7 +27,7 @@ from loushang.harness.worker.product_activation import (
 
 from ._native_approval import _A, _N, _NativeFactory, _next_native_approval_decision
 from ._opt_in import _OPAQUE, _OptInDecisionMethods, _OptInValue
-from ._receipts import _ReceiptRecordMethods
+from ._receipts import _ReceiptRecordMethods, latest_receipt_record
 
 
 class _RecordValue(Protocol):
@@ -249,15 +249,7 @@ class WindowsReceiptRecords(_WindowsRecords[_T], Generic[_T]):
                 prepare_lock=lambda root, acl: self._prepare_lock(root, acl),
             )
             records = () if raw is None else self._decode(raw)
-            latest = next(
-                (
-                    record
-                    for record in reversed(records)
-                    if record.receipt.policy.session_id == policy.session_id
-                    and record.receipt.policy.plugin_id == policy.plugin_id
-                ),
-                None,
-            )
+            latest = latest_receipt_record(records, policy)
             if (
                 latest is not None
                 and latest.opt_in_decision_digest == opt_in_decision_digest

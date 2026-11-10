@@ -24,7 +24,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 
 from .._segmented_history import CodingWorkerSegmentedHistoryV1
-from ..product_activation import ProductWorkerActivationReceiptV1
+from ..product_activation import (
+    ProductWorkerActivationPolicyV1,
+    ProductWorkerActivationReceiptV1,
+)
 from ._base_codec import _BaseWireMethods, _unchanged
 
 _MAX_RECEIPTS = 4096
@@ -121,6 +124,23 @@ class _ReceiptRecordMethods:
 
 
 _ReceiptT = TypeVar("_ReceiptT", bound=_ReceiptRecordMethods)
+
+
+def latest_receipt_record(
+    records: tuple[_ReceiptT, ...],
+    policy: ProductWorkerActivationPolicyV1,
+) -> _ReceiptT | None:
+    """Select the last receipt for this Session and Plugin, preserving identity."""
+
+    return next(
+        (
+            record
+            for record in reversed(records)
+            if record.receipt.policy.session_id == policy.session_id
+            and record.receipt.policy.plugin_id == policy.plugin_id
+        ),
+        None,
+    )
 
 
 def decode_receipt_history(

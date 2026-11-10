@@ -1,7 +1,8 @@
-"""Receipt history under existing custody, without issuing Product authority."""
+"""Receipt history under existing custody, without deciding Product authority."""
 
 from __future__ import annotations
 
+import secrets
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -24,7 +25,10 @@ from .._segmented_history import (
     initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
 )
-from ..product_activation import ProductWorkerActivationReceiptV1
+from ..product_activation import (
+    ProductWorkerActivationPolicyV1,
+    ProductWorkerActivationReceiptV1,
+)
 from ._checkpoint import _CheckpointMethods
 from ._checkpoint_history import _CodedFailure
 from ._opt_in import _OptInDecisionMethods
@@ -35,6 +39,7 @@ from ._receipts import (
     _ReceiptRecordMethods,
     _ReceiptReplayFields,
     decode_receipt_history,
+    latest_receipt_record,
     receipt_line,
 )
 from ._rooted_supervisor import WorkerHistoryAccess
@@ -103,6 +108,39 @@ class ReceiptHistory(Generic[_RecordT]):
 
     def _max_history_records(self) -> int:
         return _MAX_RECEIPTS
+
+    _latest = staticmethod(latest_receipt_record)
+
+    def _issue_recorded_receipt(
+        self,
+        policy: ProductWorkerActivationPolicyV1,
+        decision: _OptInDecisionMethods,
+    ) -> ProductWorkerActivationReceiptV1:
+        """Reuse or persist the caller-admitted policy under journal custody."""
+
+        with self._append_position() as position:
+            latest = self._latest(position.records, policy)
+            if (
+                latest is not None
+                and latest.opt_in_decision_digest == decision.decision_digest
+                and latest.receipt.policy.fingerprint == policy.fingerprint
+            ):
+                return latest.receipt
+            next_revision = (
+                max(position.last_revision, position.checkpoint_revision) + 1
+            )
+            receipt = ProductWorkerActivationReceiptV1(
+                policy=policy,
+                issue_sequence=next_revision,
+                issue_nonce=secrets.token_hex(16),
+            )
+            self._append_record(
+                position,
+                next_revision=next_revision,
+                receipt=receipt,
+                decision=decision,
+            )
+            return receipt
 
     @contextmanager
     def _append_position(self) -> Iterator[_ReceiptAppendPosition[_RecordT]]:

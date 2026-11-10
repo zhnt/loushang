@@ -31,6 +31,12 @@ retain their original projections and source authority; the reader is borrowed.
 Coding binds supported policies, namespace, lazy metadata/codec and actual public
 view/error types. No live GoalController is constructed. See [A117](key-designs/goal-work-source-custody-convergence.md).
 
+Worker's existing ReceiptHistory owns POSIX receipt persistence, including the locked
+reuse-or-append transaction for a caller-admitted policy. Coding still decides
+Product/Session/opt-in/native/discovery admission. All three latest-record scans
+share the existing receipt value component; Windows keeps its distinct sequence,
+capacity, native custody and byte format. See [A118](key-designs/worker-history-responsibility-convergence.md#a118收据持久事务与同义扫描收敛).
+
 ## Scope
 
 Harness is the cross-Product execution substrate. It owns reusable mechanisms,

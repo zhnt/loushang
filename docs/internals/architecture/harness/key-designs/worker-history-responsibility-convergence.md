@@ -799,3 +799,62 @@ P1–P4和15K仍未完成，旧Hosting/AI coverage/构造绑定欠账不由本�
 三独立实际视角均关闭本片阻断后，实施owner `/root`核源码与JUnit作有界接受。
 另原导入边界+C54共172项、文档9项、Ruff/限定mypy和依赖图检查通过。
 测试最终格式化整模块AST相同，不增加覆盖、gate或产品能力声明。
+
+## A118：收据持久事务与同义扫描收敛
+
+- Authority: bounded revision of A9 under COD-RESP-GOAL-002；完整Goal仍partial。
+- Design status: accepted，三独立实际视角与实施owner有界技术接受。
+- Implementation status: implemented，限本事务及下列验证。
+- Owner: 原Worker ReceiptHistory及receipt值组件；Code保产品准入。
+- Method: local clean archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
+
+A9上述历史位置保留；本片明确修订其nonce/reuse仍在Code的实现分工。Code仍按原
+GC写guard→root current→opt-in current/allow→derive/None执行，无额外验证；只在
+全部准入通过后调用原ReceiptHistory新增protected完整持久事务。Core接受原policy
+及decision对象，不读Product/opt-in/native/discovery、不决定签发资格，不新建owner、
+Protocol、通用签发器或Code IO回调。
+
+整个原append-position scope归原history：锁/fence/V1或V2读取→动态self._latest→
+同decision digest且同policy fingerprint时返同receipt→否则max两revision+1→原nonce/
+实际receipt→原_append_record。decision不预取digest；reuse短路读取及append中晚读
+均保留。nonce仍在新receipt的retired-fingerprint、record构造与line容量检查之前，
+历史decode/capacity/checkpoint检查仍在nonce之前。原失败/锁退出、未知追加结果与
+重试由原history合同处理，不新增rollback/currentness。V2 sequence不从retained个数推断。
+
+原POSIX、Windows Code和Windows Core三份reverse/session-first/plugin-second扫描
+退出，共用原_receipts内泛型纯值函数；使用既有_ReceiptT，不加Protocol/DTO。POSIX
+保动态self._latest覆盖点，由原base static alias提供默认值；Windows Code保原私有
+签名薄转发。Windows Core只在原锁内替换扫描，其先验输入验证、len+1、总capacity、
+compact字节、ACL/marker/append/后验root可见性均原样，不强套POSIX V2/seal/带空格JSON。
+
+实际生产五源Code−45、Core+50、系统+5。是完整操作归位及同义去重，非全系统减行。
+Coding112673/系统648267，完整P1–P4和≤15K仍未完成。C54保原required map、scanners、
+assertion及route，只在指定Windows Code路径的resolved imports恰为_receipts及其
+latest_receipt_record时可选剔除此模块；删新import仍可通过，未知成员/模块不获准入。
+这只放宽原库存限制，不添加PR阻断条件。旧nonce probe仅转标准secrets singleton
+挂点，原输入/期望/断言保持，不保Code无用私别名。
+
+证据目录为树外`coding-convergence-continue/a118-worker-operation-selection`，含完整
+原五源/两测试、全生产frame、三设计及实际复核、旧/新观察和JUnit。
+旧实际Rooted receipt11与原C54共18过；候选原消费者/V2/checkpoint/base/append-tail/
+C54/activation联合174过；真实Wheel valid事务1过，Windows原生42skip及host7deselect
+保持。独立31旧AST故障观察在旧及候选均重放31过，原期望不重录；校验shortcircuit、
+receipt identity、override、高水位、digest晚读，以及18故障case的21个确切触达点，
+含BaseException和双退出失败完整cause/context。存储/GC端口受控，此证据不代替
+真实FD或Windows原生合同；Rooted/V2及真实Wheel消费者另证物理路径。
+
+扩大架构检查183过、2项C50旧exact消费者库存失败：A93原Windows backend release、
+A107原initial-seal wrapper。两额外源、C50/scanner的HEAD/current SHA同，替换回
+本批五旧源重算两失败集合仍完全同；仅静态证明相同失败等式，未声称旧完整节点实跑。
+165原导入边界及C51通过，不称所有架构gate绿，不修改C50或任意阈值。AI未被本批
+check plan选择，不重跑；A117已报告的AI覆盖率旧债保持。
+
+五生产源Ruff/mypy过，docs9及当前依赖图检查过。nonce probe逆迁位后完整模块AST同，
+三selector同式、POSIX完整事务与Windows逆展开整模块同，公开DTO/签名和所有未选
+非import声明同。C54原49断言保持，320静态反事实保旧pass，唯exact可选成员新增通过。
+实施owner在原Goal授权下接受此有界批次，非全Goal验收；其余Hosting/AI覆盖率/
+C50库存/构造等差距继续保留。
+
+持久显式`probe_worker_receipt_issue_ordering_compatibility.py`用同31原对象重放31过；
+336行probe及33行/50785B固定JSON另计，非生产源码。旧pretty记录仅逐对象等值压紧，
+无期望重录。原nonce hook净+1、C54精确可选协调净+15；不增加默认PR发现或门禁。

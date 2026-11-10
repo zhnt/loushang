@@ -35,6 +35,7 @@ from loushang.harness.worker._native_profile_bridge import (
     _WindowsLpacProductWorkerProfilePlan,
 )
 from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
+from loushang.harness.worker.history._receipts import latest_receipt_record
 from loushang.harness.worker.product_activation import (
     ActivationWitness,
     ProductWorkerActivationPolicyV1,
@@ -488,15 +489,7 @@ class CodingWindowsWorkerProductReceiptOwner:
         records: tuple[CodingWorkerReceiptRecordV1, ...],
         policy: ProductWorkerActivationPolicyV1,
     ) -> CodingWorkerReceiptRecordV1 | None:
-        return next(
-            (
-                record
-                for record in reversed(records)
-                if record.receipt.policy.session_id == policy.session_id
-                and record.receipt.policy.plugin_id == policy.plugin_id
-            ),
-            None,
-        )
+        return latest_receipt_record(records, policy)
 
 
 def open_coding_windows_product_selected_worker_receipt_owner(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 import sys
 from contextlib import contextmanager
 from dataclasses import replace
@@ -117,7 +118,7 @@ def observe_receipt(case, root, patch):
         trace.append("derive")
         return None if case == "derive-none" else policy
 
-    original_nonce = module.secrets.token_hex
+    original_nonce = secrets.token_hex
 
     def nonce(size):
         nonlocal nonce_calls
@@ -131,7 +132,7 @@ def observe_receipt(case, root, patch):
 
     patch.setattr(CodingWorkerOptInJournal, "current", selected_decision)
     patch.setattr(module.CodingWorkerProductReceiptOwner, "_derive", derive)
-    patch.setattr(module.secrets, "token_hex", nonce)
+    patch.setattr(secrets, "token_hex", nonce)
     runtime = object.__new__(PackageProductRuntimeBindingV1)
     for name, value in dict(
         product_id="coding",

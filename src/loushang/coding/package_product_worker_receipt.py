@@ -6,7 +6,6 @@ Capability publication, and public Worker authoring remain separate gates.
 
 from __future__ import annotations
 
-import secrets
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -277,29 +276,7 @@ class CodingWorkerProductReceiptOwner(_CodingReceiptHistory):
             policy = self._derive(decision.opt_in)
             if policy is None:
                 return None
-            with self._append_position() as position:
-                latest = self._latest(position.records, policy)
-                if (
-                    latest is not None
-                    and latest.opt_in_decision_digest == decision.decision_digest
-                    and latest.receipt.policy.fingerprint == policy.fingerprint
-                ):
-                    return latest.receipt
-                next_revision = (
-                    max(position.last_revision, position.checkpoint_revision) + 1
-                )
-                receipt = ProductWorkerActivationReceiptV1(
-                    policy=policy,
-                    issue_sequence=next_revision,
-                    issue_nonce=secrets.token_hex(16),
-                )
-                self._append_record(
-                    position,
-                    next_revision=next_revision,
-                    receipt=receipt,
-                    decision=decision,
-                )
-                return receipt
+            return self._issue_recorded_receipt(policy, decision)
 
     def _checkpoint_writer_fence(
         self, rooted: RootedFile
@@ -659,21 +636,6 @@ class CodingWorkerProductReceiptOwner(_CodingReceiptHistory):
             opt_in=opt_in,
             native_closure=native_closure,
             session_discovery=session_discovery,
-        )
-
-    @staticmethod
-    def _latest(
-        records: tuple[CodingWorkerReceiptRecordV1, ...],
-        policy: ProductWorkerActivationPolicyV1,
-    ) -> CodingWorkerReceiptRecordV1 | None:
-        return next(
-            (
-                record
-                for record in reversed(records)
-                if record.receipt.policy.session_id == policy.session_id
-                and record.receipt.policy.plugin_id == policy.plugin_id
-            ),
-            None,
         )
 
 

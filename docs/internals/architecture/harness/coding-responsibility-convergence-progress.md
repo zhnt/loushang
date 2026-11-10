@@ -26,7 +26,17 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A117 Goal/Work来源冷读归原集成）
+## 当前状态（2026-11-10，A118 receipt持久事务归原history）
+
+POSIX完整append-position锁内查latest→reuse或新sequence/nonce/receipt→append归
+原ReceiptHistory，Code保GC/current/opt-in/derive权威准入；三个同义扫描复用原值
+组件的一函数，Windows原平台事务保持。Code−45/Core+50/系统+5；Coding112673/
+系统648267（含GUI），较Goal−25082/+13473，距15K97673。此为职责归位及扫描去重，
+非系统净精简。验证与技术接受见[A118](key-designs/worker-history-responsibility-convergence.md#a118收据持久事务与同义扫描收敛)。
+完整P1–P4仍active/partial；Hosting、AI覆盖率、构造等旧欠账以及KD003未实施、
+KD011/A33待用户未采用保持，未用本批小切面替代全量验收。
+
+## A117历史交付（2026-11-10，Goal/Work来源冷读归原集成）
 
 完整owned Goal journal→Work facts/recording/handoffs→borrowed Transcript来源→同owner
 close/custody归原GoalStore集成，Code保三policy/namespace/真实DTO/error及五个纯

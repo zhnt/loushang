@@ -416,3 +416,12 @@ Code−83/Core+140/系统+57，Coding112718/系统648262（含GUI），较Goal�
 完整Goal仍partial，不把这次source读取等同Goal验收或完整执行路线闭环。
 
 A117补跑check-ai为935过/2skip/7deselect，因同A101覆盖率89.87%/89.62%门槛失败；79份AI源SHA及覆盖计数不变，未加gate/降阈值，不称全门禁通过。
+
+## A118：收据持久事务与同义扫描
+
+Coding两源−45（−38/−7），原Worker history三源+50（+38/+20/−8），系统+5。
+Coding430源112673行，系统1969源648267行（含GUI Rust/TS），较Goal−25082/+13473，
+距15K97673。完整事务归位是迁移，三selector退出是重复消除，非系统净精简；
+方法签名、绑定、typing/import及全部薄兼容都计入。其它1964源与13资源SHA不变。
+C54只为确切可选selector成员缩小原限制，不新增required/check/assert/路线；
+测试、旧观察与验证限制见[A118](key-designs/worker-history-responsibility-convergence.md#a118收据持久事务与同义扫描收敛)。

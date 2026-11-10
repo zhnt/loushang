@@ -491,11 +491,26 @@ def test_c54_has_one_product_root_and_one_way_dependencies() -> None:
         *PRODUCT_WORKER_BOUNDED_IMPORTS,
     }
     for path, allowed in PRODUCT_WORKER_BOUNDED_IMPORTS.items():
-        assert {
+        actual = {
             imported
             for imported in _imports(path)
             if imported.startswith("loushang.harness.worker")
-        } == allowed
+        }
+        optional_receipt_selector: set[str] = set()
+        receipt_values = "loushang.harness.worker.history._receipts"
+        if (
+            path == CODING_ROOT / "package_product_worker_windows_receipt.py"
+            and receipt_values in actual
+            and {
+                imported
+                for imported in resolved_imports(path)
+                if imported == receipt_values
+                or imported.startswith(receipt_values + ".")
+            }
+            == {receipt_values, receipt_values + ".latest_receipt_record"}
+        ):
+            optional_receipt_selector = {receipt_values}
+        assert actual - optional_receipt_selector == allowed
     assert not any(
         imported.startswith("loushang.hosting") for imported in _imports(CANARY)
     )
