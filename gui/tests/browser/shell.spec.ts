@@ -22,7 +22,14 @@ async function simulateDesktop(page: Page, managed = false) {
           if (command === "plugin:event|listen") return 1;
           if (command === "fixture_bridge_handshake") throw new Error("Fixture bridge disabled");
           if (managed && command === "offline_account") return { name: "desktop-user", id: "local-preview-account" };
-          if (managed && command === "client_settings") return { supported: true, workspace: "/preview" };
+          if (managed && command === "client_settings") {
+            const { request } = args as { request: { operation: string } };
+            if (request.operation === "connections/list") return {
+              selectedId: "local",
+              connections: [{ id: "local", name: "Local", kind: "local", selected: true, workspace: "/preview" }],
+            };
+            return { supported: true, workspace: "/preview" };
+          }
           if (managed && command === "local_host_action") return {
             state: "exited", workspace: "/preview", errorCode: "unclean_exit", pid: 1234,
             instanceId: "host-instance-" + "a".repeat(48), serviceInstanceId: "service-instance-" + "b".repeat(48),
