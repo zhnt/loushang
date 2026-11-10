@@ -26,7 +26,21 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A127托管Work共同机制归位）
+## 当前状态（2026-11-10，A128 Method提交与结清归位）
+
+MethodInvocation保原构造/13状态字段、Method准备与AppService Outcome、原step/Session
+清理尾段；提交Task、recording查证与同一operation的cancel/wait/settle整程序归原
+HarnessWork Session集成。单实例，无新Task/manager/IO阶段回调；纯三值结果工厂
+保原Outcome构造异常窗口。Code−79/Core+121/系统+42，是职责归位而非算法去重。
+Coding112052/系统648391，较Goal−25703/+13597，距15K97052；完整Goal仍active/partial。
+旧消费者76过/1skip与Work54过；30旧观察加来源fresh重放31过/1capture skip。
+实际161过/2skip/3setup deselect，持久手动探针31过，架构191过；mypy3/Ruff/图通过，
+三冷导入closure逐项同。AI935过但既有coverage89.87/runtime89.62未达90，逐行覆盖
+与79源SHA同A126，门禁仍失败，未降阈值；三独立实际评审与限界见[A128](key-designs/method-plan-custody-convergence.md)。本批另修剩余审计表合计过期334行，
+从430行逐文件当前SHA/实测重算，不将文档纠错记为源码精简。既有Hosting/构造及
+KD003未实施、KD011/A33待用户未采用边界保留。
+
+## A127历史交付（2026-11-10，托管Work共同机制归位）
 
 原AppHost.session_control同实例私有Work实现共同Agent观察、两种具体Session分发、
 turn清除/结清及subscription retirement；Code保原两run的try/title/cancel/直接activate。

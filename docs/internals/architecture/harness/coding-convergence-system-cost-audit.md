@@ -508,3 +508,16 @@ Agent/Session↔AppService桥接，不将完整Code.activate报删或以Core目�
 冷模块closure普通Work927→940（+13）、集成345→346（+1），Resume986不变；
 新增AppHost→Agent为TYPE_CHECKING边且已写入生成图。完整验证、初失败及门禁
 精确减集证明见[A127](key-designs/hosted-work-custody-convergence.md)；本批AI未选中，旧覆盖率失败不因此关闭。
+
+## A128：Method提交与同一run结清归原HarnessWork
+
+Code203→124（−79），原HarnessWork Session928→1049（+121），系统+42。
+保原构造13状态字段/Method准备/AppService控制与Outcome/step及Session尾段，完整
+Task创建与shield/cancel、recording查证和同operation结清退出Code；单consumer职责
+归位，不称算法去重或系统净缩减。纯结果factory/类型/适配成本已全部计入。
+当前430 Code源112052、1969系统源648391，较Goal−25703/+13597，距15K97052。
+其它1967源/13资源同；新增手动探针412行与gzip2683B、文档另计，无自动PR路由。
+旧130与30观察+origin组合实际161过/2skip；手动31过、架构191过，三冷closure
+逐项同，mypy3/Ruff/图通过。AI935过但旧coverage门槛失败，精确同A126的79源SHA/
+逐行coverage，未改阈值。审计合计过期334行已按全量实测修复，不计精简收益。
+验证、成本与三独立接受限界见[A128](key-designs/method-plan-custody-convergence.md)。完整Goal仍active/partial。

@@ -1,5 +1,7 @@
 # COD-RESP-GOAL-002：Coding 领域化与公共机制职责归一
 
+- A128：Method提交Task与同一run的recording结清归原HarnessWork Session集成，Code保准备/Outcome/step与Session尾段；Code−79/Core+121/系统+42，本批已验收，完整Goal仍partial，见[A128](key-designs/method-plan-custody-convergence.md)。
+
 - A127：普通/Resume托管Work共同观察、分发与结清归原AppHost集成；Code保两条策略边界，Code−93/AppHost+118/系统+25，完整Goal仍partial，见[A127](key-designs/hosted-work-custody-convergence.md)。
 
 - A126：完整model Work配置寿命归原HarnessWork规划集成，Code保纯profile；Code−41/Core+71/系统+30，完整Goal仍partial，见[A126](key-designs/planning-work-configuration-custody-convergence.md)。

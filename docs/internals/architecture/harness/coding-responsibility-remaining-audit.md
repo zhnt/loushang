@@ -1,5 +1,7 @@
 # Coding 全量剩余职责与保留成本复核 A72
 
+- A128：Method提交Task与同一run的recording结清归原HarnessWork Session集成，Code保准备/Outcome/step与Session尾段；Code−79/Core+121/系统+42，本批已验收，完整Goal仍partial，见[A128](key-designs/method-plan-custody-convergence.md)。
+
 - A127：普通/Resume托管Work共同观察、分发与结清归原AppHost集成；Code保两条策略边界，Code−93/AppHost+118/系统+25，完整Goal仍partial，见[A127](key-designs/hosted-work-custody-convergence.md)。
 
 - A126：完整model Work配置寿命归原HarnessWork规划集成，Code保纯profile；Code−41/Core+71/系统+30，完整Goal仍partial，见[A126](key-designs/planning-work-configuration-custody-convergence.md)。
@@ -47,11 +49,11 @@
 
 ## 覆盖及计量边界
 
-430份Code源码的当前SHA、物理行、顶层定义范围与显式imports已重新扫描，按原
-28组重算，合计117115；全量清单仍是单一[逐文件表](coding-responsibility-inventory.md)。
+A72原始快照对430份Code源码的SHA、物理行、顶层定义范围与显式imports作静态扫描，
+按原28组重算，历史合计117115；全量清单仍是单一[逐文件表](coding-responsibility-inventory.md)。
 完整原始frame/AST/接口筛查在树外`a72-full-remaining-audit`。本次静态全文件覆盖
 不等于逐行语义接受；深核的普通构造、审批、payload和公开合同范围另列如下。
-组量只是审计范围，不能作为可删预算或必要保留成本。生产源码与A71终帧相同。
+组量只是审计范围，不能作为可删预算或必要保留成本。该历史快照的生产源码与A71终帧相同。
 
 波次按现行[Goal](coding-responsibility-convergence-goal.md#实施波次与第一项建议)：
 P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入口/存量。
@@ -60,13 +62,13 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
-数量按A127当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
+数量按A128当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
 |---|---:|---|---|---|
 | C01 启动、Plugin/资源装配 | 22/12,706 | P2 | 原Construction/Session、Catalog/Graph已实际接入；Code剩跨阶段选择、审批、刷新与交接 | 拆清领域选择和完整共用程序；不把bootstrap3531行或装配回调池当删除预算 |
-| C02 托管与受管接入 | 28/7,938 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用；Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝 |
+| C02 托管与受管接入 | 28/7,859 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用；Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝 |
 | C03 Resume与SessionManager | 15/4,132 | P2/P3 | 原Transcript/Session lifecycle、live恢复已复用；Code保版本化输入/装配与授权政策 | 按new/resume/fork/reopen完整合同再拆；不重建提交器或自动重试 |
 | C04 Continuity | 2/2,956 | P3 | 原Continuity provider/runtime及A68 payload custody已接入；Code来源/导入/恢复桥仍在 | KD003 bytes import未实施；区分纯准入与读取/借用/abort寿命，不提前采用KD011 |
 | C05 Canary及作者验证入口 | 6/3,565 | P1/P3/P4 | 原Worker attempt及托管owner已有接入；Code保真实SDK/CLI验证入口和产品场景 | 存在真实运行消费者，不能按canary/smoke命名删除；剩余协调须随实际场景替代 |
@@ -93,7 +95,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C26 配置/路径兼容导出 | 2/52 | P4 | 原Config owner已复用 | 保产品路径选择与支持中的导出，退出需合同证据 |
 | C27 版本检查 | 2/50 | P4 | 产品更新选择与原公共机制绑定 | 保必要产品选择，不为50行再建服务 |
 | C28 资源命名空间 | 5/5 | P4 | 支持中的Python布局标记 | 保真实加载/导出路径，空壳不是第二引擎 |
-| 合计 | **430/112,465** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
+| 合计 | **430/112,052** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
 
 ## 保留账：语义、兼容成本与当前实现必须分开
 

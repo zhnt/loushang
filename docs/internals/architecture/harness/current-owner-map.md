@@ -78,6 +78,12 @@ Session, Task, Work manager or activation callback. The new direct Agent edge
 is type-only inside this optional integration, not the standard-library core.
 See [A127](key-designs/hosted-work-custody-convergence.md).
 
+The original HarnessWork Session integration also contains the private retained
+plan invocation program: submission Task, recording verification and same-run
+cancellation/join. Coding keeps Method preparation, AppService outcome mapping,
+step and Session cleanup. The same invocation holds the original state; no new
+manager or lifecycle port family is introduced. See [A128](key-designs/method-plan-custody-convergence.md).
+
 ## Scope
 
 Harness is the cross-Product execution substrate. It owns reusable mechanisms,

@@ -1,5 +1,7 @@
 # Coding 逐文件职责与处置清单 R2
 
+- A128：Method提交Task与同一run的recording结清归原HarnessWork Session集成，Code保准备/Outcome/step与Session尾段；Code−79/Core+121/系统+42，本批已验收，完整Goal仍partial，见[A128](key-designs/method-plan-custody-convergence.md)。
+
 - A127：普通/Resume托管Work共同观察、分发与结清归原AppHost集成；Code保两条策略边界，Code−93/AppHost+118/系统+25，完整Goal仍partial，见[A127](key-designs/hosted-work-custody-convergence.md)。
 
 - A126：完整model Work配置寿命归原HarnessWork规划集成，Code保纯profile；Code−41/Core+71/系统+30，完整Goal仍partial，见[A126](key-designs/planning-work-configuration-custody-convergence.md)。
@@ -78,7 +80,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [_hosted_goal_config.py](../../../../src/loushang/coding/_hosted_goal_config.py) | C02 | 58 | B | C02 托管与受管运行接入 | 349bf3d60a48 | 58 | 349bf3d60a48 |
 | [_hosted_goal_work.py](../../../../src/loushang/coding/_hosted_goal_work.py) | C02 | 183 | B | C02 托管与受管运行接入 | a3e7095f4397 | 183 | a3e7095f4397 |
 | [_hosted_method_config.py](../../../../src/loushang/coding/_hosted_method_config.py) | C02 | 100 | B | C02 托管与受管运行接入 | 4da687adf6e0 | 100 | 4da687adf6e0 |
-| [_hosted_method_work.py](../../../../src/loushang/coding/_hosted_method_work.py) | C02 | 203 | B | C02 托管与受管运行接入 | 62e18f9b05e8 | 203 | 62e18f9b05e8 |
+| [_hosted_method_work.py](../../../../src/loushang/coding/_hosted_method_work.py) | C02 | 203 | B | C02 托管与受管运行接入 | 62e18f9b05e8 | 124 | fdf7fe211fef |
 | [_hosted_repository_config.py](../../../../src/loushang/coding/_hosted_repository_config.py) | C02 | 114 | B | C02 托管与受管运行接入 | 72cc176f4c99 | 114 | 72cc176f4c99 |
 | [_hosted_repository_work.py](../../../../src/loushang/coding/_hosted_repository_work.py) | C02 | 218 | B | C02 托管与受管运行接入 | 7f15566e9445 | 218 | 7f15566e9445 |
 | [_hosted_work_observation.py](../../../../src/loushang/coding/_hosted_work_observation.py) | C02 | 53 | B | C02 托管与受管运行接入 | 1f704eb3af9e | 53 | 1f704eb3af9e |
@@ -504,7 +506,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | 组 | 当前文件 | 当前物理行 |
 | --- | ---: | ---: |
 | C01 | 22 | 12,706 |
-| C02 | 28 | 7,938 |
+| C02 | 28 | 7,859 |
 | C03 | 15 | 4,132 |
 | C04 | 2 | 2,956 |
 | C05 | 6 | 3,565 |
@@ -531,4 +533,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 112,131 |
+| 合计 | 430 | 112,052 |

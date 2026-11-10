@@ -10,9 +10,8 @@ from loushang.appservice.execution_contract import ExecutionOutcomeV1, Execution
 from loushang.appservice.execution_guard import ExecutionControlV1
 from loushang.harnesswork.integrations.session import (
     SessionWorkRuntime,
-    SessionWorkTurn,
+    _RetainedSessionPlan,
 )
-from loushang.harnesswork.recording import WorkRecordingUnavailable
 from loushang.harnesswork.types import WorkRun
 
 from ._hosted_execution_work import CodingExecutionWorkV1
@@ -27,7 +26,9 @@ class _StepFailed(RuntimeError):
     pass
 
 
-class MethodInvocation:
+class MethodInvocation(_RetainedSessionPlan):
+    session: AgentSession
+
     def __init__(
         self, session: AgentSession, runtime: SessionWorkRuntime, method: CodingHostedMethodV1,
         execution_id: str, text: str, cancel_requested: Callable[[], bool],
@@ -46,21 +47,6 @@ class MethodInvocation:
         self.step: CodingExecutionWorkV1 | None = None
         self.control: ExecutionControlV1 | None = None
 
-    def checkpoint(self) -> None:
-        if self.cancelled or self.cancel_requested():
-            raise asyncio.CancelledError
-
-    def before_turn(self, turn: SessionWorkTurn, index: int, count: int) -> None:
-        self.checkpoint()
-
-    async def _submit(self, turns: tuple[SessionWorkTurn, ...]) -> WorkRun:
-        self.checkpoint()
-        self.submit_started = True
-        return await self.runtime.submit_plan(
-            turns, session_id=self.session.session_id, operation_id=self.execution_id,
-            before_turn=self.before_turn,
-        )
-
     async def run(self, control: ExecutionControlV1) -> ExecutionOutcomeV1:
         self.control = control
         try:
@@ -73,87 +59,22 @@ class MethodInvocation:
         except (ValueError, TypeError):
             self.not_submitted = True
             return ExecutionOutcomeV1(ExecutionStatusV1.FAILED, "method_preparation_failed")
-        operation = self._submit(turns)
-        try:
-            self.task = asyncio.create_task(operation)
-        except BaseException:
-            operation.close()
-            self.not_submitted = True
-            raise
-        try:
-            run = await asyncio.shield(self.task)
-            record = self.runtime.work_runtime.get_recording(run.run_id)
-            if run.status == record.run.status == "completed":
-                return ExecutionOutcomeV1(ExecutionStatusV1.SUCCEEDED)
-            return ExecutionOutcomeV1(ExecutionStatusV1.FAILED, "method_work_failed")
-        except asyncio.CancelledError:
-            self.cancelled = True
-            # Cancel the retained plan, not merely its shielded observer. Its
-            # original Work.wait already bridges cancellation to Work.cancel.
-            if not self.task.done():
-                self.task.cancel()
-            # Joining and any retryable debt belong to settle, never a replay.
-            raise
-        except WorkRecordingUnavailable:
-            self.recording_unavailable = True
-            return ExecutionOutcomeV1(ExecutionStatusV1.FAILED, "work_recording_unavailable")
-        except Exception:
-            self._check_recording()
-            return ExecutionOutcomeV1(ExecutionStatusV1.FAILED, "method_work_failed")
+        return await self._run_plan(turns, self._plan_outcome)
 
-    def _check_recording(self) -> None:
-        if not self.submit_started:
-            return
-        try:
-            run = self.runtime.work_runtime.get_run_for_operation(self.execution_id)
-            if run is None:
-                self.recording_unavailable = True
-            else:
-                self.runtime.work_runtime.get_recording(run.run_id)
-        except Exception:
-            self.recording_unavailable = True
+    def _plan_outcome(self, status: str) -> ExecutionOutcomeV1:
+        if status == "completed":
+            return ExecutionOutcomeV1(ExecutionStatusV1.SUCCEEDED)
+        if status == "recording_unavailable":
+            return ExecutionOutcomeV1(ExecutionStatusV1.FAILED, "work_recording_unavailable")
+        return ExecutionOutcomeV1(ExecutionStatusV1.FAILED, "method_work_failed")
 
     async def settle(self) -> None:
-        task = self.task
-        if task is not None:
-            try:
-                await asyncio.shield(task)
-            except asyncio.CancelledError:
-                if not task.done():
-                    raise
-                self.cancelled = True
-            except Exception:
-                # Business failure is not by itself cleanup debt. The original
-                # runtime and Session below still have to establish quiescence.
-                pass
-            if not self.submit_started:
-                self.not_submitted = True
-            run = self.runtime.work_runtime.get_run_for_operation(self.execution_id)
-            if run is not None:
-                # A failed terminal append may leave a completed-looking run
-                # active. The runtime's ownership view, not that text, decides.
-                if any(active.run_id == run.run_id for active in self.runtime.work_runtime.active_runs()):
-                    try:
-                        await self.runtime.work_runtime.cancel(run.run_id)
-                    except Exception:
-                        self._check_recording()
-                        if not self.recording_unavailable:
-                            raise
-                try:
-                    await self.runtime.work_runtime.wait(run.run_id)
-                except asyncio.CancelledError:
-                    self.cancelled = True
-                except Exception:
-                    # Work.wait has joined its retained executor before raising
-                    # the recorded business/cancellation result.
-                    pass
-            self._check_recording()
+        await self._settle_plan()
         if self.step is not None:
             await self.step.settle()
             self.step = None
         await self.session.settle_execution(interrupted=self.cancelled)
         self.control = None
-
 
 class MethodPrompt:
     """Prompt-port adaptation only; execution and cancellation remain Work-owned."""

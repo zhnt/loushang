@@ -7,7 +7,7 @@ import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Literal, Protocol, TypeVar
 from uuid import uuid4
 
 from loushang.harness.events import RuntimeEvent, project_session_runtime_event
@@ -18,6 +18,7 @@ from loushang.harnesswork.integrations.transcript import (
     WorkTranscriptSource,
 )
 from loushang.harnesswork.ports import WorkExecutionBinding, WorkExecutionContext
+from loushang.harnesswork.recording import WorkRecordingUnavailable
 from loushang.harnesswork.runtime import WorkRuntime
 from loushang.harnesswork.types import (
     WorkCancellationOutcome,
@@ -28,6 +29,12 @@ from loushang.harnesswork.types import (
     WorkRunSpec,
     WorkStepSpec,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.session.facade import SessionControlPort
+
+_PlanResult = TypeVar("_PlanResult")
+
 
 RuntimeEventListener = Callable[[object], Awaitable[None] | None]
 SessionEventFactProjector = Callable[[object], Sequence[WorkEventFact]]
@@ -926,3 +933,117 @@ def _expected_handoffs(
         for index, turn in enumerate(turns)
         for prompt in range(1 + len(turn.follow_up_messages))
     ]
+
+
+class _RetainedSessionPlan:
+    """One invocation's original submission Task and recording settlement program."""
+
+    session: SessionControlPort
+    runtime: SessionWorkRuntime
+    execution_id: str
+    cancel_requested: Callable[[], bool]
+    cancelled: bool
+    not_submitted: bool
+    submit_started: bool
+    recording_unavailable: bool
+    task: asyncio.Task[WorkRun] | None
+
+    def checkpoint(self) -> None:
+        if self.cancelled or self.cancel_requested():
+            raise asyncio.CancelledError
+
+    def before_turn(self, turn: SessionWorkTurn, index: int, count: int) -> None:
+        self.checkpoint()
+
+    async def _submit(self, turns: tuple[SessionWorkTurn, ...]) -> WorkRun:
+        self.checkpoint()
+        self.submit_started = True
+        return await self.runtime.submit_plan(
+            turns,
+            session_id=self.session.session_id,
+            operation_id=self.execution_id,
+            before_turn=self.before_turn,
+        )
+
+    async def _run_plan(
+        self,
+        turns: tuple[SessionWorkTurn, ...],
+        result: Callable[
+            [Literal["completed", "failed", "recording_unavailable"]], _PlanResult
+        ],
+    ) -> _PlanResult:
+        operation = self._submit(turns)
+        try:
+            self.task = asyncio.create_task(operation)
+        except BaseException:
+            operation.close()
+            self.not_submitted = True
+            raise
+        try:
+            run = await asyncio.shield(self.task)
+            record = self.runtime.work_runtime.get_recording(run.run_id)
+            if run.status == record.run.status == "completed":
+                return result("completed")
+            return result("failed")
+        except asyncio.CancelledError:
+            self.cancelled = True
+            if not self.task.done():
+                self.task.cancel()
+            raise
+        except WorkRecordingUnavailable:
+            self.recording_unavailable = True
+            return result("recording_unavailable")
+        except Exception:
+            self._check_recording()
+            return result("failed")
+
+    def _check_recording(self) -> None:
+        if not self.submit_started:
+            return
+        try:
+            run = self.runtime.work_runtime.get_run_for_operation(self.execution_id)
+            if run is None:
+                self.recording_unavailable = True
+            else:
+                self.runtime.work_runtime.get_recording(run.run_id)
+        except Exception:
+            self.recording_unavailable = True
+
+    async def _settle_plan(self) -> None:
+        task = self.task
+        if task is not None:
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                if not task.done():
+                    raise
+                self.cancelled = True
+            except Exception:
+                # Business failure is not by itself cleanup debt. The original
+                # runtime and Session below still have to establish quiescence.
+                pass
+            if not self.submit_started:
+                self.not_submitted = True
+            run = self.runtime.work_runtime.get_run_for_operation(self.execution_id)
+            if run is not None:
+                # A failed terminal append may leave a completed-looking run
+                # active. The runtime's ownership view, not that text, decides.
+                if any(
+                    active.run_id == run.run_id
+                    for active in self.runtime.work_runtime.active_runs()
+                ):
+                    try:
+                        await self.runtime.work_runtime.cancel(run.run_id)
+                    except Exception:
+                        self._check_recording()
+                        if not self.recording_unavailable:
+                            raise
+                try:
+                    await self.runtime.work_runtime.wait(run.run_id)
+                except asyncio.CancelledError:
+                    self.cancelled = True
+                except Exception:
+                    # Work.wait has joined its retained executor before raising
+                    # the recorded business/cancellation result.
+                    pass
+            self._check_recording()
