@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Callable, Mapping
+from contextlib import ExitStack
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -510,100 +511,92 @@ def capture_windows_product_worker_stage(
     inspection: WindowsStageInspection,
     marker_name: str,
     max_marker_bytes: int,
+    max_payload_bytes: int,
+    error_type: type[RuntimeError],
+    error_prefix: str,
+    scope: ExitStack,
 ) -> CapturedWindowsWorkerStage:
-    """Capture the complete read-only stage under the caller's Product GC scope."""
+    """Capture under the caller's stack, through its Review construction.
+
+    Inspection keeps primitive diagnostics; operation errors are separately
+    bound. The existing stack closes stage, root and ACL in their original order.
+    """
     stage_name = "worker-payload-" + attempt_id
-    with WindowsPrivateDirectoryAcl() as acl:
-        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-            inspection.require_direct(root, acl, directory=True)
-            if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
-                raise inspection.error_type(f"{inspection.error_prefix}_root_changed")
-            stage = open_windows_directory(
-                stage_name, dir_fd=root, share_delete=False, read_control=True
+    acl = scope.enter_context(WindowsPrivateDirectoryAcl())
+    root = scope.enter_context(
+        product.epoch_runtime.borrow_product_state_root_descriptor()
+    )
+    inspection.require_direct(root, acl, directory=True)
+    if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
+        raise error_type(f"{error_prefix}_root_changed")
+    stage = open_windows_directory(
+        stage_name, dir_fd=root, share_delete=False, read_control=True
+    )
+    scope.callback(os.close, stage)
+    stage_identity = inspection.require_direct(stage, acl, directory=True)
+    if (
+        stage_identity[:2] != expected_stage
+        or stage_identity[:2] != intent.stage_identity
+        or _file_identity(windows_stat_at(root, stage_name)) != stage_identity
+    ):
+        raise error_type(f"{error_prefix}_stage_changed")
+    raw_marker, marker_identity = inspection.read_checked_file(
+        stage,
+        marker_name,
+        acl,
+        maximum_bytes=max_marker_bytes,
+    )
+    entrypoint, marker_payload_size = inspection.verify_marker(
+        raw_marker, intent=intent, stage_identity=expected_stage
+    )
+    parts = entrypoint.split("/")
+    if set(windows_listdir_at(stage)) != {marker_name, parts[0]}:
+        raise error_type(f"{error_prefix}_tree_changed")
+    current = stage
+    children: list[int] = []
+    directory_identities: list[tuple[str, FileIdentity]] = []
+    try:
+        for index, name in enumerate(parts[:-1]):
+            child = open_windows_directory(
+                name,
+                dir_fd=current,
+                share_delete=False,
+                read_control=True,
             )
-            try:
-                stage_identity = inspection.require_direct(stage, acl, directory=True)
-                if (
-                    stage_identity[:2] != expected_stage
-                    or stage_identity[:2] != intent.stage_identity
-                    or _file_identity(windows_stat_at(root, stage_name))
-                    != stage_identity
-                ):
-                    raise inspection.error_type(
-                        f"{inspection.error_prefix}_stage_changed"
-                    )
-                raw_marker, marker_identity = inspection.read_checked_file(
-                    stage,
-                    marker_name,
-                    acl,
-                    maximum_bytes=max_marker_bytes,
-                )
-                entrypoint, marker_payload_size = inspection.verify_marker(
-                    raw_marker, intent=intent, stage_identity=expected_stage
-                )
-                parts = entrypoint.split("/")
-                if set(windows_listdir_at(stage)) != {marker_name, parts[0]}:
-                    raise inspection.error_type(
-                        f"{inspection.error_prefix}_tree_changed"
-                    )
-                current = stage
-                children: list[int] = []
-                directory_identities: list[tuple[str, FileIdentity]] = []
-                try:
-                    for index, name in enumerate(parts[:-1]):
-                        child = open_windows_directory(
-                            name,
-                            dir_fd=current,
-                            share_delete=False,
-                            read_control=True,
-                        )
-                        children.append(child)
-                        identity = inspection.require_direct(child, acl, directory=True)
-                        if _file_identity(
-                            windows_stat_at(current, name)
-                        ) != identity or set(windows_listdir_at(child)) != {
-                            parts[index + 1]
-                        }:
-                            raise inspection.error_type(
-                                f"{inspection.error_prefix}_tree_changed"
-                            )
-                        directory_identities.append(
-                            ("/".join(parts[: index + 1]), identity)
-                        )
-                        current = child
-                    executable, executable_identity = inspection.read_checked_file(
-                        current,
-                        parts[-1],
-                        acl,
-                        maximum_bytes=inspection.max_payload_bytes,
-                    )
-                    executable_digest = sha256(executable).hexdigest()
-                    if (
-                        executable_digest != intent.payload_digest
-                        or len(executable) != marker_payload_size
-                    ):
-                        raise inspection.error_type(
-                            f"{inspection.error_prefix}_payload_changed"
-                        )
-                finally:
-                    for child in reversed(children):
-                        os.close(child)
-                if (
-                    _file_identity(os.fstat(stage)) != stage_identity
-                    or _file_identity(windows_stat_at(root, stage_name))
-                    != stage_identity
-                    or set(windows_listdir_at(stage)) != {marker_name, parts[0]}
-                ):
-                    raise inspection.error_type(
-                        f"{inspection.error_prefix}_stage_changed"
-                    )
-                return CapturedWindowsWorkerStage(
-                    entrypoint=entrypoint,
-                    stage_identity=stage_identity,
-                    directory_identities=tuple(directory_identities),
-                    marker_identity=marker_identity,
-                    executable_identity=executable_identity,
-                    executable_digest=executable_digest,
-                )
-            finally:
-                os.close(stage)
+            children.append(child)
+            identity = inspection.require_direct(child, acl, directory=True)
+            if _file_identity(windows_stat_at(current, name)) != identity or set(
+                windows_listdir_at(child)
+            ) != {parts[index + 1]}:
+                raise error_type(f"{error_prefix}_tree_changed")
+            directory_identities.append(("/".join(parts[: index + 1]), identity))
+            current = child
+        executable, executable_identity = inspection.read_checked_file(
+            current,
+            parts[-1],
+            acl,
+            maximum_bytes=max_payload_bytes,
+        )
+        executable_digest = sha256(executable).hexdigest()
+        if (
+            executable_digest != intent.payload_digest
+            or len(executable) != marker_payload_size
+        ):
+            raise error_type(f"{error_prefix}_payload_changed")
+    finally:
+        for child in reversed(children):
+            os.close(child)
+    if (
+        _file_identity(os.fstat(stage)) != stage_identity
+        or _file_identity(windows_stat_at(root, stage_name)) != stage_identity
+        or set(windows_listdir_at(stage)) != {marker_name, parts[0]}
+    ):
+        raise error_type(f"{error_prefix}_stage_changed")
+    return CapturedWindowsWorkerStage(
+        entrypoint=entrypoint,
+        stage_identity=stage_identity,
+        directory_identities=tuple(directory_identities),
+        marker_identity=marker_identity,
+        executable_identity=executable_identity,
+        executable_digest=executable_digest,
+    )

@@ -172,3 +172,18 @@ factory callback、root-owner框架或新的模块/manager。保留真实partial
 注释/格式。属于完整职责迁移及类型边界成本，不计去重或系统精简；全系统647728
 相对Goal634794基线仍净增12934。三视角有界接受及实际157项通过见
 [A88](key-designs/windows-stage-capture-custody-convergence.md)。整体15K与P1–P4未完成。
+
+## A89后续：两条完整capture真正合一
+
+Reserved旧完整操作直接复用A88原capture，Code447→376（−71），原complete薄适配
+344→350（+6），接收609→602（−7），系统净−72，含全部ExitStack/import/error与
+budget叶/格式。A88+A89从原complete434+reserved447+Core478=1359到350+376+602=
+1328，两片合计Code−155/接收+124/系统−31；原生产重复退出，不是又加一份共享层。
+Code113955/系统647656，相对Goal基线系统仍+12862；不能把这31行说成累计增长
+已解决。R1 generator因实际StopIteration合同风险不采用，R2复用标准ExitStack
+保持同步、真实DTO寿命及原错误域。完整成本/故障来源见
+[A89](key-designs/windows-stage-capture-custody-convergence.md#a89完整reserved捕获复用与共同寿命)。
+
+本片接收体重建为正常格式前618行（结构+9）→正常格式602（格式−16）；Code两源
+−65没有本轮格式变化。故系统物理−72分为结构−56/格式−16，不把全部物理行差
+冒称逻辑去重。另加404行显式测试及9102字节原观察fixture，测试/文档成本另列。

@@ -7,6 +7,7 @@
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
 当前430个Python文件均重新计量并核SHA；原审计列与候选处置保留供追溯。当前行数包括已接通但尚待最终切片验证的源码；各批接受范围以执行记录为准。
+A89 Reserved完整capture复用A88，同批保真实DTO寿命；Code减65/接收减7/系统减72，当前接受范围见[交付](key-designs/windows-stage-capture-custody-convergence.md#a89完整reserved捕获复用与共同寿命)。
 A88完整stage capture归原PackageProduct，Code减90/接收加131/系统加41；见[交付](key-designs/windows-stage-capture-custody-convergence.md)。
 A82核实全系统增长口径并退出无消费者私有history壳；当前成本见[审计](coding-convergence-system-cost-audit.md)。
 A81完整delegated Goal Work/Session轮次交接已接通；Code保纯政策及真实类型；见[本片交付](key-designs/delegated-goal-session-convergence.md)。
@@ -374,10 +375,10 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_windows_receipt_base.py](../../../../src/loushang/coding/package_product_worker_windows_receipt_base.py) | C07 | 229 | M | C07 插件 Worker 执行/持久化/恢复 | 4c254c982190 | 101 | 1cf3848a47cb |
 | [package_product_worker_windows_receipt_journal.py](../../../../src/loushang/coding/package_product_worker_windows_receipt_journal.py) | C07 | 358 | M | C07 插件 Worker 执行/持久化/恢复 | 1e3b227fb315 | 75 | 52385b2063a7 |
 | [package_product_worker_windows_recovery_inventory.py](../../../../src/loushang/coding/package_product_worker_windows_recovery_inventory.py) | C07 | 948 | M | C07 插件 Worker 执行/持久化/恢复 | b27d4837686b | 571 | b37415006f16 |
-| [package_product_worker_windows_reserved_review.py](../../../../src/loushang/coding/package_product_worker_windows_reserved_review.py) | C07 | 498 | M | C07 插件 Worker 执行/持久化/恢复 | da4173eeec8e | 447 | 7ba600f46869 |
+| [package_product_worker_windows_reserved_review.py](../../../../src/loushang/coding/package_product_worker_windows_reserved_review.py) | C07 | 498 | M | C07 插件 Worker 执行/持久化/恢复 | da4173eeec8e | 376 | fd471bc4042f |
 | [package_product_worker_windows_reserved_settlement.py](../../../../src/loushang/coding/package_product_worker_windows_reserved_settlement.py) | C07 | 148 | M | C07 插件 Worker 执行/持久化/恢复 | 2b51f84d3792 | 148 | 2b51f84d3792 |
 | [package_product_worker_windows_stage_retirement.py](../../../../src/loushang/coding/package_product_worker_windows_stage_retirement.py) | C07 | 819 | M | C07 插件 Worker 执行/持久化/恢复 | 3ff0e86ef425 | 499 | 99baaa4b776c |
-| [package_product_worker_windows_stage_review.py](../../../../src/loushang/coding/package_product_worker_windows_stage_review.py) | C07 | 562 | M | C07 插件 Worker 执行/持久化/恢复 | 6ea1c3b1a359 | 344 | b95f95f4f276 |
+| [package_product_worker_windows_stage_review.py](../../../../src/loushang/coding/package_product_worker_windows_stage_review.py) | C07 | 562 | M | C07 插件 Worker 执行/持久化/恢复 | 6ea1c3b1a359 | 350 | 110132ddc4ae |
 | [package_product_worker_windows_supervisor_base.py](../../../../src/loushang/coding/package_product_worker_windows_supervisor_base.py) | C07 | 282 | M | C07 插件 Worker 执行/持久化/恢复 | 7b61d5a66355 | 104 | 5735412a6101 |
 | [package_product_worker_windows_supervisor_journal.py](../../../../src/loushang/coding/package_product_worker_windows_supervisor_journal.py) | C07 | 403 | M | C07 插件 Worker 执行/持久化/恢复 | 009fdc92f3b4 | 50 | d97db7b700f4 |
 | [package_product_worker_windows_unlaunched_stage_retirement.py](../../../../src/loushang/coding/package_product_worker_windows_unlaunched_stage_retirement.py) | C07 | 438 | M | C07 插件 Worker 执行/持久化/恢复 | f21cd9031d90 | 383 | 1d9faed4d883 |
@@ -471,7 +472,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C04 | 2 | 2,968 |
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
-| C07 | 112 | 22,591 |
+| C07 | 112 | 22,526 |
 | C08 | 31 | 6,743 |
 | C09 | 34 | 9,711 |
 | C10 | 12 | 5,546 |
@@ -493,4 +494,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 114,020 |
+| 合计 | 430 | 113,955 |

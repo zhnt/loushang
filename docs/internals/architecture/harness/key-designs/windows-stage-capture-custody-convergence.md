@@ -1,7 +1,7 @@
-# A88：完整 Windows stage capture 归原 PackageProduct
+# Windows stage capture 职责收敛（A88–A89）
 
 - Authority: COD-RESP-GOAL-002 有界职责交付；不替代完整P1–P4验收。
-- Design status: accepted，Root按现有授权综合职责/复用、运行/失败、数据/兼容三独立视角接受实际R5。
+- Design status: accepted，Root按现有授权综合职责/复用、运行/失败、数据/兼容三独立视角接受实际A88/R5及A89/R2。
 - Implementation status: complete within the capture operation；完整Goal仍partial。
 - Owner: 原PackageProduct与Worker物理能力；Coding产品准入、公开Review/Error及领域政策。
 - 方法：本地干净archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`，没有声称与上游同步。
@@ -126,3 +126,73 @@ short-read的seek-to-EOF不改变consumed。仅重新转换原raw，不使用候
 Windows恢复/cleanup、P1–P4和15K均未完成。KD011/A33仍待用户工作件且未采用，
 KD003仍未实施。下一步复核相邻offline snapshot、attempt-reference及retirement的
 完整寿命和可复用机制，避免只减目录行数或继续叠加薄层。
+
+## A89完整Reserved捕获复用与共同寿命
+
+A89实施起点为`88bde6cd571dd41f17de73b4df4b62b83134884e`。
+A88后仍有一条真正重复的完整程序：Reserved review的`_capture_reserved_stage`。
+Reserved、settled-unlaunched review及unlaunched retirement重捕获实际共用此入口。
+它与原capture的目录/marker/payload/SHA/末次验证/关闭程序一致，区别是公开
+Reserved DTO必须在原stage try内构造，且原语与操作诊断分属两类错误。
+
+R1曾构造完整generator context候选；运行评审指出yield前StopIteration会被PEP479
+转成RuntimeError。三个原反例实际2失败/1通过（10.41s）：marker read和root fstat
+均改变异常，叠stage-close的一项保持原异常链；原失败保留，R1未采用。R2保持原同步函数，
+借用标准ExitStack：Code薄入口在原准入之后进入栈，Core按原顺序enter ACL、root，
+stage取得后登记原close；children仍原局部finally。Code在同栈体内返回captured或
+构造真实Reserved DTO，随后按stage→root→ACL关闭。没有新manager、generator、
+构造factory callback、Code IO回借或另一份物理操作。
+
+原native_revision `not in (1, 2)`保持：bool/float可过初guard，但在完整IO之后的
+公开DTO严格校验才拒；不提前强化。Complete的exact Intent guard也保持在scope前。
+Inspection仍原StageReview错误域，Reserved自身root/stage/tree/payload检查另绑
+Reserved错误class/prefix两个纯值；各原Code payload读取上限独立传入。Code全部
+真实公开类/字段/metadata/wire及其它函数AST保持。实际Intent冻结字段和私有配置
+在调用入口取值，不承诺任意duck getter或私有alias中途替换的时点。标准stack
+在取得stage时绑定实际close；真实root/ACL端口均不抑制异常，不额外模拟任意
+suppression替身或增加适配框架。
+
+| A89实际范围 | 原行 | 当前行 | 净变化 |
+| --- | ---: | ---: | ---: |
+| Code Reserved review | 447 | 376 | −71 |
+| Code complete capture薄入口 | 344 | 350 | +6 |
+| 原PackageProduct接收源 | 609 | 602 | −7 |
+| 系统生产源码 | 647728 | 647656 | −72 |
+
+所有scope/import/三个纯诊断与预算叶/格式计入，Code合计−65。A88+A89原三源
+434+447+478=1359→350+376+602=1328，两片Code−155/接收+124/系统−31；完整重复
+真正退出，非目录搬迁。Coding430源113955行、系统1967源647656行，其余1964源
+及13资源SHA同。系统相对Goal基线仍+12862，距Code≤15K还差98955行。
+
+格式贡献单列：按完整变换重建的接收源在正常格式前618行（结构+9），Ruff扁平化
+后602行（格式−16）；Code两源未再格式改动。因此本片结构净−56、格式净−16，
+合计实际物理−72。两片合计−31也是物理口径，不把全部行差说成逻辑程序消除。
+
+树外`a89-reserved-stage-reuse`保存原1967源/13资源、完整R1/R2、75原观察及冻结证明。
+75项复用A88相同物理fault程序中Reserved适用的60项（独立expected-stage输入仅属
+complete，原A88完整61仍保），另补native revision、lease边界、public构造错误/
+StopIteration与stage/root/ACL关闭覆盖，以及IO叶StopIteration。成功返回保公开
+FQN、完整10字段、逐字wire与fingerprint，失败保完整错误图/trace/FD债务；期望
+仅来自原实现。真实文件/FD和原Inspection运行在受控Windows端口的POSIX模型上，
+不是原生Win32/Task.cancel/进程crash或任意kernel close失败的全面证明。
+
+原完整75捕获通过9.94s；R2原消费者及A88完整capture回归204过6.66s。实际R2同
+75固定观察与204消费者联合279过17.82s，全部原值/输入/断言保持，逐源及加载
+origin guard通过。实际普通mypy三源、Ruff/format、生成package依赖图通过。
+三独立视角已核完整三源及全部成本，Root按授权接受本完整重复退出；完整Goal
+仍active/partial。KD011/A33与KD003原边界保持，不将此片当整个Windows收敛。
+
+持续回归新增显式`probe_windows_reserved_capture_compatibility.py`，404行；直接复用
+A88原Observer/OsPort/seeded与严格身份/读取预算校验，不再复制完整观察器。75项
+fixture只由原raw转换，gzip9102字节，SHA256
+`899068b773f04b12526c7533a1e9208365965ee73a8f7ff6f20d75208040b531`。
+四成功形状先用独立先验input和原LaunchIntent schema/domain生成意图指纹，再
+逐十字段、公开FQN、原Reserved schema的canonical bytes/domain指纹严格校验，
+之后才转物理role/派生表达式。没有忽略公共类型或只比较六个私有字段。首次独立
+输入公式漏Intent domain即被原native-revision-two拒绝，原稿/失败保留，按原源码
+补domain后仅重转原raw，没有改原值或从候选输出生成期望。
+
+外部新/tmp75过（XML 3.730s），仓库新75与共享原61联合136过2.08s；字段/FQN/bytes/
+domain hash/身份/预算的错误变异均被拒，抹FD债务仍完整比较不同。两条原架构
+边界断言2过19.70s，文档9项静态规则与改变文件链接通过。测试和fixture另列成本，
+不计生产净减；probe命名保持显式本地执行，不增加CI route/gate/platform。

@@ -6,7 +6,24 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A88完整Windows stage capture）
+## 当前状态（2026-11-10，A89完整Reserved capture实际复用）
+
+Reserved、settled-unlaunched及retirement recapture的完整重复捕获体已退出Code，
+直接复用A88原PackageProduct capture；complete/crash路径同批接入原标准ExitStack，
+将真实公开Reserved DTO构造留在stage/root/ACL存活范围内。Core保持普通同步函数，
+不增加generator/constructor callback/新manager；两类原错误域和独立payload预算保持。
+Code−65、原接收侧−7、系统−72；A88+A89两片合计Code−155/接收+124/系统−31，
+是两条完整程序合一的真实去重，不代表此前系统累计增长已经解决。
+当前Code430文件113955行，系统1967源647656行，其余1964源及13资源SHA同。
+原消费者/capture对照及新增Reserved全故障对照、三独立源码评审、mypy/Ruff/format/
+文档和依赖图证据见[A89交付](key-designs/windows-stage-capture-custody-convergence.md#a89完整reserved捕获复用与共同寿命)。
+验证是受控Windows端口上的真实POSIX文件/FD及同步异常，不外推原生Windows、
+实际Task.cancel或全部进程crash。完整P1–P4/领域化/≤15K仍active/partial，尚差
+98955行；下一步优先复核P2原publication owner的完整receipt捕获/发布重试接线
+候选，尚未实施/接受。offline snapshot/attempt-reference等剩余范围保持，不能
+把Code产品判据或已共享的cleanup再迁一次，也不为减少目录行数增加厚回调。
+
+## A88历史交付（2026-11-10，完整Windows stage capture）
 
 完整stage capture已归现有PackageProduct，直接复用原WindowsStageInspection与
 实际Product root借用：ACL/root/stage/child寿命、marker与成员校验、payload大小/

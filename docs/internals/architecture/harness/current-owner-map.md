@@ -621,8 +621,13 @@ ACL/root/stage/child descriptor lifetime, marker/tree/payload proof and final
 identity checks. Coding keeps exact intent admission, public Review/Error and
 domain decisions. The private ephemeral captured value belongs to Package
 Product; no Worker-to-Product dependency or Code IO callback is added. Complete
-and crash stage review share this operation; partial review and retirement keep
-their existing thin StageInspection adapters. See [A88](key-designs/windows-stage-capture-custody-convergence.md)
+and crash stage review, reserved review and settled-unlaunched recapture share
+this operation. Coding uses the standard ExitStack scope through real public
+DTO construction; Package Product registers original ACL/root/stage closure,
+while child descriptor closure stays local to capture. Primitive inspection
+errors and Product operation diagnostics stay separately bound, including each
+original payload read bound. No generator is introduced. Partial review and
+retirement keep their existing thin StageInspection adapters. See [A88](key-designs/windows-stage-capture-custody-convergence.md)
 for cost, fixed-original fault evidence and native-platform limitations.
 
 ## Architecture Gates

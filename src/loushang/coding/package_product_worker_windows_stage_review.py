@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+from contextlib import ExitStack
 from dataclasses import dataclass
 from hashlib import sha256
 
@@ -286,15 +287,20 @@ def _capture_stage_bytes(
             "coding_worker_stage_review_intent_invalid"
         )
 
-    return capture_windows_product_worker_stage(
-        product,
-        attempt_id=attempt_id,
-        expected_stage=expected_stage,
-        intent=intent,
-        inspection=_inspection(),
-        marker_name=_MARKER,
-        max_marker_bytes=_MAX_MARKER_BYTES,
-    )
+    with ExitStack() as scope:
+        return capture_windows_product_worker_stage(
+            product,
+            attempt_id=attempt_id,
+            expected_stage=expected_stage,
+            intent=intent,
+            inspection=_inspection(),
+            marker_name=_MARKER,
+            max_marker_bytes=_MAX_MARKER_BYTES,
+            max_payload_bytes=_MAX_PAYLOAD_BYTES,
+            error_type=CodingWindowsWorkerStageReviewError,
+            error_prefix="coding_worker_stage_review",
+            scope=scope,
+        )
 
 
 __all__ = [

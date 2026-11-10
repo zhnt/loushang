@@ -22,6 +22,15 @@ to real POSIX files/FDs, and cancellation is synchronous fault injection. This
 does not prove native Windows or actual Task.cancel interleavings. See the
 [A88 evidence and portability correction](../architecture/harness/key-designs/windows-stage-capture-custody-convergence.md).
 
+A89 adds [probe_windows_reserved_capture_compatibility.py](../../../tests/coding/probe_windows_reserved_capture_compatibility.py),
+which reuses the A88 observer and runs 75 Reserved capture cases. Original public
+type, all ten fields, canonical bytes and both domain hashes are checked against
+independent input/schema formulas before role projection. It includes native
+revision late rejection, public constructor/cleanup failures and StopIteration.
+Run with the same private input plugin above; no default collection or PR gate
+is added. [A89 evidence](../architecture/harness/key-designs/windows-stage-capture-custody-convergence.md#a89完整reserved捕获复用与共同寿命)
+records the rejected generator candidate and preserved oracle setup failures.
+
 | Historical path | Current explicit local path |
 | --- | --- |
 | `tests/coding/test_arch_private_cache_stream_ownership.py` | [tests/coding/probe_arch_private_cache_stream_ownership.py](../../../tests/coding/probe_arch_private_cache_stream_ownership.py) |
