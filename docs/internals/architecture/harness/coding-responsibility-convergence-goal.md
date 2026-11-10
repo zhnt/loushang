@@ -27,7 +27,23 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-10，A111两缓存发布程序合一）
+## 当前状态（2026-11-10，A113捕获声明证据投影归位）
+
+captured Product声明→typed Resource/Tool/Command spec→成员资格→两hash→实际
+OwnerCandidateEnvelope的完整投影已归原Session product_composition_assembly。
+Code保信任/owner选择/内容及原四参数薄入口，3个错误标量与纯异常工厂；无新
+manager/Protocol/IO回调。直接复用已有_digest_document；其余是一次职责迁移，
+两调用点原已共用同一算法，不能算双程序去重或IO迁移。
+Code−129/Core+157/系统+28；当前Coding112949/系统648164，较Goal−24806/+13370，
+距15K97949。1969源中其余1967源/13资源SHA同。31旧观察和同2个真实fenced节点
+在旧/新均过，持久同31回放过；边界172过，另3项与旧RCP2基线逐消息同的库存
+失败保留，未改gate，不能称全绿。探针318+JSONL32行另计；完整来源/限制和
+三视角接受见[A113](key-designs/product-selected-contribution-projection.md)。
+完整P1–P4仍active/partial；旧Hosting/AI coverage/构造绑定及其它历史失败未关闭。
+KD003未实施，KD011/A33待用户未采用。A112复核未发现替代A51双legacy程序的新能力，
+不重启该形状，不预支其行数收益。
+
+## A111历史交付（2026-11-10，两缓存发布程序合一）
 
 Arch与Transcript index两份完整temp写入/flush/fsync/close/replace/清理程序，现复用
 原Journal组件的一份38行私有无状态实现。仅两个原差异参数；目录sync仍留原

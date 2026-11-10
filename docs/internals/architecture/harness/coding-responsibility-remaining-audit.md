@@ -6,6 +6,7 @@
 - Design status: current-gap review；下面候选接口尚未接受或实施。
 - Implementation status: A71已提交；本工作件不新增生产实现或精简收益。
 - Owner: Coding及各原组件owner；三独立视角复核，实施owner综合事实。
+- A113：captured Product声明完整中性投影归原Session，Code保信任/owner政策；不关闭C01，见[A113](key-designs/product-selected-contribution-projection.md)。
 - A111：Arch缓存普通path发布与Transcript index共享同一Journal字节程序，Code保codec/政策；不关闭C14，见[A111](key-designs/cache-publication-convergence.md)。
 - A110：原构造后selection读失败窗口已有回退/同Transcript重试证据，未证明需新增custody；其它早期构造问题未泛关，见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 - A109：完整V2预检读协调归原PackageProduct，Code保政策与薄入口；不关闭C07，见[A109](key-designs/worker-history-responsibility-convergence.md#a109完整-v2-预检复用原-packageproduct-history-协调)。
@@ -35,12 +36,12 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
-数量按A111当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
+数量按A113当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
 |---|---:|---|---|---|
-| C01 启动、Plugin/资源装配 | 22/12,883 | P2 | 原Construction/Session、Catalog/Graph已实际接入；Code剩跨阶段选择、审批、刷新与交接 | 拆清领域选择和完整共用程序；不把bootstrap3531行或装配回调池当删除预算 |
+| C01 启动、Plugin/资源装配 | 22/12,754 | P2 | 原Construction/Session、Catalog/Graph已实际接入；Code剩跨阶段选择、审批、刷新与交接 | 拆清领域选择和完整共用程序；不把bootstrap3531行或装配回调池当删除预算 |
 | C02 托管与受管接入 | 28/8,031 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用；Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝 |
 | C03 Resume与SessionManager | 15/4,132 | P2/P3 | 原Transcript/Session lifecycle、live恢复已复用；Code保版本化输入/装配与授权政策 | 按new/resume/fork/reopen完整合同再拆；不重建提交器或自动重试 |
 | C04 Continuity | 2/2,956 | P3 | 原Continuity provider/runtime及A68 payload custody已接入；Code来源/导入/恢复桥仍在 | KD003 bytes import未实施；区分纯准入与读取/借用/abort寿命，不提前采用KD011 |
@@ -68,7 +69,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C26 配置/路径兼容导出 | 2/52 | P4 | 原Config owner已复用 | 保产品路径选择与支持中的导出，退出需合同证据 |
 | C27 版本检查 | 2/50 | P4 | 产品更新选择与原公共机制绑定 | 保必要产品选择，不为50行再建服务 |
 | C28 资源命名空间 | 5/5 | P4 | 支持中的Python布局标记 | 保真实加载/导出路径，空壳不是第二引擎 |
-| 合计 | **430/113,078** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
+| 合计 | **430/112,949** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
 
 ## 保留账：语义、兼容成本与当前实现必须分开
 

@@ -178,6 +178,11 @@ original owners. See [KD-004 A17](key-designs/worker-history-responsibility-conv
 for the bounded contract; implementation evidence is tracked in the
 [execution record](coding-responsibility-convergence-progress.md).
 
+The same Session assembly now projects captured Product declarations into inert
+owner candidates, reusing the existing canonical domain hash. Product trust,
+owner choices and diagnostic policy remain in Coding; this adds no IO or
+registration authority. See [A113](key-designs/product-selected-contribution-projection.md).
+
 The bounded [child Session consolidation](multiagent/child-session-composition.md)
 keeps Coding configuration in its Product adapter and uses the original Session
 Host and queues. Failed child cleanup retains its handle and dependencies until

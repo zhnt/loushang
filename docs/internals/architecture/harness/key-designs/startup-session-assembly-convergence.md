@@ -872,3 +872,13 @@ Session后跳过外层清理，让尚未归Session的Package或management义务�
 探针、来源SHA守卫、两轮JUnit与完整观察及三视角审查在树外
 `coding-convergence-continue/a110-construction-transfer-audit`；未加默认测试/gate。
 这只处置已测的窗口，不关闭其它早期构造/绑定问题、P1–P4或15K目标。
+
+
+## 26. A112复核：不重启A51相同legacy双程序
+
+重新检查的是§17–18同两个完整managed base/capability选择程序，不是新的审批/
+plan切片。当前迁移try范围、fresh reconcile、disabled关闭、replay三类异常、lease
+先持有以及即时notes/前缀retry custody差异仍在；原owner只复用各自叶机制，没有
+新整入口消除旧接口成本。三独立视角据当前源不重启相同helper/flags形状，无生产/
+测试收益；不是证明这些职责永久不可迁。后续[A113](product-selected-contribution-projection.md)
+选择不同的captured值投影边界，不借此接受A51。

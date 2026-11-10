@@ -6,6 +6,7 @@
 - Owner: Coding / shared-layer architecture；静态分析 Codex。
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
+A113捕获Product声明证据投影归原Session（Code−129/Core+157/系统+28）；见[A113](key-designs/product-selected-contribution-projection.md)。
 A111两缓存temp发布程序合一（Code−20/Harness净+17/系统−3）；见[A111](key-designs/cache-publication-convergence.md)。
 A109完整V2预检协调归原PackageProduct（Code−121/Core+140/系统+19）；见[A109](key-designs/worker-history-responsibility-convergence.md#a109完整-v2-预检复用原-packageproduct-history-协调)。
 A107初始V1五流封口归原Publication并复用锁环（Code−125/Core+164/系统+39）；见[KD004 A107](key-designs/worker-history-responsibility-convergence.md#a107初始-v1-封口复用原-historypublication)。
@@ -47,7 +48,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [_apphost_canary_control.py](../../../../src/loushang/coding/_apphost_canary_control.py) | C05 | 567 | V | C05 显式 canary 与作者验证入口 | a19ad5ec64ae | 567 | a19ad5ec64ae |
 | [_base_plugin.py](../../../../src/loushang/coding/_base_plugin.py) | C01 | 1,082 | M | C01 启动、Plugin 与资源装配 | 6a5ae1acb805 | 1,082 | 6a5ae1acb805 |
 | [_base_plugin_owners.py](../../../../src/loushang/coding/_base_plugin_owners.py) | C01 | 554 | M | C01 启动、Plugin 与资源装配 | 73c87bc511e3 | 522 | 0efabd880955 |
-| [_base_product_composition.py](../../../../src/loushang/coding/_base_product_composition.py) | C01 | 747 | M | C01 启动、Plugin 与资源装配 | c9dc3724f32b | 747 | c9dc3724f32b |
+| [_base_product_composition.py](../../../../src/loushang/coding/_base_product_composition.py) | C01 | 747 | M | C01 启动、Plugin 与资源装配 | c9dc3724f32b | 618 | 21d4f06324e3 |
 | [_capability_plugin_composition.py](../../../../src/loushang/coding/_capability_plugin_composition.py) | C01 | 2,189 | M | C01 启动、Plugin 与资源装配 | bbff9d9b6834 | 1,780 | 1e24f978703f |
 | [_capability_plugin_specs.py](../../../../src/loushang/coding/_capability_plugin_specs.py) | C01 | 103 | K | C01 启动、Plugin 与资源装配 | b2bceae8d220 | 103 | b2bceae8d220 |
 | [_cleanup.py](../../../../src/loushang/coding/_cleanup.py) | C06 | 28 | R/M | C06 其余根目录入口与策略 | caf6c413edb5 | 6 | 15c1bd02b27e |
@@ -481,7 +482,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 
 | 组 | 当前文件 | 当前物理行 |
 | --- | ---: | ---: |
-| C01 | 22 | 12,883 |
+| C01 | 22 | 12,754 |
 | C02 | 28 | 8,031 |
 | C03 | 15 | 4,132 |
 | C04 | 2 | 2,956 |
@@ -509,4 +510,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 113,078 |
+| 合计 | 430 | 112,949 |

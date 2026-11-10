@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Literal, Protocol, cast
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -31,7 +31,9 @@ from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
     OwnerContributionKind,
+    OwnerContributionSpec,
     ResourceContributionSpec,
+    _digest_document,
 )
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderAdmissionRecord,
@@ -50,6 +52,10 @@ from loushang.harness.capabilities.provider_selection import (
     ResolvedCapabilityProviderSet,
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
+from loushang.harness.plugin_authoring.consumer_pack import (
+    CommandPackDeclarationPayload,
+    ToolPackDeclarationPayload,
+)
 from loushang.harness.plugin_authoring.contribution_admission import (
     prepare_owner_contribution_candidate,
 )
@@ -57,11 +63,21 @@ from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.plugin_authoring.provider_admission import (
     prepare_capability_provider_candidate,
 )
+from loushang.harness.plugin_authoring.resource_item import (
+    ResourceItemDeclarationPayload,
+)
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
 from loushang.harness.resources.plugins.contribution_types import (
     PLUGIN_OWNER_CONTRIBUTION_KINDS,
+)
+from loushang.harness.resources.plugins.declarations import (
+    PluginContributionReservation,
+    PluginDeclaration,
+)
+from loushang.harness.resources.plugins.engine import (
+    MANAGED_SKILL_ACTION_CONFIGURATION_KEY,
 )
 from loushang.harness.resources.plugins.selection import (
     PendingOnlyPluginExecutionDecisionLookup,
@@ -84,6 +100,12 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityWorkerComponentRequest,
     validate_session_capability_composition_closure,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.package_product.product_local_wheel_runtime import (
+        PackageProductSelectedPluginManifestV1,
+    )
+
 
 ProductOptionalRequirementSelector = Callable[
     [ProductCapabilityConsumerRequirementPreview],
@@ -1664,4 +1686,139 @@ def _complete_catalog_plugin_selection_seed(
         candidates=candidates,
         resolve_owner=resolve_owner,
         reject=lambda reason: reject((reason,)),
+    )
+
+
+def prepare_product_selected_contribution_candidate(
+    selected: PackageProductSelectedPluginManifestV1,
+    plan: PluginSelectionPlanV2,
+    reservation: PluginContributionReservation,
+    declaration: PluginDeclaration,
+    *,
+    product_label: str,
+    selection_error_code: str,
+    missing_resource_error_code: str,
+    make_error: Callable[[str, str], Exception],
+) -> OwnerContributionCandidateEnvelope:
+    """Project one captured Product declaration into its exact owner evidence."""
+    snapshot = selected.snapshot
+    manifest = selected.manifest
+    if declaration.plugin_id != manifest.name:
+        raise make_error(
+            "Selected Product declaration changed Plugin identity", selection_error_code
+        )
+    contribution: OwnerContributionSpec
+    payload = declaration.to_dict()["payload"]
+    if declaration.kind == "resource_item":
+        resource = ResourceItemDeclarationPayload.from_dict(payload)
+        resource_root = selected.manifest.root_relative_path.as_posix()
+        locator = (
+            resource.locator
+            if resource_root == "."
+            else f"{resource_root}/{resource.locator}"
+        )
+        files = {path for path, _ in selected.snapshot.files}
+        if resource.locator_kind == "file":
+            valid = locator in files
+        else:
+            valid = locator not in files and any(
+                (path.startswith(f"{locator}/") for path in files)
+            )
+        if not valid:
+            raise make_error(
+                f"Selected {product_label} Resource locator is outside the Product root",
+                missing_resource_error_code,
+            )
+        contribution = ResourceContributionSpec(
+            resource_kind=resource.resource_kind,
+            locator=resource.locator,
+            locator_kind=resource.locator_kind,
+            media_type=resource.media_type,
+            schema_id=resource.schema_id,
+            schema_version=resource.schema_version,
+            managed_skill_actions=reservation.configuration.get(
+                MANAGED_SKILL_ACTION_CONFIGURATION_KEY
+            )
+            is True,
+        )
+        owner_namespace = resource.owner_namespace
+    elif declaration.kind in {"tool_pack", "command_pack"}:
+        consumer = (
+            ToolPackDeclarationPayload.from_dict(payload)
+            if declaration.kind == "tool_pack"
+            else CommandPackDeclarationPayload.from_dict(payload)
+        )
+        contribution = CatalogConsumerContributionSpec(
+            contribution_kind="tool_pack"
+            if declaration.kind == "tool_pack"
+            else "command_pack",
+            catalog_id=consumer.catalog_id,
+            catalog_revision=consumer.catalog_revision,
+            item_ids=consumer.item_ids,
+            requirements=consumer.requirements,
+        )
+        owner_namespace = consumer.owner_namespace
+    else:
+        raise make_error(
+            f"Selected {product_label} contribution kind is unsupported",
+            selection_error_code,
+        )
+    if owner_namespace != reservation.owner or reservation.requested_authorities:
+        raise make_error(
+            f"Selected {product_label} owner or authority changed", selection_error_code
+        )
+    root = manifest.root_relative_path.as_posix()
+    source_path = reservation.declaration_source.relative_path.as_posix()
+    document_path = source_path if root == "." else f"{root}/{source_path}"
+    document = dict(selected.declaration_documents)[document_path]
+    evidence_fingerprint = _digest_document(
+        "loushang.product-selected-declaration-evidence/v1",
+        {
+            "committedSetId": snapshot.committed_record.committed_set.set_id,
+            "declarationFingerprint": declaration.fingerprint,
+            "documentBytesDigest": document.bytes_digest,
+            "documentPath": document_path,
+            "reservationFingerprint": reservation.fingerprint,
+            "rootRef": snapshot.root_ref.to_dict(),
+        },
+    )
+    trust = next(
+        (
+            item
+            for item in plan.source_trust_snapshots
+            if item.plugin_id == manifest.name
+        )
+    )
+    candidate_fingerprint = _digest_document(
+        "loushang.product-selected-plugin-candidate/v1",
+        {
+            "declarationEvidenceFingerprint": evidence_fingerprint,
+            "declarationFingerprint": declaration.fingerprint,
+            "instanceRevisionRef": snapshot.instance_revision_ref.to_dict(),
+            "packageSourceIdentity": trust.package_source_identity,
+            "policyRevision": plan.context.policy_revision,
+            "productId": plan.context.product_id,
+            "scopeId": plan.context.scope_id,
+            "sourceTrustClass": trust.source_trust_class,
+            "sourceTrustPolicyRevision": trust.source_trust_policy_revision,
+        },
+    )
+    return OwnerContributionCandidateEnvelope(
+        owner_id=reservation.owner,
+        plugin_id=manifest.name,
+        contribution_id=reservation.contribution_id,
+        contribution=contribution,
+        plugin_candidate_fingerprint=candidate_fingerprint,
+        declaration_fingerprint=declaration.fingerprint,
+        declaration_evidence_fingerprint=evidence_fingerprint,
+        package_content_digest=snapshot.package_revision.package_content_digest,
+        dependency_lock_digest=snapshot.package_revision.dependency_lock_digest,
+        product_id=plan.context.product_id,
+        scope_id=plan.context.scope_id,
+        product_policy_revision=plan.context.policy_revision,
+        instance_revision_ref=snapshot.instance_revision_ref,
+        package_source_identity=trust.package_source_identity,
+        source_trust_class=trust.source_trust_class,
+        source_trust_policy_revision=trust.source_trust_policy_revision,
+        source_trusted=trust.trusted,
     )

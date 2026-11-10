@@ -370,3 +370,13 @@ Code454→434（−20）、Transcript983→962（−21）、原Journal新私有�
 系统1969源648136，较Goal−24677/+13342，距15K98078；其余1966源/13资源SHA同。
 显式probe244+JSONL35=279测试行（fixture14132B）另计，不进入默认PR gate；文档另计。
 完整原观察来源、首失败/修正与三视角接受见[A111](key-designs/cache-publication-convergence.md)。
+
+
+## A113：captured Product声明完整证据投影归原Session
+
+Code747→618（−129）、原Session assembly1667→1824（+157），系统净+28；全部类型/
+导入/3错误标量/纯工厂/薄外观计入。仅原_digest删除是现成算法复用；其它是一次
+中性值投影职责迁移，非双算法去重/IO迁移，不是系统净精简。当前430源112949/
+系统1969源648164，较Goal−24806/+13370，距15K97949；其余1967源/13资源SHA同。
+显式probe318+JSONL32=350测试行（fixture54290B）单列，文档另计；无新默认gate。
+A112同A51池复核只作不采用处置，生产/测试增删0、不重复计旧试装收益。见[A113](key-designs/product-selected-contribution-projection.md)。
