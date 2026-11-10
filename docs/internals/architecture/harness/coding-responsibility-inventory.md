@@ -6,6 +6,7 @@
 - Owner: Coding / shared-layer architecture；静态分析 Codex。
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
+A117完整Goal/Work来源冷读归原GoalStore集成（Code−83/Core+140/系统+57）；见[A117](key-designs/goal-work-source-custody-convergence.md)。
 A116完整规划waiter/cache寿命归原Session（Code−77/Core+98/系统+21）；见[A116](key-designs/session-planning-slot-custody-convergence.md)。
 A115完整Windows临时cutover目录归原Resources（Code−71/Core+91/系统+20）；见[A115](key-designs/windows-cutover-temporary-custody-convergence.md)。
 A113捕获Product声明证据投影归原Session（Code−129/Core+157/系统+28）；见[A113](key-designs/product-selected-contribution-projection.md)。
@@ -98,7 +99,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [adapters/_goal_repository_review.py](../../../../src/loushang/coding/adapters/_goal_repository_review.py) | C12 | 162 | M | C12 Goal/Work/证据适配 | fe9c7a2a1ff5 | 162 | fe9c7a2a1ff5 |
 | [adapters/_goal_repository_task.py](../../../../src/loushang/coding/adapters/_goal_repository_task.py) | C12 | 115 | M | C12 Goal/Work/证据适配 | d129c11e56ba | 115 | d129c11e56ba |
 | [adapters/_goal_store.py](../../../../src/loushang/coding/adapters/_goal_store.py) | C12 | 138 | M | F06 / G03：HarnessWork 集成；原路径/锁身份保留 | accbdcd03f3f | 28 | e672a4342d8b |
-| [adapters/_goal_work_sources.py](../../../../src/loushang/coding/adapters/_goal_work_sources.py) | C12 | 195 | M | C12 Goal/Work/证据适配 | 14d63c19232f | 195 | 14d63c19232f |
+| [adapters/_goal_work_sources.py](../../../../src/loushang/coding/adapters/_goal_work_sources.py) | C12 | 195 | M | C12 Goal/Work/证据适配 | 14d63c19232f | 112 | 66c91f653536 |
 | [adapters/_verification_work.py](../../../../src/loushang/coding/adapters/_verification_work.py) | C12 | 478 | M | C12 Goal/Work/证据适配 | 8355b66c521d | 478 | 8355b66c521d |
 | [adapters/_work_evidence.py](../../../../src/loushang/coding/adapters/_work_evidence.py) | C12 | 192 | M | C12 Goal/Work/证据适配 | d0579ea163ef | 192 | d0579ea163ef |
 | [adapters/goal.py](../../../../src/loushang/coding/adapters/goal.py) | C12 | 878 | M | C12 Goal/Work/证据适配 | 3f8e359671ac | 878 | 3f8e359671ac |
@@ -495,7 +496,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C09 | 34 | 9,640 |
 | C10 | 12 | 5,469 |
 | C11 | 25 | 9,308 |
-| C12 | 25 | 7,180 |
+| C12 | 25 | 7,097 |
 | C13 | 21 | 5,668 |
 | C14 | 13 | 3,608 |
 | C15 | 2 | 2,036 |
@@ -512,4 +513,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 112,801 |
+| 合计 | 430 | 112,718 |

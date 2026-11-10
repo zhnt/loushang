@@ -26,7 +26,19 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A116规划waiter/cache归原Session）
+## 当前状态（2026-11-10，A117 Goal/Work来源冷读归原集成）
+
+完整owned Goal journal→Work facts/recording/handoffs→borrowed Transcript来源→同owner
+close/custody归原GoalStore集成，Code保三policy/namespace/真实DTO/error及五个纯
+惰性数据/codec/构造绑定；无新manager/Code IO-stage。Code−83/Core+140/系统+57，
+当前Coding112718/系统648262，较Goal−25037/+13468，距15K97718。原9真实消费者
+过，39旧观察/新回放过，联合240全过（原9+受控39+Work27+边界165）。测试挂点
+迁位保原306断言/整模块逆AST；完整来源/限制见[A117](key-designs/goal-work-source-custody-convergence.md)。
+HarnessWork未分类路径触发AI检查，补跑935过/2skip/7deselect；check-ai因原覆盖率
+89.87%/runtime-core89.62%失败，与A101源/覆盖计数同，保留旧欠账，不称全门禁绿。
+完整P1–P4保持active/partial；Hosting/AI覆盖率/构造等欠账与KD003/KD011/A33边界不变。
+
+## A116历史交付（2026-11-10，规划waiter/cache归原Session）
 
 原单槽对象继承Session内的完整Task/cache寿命，保原六字段与一请求factory，Code
 留baseline/预算/弱引用key/当前source-owner判据；无新manager/调度/阶段回调。

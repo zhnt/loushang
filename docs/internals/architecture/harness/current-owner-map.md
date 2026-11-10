@@ -25,6 +25,12 @@ keeps the original six fields in that same object and binds domain requests,
 freshness policy and diagnostic prefix. Resource retains native jobs/capacity;
 there is no second scheduler. See [A116](key-designs/session-planning-slot-custody-convergence.md).
 
+The optional HarnessWork GoalStore integration owns the complete cold Goal/Work
+source read and the original journal's close/retry custody. Work and Transcript
+retain their original projections and source authority; the reader is borrowed.
+Coding binds supported policies, namespace, lazy metadata/codec and actual public
+view/error types. No live GoalController is constructed. See [A117](key-designs/goal-work-source-custody-convergence.md).
+
 ## Scope
 
 Harness is the cross-Product execution substrate. It owns reusable mechanisms,

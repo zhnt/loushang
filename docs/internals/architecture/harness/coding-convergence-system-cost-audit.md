@@ -405,3 +405,14 @@ Code−77/Core+98/系统+21；Coding112801/系统648205（含GUI），较Goal−
 距15K97801；其余1967源/13资源同。原两消费者已共用一个算法，不计两算法去重，
 不把原Resource native任务机制或A106重算收益。固定源码221过/1原skip；测试/夹具
 及文档成本另计，完整边界及原型拒绝史比较见[A116](key-designs/session-planning-slot-custody-convergence.md)。完整Goal仍partial。
+
+
+## A117：完整Goal/Work冷读归原GoalStore集成
+
+Code−83/Core+140/系统+57，Coding112718/系统648262（含GUI），较Goal−25037/+13468，
+距15K97718；其余1967源/13资源同。原facts及Journal/Work/Transcript叶已共用，
+不计新去重。五惰性数据/codec/实际构造绑定和typing全部计入，确为系统增量。
+原9真实消费者与39旧观察保持，联合240全过；测试/文档另计，见[A117](key-designs/goal-work-source-custody-convergence.md)。
+完整Goal仍partial，不把这次source读取等同Goal验收或完整执行路线闭环。
+
+A117补跑check-ai为935过/2skip/7deselect，因同A101覆盖率89.87%/89.62%门槛失败；79份AI源SHA及覆盖计数不变，未加gate/降阈值，不称全门禁通过。
