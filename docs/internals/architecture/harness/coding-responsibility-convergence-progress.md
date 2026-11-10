@@ -26,7 +26,20 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A109完整Worker预检归位）
+## 当前状态（2026-11-10，A111两缓存发布程序合一）
+
+Arch与Transcript index两份完整temp写入/flush/fsync/close/replace/清理程序，现复用
+原Journal组件的一份38行私有无状态实现。仅两个原差异参数；目录sync仍留原
+Transcript owner，Code保JSON/配额/Windows私写政策，无新manager或IO回调。
+Code−20、原Transcript−21、Journal+38，Harness净+17、系统净−3；收益很小，不称
+整体Goal已精简完成。当前Coding113078/系统648136，较Goal−24677/+13342，距15K98078。
+1969源中其余1966源及13资源SHA同。原25回归及34旧观察接入联合59过；持久化同
+34回放过，原导入边界165过。探针244/JSONL35行单列，不进默认PR gate。首轮观察器
+错误和旧case修正均保留；三视角实际复核、成本及限制见[A111](key-designs/cache-publication-convergence.md)。
+完整P1–P4仍active/partial，五项Hosting、AI coverage、其它早期构造/绑定及历史失败
+未关闭。KD003未实施，KD011/A33待用户未采用；A110不新增推测性的custody包装。
+
+## A109历史交付（2026-11-10，完整Worker预检归位）
 
 checkpoint→逐attempt完整review→独立V1 histories→条件opt-in/借根重读intent→
 proof/archive/anchor/prepared的有序读取协调已归原PackageProduct history owner。

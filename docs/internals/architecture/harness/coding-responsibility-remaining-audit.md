@@ -6,6 +6,7 @@
 - Design status: current-gap review；下面候选接口尚未接受或实施。
 - Implementation status: A71已提交；本工作件不新增生产实现或精简收益。
 - Owner: Coding及各原组件owner；三独立视角复核，实施owner综合事实。
+- A111：Arch缓存普通path发布与Transcript index共享同一Journal字节程序，Code保codec/政策；不关闭C14，见[A111](key-designs/cache-publication-convergence.md)。
 - A110：原构造后selection读失败窗口已有回退/同Transcript重试证据，未证明需新增custody；其它早期构造问题未泛关，见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 - A109：完整V2预检读协调归原PackageProduct，Code保政策与薄入口；不关闭C07，见[A109](key-designs/worker-history-responsibility-convergence.md#a109完整-v2-预检复用原-packageproduct-history-协调)。
 - A107：初始Worker封口全Rooted程序归原Publication，复用原五锁环；不关闭C07/完整Goal，见[KD004 A107](key-designs/worker-history-responsibility-convergence.md#a107初始-v1-封口复用原-historypublication)。
@@ -34,27 +35,28 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
+数量按A111当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
 |---|---:|---|---|---|
-| C01 启动、Plugin/资源装配 | 22/13,065 | P2 | 原Construction/Session、Catalog/Graph已实际接入；Code剩跨阶段选择、审批、刷新与交接 | 拆清领域选择和完整共用程序；不把bootstrap3531行或装配回调池当删除预算 |
-| C02 托管与受管接入 | 28/8,413 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用；Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝 |
+| C01 启动、Plugin/资源装配 | 22/12,883 | P2 | 原Construction/Session、Catalog/Graph已实际接入；Code剩跨阶段选择、审批、刷新与交接 | 拆清领域选择和完整共用程序；不把bootstrap3531行或装配回调池当删除预算 |
+| C02 托管与受管接入 | 28/8,031 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用；Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝 |
 | C03 Resume与SessionManager | 15/4,132 | P2/P3 | 原Transcript/Session lifecycle、live恢复已复用；Code保版本化输入/装配与授权政策 | 按new/resume/fork/reopen完整合同再拆；不重建提交器或自动重试 |
-| C04 Continuity | 2/2,968 | P3 | 原Continuity provider/runtime及A68 payload custody已接入；Code来源/导入/恢复桥仍在 | KD003 bytes import未实施；区分纯准入与读取/借用/abort寿命，不提前采用KD011 |
+| C04 Continuity | 2/2,956 | P3 | 原Continuity provider/runtime及A68 payload custody已接入；Code来源/导入/恢复桥仍在 | KD003 bytes import未实施；区分纯准入与读取/借用/abort寿命，不提前采用KD011 |
 | C05 Canary及作者验证入口 | 6/3,565 | P1/P3/P4 | 原Worker attempt及托管owner已有接入；Code保真实SDK/CLI验证入口和产品场景 | 存在真实运行消费者，不能按canary/smoke命名删除；剩余协调须随实际场景替代 |
 | C06 其余根入口与策略 | 26/4,460 | P2/P4 | 混合产品配置、模型/工具选择及既有薄绑定 | 逐具体声明/运行路径处置；不整体当领域保留或机械可删 |
-| C07 插件Worker | 112/24,454 | P1 | 五流/Rooted/history/platform/native custody已大量共享；批准、回执关联与debt协调仍混合 | 完整payload recovery是已定位候选；普通Session启动/停止/重开/结清尚无整簇完成证明 |
-| C08 插件私有数据 | 31/6,793 | P4 | 原备份/删除/恢复/过期及A71 lineage已由原Plugin Management/Resources承接 | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
+| C07 插件Worker | 112/21,995 | P1 | 五流/Rooted/history/platform/native custody已大量共享；批准、回执关联与debt协调仍混合 | 完整payload recovery是已定位候选；普通Session启动/停止/重开/结清尚无整簇完成证明 |
+| C08 插件私有数据 | 31/6,743 | P4 | 原备份/删除/恢复/过期及A71 lineage已由原Plugin Management/Resources承接 | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
 | C09 兼容迁移与快照证据 | 34/9,711 | P4 | 原capture/epoch/receipt等机制已共享；存量分类、准入与恢复政策仍在 | 逐受支持状态和恢复入口给退出证明；legacy命名与静态无调用都不足以删支持 |
-| C10 包分发及Product管理 | 12/5,834 | P2/P4 | Package Product/Management/Source/Bootstrap已复用；Code仍组装兼容与fenced路线 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |
-| C11 CLI | 25/9,310 | P4 | 大量命令调用原owner；语法、确认、选择、JSON/TUI及少量效果协调交织 | 同一业务接同一owner；lmux close可单独完整收敛，不造命令阶段框架 |
-| C12 Goal/Work/证据适配 | 25/7,517 | P3/P4 | 原Work/Goal/Method及Goal物理backend已共享；Code仍有仓库/测试/评审策略和scope适配 | 保具体业务判据；检查execution overlay/task寿命，不能把真实calculator/repository路径删成示例 |
+| C10 包分发及Product管理 | 12/5,469 | P2/P4 | Package Product/Management/Source/Bootstrap已复用；Code仍组装兼容与fenced路线 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |
+| C11 CLI | 25/9,308 | P4 | 大量命令调用原owner；语法、确认、选择、JSON/TUI及少量效果协调交织 | 同一业务接同一owner；lmux close可单独完整收敛，不造命令阶段框架 |
+| C12 Goal/Work/证据适配 | 25/7,180 | P3/P4 | 原Work/Goal/Method及Goal物理backend已共享；Code仍有仓库/测试/评审策略和scope适配 | 保具体业务判据；检查execution overlay/task寿命，不能把真实calculator/repository路径删成示例 |
 | C13 LSP | 21/5,668 | P2/P4 | 语义查询/位置/结果及协议；实际进程端口已用Workspace/Hosting | 领域能力继续计Code；通用任务/IO仍可复用，不能用整目录量当必要下界 |
-| C14 Arch | 13/3,628 | P2/P4 | Python AST/import分类/图查询及cache、读取适配 | 保编码分析；核cache/IO与原Workspace/Resources的边界，不把领域算法换目录 |
-| C15 AgentSession产品绑定 | 2/2,127 | P2 | 原AgentProductSession/Graph/publication/retirement已实际复用 | 构造、选择见证/receipt及产品hooks仍混合；公开入口可薄化，不能声称整类是第二引擎 |
+| C14 Arch | 13/3,608 | P2/P4 | Python AST/import分类/图查询及cache、读取适配 | 保编码分析；核cache/IO与原Workspace/Resources的边界，不把领域算法换目录 |
+| C15 AgentSession产品绑定 | 2/2,036 | P2 | 原AgentProductSession/Graph/publication/retirement已实际复用 | 构造、选择见证/receipt及产品hooks仍混合；公开入口可薄化，不能声称整类是第二引擎 |
 | C16 Native UI产品绑定 | 14/2,179 | P4 | 原HarnessTUI conversation/controller/surface为实际机制 | 保产品文案/主题/领域动作；以公共观察替代私有字段耦合，不复制UI状态权威 |
-| C17 AgentSessionRuntime绑定 | 3/1,118 | P2/P3 | 原ProductSessionRuntime/SessionLifecycleRuntime已接入；prepared任务/consume/abort/drain仍有custody | 扩原runtime的完整任务/debt寿命是候选；当前没有可直接替代的整API |
+| C17 AgentSessionRuntime绑定 | 3/981 | P2/P3 | 原ProductSessionRuntime/SessionLifecycleRuntime已接入；prepared任务/consume/abort/drain仍有custody | 扩原runtime的完整任务/debt寿命是候选；当前没有可直接替代的整API |
 | C18 交互命令与预热 | 5/874 | P4 | 原Command/Session/展示机制已共享 | 保语法与业务动作；公共控制/观察端口代替跨owner私有访问 |
 | C19 压缩Profile | 4/440 | P4 | 原compaction runtime已接入 | 保编码摘要内容/标签；不为纯绑定再建抽象 |
 | C20 诊断Profile | 3/233 | P4 | 原Diagnostics owner及序列化已共享 | 保产品投影与来源，不建第二诊断存储 |
@@ -66,7 +68,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C26 配置/路径兼容导出 | 2/52 | P4 | 原Config owner已复用 | 保产品路径选择与支持中的导出，退出需合同证据 |
 | C27 版本检查 | 2/50 | P4 | 产品更新选择与原公共机制绑定 | 保必要产品选择，不为50行再建服务 |
 | C28 资源命名空间 | 5/5 | P4 | 支持中的Python布局标记 | 保真实加载/导出路径，空壳不是第二引擎 |
-| 合计 | **430/117,115** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
+| 合计 | **430/113,078** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
 
 ## 保留账：语义、兼容成本与当前实现必须分开
 

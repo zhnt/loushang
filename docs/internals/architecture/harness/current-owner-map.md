@@ -64,6 +64,11 @@ consumes this public seam and the original JSONL/codecs. Product still chooses
 paths/labels, holds and closes the actual store; Coding's original GoalJournal
 constructor and path function are thin bindings. Goal core has no IO import.
 
+Journal also owns one stateless path-based cache byte publisher shared by Arch
+and Transcript indexes. Callers retain encoding, quotas and their original
+directory-sync policy; two scalar options preserve mode and cleanup differences.
+See [A111](key-designs/cache-publication-convergence.md).
+
 Journal's existing rooted IO module also owns bounded private UTF-8 text reads:
 parent/file descriptor custody, private metadata/version checks, one binary read
 and ordered cleanup reuse its original parent/version predicates. Coding retains

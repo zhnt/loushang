@@ -6,6 +6,7 @@
 - Owner: Coding / shared-layer architecture；静态分析 Codex。
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
+A111两缓存temp发布程序合一（Code−20/Harness净+17/系统−3）；见[A111](key-designs/cache-publication-convergence.md)。
 A109完整V2预检协调归原PackageProduct（Code−121/Core+140/系统+19）；见[A109](key-designs/worker-history-responsibility-convergence.md#a109完整-v2-预检复用原-packageproduct-history-协调)。
 A107初始V1五流封口归原Publication并复用锁环（Code−125/Core+164/系统+39）；见[KD004 A107](key-designs/worker-history-responsibility-convergence.md#a107初始-v1-封口复用原-historypublication)。
 A106历史读取Task/read/drain归原Session（Coding−49/Core+84/系统+35）；见[A106](key-designs/resume-history-task-custody-convergence.md)。
@@ -109,7 +110,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [arch/__main__.py](../../../../src/loushang/coding/arch/__main__.py) | C14 | 8 | K/M | C14 Arch Capability | bad84da03694 | 8 | bad84da03694 |
 | [arch/_plugin_tool_owner.py](../../../../src/loushang/coding/arch/_plugin_tool_owner.py) | C14 | 287 | K/M | C14 Arch Capability | 35ebdbcbe510 | 150 | d967ffd82cec |
 | [arch/_provider_api.py](../../../../src/loushang/coding/arch/_provider_api.py) | C14 | 614 | K/M | C14 Arch Capability | 894181936fa4 | 599 | be32b58bb2f6 |
-| [arch/cache.py](../../../../src/loushang/coding/arch/cache.py) | C14 | 454 | K/M | C14 Arch Capability | e0fa8e9c4abc | 454 | e0fa8e9c4abc |
+| [arch/cache.py](../../../../src/loushang/coding/arch/cache.py) | C14 | 454 | K/M | C14 Arch Capability | e0fa8e9c4abc | 434 | a6469e39b041 |
 | [arch/cli.py](../../../../src/loushang/coding/arch/cli.py) | C14 | 193 | K/M | C14 Arch Capability | a2b034e7e325 | 193 | a2b034e7e325 |
 | [arch/import_graph.py](../../../../src/loushang/coding/arch/import_graph.py) | C14 | 672 | K/M | C14 Arch Capability | d48e06875474 | 672 | d48e06875474 |
 | [arch/model.py](../../../../src/loushang/coding/arch/model.py) | C14 | 148 | K/M | C14 Arch Capability | 06b684585ff3 | 148 | 06b684585ff3 |
@@ -493,7 +494,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C11 | 25 | 9,308 |
 | C12 | 25 | 7,180 |
 | C13 | 21 | 5,668 |
-| C14 | 13 | 3,628 |
+| C14 | 13 | 3,608 |
 | C15 | 2 | 2,036 |
 | C16 | 14 | 2,179 |
 | C17 | 3 | 981 |
@@ -508,4 +509,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 113,098 |
+| 合计 | 430 | 113,078 |

@@ -361,3 +361,12 @@ Protocol或manager。原leaf机制均已共享，本片只计完整跨owner读�
 1968源及13资源SHA同A109，Coding113098/系统648139，累计−24657/+13345；距15K98098。
 原实现两模式的失败回退与同Transcript重试已核实，未证实需新增清理机制，不计
 生产精简收益。仅树外显式探针/观察和文档变更，无新默认gate；见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
+
+
+## A111：两个实际缓存发布程序去重
+
+Code454→434（−20）、Transcript983→962（−21）、原Journal新私有实现38行；Harness
+净+17、全系统净−3，非净删41。目录同步保原caller，无新manager。当前430源113078/
+系统1969源648136，较Goal−24677/+13342，距15K98078；其余1966源/13资源SHA同。
+显式probe244+JSONL35=279测试行（fixture14132B）另计，不进入默认PR gate；文档另计。
+完整原观察来源、首失败/修正与三视角接受见[A111](key-designs/cache-publication-convergence.md)。

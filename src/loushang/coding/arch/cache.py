@@ -6,9 +6,7 @@ import hashlib
 import json
 import os
 import stat
-import tempfile
 from collections.abc import Callable
-from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -22,6 +20,7 @@ from loushang.coding.arch.model import (
     ImportModuleFact,
     SourceEvidence,
 )
+from loushang.harness.journal._cache_publication import publish_cache_bytes
 from loushang.harness.resources.layout import resolve_platform_home
 
 IMPORT_FACT_CACHE_SCHEMA_VERSION = 1
@@ -188,26 +187,7 @@ def _write_snapshot(
     if private_writer is not None and os.name == "nt":
         private_writer(path, encoded)
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as stream:
-            temporary_path = Path(stream.name)
-            stream.write(encoded)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary_path, path)
-        temporary_path = None
-    finally:
-        if temporary_path is not None:
-            with suppress(FileNotFoundError):
-                temporary_path.unlink()
+    publish_cache_bytes(path, encoded)
 
 
 def _read_snapshot(
