@@ -344,3 +344,13 @@ import/类型/格式计入；普通五锁环合一，其余完整封口是职责
 和13资源SHA同。C54范围缩减净增14测试行，显式probe243+JSONL274行（1,564,224B）
 另计。字节池273case/26去重字节值可无损重建旧预期，不进默认PR gate。详见
 [KD004 A107](key-designs/worker-history-responsibility-convergence.md#a107初始-v1-封口复用原-historypublication)。
+
+
+## A109：完整V2预检协调归原PackageProduct
+
+Coding214→93（−121）、原Product history873→1013（+140），系统净+19。
+一TypeVar、四局部cast、既有backup只读视图、签名/import/兼容转发全计；未新增
+Protocol或manager。原leaf机制均已共享，本片只计完整跨owner读协调退出Code，
+不宣称重复算法消除。两原测试挂点迁移净−1行，无新fixture、默认检查或gate。
+当前430源113098/系统1968源648139，相对Goal−24657/+13345，距15K98098；其余1966源
+及13资源SHA同。A108拒绝的六值类原型不计收益，生产增删0。详见[A109](key-designs/worker-history-responsibility-convergence.md#a109完整-v2-预检复用原-packageproduct-history-协调)。

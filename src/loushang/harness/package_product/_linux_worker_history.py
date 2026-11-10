@@ -33,8 +33,13 @@ from loushang.harness.worker.history._checkpoint import _CheckpointMethods
 from loushang.harness.worker.history._checkpoint_commands import (
     CheckpointCommandAccess,
     CheckpointCommands,
+    _BackupRevision,
 )
-from loushang.harness.worker.history._no_effect import is_no_effect_closure
+from loushang.harness.worker.history._no_effect import (
+    _NoEffectArchiveMethods,
+    _NoEffectProofMethods,
+    is_no_effect_closure,
+)
 from loushang.harness.worker.history._opt_in import _OptInDecisionMethods
 from loushang.harness.worker.history._opt_in_store import OptInJournal
 from loushang.harness.worker.history._preparation import PreparationHistory
@@ -45,6 +50,7 @@ from loushang.harness.worker.history._retention import (
     AttemptReference,
     BackupObservation,
     GroupStatus,
+    RetentionReviewMethods,
     gc_revision_refs,
     matching_attempt_gc_refs,
     receipt_gate_reference_issue,
@@ -871,3 +877,137 @@ def _read_preparation(
     bindings: HistoryProofBindings[ReviewT], rooted: RootedFile
 ) -> _PreparedMethods | None:
     return bindings.preparation().read(rooted, **bindings.preparation_limits())
+
+
+_PreparedT = TypeVar("_PreparedT", bound=_PreparedMethods)
+
+
+def prepare_history_cutover_under_guard(
+    bindings: HistoryProofBindings[ReviewT],
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    prepared_type: type[_PreparedT],
+    error_type: type[Exception],
+    first_retained_generations: tuple[int, ...],
+    active_runtime_lease_ids: tuple[str, ...],
+    gc_snapshot: PluginPackageGcReservationSnapshotV1,
+) -> _PreparedT:
+    """Join existing Product proof owners under caller-held runtime/GC custody."""
+    checkpoints = _read_checkpoints(bindings, product)
+    if not checkpoints:
+        raise error_type("coding_worker_v2_checkpoint_absent")
+    checkpoint = checkpoints[-1]
+    attempt_ids = tuple(
+        sorted(
+            {attempt_id for item in checkpoints for attempt_id in item.new_attempt_ids}
+        )
+    )
+    if not attempt_ids:
+        raise error_type("coding_worker_v2_attempt_closure_absent")
+    no_effect_reviews: list[RetentionReviewMethods[AttemptReference]] = []
+    for attempt_id in attempt_ids:
+        review = cast(
+            RetentionReviewMethods[AttemptReference],
+            review_history_under_guard(
+                bindings,
+                product,
+                attempt_id=attempt_id,
+                active_runtime_lease_ids=active_runtime_lease_ids,
+                gc_snapshot=gc_snapshot,
+            ),
+        )
+        if (
+            review.missing_proofs
+            or review.history_stream_snapshots != checkpoint.stream_snapshots
+            or review.gc_reservation_revision != checkpoint.gc_reservation_revision
+            or review.worker_backup_references is None
+            or cast(_BackupRevision, review.worker_backup_references).owner_revision
+            != checkpoint.backup_topology_revision
+        ):
+            raise error_type("coding_worker_v2_product_closure_unproven")
+        if review.no_effect_closure:
+            no_effect_reviews.append(review)
+    if (
+        type(product) is not PosixLocalWheelProductSessionOwner
+        or product.policy.product_id != bindings.product_id
+    ):
+        raise ValueError(
+            f"{bindings.product_label} Worker history streams require their Product"
+        )
+    histories = bindings.snapshots().read_histories(bindings.access(product))
+    no_effect_archive = None
+    if no_effect_reviews:
+        opt_in_projection = bindings.opt_in_type()(
+            product.state_root / "worker-opt-in.jsonl",
+            scope_id=product.policy.project_scope_id,
+            gc_gate=product.gc_gate,
+            store_id=product.epoch_runtime.registry.store_id,
+        ).retention_projection_under_gc_guard()
+        decisions = {
+            item.decision_digest: item for item in opt_in_projection.reference_decisions
+        }
+        proofs: list[_NoEffectProofMethods] = []
+        with product.pinned_state_root_gc_read() as root_fd:
+            for review in no_effect_reviews:
+                gate = review.gate_record
+                receipt = review.receipt_record
+                activation = tuple(
+                    item
+                    for item in review.retained_activation_references
+                    if item.attempt_id == review.attempt_id
+                )
+                intent = bindings.registered().read(root_fd, review.attempt_id)
+                if (
+                    gate is None
+                    or receipt is None
+                    or len(activation) != 1
+                    or intent is None
+                    or not review.registered_repair_reference_verified
+                    or not registered_repair_matches_no_effect_closure(
+                        intent,
+                        product_id=bindings.product_id,
+                        gate=gate,
+                        receipt=receipt,
+                        activation=activation[0],
+                        supervisor=review.attempt_record,
+                    )
+                ):
+                    raise error_type("coding_worker_v2_no_effect_archive_unproven")
+                allow = decisions.get(receipt.opt_in_decision_digest)
+                if allow is None:
+                    raise error_type("coding_worker_v2_no_effect_archive_unproven")
+                proofs.append(
+                    cast(
+                        Callable[..., _NoEffectProofMethods],
+                        prepared_type._archive_type._proof_type,
+                    )(
+                        gate=gate,
+                        receipt=receipt,
+                        activation=activation[0],
+                        historical_allow=allow,
+                        repair_intent_digest=sha256(
+                            canonical_json_bytes(intent.to_dict()) + b"\n"
+                        ).hexdigest(),
+                    )
+                )
+        no_effect_archive = cast(
+            Callable[..., _NoEffectArchiveMethods], prepared_type._archive_type
+        )(
+            scope_id=checkpoint.scope_id,
+            store_id=checkpoint.store_id,
+            checkpoint_digest=checkpoint.record_digest,
+            proofs=tuple(sorted(proofs, key=lambda item: item.attempt_id)),
+        )
+    anchor = prepared_type._anchor_type.create(
+        scope_id=checkpoint.scope_id,
+        store_id=checkpoint.store_id,
+        latest_revision=checkpoint.journal_revision,
+        latest_digest=checkpoint.record_digest,
+    )
+    return prepared_type.from_v1_histories(
+        checkpoints=checkpoints,
+        anchor=anchor,
+        histories=histories,
+        first_retained_generations=first_retained_generations,
+        no_effect_archive=no_effect_archive,
+    )

@@ -759,3 +759,43 @@ partial-success/retry 节点另提供真实重试证据。四处 candidate-wheel
 runtime，本批保 skip-host-runtime，未计入覆盖。两源限定 mypy、Ruff及依赖图
 检查通过；三独立实际评审/Root 有界接受、旧值与修正及完整帧保留在树外 A107。
 完整 C07、P1–P4、15K及其它历史欠账仍未完成；KD003未实施，KD011/A33待用户未采用。
+
+
+## A109：完整 V2 预检复用原 PackageProduct history 协调
+
+原预检是有顺序的跨owner读操作，并非纯prepared值转换。因此由既有
+`package_product._linux_worker_history.prepare_history_cutover_under_guard`接管，
+直接复用`HistoryProofBindings`、`_read_checkpoints`、`review_history_under_guard`、
+SnapshotHistory、OptIn与RepairJournal；旧11个Core定义AST不变。Code保公开函数/
+错误类/原完整Product及cutoff准入和薄委托，public整函数AST不变；stage/commit
+仍从原under_guard入口重读，没有Code IO回借、新manager或新配置族。
+
+原public先验Product、进入runtime及GC后才求active IDs/snapshot并验证cutoffs。
+checkpoint重复准入和Rooted关闭/当前性、sorted unique attempts的逐项fresh review、
+missing/snapshot/GC/backup短路、all reviews后独立strict V1 read及其重复Product准入
+均保留。仅有no-effect时才读OptIn，借同一root读每个intent，先读再判gate/receipt/
+activation/verified/matcher/allow；实际proof在pin内、archive在pin外、anchor及prepared
+最后构造。不增final current检查、active lease立即拒绝、额外恢复或缓存快照。
+
+原prepared类型族已有anchor/archive/proof类型绑定，在原构造时点使用；一TypeVar
+及四局部cast仅收窄既有实际retention/backup/constructor族，不承诺任意ReviewT。
+Code214→93（−121）、Core873→1013（+140），系统+19；全部类型/适配/导入计入。
+完整协调退出Code是本批收益，既有leaf IO/解析不重复计共享收益，也不是系统净精简。
+两原测试改挂实际Core effects并补bindings/self参数，原断言/调用预期及输入不变；
+移除一个失效未用import后测试净−1行，无新probe/fixture/gate，C54无需协调。
+
+原四模块21过；实际六模块27过（包含原21、prepared5及archive1）。原冻结的12项
+archive/V2-reopen观察在旧/新均过，保持原fixture；195项未选择，不累计为新覆盖。
+这些观察实际setup经过checkpoint→预检→stage→commit后再重开/核归档，使用真实
+Rooted文件、Journal、checkpoint/archive/prepared bytes，但Product/native/registry
+及部分权威值受控；不是完整host/native crash、真实Windows或Task.cancel证据。
+孤立树外mypy首试因包上下文不全报29项导入/旧stub错误，不构成Product诊断；
+接入完整工作树后两源限定mypy通过。Ruff首轮发现已失效测试import，已删除。
+
+旧/新完整双源、成本/1968源及13资源帧、旧21/12与新27/12 JUnit和三独立设计/实际
+评审保存在树外`coding-convergence-continue/a109-worker-history-preflight`。完整C07、
+P1–P4和15K仍未完成，旧Hosting/AI coverage/构造绑定欠账不由本批关闭。
+
+三独立实际视角均关闭本片阻断后，实施owner `/root`核源码与JUnit作有界接受。
+另原导入边界+C54共172项、文档9项、Ruff/限定mypy和依赖图检查通过。
+测试最终格式化整模块AST相同，不增加覆盖、gate或产品能力声明。

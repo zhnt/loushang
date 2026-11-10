@@ -27,7 +27,21 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-10，A107初始Worker封口归位）
+## 当前状态（2026-11-10，A109完整Worker预检归位）
+
+checkpoint→逐attempt完整review→独立V1 histories→条件opt-in/借根重读intent→
+proof/archive/anchor/prepared的有序读取协调已归原PackageProduct history owner。
+Code保原Product/cutoff政策、错误身份、公开及under_guard薄入口和原锁顺序；
+直接复用原绑定、Journal和prepared类型族，无新manager/Protocol/Code IO回调。
+Code−121/Core+140/系统+19，是完整协调职责迁移，既有leaf IO不重复计收益。
+当前Coding113098/系统648139，相对Goal−24657/+13345，距15K尚98098；其余1966源
+及13资源SHA同。原21回归过，接入27过（含原21），同一12项旧冻结归档/V2重开观察
+在旧/新实现均过；两原测试仅迁真实Core故障注入挂点，原断言与调用预期保留。
+完整合同、类型成本及受控/原生限制见[A109](key-designs/worker-history-responsibility-convergence.md#a109完整-v2-预检复用原-packageproduct-history-协调)。
+完整P1–P4仍active/partial，五项Hosting、AI coverage、早期构造/绑定及其它历史失败
+未关闭。KD003未实施，KD011/A33待用户未采用。A108六值类原型因系统+17且收益不足拒绝。
+
+## A107历史交付（2026-11-10，初始Worker封口归位）
 
 初始V1五流封口的完整Rooted程序已归原HistoryPublication，直接复用原五锁循环；
 默认False的commit/retire保持严格缺锁拒绝，合格empty-supervisor才走原恢复分支。

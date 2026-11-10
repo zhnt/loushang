@@ -21,6 +21,7 @@ from loushang.coding.package_product_worker_history_stream_snapshot import (
     read_coding_worker_histories_under_gc_guard,
 )
 from loushang.harness.journal._rooted_io import RootedFileIO
+from loushang.harness.package_product import _linux_worker_history as history_owner
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -123,12 +124,14 @@ def test_product_preflight_refuses_open_closure_before_preparing(
     object.__setattr__(product, "epoch_runtime", SimpleNamespace(registry=Registry()))
     object.__setattr__(product, "gc_gate", GcGate())
     monkeypatch.setattr(
-        preflight,
-        "read_coding_product_worker_history_checkpoints_under_gc_guard",
-        lambda _product: checkpoints,
+        history_owner,
+        "_read_checkpoints",
+        lambda _bindings, _product: checkpoints,
     )
 
-    def review(_product: object, **kwargs: object) -> SimpleNamespace:
+    def review(
+        _bindings: object, _product: object, **kwargs: object
+    ) -> SimpleNamespace:
         assert kwargs["attempt_id"] == "a" * 32
         calls.append("review")
         return SimpleNamespace(
@@ -141,13 +144,11 @@ def test_product_preflight_refuses_open_closure_before_preparing(
             ),
         )
 
+    monkeypatch.setattr(history_owner, "review_history_under_guard", review)
     monkeypatch.setattr(
-        preflight, "_review_coding_product_worker_history_under_guard", review
-    )
-    monkeypatch.setattr(
-        preflight,
-        "read_coding_worker_histories_under_gc_guard",
-        lambda _product: histories,
+        history_owner.SnapshotHistory,
+        "read_histories",
+        lambda _self, _access: histories,
     )
     with pytest.raises(
         preflight.CodingWorkerCutoverPreflightError,
@@ -167,9 +168,9 @@ def test_product_preflight_refuses_open_closure_before_preparing(
 
     calls.clear()
     monkeypatch.setattr(
-        preflight,
-        "_review_coding_product_worker_history_under_guard",
-        lambda _product, **_kwargs: SimpleNamespace(
+        history_owner,
+        "review_history_under_guard",
+        lambda _bindings, _product, **_kwargs: SimpleNamespace(
             no_effect_closure=False,
             missing_proofs=(),
             history_stream_snapshots=checkpoint.stream_snapshots,

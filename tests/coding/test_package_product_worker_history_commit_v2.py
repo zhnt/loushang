@@ -11,9 +11,6 @@ from types import SimpleNamespace
 import pytest
 
 from loushang.coding import package_product_worker_history_commit_v2 as commit_module
-from loushang.coding import (
-    package_product_worker_history_preflight_v2 as preflight_module,
-)
 from loushang.coding.package_product_worker_history_checkpoint import (
     read_coding_product_worker_history_checkpoints_under_gc_guard,
 )
@@ -41,6 +38,7 @@ from loushang.coding.package_product_worker_history_v2_names import (
     PRODUCT_OWNER_INDEX_NAME,
 )
 from loushang.harness.journal._rooted_io import RootedFile
+from loushang.harness.package_product import _linux_worker_history as history_owner
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -267,7 +265,9 @@ def test_product_v2_commit_reopens_physical_checkpoint_and_five_v1_streams(
     product = _product(tmp_path, monkeypatch, [])
     reviewed: list[str] = []
 
-    def review(_product: object, **kwargs: object) -> SimpleNamespace:
+    def review(
+        _bindings: object, _product: object, **kwargs: object
+    ) -> SimpleNamespace:
         reviewed.append(str(kwargs["attempt_id"]))
         return SimpleNamespace(
             no_effect_closure=False,
@@ -279,9 +279,7 @@ def test_product_v2_commit_reopens_physical_checkpoint_and_five_v1_streams(
             ),
         )
 
-    monkeypatch.setattr(
-        preflight_module, "_review_coding_product_worker_history_under_guard", review
-    )
+    monkeypatch.setattr(history_owner, "review_history_under_guard", review)
     staged = stage_coding_product_worker_v2_preparation(
         product, first_retained_generations=(1, 1, 1, 1, 1)
     )
