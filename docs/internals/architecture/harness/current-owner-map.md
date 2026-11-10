@@ -14,6 +14,11 @@ retains product/trust/error policy, owner boundary decisions and its three typed
 public entries. No generic startup engine, registry or authorization is added;
 see [A36](key-designs/startup-session-assembly-convergence.md#14-a36catalog-package-plan-与-selection-的完整接缝).
 
+Resources' existing Windows epoch cutover owner also holds temporary private roots,
+including the optional projection file, exact identities and nested cleanup.
+Coding retains its prefix/filename/diagnostic policy and public context entry.
+The writer reuses the existing Journal short-write loop. See [A115](key-designs/windows-cutover-temporary-custody-convergence.md).
+
 ## Scope
 
 Harness is the cross-Product execution substrate. It owns reusable mechanisms,

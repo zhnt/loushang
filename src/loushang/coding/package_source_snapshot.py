@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import secrets
 import stat
 from collections.abc import Iterator, Mapping
 from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
@@ -16,16 +15,12 @@ from loushang.foundation.json import _unique_json_object_hook
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
+    _hold_windows_private_cutover_directory,
     _PinnedWindowsAuthority,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_directory,
     open_windows_regular_file_at,
-    windows_flush_directory,
-    windows_flush_file,
-    windows_rmdir_at,
     windows_stat_at,
-    windows_unlink_at,
 )
 
 _SOURCE_KEYS = frozenset(
@@ -349,80 +344,14 @@ def hold_coding_windows_private_cutover_directory(
 
     if os.name != "nt" or not prefix.startswith("coding-pre-b-"):
         raise ValueError("Coding Windows cutover directory is unavailable")
-    name = prefix + secrets.token_hex(16)
-    with WindowsPrivateDirectoryAcl() as acl:
-        parent = _PinnedWindowsAuthority.open(parent_path, read_control=True)
-        child: int | None = None
-        child_identity: tuple[int, int] | None = None
-        file_identity: tuple[int, int] | None = None
-        try:
-            acl.validate(parent.descriptor)
-            child = open_windows_directory(
-                name,
-                dir_fd=parent.descriptor,
-                create_new=True,
-                share_delete=False,
-                security_descriptor=acl.security_descriptor,
-                read_control=True,
-            )
-            child_metadata = os.fstat(child)
-            child_identity = child_metadata.st_dev, child_metadata.st_ino
-            acl.validate(child)
-            if projection_contents is not None:
-                descriptor = open_windows_regular_file_at(
-                    child,
-                    _PROJECTION_NAME,
-                    create_new=True,
-                    write=True,
-                    security_descriptor=acl.security_descriptor,
-                    read_control=True,
-                )
-                try:
-                    file_metadata = os.fstat(descriptor)
-                    file_identity = file_metadata.st_dev, file_metadata.st_ino
-                    acl.validate(descriptor)
-                    remaining = memoryview(projection_contents)
-                    while remaining:
-                        written = os.write(descriptor, remaining)
-                        if written < 1:
-                            raise OSError(
-                                "Coding Source projection write made no progress"
-                            )
-                        remaining = remaining[written:]
-                    windows_flush_file(descriptor)
-                finally:
-                    os.close(descriptor)
-            windows_flush_directory(child)
-            windows_flush_directory(parent.descriptor)
-            parent.assert_visible()
-            yield parent_path / name
-        finally:
-            try:
-                if child is not None:
-                    try:
-                        if file_identity is not None:
-                            visible_file = windows_stat_at(child, _PROJECTION_NAME)
-                            if (
-                                visible_file.st_dev,
-                                visible_file.st_ino,
-                            ) != file_identity:
-                                raise OSError("Coding Source projection file changed")
-                            windows_unlink_at(child, _PROJECTION_NAME)
-                            windows_flush_directory(child)
-                    finally:
-                        os.close(child)
-                if child_identity is not None:
-                    visible_child = windows_stat_at(parent.descriptor, name)
-                    if (
-                        visible_child.st_dev,
-                        visible_child.st_ino,
-                    ) != child_identity:
-                        raise OSError("Coding Source projection directory changed")
-                    windows_rmdir_at(parent.descriptor, name)
-                    windows_flush_directory(parent.descriptor)
-            finally:
-                parent.close()
-
+    with _hold_windows_private_cutover_directory(
+        parent_path,
+        prefix=prefix,
+        projection_name=_PROJECTION_NAME,
+        projection_label="Coding Source projection",
+        projection_contents=projection_contents,
+    ) as directory:
+        yield directory
 
 __all__ = [
     "hold_coding_pre_b_source_configuration",

@@ -6,6 +6,7 @@
 - Owner: Coding / shared-layer architecture；静态分析 Codex。
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
+A115完整Windows临时cutover目录归原Resources（Code−71/Core+91/系统+20）；见[A115](key-designs/windows-cutover-temporary-custody-convergence.md)。
 A113捕获Product声明证据投影归原Session（Code−129/Core+157/系统+28）；见[A113](key-designs/product-selected-contribution-projection.md)。
 A111两缓存temp发布程序合一（Code−20/Harness净+17/系统−3）；见[A111](key-designs/cache-publication-convergence.md)。
 A109完整V2预检协调归原PackageProduct（Code−121/Core+140/系统+19）；见[A109](key-designs/worker-history-responsibility-convergence.md#a109完整-v2-预检复用原-packageproduct-history-协调)。
@@ -398,7 +399,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_windows_supervisor_base.py](../../../../src/loushang/coding/package_product_worker_windows_supervisor_base.py) | C07 | 282 | M | C07 插件 Worker 执行/持久化/恢复 | 7b61d5a66355 | 104 | 5735412a6101 |
 | [package_product_worker_windows_supervisor_journal.py](../../../../src/loushang/coding/package_product_worker_windows_supervisor_journal.py) | C07 | 403 | M | C07 插件 Worker 执行/持久化/恢复 | 009fdc92f3b4 | 50 | d97db7b700f4 |
 | [package_product_worker_windows_unlaunched_stage_retirement.py](../../../../src/loushang/coding/package_product_worker_windows_unlaunched_stage_retirement.py) | C07 | 438 | M | C07 插件 Worker 执行/持久化/恢复 | f21cd9031d90 | 383 | 1d9faed4d883 |
-| [package_source_snapshot.py](../../../../src/loushang/coding/package_source_snapshot.py) | C09 | 433 | E | C09 历史兼容、迁移与快照证据 | 3966088d6f93 | 430 | 702c16746ea0 |
+| [package_source_snapshot.py](../../../../src/loushang/coding/package_source_snapshot.py) | C09 | 433 | E | C09 历史兼容、迁移与快照证据 | 3966088d6f93 | 359 | 20ef5b0cd748 |
 | [platform/__init__.py](../../../../src/loushang/coding/platform/__init__.py) | C27 | 5 | K | C27 版本检查 Product 绑定 | 6af5d273482a | 5 | 6af5d273482a |
 | [platform/version_check.py](../../../../src/loushang/coding/platform/version_check.py) | C27 | 45 | K | C27 版本检查 Product 绑定 | 564c53288c45 | 45 | 564c53288c45 |
 | [plugin_author_smoke.py](../../../../src/loushang/coding/plugin_author_smoke.py) | C05 | 740 | V | C05 显式 canary 与作者验证入口 | 1f7948784509 | 740 | 1f7948784509 |
@@ -490,7 +491,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C06 | 26 | 4,460 |
 | C07 | 112 | 21,995 |
 | C08 | 31 | 6,743 |
-| C09 | 34 | 9,711 |
+| C09 | 34 | 9,640 |
 | C10 | 12 | 5,469 |
 | C11 | 25 | 9,308 |
 | C12 | 25 | 7,180 |
@@ -510,4 +511,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 112,949 |
+| 合计 | 430 | 112,878 |

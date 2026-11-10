@@ -6,6 +6,7 @@
 - Design status: current-gap review；下面候选接口尚未接受或实施。
 - Implementation status: A71已提交；本工作件不新增生产实现或精简收益。
 - Owner: Coding及各原组件owner；三独立视角复核，实施owner综合事实。
+- A115：完整Windows临时cutover目录custody归原Resources；C09仍未关闭，见[A115](key-designs/windows-cutover-temporary-custody-convergence.md)。
 - A114：已接受Catalog/Session依赖对应的3项旧RCP2库存失败经精确可选清单协调关闭；生产0，不关闭其它差距，见[KD009 §27](key-designs/startup-session-assembly-convergence.md#27-a114协调三项既有catalog依赖清单)。
 - A113：captured Product声明完整中性投影归原Session，Code保信任/owner政策；不关闭C01，见[A113](key-designs/product-selected-contribution-projection.md)。
 - A111：Arch缓存普通path发布与Transcript index共享同一Journal字节程序，Code保codec/政策；不关闭C14，见[A111](key-designs/cache-publication-convergence.md)。
@@ -37,7 +38,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
-数量按A113当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
+数量按A115当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
@@ -50,7 +51,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C06 其余根入口与策略 | 26/4,460 | P2/P4 | 混合产品配置、模型/工具选择及既有薄绑定 | 逐具体声明/运行路径处置；不整体当领域保留或机械可删 |
 | C07 插件Worker | 112/21,995 | P1 | 五流/Rooted/history/platform/native custody已大量共享；批准、回执关联与debt协调仍混合 | 完整payload recovery是已定位候选；普通Session启动/停止/重开/结清尚无整簇完成证明 |
 | C08 插件私有数据 | 31/6,743 | P4 | 原备份/删除/恢复/过期及A71 lineage已由原Plugin Management/Resources承接 | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
-| C09 兼容迁移与快照证据 | 34/9,711 | P4 | 原capture/epoch/receipt等机制已共享；存量分类、准入与恢复政策仍在 | 逐受支持状态和恢复入口给退出证明；legacy命名与静态无调用都不足以删支持 |
+| C09 兼容迁移与快照证据 | 34/9,640 | P4 | 原capture/epoch/receipt等机制已共享；存量分类、准入与恢复政策仍在 | 逐受支持状态和恢复入口给退出证明；legacy命名与静态无调用都不足以删支持 |
 | C10 包分发及Product管理 | 12/5,469 | P2/P4 | Package Product/Management/Source/Bootstrap已复用；Code仍组装兼容与fenced路线 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |
 | C11 CLI | 25/9,308 | P4 | 大量命令调用原owner；语法、确认、选择、JSON/TUI及少量效果协调交织 | 同一业务接同一owner；lmux close可单独完整收敛，不造命令阶段框架 |
 | C12 Goal/Work/证据适配 | 25/7,180 | P3/P4 | 原Work/Goal/Method及Goal物理backend已共享；Code仍有仓库/测试/评审策略和scope适配 | 保具体业务判据；检查execution overlay/task寿命，不能把真实calculator/repository路径删成示例 |
@@ -70,7 +71,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C26 配置/路径兼容导出 | 2/52 | P4 | 原Config owner已复用 | 保产品路径选择与支持中的导出，退出需合同证据 |
 | C27 版本检查 | 2/50 | P4 | 产品更新选择与原公共机制绑定 | 保必要产品选择，不为50行再建服务 |
 | C28 资源命名空间 | 5/5 | P4 | 支持中的Python布局标记 | 保真实加载/导出路径，空壳不是第二引擎 |
-| 合计 | **430/112,949** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
+| 合计 | **430/112,878** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
 
 ## 保留账：语义、兼容成本与当前实现必须分开
 

@@ -388,3 +388,12 @@ A112同A51池复核只作不采用处置，生产/测试增删0、不重复计�
 仅协调已接受职责后的3项过时清单，原7过3失败→同模块10过；10节点/77断言不变，
 精确可选例外只缩减旧gate，不增加覆盖/触发/必需消费者。测试净+10行，文档另计，
 不计入生产收益；完整Goal保持partial，见[KD009 §27](key-designs/startup-session-assembly-convergence.md#27-a114协调三项既有catalog依赖清单)。
+
+
+## A115：完整Windows临时root归原owner
+
+Code−71/Core+91/系统+20；Coding112878/系统648184（含GUI Rust/TS），较Goal−24877/
++13390，距15K97878。3处原已共用1程序，不报3算法去重；仅短写直接复用原write_all，
+其余为完整平台custody迁移。其余1967源/13资源SHA同；测试/文档另计。
+原5消费者过，新5+165边界过，22native skip；117受控旧观察新/旧均过，非物理
+Windows/资源普查，见[A115](key-designs/windows-cutover-temporary-custody-convergence.md)。完整Goal仍partial。

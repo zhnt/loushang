@@ -26,7 +26,17 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A114既有Catalog清单协调）
+## 当前状态（2026-11-10，A115 Windows临时目录custody归位）
+
+完整ACL/FD/identity/短写/flush/yield/清理程序归原Resources Windows cutover，Code
+保原CM签名、enter guard及filename/错误政策；短写直接复用原write_all，无新状态/
+manager/Code IO回调。Code−71/Core+91/系统+20，当前Coding112878/系统648184，
+较Goal−24877/+13390，距15K97878。117旧观察/新同117过，持久同117在原实物及
+候选重放；原消费者5过，候选165导入边界过，22原生项本机跳过。它是受控调用
+模型而非Windows内核/FD普查。完整成本/限制及三视角见[A115](key-designs/windows-cutover-temporary-custody-convergence.md)。
+完整P1–P4仍active/partial；Hosting/AI覆盖率/构造等欠账及KD003/KD011原边界保持。
+
+## A114历史交付（2026-11-10，既有Catalog清单协调）
 
 A113保留的3项RCP2失败已核实为已接受职责对应的过时依赖清单；精确可选例外
 只缩减旧gate，保10节点/77断言/原扫描，原7过3失败→同模块10过。

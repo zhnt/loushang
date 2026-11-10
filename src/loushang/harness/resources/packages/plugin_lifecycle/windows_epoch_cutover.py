@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 import stat
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TypeAlias
 
+from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.journal._io_loops import write_all
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
 )
@@ -33,10 +37,14 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     open_windows_directory,
+    open_windows_regular_file_at,
     supports_windows_rooted_io,
     windows_flush_directory,
+    windows_flush_file,
     windows_listdir_at,
     windows_rmdir_at,
+    windows_stat_at,
+    windows_unlink_at,
 )
 
 # B4c1 froze a pathless cross-platform wire shape before the Windows backend
@@ -137,6 +145,89 @@ class _PinnedWindowsAuthority:
                 self._descriptors[:-1],
             )
             os.close(descriptor)
+
+
+@contextmanager
+def _hold_windows_private_cutover_directory(
+    parent_path: Path,
+    *,
+    prefix: str,
+    projection_name: str,
+    projection_label: str,
+    projection_contents: bytes | None = None,
+) -> Iterator[Path]:
+    """Hold the cutover's ACL-checked temporary root through exact cleanup."""
+
+    name = prefix + secrets.token_hex(16)
+    with WindowsPrivateDirectoryAcl() as acl:
+        parent = _PinnedWindowsAuthority.open(parent_path, read_control=True)
+        child: int | None = None
+        child_identity: tuple[int, int] | None = None
+        file_identity: tuple[int, int] | None = None
+        try:
+            acl.validate(parent.descriptor)
+            child = open_windows_directory(
+                name,
+                dir_fd=parent.descriptor,
+                create_new=True,
+                share_delete=False,
+                security_descriptor=acl.security_descriptor,
+                read_control=True,
+            )
+            child_metadata = os.fstat(child)
+            child_identity = child_metadata.st_dev, child_metadata.st_ino
+            acl.validate(child)
+            if projection_contents is not None:
+                descriptor = open_windows_regular_file_at(
+                    child,
+                    projection_name,
+                    create_new=True,
+                    write=True,
+                    security_descriptor=acl.security_descriptor,
+                    read_control=True,
+                )
+                try:
+                    file_metadata = os.fstat(descriptor)
+                    file_identity = file_metadata.st_dev, file_metadata.st_ino
+                    acl.validate(descriptor)
+                    write_all(
+                        lambda pending: os.write(descriptor, pending),
+                        projection_contents,
+                        message=f"{projection_label} write made no progress",
+                    )
+                    windows_flush_file(descriptor)
+                finally:
+                    os.close(descriptor)
+            windows_flush_directory(child)
+            windows_flush_directory(parent.descriptor)
+            parent.assert_visible()
+            yield parent_path / name
+        finally:
+            try:
+                if child is not None:
+                    try:
+                        if file_identity is not None:
+                            visible_file = windows_stat_at(child, projection_name)
+                            if (
+                                visible_file.st_dev,
+                                visible_file.st_ino,
+                            ) != file_identity:
+                                raise OSError(f"{projection_label} file changed")
+                            windows_unlink_at(child, projection_name)
+                            windows_flush_directory(child)
+                    finally:
+                        os.close(child)
+                if child_identity is not None:
+                    visible_child = windows_stat_at(parent.descriptor, name)
+                    if (
+                        visible_child.st_dev,
+                        visible_child.st_ino,
+                    ) != child_identity:
+                        raise OSError(f"{projection_label} directory changed")
+                    windows_rmdir_at(parent.descriptor, name)
+                    windows_flush_directory(parent.descriptor)
+            finally:
+                parent.close()
 
 
 def _open_ancestor_chain(root: Path, *, read_control: bool = False) -> tuple[int, ...]:
