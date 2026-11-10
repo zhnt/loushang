@@ -6,7 +6,22 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A92复用原Continuity激活lease机制）
+## 当前状态（2026-11-10，A93完整Windows backend custody）
+
+原PackageProduct接管candidate Wheel/member/hash、material review、install/read重验及
+approval current的完整资源程序；直接复用原Hosting、Wheel、ReceiptIO、ApprovalRecords。
+Code保3真实DTO/Reader/closure、产品准入/预算/实际类型与错误绑定，approve/revoke
+业务协调保持。3个空slots私有方法提供者无实例状态、缓存或新manager，Self在原scope
+构造原Code类。Code−176、接收+312、系统+136，含全部绑定/类型/import/格式成本。
+当前Coding430源113579行，系统1968源647772行；其余1964原源与13资源SHA同。
+相对Goal起点Code−24176/系统+12978；本批主要是职责归位，不能当全系统精简。
+旧80操作、30 DTO/84原pickle及原消费者联合实际113过；仓库同110探针过。原
+架构边界2过，额外H5检查在旧/新源均因原Session operator调用失败，单独待协调，
+未放宽检查。完整证据与限制见[A93](key-designs/windows-backend-release-custody-convergence.md)。
+完整P1–P4/领域化/≤15K仍active/partial，距15K尚98579行；KD003未实施，KD011/A33
+待用户且未采用；H5现存规范/当前调用失配未关闭。
+
+## A92历史交付（2026-11-10，复用原Continuity激活lease机制）
 
 Generation activation lease已直接复用原CallbackPreparedActivationLease的完整consume/
 abort/close、单次标记、Event与共享abort Task机制，退出第二份算法；两个必要阶段的

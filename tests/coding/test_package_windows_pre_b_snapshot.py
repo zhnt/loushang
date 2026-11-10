@@ -6043,7 +6043,7 @@ finally:
                             assert live_job.native_job_absent is False
                             assert "native_job_present" in live_job.missing_proofs
                             with patch(
-                                "loushang.coding.package_product_worker_windows_backend_release.verify_windows_backend_material_expectation",
+                                "loushang.harness.package_product._windows_worker_backend_release.verify_windows_backend_material_expectation",
                                 wraps=verify_windows_backend_material_expectation,
                             ) as full_backend_checks:
                                 request.validate_current()

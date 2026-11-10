@@ -218,3 +218,16 @@ close，无新manager/模块；纯公开DTO构造保留原资源时点，scope�
 全部通过。当前Code113755/系统647636，较Goal基线−24000/+12842，累计系统增长
 仍未解决。新增482行显式probe、4627字节原41观察gzip及文档另列，不扩默认发现
 或PR gate。完整源码、旧期望来源和验证限制见[A92](key-designs/activation-lease-lifecycle-convergence.md)。
+
+## A93后续：完整Windows backend custody归位
+
+Code release205→129（−76）、installed234→148（−86）、approval owner108→94（−14），
+合计−176；现有PackageProduct组件增加312行私有完整程序，系统净+136。14个纯绑定、
+3空slots方法提供者、窄类型端口、兼容转发/实际公开值、import及排版全部计入。
+不是去重收益或又建一套Wheel/native/receipt引擎。原完整草拟源与常规Ruff逐阶段重建，
+最终四源逐字同接受R2：结构+66/排版+70=物理+136；这是该构建过程的计量，不是
+逻辑最小行数证明。Code三处产品准入谓词归一个Code helper，领域政策没有换目录。
+当前Code113579/系统647772，相对Goal起点−24176/+12978，整体增长仍未解决。
+新增932行显式探针、40390字节lossless原fixture、1处原native测试hook转接及文档
+另列；原assert AST同，不扩gate。完整旧值/失败来源及H5旧失败见
+[A93](key-designs/windows-backend-release-custody-convergence.md)。

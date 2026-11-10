@@ -214,6 +214,15 @@ no additional manager, runtime component or Code callback is introduced.
 See [A92](key-designs/activation-lease-lifecycle-convergence.md) for scope,
 failure-order and release-time evidence.
 
+Package Product owns the complete Windows backend candidate/material review,
+installed Wheel custody/recheck and approval-current resource sequence. It uses
+original Hosting verification, Resource Wheel/ReceiptIO and the actual approval
+journal current port. Empty-slotted private methods construct the real Code
+values at the original scope boundaries; no new runtime state or manager exists.
+Coding retains Product admission/budgets, public DTOs/Reader/closure and independent
+approval/revocation decisions. [A93](key-designs/windows-backend-release-custody-convergence.md)
+records full costs, old pickle evidence and the separate pre-existing H5 mismatch.
+
 Worker history owns native-approval value/wire/history mechanics and the original
 Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
 selector; their original append/byte/lock/custody rules remain separate. Coding

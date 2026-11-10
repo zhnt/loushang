@@ -254,3 +254,13 @@ execution/storage rules. Its lossless gzip comes only from the old baseline; str
 comparison retains types, complete exception graphs, ordered phase state and task identity.
 The durable carrier has no capture mode or future-production hash lock. No default discovery,
 PR route or gate expands. [A92 scope and limitations](../architecture/harness/key-designs/activation-lease-lifecycle-convergence.md).
+
+A93 adds [probe_windows_backend_custody_runtime.py](../../../tests/coding/probe_windows_backend_custody_runtime.py)
+(old80 controlled custody observations) and [probe_windows_backend_dto_contract.py](../../../tests/coding/probe_windows_backend_dto_contract.py)
+(old16 value/API observations plus14 cases loading84 original pickles). Run both explicit paths
+through the managed pytest wrapper with the existing non-live/host-runtime selectors and
+workspace execution/storage rules. Original bytes remain in deterministic lossless gzip;
+strict JSON comparison retains types, all errors and ordered scope/publish/retry effects.
+The carriers have no capture mode or future-production hash lock, and do not expand default
+collection or PR gates. [A93 evidence and limitations](../architecture/harness/key-designs/windows-backend-release-custody-convergence.md)
+separates controlled leaf ports, unexecuted native Windows coverage and the pre-existing H5 failure.
