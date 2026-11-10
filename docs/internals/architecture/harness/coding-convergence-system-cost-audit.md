@@ -380,3 +380,11 @@ Code747→618（−129）、原Session assembly1667→1824（+157），系统净
 系统1969源648164，较Goal−24806/+13370，距15K97949；其余1967源/13资源SHA同。
 显式probe318+JSONL32=350测试行（fixture54290B）单列，文档另计；无新默认gate。
 A112同A51池复核只作不采用处置，生产/测试增删0、不重复计旧试装收益。见[A113](key-designs/product-selected-contribution-projection.md)。
+
+
+## A114：既有Catalog清单协调，生产精简0
+
+1969生产源及13资源字节同A113，Coding112949/系统648164（含GUI Rust/TS）。
+仅协调已接受职责后的3项过时清单，原7过3失败→同模块10过；10节点/77断言不变，
+精确可选例外只缩减旧gate，不增加覆盖/触发/必需消费者。测试净+10行，文档另计，
+不计入生产收益；完整Goal保持partial，见[KD009 §27](key-designs/startup-session-assembly-convergence.md#27-a114协调三项既有catalog依赖清单)。

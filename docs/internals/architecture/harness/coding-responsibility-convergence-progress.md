@@ -26,7 +26,15 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A113捕获声明证据投影归位）
+## 当前状态（2026-11-10，A114既有Catalog清单协调）
+
+A113保留的3项RCP2失败已核实为已接受职责对应的过时依赖清单；精确可选例外
+只缩减旧gate，保10节点/77断言/原扫描，原7过3失败→同模块10过。
+1969生产源及13资源字节不变，Coding112949/系统648164，生产精简0；系统含GUI
+Rust/TS，并非Python单一口径。其它欠账及完整Goal仍active/partial。
+详情、限制和三视角见[KD009 §27](key-designs/startup-session-assembly-convergence.md#27-a114协调三项既有catalog依赖清单)。
+
+## A113历史交付（2026-11-10，捕获声明证据投影归位）
 
 captured Product声明→typed Resource/Tool/Command spec→成员资格→两hash→实际
 OwnerCandidateEnvelope的完整投影已归原Session product_composition_assembly。

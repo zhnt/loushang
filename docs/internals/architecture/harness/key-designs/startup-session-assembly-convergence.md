@@ -882,3 +882,25 @@ plan切片。当前迁移try范围、fresh reconcile、disabled关闭、replay�
 新整入口消除旧接口成本。三独立视角据当前源不重启相同helper/flags形状，无生产/
 测试收益；不是证明这些职责永久不可迁。后续[A113](product-selected-contribution-projection.md)
 选择不同的captured值投影边界，不借此接受A51。
+
+
+## 27. A114：协调三项既有Catalog依赖清单
+
+本片只协调测试清单；生产1969源及13资源逐字节同A113，Coding112949/系统648164，
+精简收益0。系统口径包含GUI Rust/TS，不能称全部为Python源码。
+KD009§12已接受Code adapter→Catalog._loader_inputs→原product_inputs/snapshot；
+KD004§10已接受Worker Session compose/validate归原Session；A73已接受Assembly
+调用原ComponentHost显式issuer审批后bind，未把审批权/Graph发布转给Assembly。
+实际component_host导入仅CapabilityActivationApprovalIssuer/CapabilityComponentHost。
+
+shadow扫描只加上述3对精确path/module例外；两项consumer集合先减一个精确可选
+路径再与原必需集合比较，原必需成员不变；Assembly的旧forbidden集合仅移除
+component_host，plugin_activation仍禁止。不增路由、触发、必需消费者或断言。
+移除这些有界放宽可逆得完整旧模块AST，10节点/77断言及所有扫描原样；因此旧
+通过状态不会变为新失败。现有模块级扫描不声称约束每个导入符号/调用体。
+
+当前原实现复跑7过3失败（30.91s）；同模块协调后10过（25.04s），包括此前被
+早期断言遮挡的后续检查。Ruff/format通过。此为已接受职责后的清单维护，非生产
+重构收益，也不关闭其它Catalog/Session、Hosting、AI覆盖率及完整Goal欠账。
+原测试、逐源SHA帧、逆AST证明、JUnit和三独立视角保存在树外
+`coding-convergence-continue/a114-catalog-inventory`。不据此声称全部架构检查绿。
