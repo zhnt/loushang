@@ -36,6 +36,9 @@ from loushang.apphost.errors import (
     SessionCandidateStaleError,
     redacted_apphost_error,
 )
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _observe_background_result,
+)
 from loushang.harness.conversation import ConversationJsonlHeaderCodec
 from loushang.harness.journal import DEFAULT_JSONL_FORMAT
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
@@ -664,11 +667,6 @@ async def _validate_canonical_candidate(
         raise SessionCandidateStaleError() from None
     cleanup.release(group)
     return value  # type: ignore[return-value]
-
-
-def _observe_background_result(task: asyncio.Task[None]) -> None:
-    if not task.cancelled():
-        task.exception()
 
 
 async def _call_optional(callback: object, *args: object, **kwargs: object) -> object:

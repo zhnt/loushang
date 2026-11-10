@@ -8,6 +8,10 @@ from dataclasses import dataclass
 from time import monotonic
 from typing import Literal, Protocol
 
+from loushang.foundation._owned_tasks import (
+    _observe_task_result,
+)
+
 from .control import MultiAgentControl
 from .types import (
     AgentInputMessage,
@@ -248,10 +252,7 @@ class SubagentRunHandle:
         assert task is not None
         return await asyncio.shield(task)
 
-    @staticmethod
-    def _observe_close(task: asyncio.Task[HandleCloseResult]) -> None:
-        if not task.cancelled():
-            task.exception()
+    _observe_close = staticmethod(_observe_task_result)
 
     async def _run_owned_round(
         self,

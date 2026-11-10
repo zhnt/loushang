@@ -6,7 +6,19 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A100 scoped-model失败交接）
+## 当前状态（2026-11-10，A101 Task观察去重）
+
+28个精确重复私有操作体已归原Foundation两观察函数；创建/取消/重试及资源owner
+原位，九个具有stdlib/固定依赖合同的源恢复原样。Coding−14、Foundation+9，其余
+接收/消费者合计−27，全系统−32；当前113580/647934，较Goal起点−24175/+13140，
+距15K尚98580。22生产源变化，其余1946源及13资源SHA同；测试probe127/数据478
+行另计、不进默认PR route。最终542过/1skip，另70架构过/2原提交同失败；AI935过，
+原与新coverage门槛均失败（未覆盖行数不变），不宣称全绿。
+详见[KD004 A101](key-designs/owned-task-join-convergence.md#a101同一原模块的task观察操作去重)。
+完整P1–P4仍active/partial，原五项Hosting欠账及A100之前的部分构造/绑定失败未关；
+KD003仍未实施，KD011/A33仍待用户且未采用。不能把本批32行减少当成全量收敛。
+
+## A100历史交付（2026-11-10，scoped-model失败交接）
 
 完成工厂/Package绑定后，scoped-model解析、setter或Core Result失败，现在复用
 原A98 Session custody；原Binding/Coding只有同Session身份匹配时才避免裸资源

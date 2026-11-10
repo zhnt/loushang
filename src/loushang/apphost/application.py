@@ -25,6 +25,12 @@ from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.foundation._owned_tasks import (
     _join_failure_first,
 )
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _observe_background_result,
+)
+from loushang.foundation._owned_tasks import (
+    _task_failed_or_cancelled as _phase_task_failed,
+)
 
 from .contracts import AppHostShutdownBudgetV1, AppHostShutdownReportV1
 
@@ -516,10 +522,6 @@ def _method_descriptor(value: object, name: str) -> object:
     return descriptor
 
 
-def _phase_task_failed(task: asyncio.Task[object]) -> bool:
-    return task.done() and (task.cancelled() or task.exception() is not None)
-
-
 def _apphost_phase_needs_retry(task: asyncio.Task[object]) -> bool:
     if not task.done():
         return False
@@ -532,11 +534,6 @@ def _apphost_phase_needs_retry(task: asyncio.Task[object]) -> bool:
 def _require_async_method(value: object, name: str) -> None:
     if not inspect.iscoroutinefunction(_method_descriptor(value, name)):
         raise TypeError(f"hosted application {name} port is invalid")
-
-
-def _observe_background_result(task: asyncio.Task[object]) -> None:
-    if not task.cancelled():
-        task.exception()
 
 
 __all__ = [

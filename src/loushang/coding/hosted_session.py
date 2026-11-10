@@ -29,6 +29,9 @@ from loushang.appserver.resume_model import (
     ResumeInputLookupResultV1,
 )
 from loushang.appservice.execution_guard import ExecutionWorkV1
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _observe_close,
+)
 from loushang.harness.approval import (
     DenyApprovalResolver,
     InteractiveApprovalResolver,
@@ -624,11 +627,6 @@ def _message_text(message: object) -> str:
         for part in message.content
         if getattr(part, "type", None) == "text"
     )
-
-
-def _observe_close(task: asyncio.Task[None]) -> None:
-    if not task.cancelled():
-        task.exception()
 
 
 __all__ = [

@@ -1,0 +1,478 @@
+{
+  "head": "28c35aabb262a6bfbe190efe151132ed4d282125",
+  "observations": {
+    "observe": {
+      "pending": {
+        "raised": "InvalidStateError",
+        "message": "Exception is not set.",
+        "calls": [
+          "cancelled",
+          "exception"
+        ],
+        "unobserved_before": false,
+        "unobserved_after": false
+      },
+      "cancelled": {
+        "return_type": "NoneType",
+        "return": null,
+        "calls": [
+          "cancelled"
+        ],
+        "unobserved_before": false,
+        "unobserved_after": false
+      },
+      "success": {
+        "return_type": "NoneType",
+        "return": null,
+        "calls": [
+          "cancelled",
+          "exception"
+        ],
+        "unobserved_before": false,
+        "unobserved_after": false
+      },
+      "false_result": {
+        "return_type": "NoneType",
+        "return": null,
+        "calls": [
+          "cancelled",
+          "exception"
+        ],
+        "unobserved_before": false,
+        "unobserved_after": false
+      },
+      "failure": {
+        "return_type": "NoneType",
+        "return": null,
+        "calls": [
+          "cancelled",
+          "exception"
+        ],
+        "unobserved_before": true,
+        "unobserved_after": false
+      },
+      "falsy_failure": {
+        "return_type": "NoneType",
+        "return": null,
+        "calls": [
+          "cancelled",
+          "exception"
+        ],
+        "unobserved_before": true,
+        "unobserved_after": false
+      },
+      "observer_raises": {
+        "raised": "LookupError",
+        "message": "exception observer rejected",
+        "calls": [
+          "cancelled",
+          "exception"
+        ],
+        "unobserved_before": true,
+        "unobserved_after": true
+      }
+    },
+    "failed": {
+      "pending": {
+        "return_type": "bool",
+        "return": false,
+        "calls": [
+          "done"
+        ],
+        "unobserved_before": false,
+        "unobserved_after": false
+      },
+      "cancelled": {
+        "return_type": "bool",
+        "return": true,
+        "calls": [
+          "done",
+          "cancelled"
+        ],
+        "unobserved_before": false,
+        "unobserved_after": false
+      },
+      "success": {
+        "return_type": "bool",
+        "return": false,
+        "calls": [
+          "done",
+          "cancelled",
+          "exception"
+        ],
+        "unobserved_before": false,
+        "unobserved_after": false
+      },
+      "false_result": {
+        "return_type": "bool",
+        "return": false,
+        "calls": [
+          "done",
+          "cancelled",
+          "exception"
+        ],
+        "unobserved_before": false,
+        "unobserved_after": false
+      },
+      "failure": {
+        "return_type": "bool",
+        "return": true,
+        "calls": [
+          "done",
+          "cancelled",
+          "exception"
+        ],
+        "unobserved_before": true,
+        "unobserved_after": false
+      },
+      "falsy_failure": {
+        "return_type": "bool",
+        "return": true,
+        "calls": [
+          "done",
+          "cancelled",
+          "exception"
+        ],
+        "unobserved_before": true,
+        "unobserved_after": false
+      },
+      "observer_raises": {
+        "raised": "LookupError",
+        "message": "exception observer rejected",
+        "calls": [
+          "done",
+          "cancelled",
+          "exception"
+        ],
+        "unobserved_before": true,
+        "unobserved_after": true
+      }
+    }
+  },
+  "original_sources": {
+    "src/loushang/ai/prepared_request.py": "7169ea46e778aaf00b808125fadd99897f2ce5cd2ce5345f61bbc8820ec696a2",
+    "src/loushang/appserver/_local_peer.py": "7114725e6b8ae892b3fbe3c6bf8384930282e558021d1078d8b9b8cc3173adda",
+    "src/loushang/appserver/remote_client.py": "3611d3f32c0604c9983c71d2819451631b0480fcfa85d17625f1e3acc3577aa9",
+    "src/loushang/hosting/_child_session_host.py": "cf5185ec301b63d6b2217290e87e10a4641659482ae00abffeb49904da689bae",
+    "src/loushang/hosting/_endpoint_host.py": "60bd0b15d49c6fd330b198a35d3be6823be91df9d2f4a5abb6c25ed296b85f4e",
+    "src/loushang/hosting/_process_host.py": "126e9d8a2ad4312d1bf15356b89ac04aefb584627b39158e65f5297fb342c164",
+    "src/loushang/hosting/_launch_preparation.py": "d53500488a268c468a3baba2c33dcdcfc476a593781bd566ca78da81fe8c0e6b",
+    "src/loushang/apphost/router.py": "a1ee3f32998a5127e43ec83eaed94fce8bacae45e58301f91b1ea9bd6c22cb8c",
+    "src/loushang/apphost/runtime.py": "097b0a60982295fa538e967e00de0a8649e176444588393626268b06a0c1d9bd",
+    "src/loushang/apphost/launcher.py": "fdcd6d7cc2ffb1a5f9e409467c47a2ff4271fdea1002d63fc3b11dc899fb8f3e",
+    "src/loushang/apphost/foreground.py": "457b036e0da15f4a2094196c7524c1dc00e9c69d7d9ea9a1094f7448c64a2e48",
+    "src/loushang/apphost/local.py": "aa7132bbd5fb53cd362ccdbb369d771086a690a212d1f3d3c2ede2548d2a0365",
+    "src/loushang/apphost/continuity.py": "6abd77df2e5857452df0a3df85779b4c9824c4afd6a170714486dc091556ef48",
+    "src/loushang/apphost/application.py": "9a7bc0b5af358878865e462d57d6cde3ed72a54746ff48093caacf4b945bdab2",
+    "src/loushang/apphost/integrations/harness_session.py": "96e0123b42d77dd8d1f76b5366ae3a340b169db617d482fbbed07e1f1e1e4ef3",
+    "src/loushang/apphost/managed/child.py": "04b8f71d256e59b65f7581380d82a197ec0f4a1b72bc210120331aa0712861e8",
+    "src/loushang/coding/apphost_composition.py": "c4ace0de46696a4f6c821a17f2e8dba5df56e410ec6ef593a097f8b472d7da71",
+    "src/loushang/coding/hosted_continuity.py": "d21b24f1d13f0a3f3bbd3a40cd4b1203c53623017ab7c8f64e6bf8a452da89b6",
+    "src/loushang/coding/hosted_execution.py": "7c10da248cfa13c69537aabb32d8833f7a427a360d7d15caed4db01a5ea9a78f",
+    "src/loushang/coding/hosted_session.py": "5da05e3c2ee847573b09239986661a92696eb3c5e622d21ae45c6a93491c4df3",
+    "src/loushang/coding/cli/hosted_client.py": "ffa77827a4600cb85eaa992b40b93e66064c8e40e59e635a90be29fe79be27fa",
+    "src/loushang/coding/cli/hosted.py": "a12baab90a66ea9803b6fc9bcc40dee905c0375518debf61479e094fd92ebebf",
+    "src/loushang/appservice/runtime.py": "cdb0b98996a00cef36f6a38676c50dd150c1dd3e90d4066344592fed50911a04",
+    "src/loushang/appservice/continuity_runtime.py": "01c8d9c08af8cc3d3c514e94f803f3de8853ff4feb23a5705fa3b5497297fab3",
+    "src/loushang/appservice/_operations.py": "49e9f8c22b50ddcf1bce956942361f3d7eddb69f44105352f9489d36f6715274",
+    "src/loushang/harness/session/model_call.py": "c0ab0ece0cb78eb6d0e41047132e0170f4f00213a04294730c104356f6440238",
+    "src/loushang/harness/session/subagent.py": "9b8b3265414c1a2f158e88d4d8916f77c2afc94898da67221196a351c626598d",
+    "src/loushang/harness/session/execution_scope.py": "236062fed1ae017fb867c3d7e1bc4c083ca986d9b6b07372c9a936e577ccbf13",
+    "src/loushang/harness/session/lifecycle.py": "44d1a2e614332cabfba6dc384aab8e896bc5d72410728c738ce455b7bd7ee8ee",
+    "src/loushang/harness/multiagent/run_handle.py": "69b03b5f3cad23c111fde0c15dcde9db1fba50ef480496731b6fc878aa36e7a1"
+  },
+  "pool": [
+    {
+      "path": "src/loushang/ai/prepared_request.py",
+      "name": "_consume_speculative_preparation",
+      "line": 660,
+      "end": 662,
+      "kind": "observe",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[None]"
+    },
+    {
+      "path": "src/loushang/ai/prepared_request.py",
+      "name": "_consume_transport_preparation",
+      "line": 665,
+      "end": 669,
+      "kind": "observe",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[dict[str, JSONValue]]"
+    },
+    {
+      "path": "src/loushang/hosting/_child_session_host.py",
+      "name": "_owner_task_failed",
+      "line": 739,
+      "end": 740,
+      "kind": "failed",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[object]"
+    },
+    {
+      "path": "src/loushang/hosting/_endpoint_host.py",
+      "name": "_owner_task_failed",
+      "line": 563,
+      "end": 564,
+      "kind": "failed",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[object]"
+    },
+    {
+      "path": "src/loushang/hosting/_process_host.py",
+      "name": "_task_failed",
+      "line": 1410,
+      "end": 1411,
+      "kind": "failed",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[object]"
+    },
+    {
+      "path": "src/loushang/hosting/_launch_preparation.py",
+      "name": "_owner_task_failed",
+      "line": 765,
+      "end": 766,
+      "kind": "failed",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[object]"
+    },
+    {
+      "path": "src/loushang/apphost/continuity.py",
+      "name": "_runtime_task_needs_retry",
+      "line": 620,
+      "end": 623,
+      "kind": "failed",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[HostedApplicationContinuityRuntimeV1]"
+    },
+    {
+      "path": "src/loushang/apphost/continuity.py",
+      "name": "_void_task_needs_retry",
+      "line": 626,
+      "end": 627,
+      "kind": "failed",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[object]"
+    },
+    {
+      "path": "src/loushang/apphost/continuity.py",
+      "name": "_observe_background_result",
+      "line": 630,
+      "end": 632,
+      "kind": "observe",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[object]"
+    },
+    {
+      "path": "src/loushang/apphost/application.py",
+      "name": "_phase_task_failed",
+      "line": 519,
+      "end": 520,
+      "kind": "failed",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[object]"
+    },
+    {
+      "path": "src/loushang/apphost/application.py",
+      "name": "_observe_background_result",
+      "line": 537,
+      "end": 539,
+      "kind": "observe",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[object]"
+    },
+    {
+      "path": "src/loushang/apphost/integrations/harness_session.py",
+      "name": "_observe_background_result",
+      "line": 669,
+      "end": 671,
+      "kind": "observe",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[None]"
+    },
+    {
+      "path": "src/loushang/apphost/managed/child.py",
+      "name": "_failed",
+      "line": 542,
+      "end": 543,
+      "kind": "failed",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[Any]"
+    },
+    {
+      "path": "src/loushang/coding/apphost_composition.py",
+      "name": "_observe_background_result",
+      "line": 551,
+      "end": 553,
+      "kind": "observe",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[Any]"
+    },
+    {
+      "path": "src/loushang/coding/hosted_continuity.py",
+      "name": "_runtime_task_needs_retry",
+      "line": 270,
+      "end": 273,
+      "kind": "failed",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[HostedApplicationContinuityRuntimeV1]"
+    },
+    {
+      "path": "src/loushang/coding/hosted_continuity.py",
+      "name": "_void_task_needs_retry",
+      "line": 276,
+      "end": 277,
+      "kind": "failed",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[object]"
+    },
+    {
+      "path": "src/loushang/coding/hosted_continuity.py",
+      "name": "_observe_background_result",
+      "line": 280,
+      "end": 282,
+      "kind": "observe",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[object]"
+    },
+    {
+      "path": "src/loushang/coding/hosted_execution.py",
+      "name": "_observe_close",
+      "line": 308,
+      "end": 310,
+      "kind": "observe",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[None]"
+    },
+    {
+      "path": "src/loushang/coding/hosted_session.py",
+      "name": "_observe_close",
+      "line": 629,
+      "end": 631,
+      "kind": "observe",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[None]"
+    },
+    {
+      "path": "src/loushang/coding/cli/hosted.py",
+      "name": "_observe",
+      "line": 139,
+      "end": 141,
+      "kind": "observe",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[None]"
+    },
+    {
+      "path": "src/loushang/appservice/runtime.py",
+      "name": "_observe_managed_close",
+      "line": 1655,
+      "end": 1657,
+      "kind": "observe",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[None]"
+    },
+    {
+      "path": "src/loushang/appservice/continuity_runtime.py",
+      "name": "_observe_background_result",
+      "line": 464,
+      "end": 466,
+      "kind": "observe",
+      "scope": null,
+      "decorators": [],
+      "signature": "task: asyncio.Task[object]"
+    },
+    {
+      "path": "src/loushang/harness/session/model_call.py",
+      "name": "_finish_sealed_verification",
+      "line": 1124,
+      "end": 1126,
+      "kind": "observe",
+      "scope": "_CurrentSessionCommitter",
+      "decorators": [
+        "staticmethod"
+      ],
+      "signature": "task: asyncio.Task[None]"
+    },
+    {
+      "path": "src/loushang/harness/session/subagent.py",
+      "name": "_observe_dispose",
+      "line": 205,
+      "end": 207,
+      "kind": "observe",
+      "scope": "_AgentSessionChild",
+      "decorators": [
+        "staticmethod"
+      ],
+      "signature": "task: asyncio.Task[SubagentDisposeResult]"
+    },
+    {
+      "path": "src/loushang/harness/session/execution_scope.py",
+      "name": "_failed",
+      "line": 154,
+      "end": 155,
+      "kind": "failed",
+      "scope": "SessionExecutionScope",
+      "decorators": [
+        "staticmethod"
+      ],
+      "signature": "task: asyncio.Task"
+    },
+    {
+      "path": "src/loushang/harness/session/execution_scope.py",
+      "name": "_observe",
+      "line": 164,
+      "end": 166,
+      "kind": "observe",
+      "scope": "SessionExecutionScope",
+      "decorators": [
+        "staticmethod"
+      ],
+      "signature": "task: asyncio.Task"
+    },
+    {
+      "path": "src/loushang/harness/session/lifecycle.py",
+      "name": "_observe_abort",
+      "line": 188,
+      "end": 192,
+      "kind": "observe",
+      "scope": "PreparedSessionLifecycleOperation",
+      "decorators": [
+        "staticmethod"
+      ],
+      "signature": "task: asyncio.Task[None]"
+    },
+    {
+      "path": "src/loushang/harness/multiagent/run_handle.py",
+      "name": "_observe_close",
+      "line": 252,
+      "end": 254,
+      "kind": "observe",
+      "scope": "SubagentRunHandle",
+      "decorators": [
+        "staticmethod"
+      ],
+      "signature": "task: asyncio.Task[HandleCloseResult]"
+    }
+  ]
+}

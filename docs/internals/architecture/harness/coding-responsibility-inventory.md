@@ -6,6 +6,7 @@
 - Owner: Coding / shared-layer architecture；静态分析 Codex。
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
+A101精确Task观察去重（Coding−14/系统−32）；见[KD004 A101](key-designs/owned-task-join-convergence.md#a101同一原模块的task观察操作去重)。
 A100 scoped-model失败交接复用同Session custody（Coding+7/Core+29，非精简）；见[KD009 §23](key-designs/startup-session-assembly-convergence.md#23-a100scoped-model失败交接复用原session清理责任)。
 A98完成构造后交付失败责任接通，bootstrap+20/Core+150，非精简；见[KD009 §22](key-designs/startup-session-assembly-convergence.md#22-a98完成构造后的session交付失败责任)。
 A97配置Continuity退出重复迁移支路，Coding/系统均−12；不新增共享接口，原30项回归通过。
@@ -95,7 +96,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [adapters/interactive_goal.py](../../../../src/loushang/coding/adapters/interactive_goal.py) | C12 | 672 | M | C12 Goal/Work/证据适配 | 6865ef185846 | 672 | 6865ef185846 |
 | [agent_invocation.py](../../../../src/loushang/coding/agent_invocation.py) | C06 | 281 | R/M | C06 其余根目录入口与策略 | 45486aa4b4c8 | 281 | 45486aa4b4c8 |
 | [apphost_canary.py](../../../../src/loushang/coding/apphost_canary.py) | C05 | 1,012 | V | C05 显式 canary 与作者验证入口 | 002123d7d46b | 1,012 | 002123d7d46b |
-| [apphost_composition.py](../../../../src/loushang/coding/apphost_composition.py) | C02 | 583 | B | C02 托管与受管运行接入 | 2531999d9cf0 | 568 | c4ace0de4669 |
+| [apphost_composition.py](../../../../src/loushang/coding/apphost_composition.py) | C02 | 583 | B | C02 托管与受管运行接入 | 2531999d9cf0 | 566 | 4d1083d814c4 |
 | [apphost_product.py](../../../../src/loushang/coding/apphost_product.py) | C02 | 484 | B | C02 托管与受管运行接入 | 712657197d86 | 484 | 712657197d86 |
 | [appservice_adapter.py](../../../../src/loushang/coding/appservice_adapter.py) | C02 | 470 | B | C02 托管与受管运行接入 | dbd6fc69114a | 222 | 59dda0f03430 |
 | [arch/__init__.py](../../../../src/loushang/coding/arch/__init__.py) | C14 | 79 | K/M | C14 Arch Capability | d13ca5375d94 | 79 | d13ca5375d94 |
@@ -119,7 +120,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [cli/application.py](../../../../src/loushang/coding/cli/application.py) | C11 | 1,697 | M | C11 CLI | d1e825842391 | 1,697 | d1e825842391 |
 | [cli/args.py](../../../../src/loushang/coding/cli/args.py) | C11 | 310 | M | C11 CLI | 9eab2abc4a86 | 310 | 9eab2abc4a86 |
 | [cli/composition_choice.py](../../../../src/loushang/coding/cli/composition_choice.py) | C11 | 23 | M | C11 CLI | 65b964f0c258 | 23 | 65b964f0c258 |
-| [cli/hosted.py](../../../../src/loushang/coding/cli/hosted.py) | C11 | 290 | M | C11 CLI | a12baab90a66 | 290 | a12baab90a66 |
+| [cli/hosted.py](../../../../src/loushang/coding/cli/hosted.py) | C11 | 290 | M | C11 CLI | a12baab90a66 | 288 | 1e52959ea9b6 |
 | [cli/hosted_client.py](../../../../src/loushang/coding/cli/hosted_client.py) | C11 | 377 | M | C11 CLI | ffa77827a460 | 377 | ffa77827a460 |
 | [cli/lmux.py](../../../../src/loushang/coding/cli/lmux.py) | C11 | 116 | M | C11 CLI | cfdba2301a17 | 116 | cfdba2301a17 |
 | [cli/lmux_command.py](../../../../src/loushang/coding/cli/lmux_command.py) | C11 | 811 | M | C11 CLI | 90fe9fa9ddde | 811 | 90fe9fa9ddde |
@@ -159,15 +160,15 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [hosted_application.py](../../../../src/loushang/coding/hosted_application.py) | C02 | 932 | B | C02 托管与受管运行接入 | 391f0fc90f4b | 747 | 3917a7d74492 |
 | [hosted_bootstrap.py](../../../../src/loushang/coding/hosted_bootstrap.py) | C02 | 316 | B | C02 托管与受管运行接入 | 20d1a3e2578e | 314 | f077f36acb66 |
 | [hosted_catalog.py](../../../../src/loushang/coding/hosted_catalog.py) | C02 | 1,221 | B | C02 托管与受管运行接入 | 1a07a14c6e43 | 919 | 4cb2fad8a004 |
-| [hosted_continuity.py](../../../../src/loushang/coding/hosted_continuity.py) | C02 | 308 | B | C02 托管与受管运行接入 | b714d619b52d | 289 | d21b24f1d13f |
-| [hosted_execution.py](../../../../src/loushang/coding/hosted_execution.py) | C02 | 265 | B | C02 托管与受管运行接入 | 434428f1690d | 345 | 7c10da248cfa |
+| [hosted_continuity.py](../../../../src/loushang/coding/hosted_continuity.py) | C02 | 308 | B | C02 托管与受管运行接入 | b714d619b52d | 283 | cce459994f13 |
+| [hosted_execution.py](../../../../src/loushang/coding/hosted_execution.py) | C02 | 265 | B | C02 托管与受管运行接入 | 434428f1690d | 343 | 82bd2bc80c9f |
 | [hosted_goal.py](../../../../src/loushang/coding/hosted_goal.py) | C02 | 216 | B | C02 托管与受管运行接入 | 19f9feb3b57a | 216 | 19f9feb3b57a |
 | [hosted_goal_application.py](../../../../src/loushang/coding/hosted_goal_application.py) | C02 | 70 | B | C02 托管与受管运行接入 | 9523349199f1 | 70 | 9523349199f1 |
 | [hosted_local.py](../../../../src/loushang/coding/hosted_local.py) | C02 | 402 | B | C02 托管与受管运行接入 | b4c35194f8f2 | 214 | a4a8a05a4379 |
 | [hosted_method.py](../../../../src/loushang/coding/hosted_method.py) | C02 | 138 | B | C02 托管与受管运行接入 | 3413931a783f | 138 | 3413931a783f |
 | [hosted_method_application.py](../../../../src/loushang/coding/hosted_method_application.py) | C02 | 52 | B | C02 托管与受管运行接入 | df02bc67924c | 52 | df02bc67924c |
 | [hosted_resume.py](../../../../src/loushang/coding/hosted_resume.py) | C02 | 709 | B | C02 托管与受管运行接入 | 4d862cfad9ec | 751 | 686e2508b64b |
-| [hosted_session.py](../../../../src/loushang/coding/hosted_session.py) | C02 | 598 | B | C02 托管与受管运行接入 | 24f236328066 | 657 | 5da05e3c2ee8 |
+| [hosted_session.py](../../../../src/loushang/coding/hosted_session.py) | C02 | 598 | B | C02 托管与受管运行接入 | 24f236328066 | 655 | 0a41b6837ed5 |
 | [interaction/__init__.py](../../../../src/loushang/coding/interaction/__init__.py) | C18 | 1 | K/M | C18 交互命令与预热 | b9cd83b1e2d9 | 1 | b9cd83b1e2d9 |
 | [interaction/goal.py](../../../../src/loushang/coding/interaction/goal.py) | C18 | 287 | K/M | F07：公共观察/控制；保留命令语义 | c780d0713b77 | 287 | c780d0713b77 |
 | [interaction/resume_history.py](../../../../src/loushang/coding/interaction/resume_history.py) | C18 | 335 | K/M | C18 交互命令与预热 | e454b90d7f61 | 335 | e454b90d7f61 |
@@ -474,7 +475,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | 组 | 当前文件 | 当前物理行 |
 | --- | ---: | ---: |
 | C01 | 22 | 12,993 |
-| C02 | 28 | 8,043 |
+| C02 | 28 | 8,031 |
 | C03 | 15 | 4,132 |
 | C04 | 2 | 2,956 |
 | C05 | 6 | 3,565 |
@@ -483,7 +484,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C08 | 31 | 6,743 |
 | C09 | 34 | 9,711 |
 | C10 | 12 | 5,546 |
-| C11 | 25 | 9,310 |
+| C11 | 25 | 9,308 |
 | C12 | 25 | 7,180 |
 | C13 | 21 | 5,668 |
 | C14 | 13 | 3,628 |
@@ -501,4 +502,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 113,594 |
+| 合计 | 430 | 113,580 |

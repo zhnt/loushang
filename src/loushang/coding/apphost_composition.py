@@ -7,7 +7,7 @@ import inspect
 import re
 from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol, cast
+from typing import Literal, Protocol, cast
 
 from loushang.apphost import (
     AdmissionGenerationSourceV1,
@@ -23,6 +23,9 @@ from loushang.apphost import (
     SessionCandidateRefV1,
     SessionCreateRequestV1,
     SessionIdentityCatalogPortV1,
+)
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _observe_background_result,
 )
 from loushang.harness.runtime import await_owned_task as _await_owned_task
 
@@ -546,11 +549,6 @@ def _require_sync_method(value: object, name: str) -> None:
     descriptor = _method_descriptor(value, name)
     if not callable(descriptor) or inspect.iscoroutinefunction(descriptor):
         raise TypeError(f"Coding AppHost {name} port is invalid")
-
-
-def _observe_background_result(task: asyncio.Task[Any]) -> None:
-    if not task.cancelled():
-        task.exception()
 
 
 __all__ = [

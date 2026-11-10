@@ -19,6 +19,9 @@ from loushang.appserver.framing import require_timeout
 from loushang.appserver.protocol import AppServiceError
 from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
 from loushang.appserver.stdio import InheritedStdioTransportV1
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _observe,
+)
 from loushang.harness.tools.core import ToolDefinition
 
 from ..hosted_bootstrap import (
@@ -134,11 +137,6 @@ class CodingHostedCommandV1:
             if self._transport is not None:
                 await self._transport.close()
         self._settled = True
-
-
-def _observe(task: asyncio.Task[None]) -> None:
-    if not task.cancelled():
-        task.exception()
 
 
 def _parser(*, allow_discovery: bool = False) -> argparse.ArgumentParser:

@@ -9,6 +9,9 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Generic, Literal, Protocol, TypeVar, cast
 
+from loushang.foundation._owned_tasks import (
+    _observe_task_result,
+)
 from loushang.harness.runtime import (
     CancelledSessionOperation,
     FileCopy,
@@ -184,12 +187,7 @@ class PreparedSessionLifecycleOperation(Generic[SessionT, PayloadT]):
             await _maybe_await(self._candidate.rollback())
         self._state = "closed"
 
-    @staticmethod
-    def _observe_abort(task: asyncio.Task[None]) -> None:
-        # Retrieve failures even if every waiter was cancelled; the retained
-        # task still carries the error for the next explicit close/retry.
-        if not task.cancelled():
-            task.exception()
+    _observe_abort = staticmethod(_observe_task_result)
 
     async def close(self) -> None:
         await self.abort()

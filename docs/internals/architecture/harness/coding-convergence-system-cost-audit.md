@@ -276,3 +276,14 @@ Coding bootstrap+7（含同候选身份薄guard）、原Core construction+25/cle
 精简。测试probe357行另计，无新PR gate。当前Coding113594/系统647966，较Goal
 起点−24161/+13172，15K尚98594；全部增量与未关闭构造路径见
 [KD009 §23](key-designs/startup-session-assembly-convergence.md#23-a100scoped-model失败交接复用原session清理责任)。
+
+
+## A101：既有Task观察操作直接去重
+
+R3删28份私有同体，以原Foundation两函数+22别名/6staticmethod替代。Foundation+9、
+Coding−14、AI−6、AppHost−11、AppService−4、Hosting−4、Harness−2，系统−32。
+完整imports/接收成本已含，不新增Task/状态/owner。九个原stdlib/固定依赖源恢复，
+不为数行收益改变合同。当前Coding113580/系统647934，较Goal−24175/+13140；15K
+尚98580。测试127行/冻结数据478行另计，无新PR gate；542相关检查过/1skip、70架构
+过/2原失败复现、AI935过但原新coverage均未达门槛，未覆盖行数相同。详见
+[KD004 A101](key-designs/owned-task-join-convergence.md#a101同一原模块的task观察操作去重)。

@@ -34,6 +34,9 @@ from loushang.appservice.execution_contract import (
 from loushang.appservice.execution_guard import ExecutionGuardV1
 from loushang.appservice.execution_registry import ExecutionLimitsV1
 from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _observe_close,
+)
 
 from ._hosted_execution_work import (
     HostedResumeSubjectControl as HostedResumeSubjectControl,
@@ -303,11 +306,6 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
         super()._require_open()
         if self._closing:
             raise RuntimeError("coding_hosted_session_closed")
-
-
-def _observe_close(task: asyncio.Task[None]) -> None:
-    if not task.cancelled():
-        task.exception()
 
 
 def _select_coding_execution_port(port: object) -> CodingHostedExecutionSessionV1 | None:

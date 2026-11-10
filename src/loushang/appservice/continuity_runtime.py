@@ -19,6 +19,9 @@ from loushang.appserver.protocol import (
 from loushang.foundation._owned_tasks import (
     _join_preserving_cancellation,
 )
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _observe_background_result,
+)
 
 from .continuity import (
     APPLICATION_CONTINUITY_VERSION,
@@ -459,11 +462,6 @@ _OwnedResult = TypeVar("_OwnedResult")
 
 
 _join_owned = _join_preserving_cancellation
-
-
-def _observe_background_result(task: asyncio.Task[object]) -> None:
-    if not task.cancelled():
-        task.exception()
 
 
 def _error(code: AppErrorCodeV1) -> AppServiceError:

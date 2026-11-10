@@ -1,4 +1,4 @@
-"""Borrowed-task joins with three preserved, explicitly distinct contracts.
+"""Borrowed-task joins and terminal observations.
 
 Lifecycle owners retain the task and any cleanup/retry debt. No submission,
 timeout, registration, cancellation request or ownership transfer happens here.
@@ -70,6 +70,15 @@ async def _join_preserving_cancellation(task: asyncio.Task[T]) -> T:
     if cancellation is not None:
         raise cancellation
     return result
+
+
+def _task_failed_or_cancelled(task: asyncio.Task[T]) -> bool:
+    return task.done() and (task.cancelled() or task.exception() is not None)
+
+
+def _observe_task_result(task: asyncio.Task[T]) -> None:
+    if not task.cancelled():
+        task.exception()
 
 
 __all__: list[str] = []

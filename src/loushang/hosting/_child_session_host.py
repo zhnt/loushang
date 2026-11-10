@@ -13,6 +13,9 @@ from typing import TypeVar
 from loushang.foundation._owned_tasks import (
     _join_cancellation_first,
 )
+from loushang.foundation._owned_tasks import (
+    _task_failed_or_cancelled as _owner_task_failed,
+)
 
 from ._endpoint_host import _InheritedEndpointHost, _InheritedEndpointLease
 from ._launch_preparation import (
@@ -734,10 +737,6 @@ def _failure_category(error: BaseException) -> HostingFailureCategory:
 
 
 _await_owned = _join_cancellation_first
-
-
-def _owner_task_failed(task: asyncio.Task[object]) -> bool:
-    return task.done() and (task.cancelled() or task.exception() is not None)
 
 
 def _validate_session_process_request(request: ProcessLaunchRequest) -> None:

@@ -56,3 +56,36 @@ R2 外置清单 SHA256 `2c4773981c80d0f73906ddd0e82e5a01e316d14664aa6b84b9cbd4af
 不新增Harness/Foundation代码、API、管理器、回调模式、Task、取消请求或重试。字段、锁、业务方法、真正清理及debt所有权AST不变；原私有调用名保留，实际栈位置可变化。完整源码净减22行，结构−21/格式−1，原C08为0；不能把此片记作原8K指标完成。
 
 本片frame SHA256 `0f9c163b4d60dcba083183f71be030bf16923ee16489b5cc393c4c91cb4a4ed0`。固定旧40观察SHA256 `0715efda53b04a1d32bf670bcf7375338b4545836f68759e2fabbb5a99aaeb4e`，实际无overlay重放通过；两个完整原业务文件22 passed（19.08s），实际两显式源silent mypy通过。三视角无本片阻断，实施owner在现有授权内接受，局限及终态详见[评审记录](owned-task-join-convergence-review.md)。未宣称重要架构工作件新增用户接受或整体Goal完成。
+
+
+## A101：同一原模块的Task观察操作去重
+
+实际采用R3：28份私有精确同体（11失败判定、17结果观察）归原Foundation
+`_owned_tasks`两函数，22个module alias与6个staticmethod保持原私入口。原三种
+join、Task创建/取消/重试/资源归属和报告completed判据不变；exception()原本就
+检索未观察异常标记，短路顺序、读取次数、pending错误和falsy异常判定均保持。
+私有函数注解/FQN/traceback及异常callback repr位置改变，不把它们当持久合同。
+
+R1/R2触碰既有stdlib/exact-import边界，均未接受：九个AppServer/AppHost core/
+固定入口源已逐byte恢复；另boundself prewarm一直排除，公有observer未纳入。
+最终28体/21消费者加原Foundation共22源，其余1946源及13资源SHA同。
+Foundation+9、Coding−14、AI−6、AppHost−11、AppService−4、Hosting−4、Harness−2，
+系统净−32；不是迁目录或新Task框架。当前Coding113580/系统647934，距15K尚
+98580；完整P1–P4与五项Hosting欠账未关闭。
+
+迁前实际40入口各7态记录已冻结，1项capture和40项原回放通过；最终只采用其
+28项子集。最终542项通过（28冻结对照/514原消费者），1原条件skip、2原warnings；
+70架构检查通过，2项既有Catalog/consumer清单失败在原提交精确副本同样复现。
+AI lint/79源mypy/catalog/import检查通过、935测试通过/2skip/7deselect，但原与新
+make check-ai均未过90%coverage：总体89.87%、未覆盖954行相同，core原89.63%/
+新89.62%、未覆盖781行相同（退出4条已覆盖AI语句）。不改阈值或宣称全绿。
+Foundation限定mypy、Ruff与原依赖图检查通过；14个整源格式差异原新同集合，
+未无关重排，新Foundation/probe格式通过。127行显式probe与478行冻结数据另
+计，不进默认PR route；既有断言/workflow未改。实际done-callback调度由原消费者
+回归，不把直接LoggedTask调用对照外推全部logger格式/非Task duck/原生跨平台。
+
+三独立实际代码审查及Root有界接受只适用本R3。R1/R2边界遗漏、完整原源/各版
+候选、AST与SHA、真实Task结果、日志/XML、AI原提交加载来源及失败均保树外A101。
+初次消费者26项因私有祖先准入失败，原提交同26失败，既有nested私有输入重跑
+26通过；最终542使用同合规输入。原提交隔离副本先漏examples、再漏docs，原失败
+保留，补齐原提交内容后得到上述935/coverage对照，未改变Product来隐藏错误。
