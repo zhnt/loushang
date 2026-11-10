@@ -43,3 +43,12 @@ GeneratorExit/CancelledError/KeyboardInterrupt及多cleanup异常。Fake ACL/FD/
 完整旧源/候选、成本/逆AST、JUnit及三视角在树外
 `coding-convergence-continue/a115-candidate-selection`；其它Hosting/AI覆盖率、构造/
 Session及P1–P4欠账不关闭。KD003未实施，KD011/A33仍待用户且未采用。
+
+## A134 架构库存协调
+
+A132 在当前源码和 A131 快照均复现 Windows 临时目录读取点缺项。现有库存接受原精确
+集合，或额外包含 `_hold_windows_private_cutover_directory` 的一处 `path_read`。
+该点归原 Windows epoch cutover owner。原计数、owner 分类和合成反例仍适用。
+
+生产源码零变化。原库存检查及117项冻结探针复跑通过，探针覆盖受控 IO 与异常链。
+Windows 原生运行未覆盖。测试路由和触发范围保持原样。

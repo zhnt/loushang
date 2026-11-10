@@ -3466,16 +3466,22 @@ def test_plugin_manifest_has_one_parser_and_one_resolved_descriptor_authority() 
 def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
     sources = _source_texts()
 
-    assert (
-        _plugin_package_boundary_sink_call_counts(sources)
-        == EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS
+    sites = _plugin_package_boundary_sink_sites(sources)
+    owners = EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS
+    counts = EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS
+    windows_cutover_temporary_root = (
+        Path("src/loushang/harness/resources/packages/plugin_lifecycle/windows_epoch_cutover.py"),
+        "_hold_windows_private_cutover_directory",
     )
-    assert _plugin_package_boundary_sink_sites(sources) == set(
-        EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS
-    )
-    assert set(
-        EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS.values()
-    ) == PLC9B_BOUNDARY_OWNERS | PLC9_CLOSURE_BOUNDARY_OWNERS | {
+    if windows_cutover_temporary_root in sites:
+        owners = owners | {
+            windows_cutover_temporary_root: "package-windows-epoch-cutover-owner"
+        }
+        counts = counts | {(*windows_cutover_temporary_root, "path_read"): 1}
+
+    assert _plugin_package_boundary_sink_call_counts(sources) == counts
+    assert sites == set(owners)
+    assert set(owners.values()) == PLC9B_BOUNDARY_OWNERS | PLC9_CLOSURE_BOUNDARY_OWNERS | {
         "package-catalog",
         "package-manifest-parser",
         "package-materializer",

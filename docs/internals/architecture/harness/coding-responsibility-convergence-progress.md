@@ -35,6 +35,11 @@ START native_revision==2特殊校验在草稿中遗漏。未装Product，生产�
 [A129](key-designs/worker-history-responsibility-convergence.md#a129完整windows退休闭包原型未采用)。
 完整Goal仍active/partial；A129当时仍用A128已接受计量，不以树外原型报减少。
 
+## A134 Windows切换目录库存协调
+
+A115 的一处 Windows 临时目录读取点已登记。原库存检查和117项受控回放均通过，
+生产源码增减为0。见[A134](key-designs/windows-cutover-temporary-custody-convergence.md#a134-架构库存协调)。
+
 ## A133共用GC与Desired账本装配
 
 原 Plugin Management 装配先构造 GC 账本，再把同一实例绑定到 Desired。管理列表、
