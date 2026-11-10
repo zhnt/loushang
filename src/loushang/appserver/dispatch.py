@@ -1,10 +1,10 @@
-"""Exhaustive typed dispatch onto an injected semantic AppClient."""
+"""Exhaustive typed dispatch onto an injected application service port."""
 
 from __future__ import annotations
 
 from typing import cast
 
-from .client import AppClientV1, SessionDiscoveryClientV1
+from .client import AppServicePortV1, SessionDiscoveryPortV1
 from .protocol import (
     AppErrorCodeV1,
     AppOperationV1,
@@ -30,52 +30,53 @@ from .protocol import (
 
 
 async def dispatch_request(
-    client: AppClientV1, request: AppRequestV1,
-    *, discovery: SessionDiscoveryClientV1 | None = None,
+    client: AppServicePortV1, request: AppRequestV1,
+    *, discovery: SessionDiscoveryPortV1 | None = None,
 ) -> AppResultPayloadV1:
+    service_port = client
     value = request.payload
     match request.operation:
         case AppOperationV1.MUX_CREATE:
-            return await client.create_mux(cast(MuxCreateV1, value))
+            return await service_port.create_mux(cast(MuxCreateV1, value))
         case AppOperationV1.MUX_LIST:
-            return await client.list_muxes()
+            return await service_port.list_muxes()
         case AppOperationV1.SESSIONS_LIST:
             if discovery is None:
                 raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
             return await discovery.list_sessions(cast(SessionListV1, value))
         case AppOperationV1.MUX_READ:
-            return await client.read_mux(cast(MuxReadV1, value))
+            return await service_port.read_mux(cast(MuxReadV1, value))
         case AppOperationV1.MUX_ATTACH:
-            return await client.attach_mux(cast(MuxAttachV1, value))
+            return await service_port.attach_mux(cast(MuxAttachV1, value))
         case AppOperationV1.MUX_DETACH:
-            return await client.detach_mux(cast(MuxDetachV1, value))
+            return await service_port.detach_mux(cast(MuxDetachV1, value))
         case AppOperationV1.MUX_CLOSE:
-            return await client.close_mux(cast(MuxCloseV1, value))
+            return await service_port.close_mux(cast(MuxCloseV1, value))
         case AppOperationV1.MEMBER_OPEN:
-            return await client.open_member(cast(MuxMemberOpenV1, value))
+            return await service_port.open_member(cast(MuxMemberOpenV1, value))
         case AppOperationV1.MEMBER_CLOSE:
-            return await client.close_member(cast(MuxMemberCloseV1, value))
+            return await service_port.close_member(cast(MuxMemberCloseV1, value))
         case AppOperationV1.SESSION_SNAPSHOT:
-            return await client.snapshot_session(cast(SessionSnapshotRequestV1, value))
+            return await service_port.snapshot_session(cast(SessionSnapshotRequestV1, value))
         case AppOperationV1.SESSION_MODELS:
-            return await client.list_session_models(cast(SessionSnapshotRequestV1, value))
+            return await service_port.list_session_models(cast(SessionSnapshotRequestV1, value))
         case AppOperationV1.SESSION_MODEL_SELECT:
-            return await client.select_session_model(cast(SessionModelSelectV1, value))
+            return await service_port.select_session_model(cast(SessionModelSelectV1, value))
         case AppOperationV1.TURN_START:
-            return await client.start_turn(cast(TurnTextV1, value))
+            return await service_port.start_turn(cast(TurnTextV1, value))
         case AppOperationV1.TURN_STEER:
-            return await client.steer_turn(cast(TurnTextV1, value))
+            return await service_port.steer_turn(cast(TurnTextV1, value))
         case AppOperationV1.TURN_FOLLOW_UP:
-            return await client.follow_up_turn(cast(TurnTextV1, value))
+            return await service_port.follow_up_turn(cast(TurnTextV1, value))
         case AppOperationV1.TURN_INTERRUPT:
-            return await client.interrupt_turn(cast(TurnInterruptV1, value))
+            return await service_port.interrupt_turn(cast(TurnInterruptV1, value))
         case AppOperationV1.INTERACTION_RESPOND:
-            return await client.respond_interaction(cast(InteractionRespondV1, value))
+            return await service_port.respond_interaction(cast(InteractionRespondV1, value))
         case AppOperationV1.ATTACHMENT_READ_EVENTS:
             poll = cast(AttachmentReadEventsV1, value)
             # One event per frame avoids multiplying maximum-sized event values.
             return AttachmentEventsV1(
-                await client.read_events(
+                await service_port.read_events(
                     attachment_id=poll.attachment_id,
                     controller_generation=poll.controller_generation,
                     limit=1,

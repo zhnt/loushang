@@ -8,8 +8,8 @@ from collections.abc import Awaitable, Callable, Coroutine
 from secrets import token_hex
 from typing import TypeVar
 
-from loushang.appserver.client import AppClientV1, SessionDiscoveryClientV1
-from loushang.appserver.execution.client import ExecutionClientV1
+from loushang.appserver.client import AppServicePortV1, SessionDiscoveryPortV1
+from loushang.appserver.execution.client import ExecutionPortV1
 from loushang.appserver.execution.recovery import SubmissionRecoveryV1
 from loushang.appserver.protocol import (
     AckV1,
@@ -56,14 +56,14 @@ class HostedMuxShellV1:
 
     def __init__(
         self,
-        client: AppClientV1,
+        client: AppServicePortV1,
         *,
         selector: MuxSelectorV1,
         product_id: str,
         scopes: tuple[tuple[SessionScopeV1, str], ...],
         close_timeout: float = 5.0,
-        discovery_client: SessionDiscoveryClientV1 | None = None,
-        execution_client: ExecutionClientV1 | None = None,
+        discovery_client: SessionDiscoveryPortV1 | None = None,
+        execution_client: ExecutionPortV1 | None = None,
         exit_ends_application: bool = False,
         transcript_theme: ThemeResolver | None = None,
     ) -> None:

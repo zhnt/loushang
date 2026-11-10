@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Protocol
 
-from loushang.appserver.client import AppClientV1, SessionDiscoveryClientV1
+from loushang.appserver.client import AppServicePortV1, SessionDiscoveryPortV1
 from loushang.appservice import (
     AppServiceV1,
     HostedSessionResolverV1,
@@ -26,7 +26,7 @@ from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from .contracts import AppHostShutdownBudgetV1, AppHostShutdownReportV1
 
 if TYPE_CHECKING:
-    from loushang.appservice.client_scope import AppClientScopeV1, ScopedAppServiceV1
+    from loushang.appservice import client_scope
 
 HOSTED_APPLICATION_CONTRACT_VERSION = "loushang.apphost.application/v1"
 
@@ -214,7 +214,7 @@ class HostedApplicationRuntimeV1:
         self._service = service
         self._client = None if service is None else InProcessAppClientV1(service)
         self._client_borrowed = False
-        self._scoped_clients: ScopedAppServiceV1 | None = None
+        self._scoped_clients: client_scope.ScopedAppServiceV1 | None = None
         self._scope_close_timeout = float(request.service_close_timeout_seconds)
         self._accepting = True
         self._control_lock = asyncio.Lock()
@@ -226,7 +226,7 @@ class HostedApplicationRuntimeV1:
         ] = {}
 
     @property
-    def client(self) -> AppClientV1:
+    def client(self) -> AppServicePortV1:
         """Return the non-owning transport-neutral client view."""
 
         if self._scoped_clients is not None:
@@ -238,7 +238,7 @@ class HostedApplicationRuntimeV1:
         return client
 
     @property
-    def discovery_client(self) -> SessionDiscoveryClientV1 | None:
+    def discovery_client(self) -> SessionDiscoveryPortV1 | None:
         if not self._accepting:
             raise HostedApplicationError("hosted_application_not_ready")
         self.client  # Shares the legacy borrow/mode fence, even before first query.
@@ -282,7 +282,7 @@ class HostedApplicationRuntimeV1:
             )
             self._client = None
 
-    def open_client_scope(self) -> AppClientScopeV1:
+    def open_client_scope(self) -> client_scope.ScopedAppServicePortV1:
         """Create one owned client through the explicitly selected mode."""
         if not self._accepting or self._shutdown_task is not None:
             raise HostedApplicationError("hosted_application_not_ready")

@@ -26,12 +26,12 @@ with the Coding design. This does not activate a remote wire contract.
 
 The implemented
 [G11 In-Process Hosted Application](hosted-application-g11.md) adds a strict
-protocol kernel and transport-neutral AppClient contract here, plus a separate
+protocol kernel and transport-neutral `AppServicePortV1` contract here, plus a separate
 Product-neutral `loushang.appservice` semantic package.  It adds no AppServer
 runtime or external entrypoint.
 
 G14 adds a separately imported connection runtime, bounded framing and stdio
-AppClient. It accepts an injected semantic client and already-owned IO, never
+AppClient. It accepts an injected service port and already-owned IO, never
 constructs an AppService, and has no process launch or listener authority.
 The Product-owned `loushang-hosted` entrypoint composes this explicit route;
 it remains separate from the existing default CLI/TUI entrypoints.
@@ -45,7 +45,7 @@ records native fault and isolated-wheel terminal acceptance on all three platfor
 and promotion to main. G17.0 separately tracks the subsequent Hosting test
 regression; historical G16 checkpoints are not rewritten as current status.
 
-G12's optional AppHost application edge consumes the client contract for its
+G12's optional AppHost application edge consumes the service port for its
 in-process view. AppServer neither constructs nor imports that composition.
 
 The [optional execution delivery](../appservice/execution-service-delivery.md)
@@ -55,6 +55,39 @@ the AppService instance and states its retention guarantee. AppService owns
 submission registration and cleanup; this transport still owns only request
 delivery and borrowed scoped capabilities. Existing v1 frames and default
 profiles are unchanged. Native GUI acceptance follows the documented handoff.
+
+## Service Port Names And Legacy Compatibility
+
+Canonical source names adopted in the R2 implementation on 2026-11-09:
+
+| Legacy public type | Canonical import name | Kind |
+| --- | --- | --- |
+| `AppClientV1` | `AppServicePortV1` | Shared 17-method service Protocol |
+| `SessionDiscoveryClientV1` | `SessionDiscoveryPortV1` | Optional discovery Protocol |
+| `ExecutionClientV1` | `ExecutionPortV1` | Optional execution Protocol |
+| `ResumeInputLookupClientV1` | `ResumeInputLookupPortV1` | Optional Resume lookup Protocol |
+| `ManagedMuxCreationClientV1` | `ManagedMuxCreationPortV1` | Optional creation Protocol |
+| `ManagedMuxCloseClientV1` | `ManagedMuxClosePortV1` | Optional close/result-read Protocol |
+| `appservice.client_scope.AppClientScopeV1` | `appservice.client_scope.ScopedAppServicePortV1` | Concrete application-created authority facade |
+
+Each canonical name is an assignment to the original type object in its
+existing module. Old imports, runtime names, Protocol members and exact-type
+checks remain compatible. The shared Protocol has no controller or lifecycle
+state; the scoped facade implements it while retaining original controller
+membership and delivery fencing. AppService still owns semantic operations;
+AppServer still owns these Protocol declarations. No scope is split.
+
+The serving connection stores `_service_port`; typed dispatch and foreground
+composition name their operation target `service_port`. Public `client=`
+parameters, `.client` getters, capability getters and `open_client_scope()`
+retain their spellings. Genuine caller facades and remote proxies keep Client
+names. The separate `AppServerProductPortsV1` bundle is unchanged.
+
+This delivery improves source vocabulary and serving-path readability. Runtime
+reflection and existing exception text can still show legacy Client names.
+It changes no method shape, wire value, protocol version, default route,
+authentication or accepted-work lifetime. Frozen delivery records retain old
+terminology. See the [R2 plan and delivery evidence](../drafts/appclient-contract-rename-plan.md).
 
 ## Optional Session Reasoning
 
@@ -169,7 +202,7 @@ concrete semantic coordination and its in-process client implementation. The
 G14 connection edge now accepts foreground stdio lifecycle and framing.
 G16's optional local edge now composes authentication and connection-scoped
 authority. Product constructs the real Coding deployment without reverse imports;
-the installed interactive terminal borrows only AppClient. The delivery record
+the installed interactive terminal borrows only the service port. The delivery record
 links the accepted platform evidence. The G14 foreground contract is unchanged.
 
 ## Invariants

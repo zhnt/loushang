@@ -23,7 +23,7 @@ from loushang.appserver.protocol import (
     SessionEventKindV1,
     SessionSnapshotRequestV1,
 )
-from loushang.appservice.client_scope import AppClientScopeV1
+from loushang.appservice.client_scope import ScopedAppServicePortV1
 from loushang.appservice.execution_contract import (
     ExecutionOutcomeV1,
     ExecutionStatusV1,
@@ -414,7 +414,7 @@ class CodingDeferredHostedSessionV1:
         self,
         text: str,
         *,
-        scope: AppClientScopeV1,
+        scope: ScopedAppServicePortV1,
         subject_control: SessionSnapshotRequestV1,
         subject_digest: str,
         submission_id: str,
@@ -660,7 +660,7 @@ class _HostedResumeExecutionWorkV1:
         binding: CodingDeferredHostedSessionV1,
         text: str,
         cancel_requested: Callable[[], bool],
-        scope: AppClientScopeV1,
+        scope: ScopedAppServicePortV1,
         control: SessionSnapshotRequestV1,
         subject_digest: str,
         submission_id: str,

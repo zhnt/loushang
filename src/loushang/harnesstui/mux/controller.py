@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from secrets import token_hex
 
-from loushang.appserver.client import AppClientV1, AppConnectionClosedError
-from loushang.appserver.execution.client import ExecutionClientV1
+from loushang.appserver.client import AppConnectionClosedError, AppServicePortV1
+from loushang.appserver.execution.client import ExecutionPortV1
 from loushang.appserver.execution.recovery import (
     PendingSubmissionV1,
     SubmissionDeliveryV1,
@@ -47,11 +47,11 @@ class HostedMuxControllerV1:
 
     def __init__(
         self,
-        client: AppClientV1,
+        client: AppServicePortV1,
         *,
         selector: MuxSelectorV1,
         mailbox_capacity: int = 256,
-        execution_client: ExecutionClientV1 | None = None,
+        execution_client: ExecutionPortV1 | None = None,
     ) -> None:
         for method in (
             "attach_mux",

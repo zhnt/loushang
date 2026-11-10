@@ -14,10 +14,10 @@ from typing import TypeVar
 from loushang.appserver.managed_mux import (
     ManagedMuxCreatedV1,
     ManagedMuxCreateV1,
-    ManagedMuxCreationClientV1,
+    ManagedMuxCreationPortV1,
 )
 from loushang.appserver.managed_mux_close import (
-    ManagedMuxCloseClientV1,
+    ManagedMuxClosePortV1,
     ManagedMuxCloseStateV1,
     ManagedMuxCloseV1,
 )
@@ -69,7 +69,7 @@ _Result = TypeVar("_Result")
 
 @dataclass(eq=False, slots=True)
 class _Controller:
-    scope: AppClientScopeV1
+    scope: ScopedAppServicePortV1
     mux_id: str
     attachment: MuxAttachmentV1 | None = None
     operation: asyncio.Task[object] | None = None
@@ -93,7 +93,7 @@ class ScopedAppServiceV1:
         self._operations = _OwnedAppOperations(close_timeout=close_timeout)
         self._service = service
         self._timeout = float(close_timeout)
-        self._scopes: set[AppClientScopeV1] = set()
+        self._scopes: set[ScopedAppServicePortV1] = set()
         self._controllers: dict[str, _Controller] = {}
         self._opening = 0
         self._creating = 0
@@ -110,12 +110,12 @@ class ScopedAppServiceV1:
     def pending_counts(self) -> tuple[int, int]:
         return self._operations.pending_counts
 
-    def open_client_scope(self) -> AppClientScopeV1:
+    def open_client_scope(self) -> ScopedAppServicePortV1:
         if self._closed or self._service._closed:
             raise AppServiceError(AppErrorCodeV1.SERVICE_CLOSED)
         if len(self._scopes) >= 8:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        scope = AppClientScopeV1(self, _token=self)
+        scope = ScopedAppServicePortV1(self, _token=self)
         self._scopes.add(scope)
         return scope
 
@@ -205,7 +205,13 @@ class ScopedAppServiceV1:
 
 
 class AppClientScopeV1:
-    """Owned AppClient capability; close fences delivery authority, not turns."""
+    """Application-owned scoped service-port implementation.
+
+    Outer composition can inject this capability into a connection. Transport
+    and authentication remain on that edge. Close fences delivery authority;
+    existing application owners retain accepted work and interaction settlement.
+    The legacy class name preserves type identity for ScopedAppServicePortV1.
+    """
 
     def __init__(self, owner: ScopedAppServiceV1, *, _token: object) -> None:
         if _token is not owner:
@@ -273,7 +279,7 @@ class AppClientScopeV1:
             raise AppServiceError(AppErrorCodeV1.SERVICE_CLOSED)
 
     @property
-    def managed_mux_client(self) -> ManagedMuxCreationClientV1 | None:
+    def managed_mux_client(self) -> ManagedMuxCreationPortV1 | None:
         self._require_open()
         return self if self._service._managed_mux is not None else None
 
@@ -289,7 +295,7 @@ class AppClientScopeV1:
         )
 
     @property
-    def managed_mux_close_client(self) -> ManagedMuxCloseClientV1 | None:
+    def managed_mux_close_client(self) -> ManagedMuxClosePortV1 | None:
         self._require_open()
         binding = self._service._managed_mux
         return self if binding is not None and binding.closing is not None else None
@@ -658,4 +664,6 @@ class AppClientScopeV1:
         self._owner._scopes.discard(self)
 
 
-__all__ = ["AppClientScopeV1", "ScopedAppServiceV1"]
+ScopedAppServicePortV1 = AppClientScopeV1
+
+__all__ = ["AppClientScopeV1", "ScopedAppServiceV1", "ScopedAppServicePortV1"]

@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 
-from .client import AppClientV1, SessionDiscoveryClientV1
+from .client import AppServicePortV1, SessionDiscoveryPortV1
 from .dispatch import dispatch_request
-from .execution.client import ExecutionClientV1
+from .execution.client import ExecutionPortV1
 from .execution.codec import EXECUTION_PROTOCOL_VERSION, decode_call
 from .execution.codec import encode_response as encode_execution_response
 from .execution.dispatch import dispatch_execution
@@ -25,8 +25,8 @@ from .framing import (
     AppMessageStreamV1,
     require_timeout,
 )
-from .managed_mux import ManagedMuxCreationClientV1
-from .managed_mux_close import ManagedMuxCloseClientV1
+from .managed_mux import ManagedMuxCreationPortV1
+from .managed_mux_close import ManagedMuxClosePortV1
 from .managed_mux_wire import (
     MANAGED_MUX_CLOSE_PROTOCOL_VERSION,
     MANAGED_MUX_PROTOCOL_VERSION,
@@ -75,15 +75,15 @@ class AppServerConnectionV1:
 
     def __init__(
         self,
-        client: AppClientV1,
+        client: AppServicePortV1,
         stream: AppMessageStreamV1,
         *,
         phase_timeout: float = 10.0,
         profile: AppConnectionProfileV1 = AppConnectionProfileV1.STDIO,
-        discovery: SessionDiscoveryClientV1 | None = None,
-        execution: ExecutionClientV1 | None = None,
-        managed_mux: ManagedMuxCreationClientV1 | None = None,
-        managed_mux_close: ManagedMuxCloseClientV1 | None = None,
+        discovery: SessionDiscoveryPortV1 | None = None,
+        execution: ExecutionPortV1 | None = None,
+        managed_mux: ManagedMuxCreationPortV1 | None = None,
+        managed_mux_close: ManagedMuxClosePortV1 | None = None,
     ) -> None:
         require_timeout(phase_timeout)
         if supports_execution(profile):
@@ -104,7 +104,7 @@ class AppServerConnectionV1:
         self._managed_mux_close = managed_mux_close
         self._profile = profile
         self._discovery = discovery
-        self._client = client
+        self._service_port = client
         self._stream = stream
         self._timeout = phase_timeout
         self._tasks: set[asyncio.Task[None]] = set()
@@ -216,7 +216,7 @@ class AppServerConnectionV1:
                 ):
                     raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
                 result: AppResultPayloadV1 = await dispatch_request(
-                    self._client, request, discovery=self._discovery
+                    self._service_port, request, discovery=self._discovery
                 )
             except AppServiceError as error:
                 result = AppFailureV1(error.code)

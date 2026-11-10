@@ -79,10 +79,10 @@ buffers, authentication, AppHost composition, Hosting process mechanics,
 Product policy, or UI state.
 
 The [implemented G16 profile](../appserver/detachable-local-workspace-g16.md)
-adds an optional semantic client scope: connection-bound controller
+adds an optional semantic client scope: per-client controller
 authority, application-owned admitted execution and control-loss interaction
 settlement. `client_scope.ScopedAppServiceV1` explicitly installs this policy on
-one service and creates bounded `AppClientScopeV1` capabilities. Its private
+one service and creates bounded `ScopedAppServicePortV1` capabilities. Its private
 operation owner retains admitted work independently of delivery cancellation;
 its private interaction policy denies questions on control loss. AppHost's
 optional local deployment now binds its public ready-scope factory into the
@@ -98,12 +98,22 @@ the post-merge Hosting regression tracked by G17.0.
 The application must install it before exposing clients or starting execution,
 and must never expose a legacy unscoped client to the same untrusted peers.
 
+R2's canonical-name migration on 2026-11-09 retains `AppClientScopeV1` as the
+same concrete type as `ScopedAppServicePortV1`; the class declaration and
+runtime name remain legacy for compatibility. `AppServicePortV1` is the
+separate shared Protocol provided by this facade, not a second owner or a
+scoped Protocol variant. The application creates it independently of transport;
+authentication stays on the selected connection edge. Existing application
+operation/interaction owners, scope identity and `open_client_scope()` remain
+unchanged. See the [canonical/legacy name table](../appserver/README.md#service-port-names-and-legacy-compatibility)
+and [R2 delivery evidence](../drafts/appclient-contract-rename-plan.md).
+
 The current implementation contains:
 
 - `ports.py`: the independently owned hosted Session and resolver protocols;
 - `runtime.py`: MuxSpace, member, Session and attachment lifecycle;
-- `client.py`: the in-process implementation of AppServer's transport-neutral
-  AppClient contract;
+- `client.py`: the in-process caller facade implementing AppServer's
+  transport-neutral `AppServicePortV1` contract;
 - `continuity.py`: the G13 strict desired-state record and lease/store ports;
 - `continuity_file.py`: the exact-root private atomic JSON adapter with one
   OS-released lock per application key;
@@ -125,7 +135,7 @@ GUI platform acceptance remain separate integration work.
 ```text
 AppService -> AppServer protocol
 Product outer adapter -> AppService ports + Product/Harness/AppHost public contracts
-Harnesstui Hosted Profile -> AppClient + AppServer protocol
+Harnesstui Hosted Profile -> AppServicePortV1 + AppServer protocol
 apphost.application -> AppService
 apphost.continuity -> apphost.application + AppService
 

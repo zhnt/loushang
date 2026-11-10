@@ -7,8 +7,8 @@ from collections.abc import Awaitable, Callable
 from secrets import token_hex
 from typing import Literal
 
-from loushang.appserver.client import AppClientV1
-from loushang.appserver.execution.client import ExecutionClientV1
+from loushang.appserver.client import AppServicePortV1
+from loushang.appserver.execution.client import ExecutionPortV1
 from loushang.appserver.execution.recovery import (
     PendingSubmissionV1,
     SubmissionDeliveryV1,
@@ -45,7 +45,7 @@ class HostedConversationActionBinding:
     The callback must reject results for a replaced target or newer request.
     """
 
-    def __init__(self, client: AppClientV1, *, attachment_id: str, generation: int,
+    def __init__(self, client: AppServicePortV1, *, attachment_id: str, generation: int,
                  member_id: str, present: Callable[[RequestDeliveryState], None]) -> None:
         self._client = client
         self._attachment_id, self._generation, self._member_id = attachment_id, generation, member_id
@@ -99,7 +99,7 @@ class HostedExecutionSubmitBinding:
     """Submit one stable input through the optional execution profile."""
 
     def __init__(
-        self, client: ExecutionClientV1, recovery: SubmissionRecoveryV1, *,
+        self, client: ExecutionPortV1, recovery: SubmissionRecoveryV1, *,
         control: SessionSnapshotRequestV1, present: Callable[[RequestDeliveryState], None],
         acknowledged: Callable[[], None],
     ) -> None:
@@ -127,9 +127,9 @@ class HostedExecutionSubmitBinding:
 
 
 def submit_hosted_conversation_action(
-    client: AppClientV1, actions: ShellActions, state: HostedMuxState, window: HarnessWindowState,
+    client: AppServicePortV1, actions: ShellActions, state: HostedMuxState, window: HarnessWindowState,
     *, current: Callable[[], HostedMuxState | None], request_id: int, text: str, mode: ConversationMode,
-    execution_client: ExecutionClientV1 | None = None,
+    execution_client: ExecutionPortV1 | None = None,
     execution_submissions: dict[ExecutionSubmissionKey, SubmissionRecoveryV1] | None = None,
     execution_acknowledged: Callable[[SubmissionRecoveryV1], None] | None = None,
 ) -> bool:
