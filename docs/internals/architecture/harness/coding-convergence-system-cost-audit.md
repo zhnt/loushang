@@ -582,3 +582,11 @@ Coding 新增42行、删除42行，原 Package Product 新增15行，全系统�
 五份 Coding 直接 ACL/身份检查退出，由一个既有 stage-review 策略绑定接入原 Product。
 测试挂点净增4行，另计。当前430份 Coding 源码111876行、1969份系统源码648269行。
 见[A138](coding-responsibility-convergence-progress.md#a138统一windows退休根校验)。
+
+
+## A139 共用 Windows 退休记录读取
+
+Coding 新增104行、删除140行。原 Package Product 新增25行、删除3行。
+系统净减14行。四条退休路径复用原收据 IO，解码及 attempt 绑定由同一 owner 执行。
+测试挂点净增1行，另计。当前430份 Coding 源码111840行、1969份系统源码648255行。
+见[A139](coding-responsibility-convergence-progress.md#a139共用windows退休记录读取)。

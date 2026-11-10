@@ -16,7 +16,6 @@ from loushang.harness.worker.payload._windows_stage_retirement import (
 )
 
 from .package_legacy_windows_receipt import (
-    read_windows_private_receipt,
     write_windows_private_receipt,
 )
 from .package_product_worker_windows_partial_stage_review import (
@@ -30,6 +29,7 @@ from .package_product_worker_windows_recovery_inventory import (
 )
 from .package_product_worker_windows_stage_retirement import (
     CodingWindowsWorkerStageRetirementReceiptV1,
+    _read_attempt_retirement_record,
     _retirement,
     _stage_exists,
 )
@@ -254,51 +254,40 @@ def _full_retirement_artifact_present(
 def _read_start(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> CodingWindowsWorkerPartialStageReviewV1 | None:
-    raw = read_windows_private_receipt(
+    return _read_attempt_retirement_record(
         _start_path(product, attempt_id),
-        maximum_bytes=_MAX_REVIEW_BYTES,
-        allow_unpublished_stage=True,
+        attempt_id,
+        CodingWindowsWorkerPartialStageReviewV1,
+        _MAX_REVIEW_BYTES,
+        CodingWindowsWorkerPartialStageRetirementError,
+        "coding_worker_partial_retirement_start_invalid",
     )
-    review = (
-        None if raw is None else CodingWindowsWorkerPartialStageReviewV1.from_bytes(raw)
-    )
-    if review is not None and review.attempt_id != attempt_id:
-        raise CodingWindowsWorkerPartialStageRetirementError(
-            "coding_worker_partial_retirement_start_invalid"
-        )
-    return review
 
 
 def _read_receipt(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> CodingWindowsWorkerStageRetirementReceiptV1 | None:
-    return _read_bound_receipt(product, attempt_id, _receipt_path(product, attempt_id))
+    return _read_attempt_retirement_record(
+        _receipt_path(product, attempt_id),
+        attempt_id,
+        CodingWindowsWorkerStageRetirementReceiptV1,
+        _MAX_RECEIPT_BYTES,
+        CodingWindowsWorkerPartialStageRetirementError,
+        "coding_worker_partial_retirement_receipt_invalid",
+    )
 
 
 def _read_root_intent(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> CodingWindowsWorkerStageRetirementReceiptV1 | None:
-    return _read_bound_receipt(
-        product, attempt_id, _root_intent_path(product, attempt_id)
+    return _read_attempt_retirement_record(
+        _root_intent_path(product, attempt_id),
+        attempt_id,
+        CodingWindowsWorkerStageRetirementReceiptV1,
+        _MAX_RECEIPT_BYTES,
+        CodingWindowsWorkerPartialStageRetirementError,
+        "coding_worker_partial_retirement_receipt_invalid",
     )
-
-
-def _read_bound_receipt(
-    product: WindowsLocalWheelProductSessionOwner, attempt_id: str, path: Path
-) -> CodingWindowsWorkerStageRetirementReceiptV1 | None:
-    raw = read_windows_private_receipt(
-        path, maximum_bytes=_MAX_RECEIPT_BYTES, allow_unpublished_stage=True
-    )
-    receipt = (
-        None
-        if raw is None
-        else CodingWindowsWorkerStageRetirementReceiptV1.from_bytes(raw)
-    )
-    if receipt is not None and receipt.attempt_id != attempt_id:
-        raise CodingWindowsWorkerPartialStageRetirementError(
-            "coding_worker_partial_retirement_receipt_invalid"
-        )
-    return receipt
 
 
 def _start_path(product: WindowsLocalWheelProductSessionOwner, attempt_id: str) -> Path:

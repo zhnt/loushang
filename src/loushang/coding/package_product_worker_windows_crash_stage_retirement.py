@@ -15,7 +15,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
 )
 
 from .package_legacy_windows_receipt import (
-    read_windows_private_receipt,
     write_windows_private_receipt,
 )
 from .package_product_worker_windows_crash_cleanup_review import (
@@ -36,6 +35,7 @@ from .package_product_worker_windows_recovery_inventory import (
 )
 from .package_product_worker_windows_stage_retirement import (
     CodingWindowsWorkerStageRetirementReceiptV1,
+    _read_attempt_retirement_record,
     _remove_remaining_stage,
     _stage_exists,
 )
@@ -275,53 +275,40 @@ def _require_no_other_retirement(
 def _read_start(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> CodingWindowsWorkerCrashStageReviewV1 | None:
-    raw = read_windows_private_receipt(
+    return _read_attempt_retirement_record(
         _start_path(product, attempt_id),
-        maximum_bytes=_MAX_REVIEW_BYTES,
-        allow_unpublished_stage=True,
+        attempt_id,
+        CodingWindowsWorkerCrashStageReviewV1,
+        _MAX_REVIEW_BYTES,
+        ValueError,
+        "Windows Worker crash stage start changed",
     )
-    review = (
-        None if raw is None else CodingWindowsWorkerCrashStageReviewV1.from_bytes(raw)
-    )
-    if review is not None and review.attempt_id != attempt_id:
-        raise ValueError("Windows Worker crash stage start changed")
-    return review
 
 
 def _read_receipt(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> CodingWindowsWorkerStageRetirementReceiptV1 | None:
-    raw = read_windows_private_receipt(
+    return _read_attempt_retirement_record(
         _receipt_path(product, attempt_id),
-        maximum_bytes=_MAX_RECEIPT_BYTES,
-        allow_unpublished_stage=True,
+        attempt_id,
+        CodingWindowsWorkerStageRetirementReceiptV1,
+        _MAX_RECEIPT_BYTES,
+        ValueError,
+        "Windows Worker crash stage receipt changed",
     )
-    receipt = (
-        None
-        if raw is None
-        else CodingWindowsWorkerStageRetirementReceiptV1.from_bytes(raw)
-    )
-    if receipt is not None and receipt.attempt_id != attempt_id:
-        raise ValueError("Windows Worker crash stage receipt changed")
-    return receipt
 
 
 def _read_root_intent(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> CodingWindowsWorkerStageRetirementReceiptV1 | None:
-    raw = read_windows_private_receipt(
+    return _read_attempt_retirement_record(
         _root_intent_path(product, attempt_id),
-        maximum_bytes=_MAX_RECEIPT_BYTES,
-        allow_unpublished_stage=True,
+        attempt_id,
+        CodingWindowsWorkerStageRetirementReceiptV1,
+        _MAX_RECEIPT_BYTES,
+        ValueError,
+        "Windows Worker crash stage root intent changed",
     )
-    receipt = (
-        None
-        if raw is None
-        else CodingWindowsWorkerStageRetirementReceiptV1.from_bytes(raw)
-    )
-    if receipt is not None and receipt.attempt_id != attempt_id:
-        raise ValueError("Windows Worker crash stage root intent changed")
-    return receipt
 
 
 def _start_path(product: WindowsLocalWheelProductSessionOwner, attempt_id: str):

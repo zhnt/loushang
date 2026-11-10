@@ -190,6 +190,21 @@ class _IntentRecord(Protocol):
 IntentT = TypeVar("IntentT", bound=_IntentRecord)
 
 
+def decode_windows_worker_attempt_record(
+    raw: bytes | None,
+    record_type: type[IntentT],
+    attempt_id: str,
+    *,
+    invalid_error: Callable[[], Exception],
+) -> IntentT | None:
+    """Decode retained bytes and require the caller's exact Worker attempt."""
+
+    record = None if raw is None else record_type.from_bytes(raw)
+    if record is not None and record.attempt_id != attempt_id:
+        raise invalid_error()
+    return record
+
+
 class _PayloadSelection(Protocol):
     @property
     def digest(self) -> str: ...
@@ -257,9 +272,16 @@ class WindowsProductWorkerIntentRecords(Generic[IntentT]):
                 maximum_bytes=self._maximum_bytes(),
                 allow_unpublished_stage=allow_unpublished_stage,
             )
-        intent = None if raw is None else self._record_type.from_bytes(raw)
-        if intent is not None and intent.attempt_id != attempt_id:
-            raise self._failure("invalid")
+        intent = (
+            None
+            if raw is None
+            else decode_windows_worker_attempt_record(
+                raw,
+                self._record_type,
+                attempt_id,
+                invalid_error=lambda: self._failure("invalid"),
+            )
+        )
         self._product.assert_root_gc_authority_current()
         return intent
 

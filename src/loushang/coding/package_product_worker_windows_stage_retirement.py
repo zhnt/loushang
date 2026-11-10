@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from loushang.harness.package_product._worker_windows_attempt import (
+    IntentT,
+    decode_windows_worker_attempt_record,
     inspect_windows_product_worker_retirement_ids,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -409,60 +411,62 @@ def _retirement_attempt_ids_from_names(names: tuple[str, ...]) -> frozenset[str]
     return frozenset(attempts)
 
 
+def _read_attempt_retirement_record(
+    path: Path,
+    attempt_id: str,
+    record_type: type[IntentT],
+    maximum_bytes: int,
+    error_type: type[Exception],
+    invalid_message: str,
+) -> IntentT | None:
+    raw = read_windows_private_receipt(
+        path, maximum_bytes=maximum_bytes, allow_unpublished_stage=True
+    )
+    return decode_windows_worker_attempt_record(
+        raw,
+        record_type,
+        attempt_id,
+        invalid_error=lambda: error_type(invalid_message),
+    )
+
+
 def _read_review(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> CodingWindowsWorkerStageReviewV1 | None:
-    raw = read_windows_private_receipt(
+    return _read_attempt_retirement_record(
         _start_path(product, attempt_id),
-        maximum_bytes=_MAX_REVIEW_BYTES,
-        allow_unpublished_stage=True,
+        attempt_id,
+        CodingWindowsWorkerStageReviewV1,
+        _MAX_REVIEW_BYTES,
+        CodingWindowsWorkerStageRetirementError,
+        "coding_worker_stage_retirement_start_invalid",
     )
-    review = None if raw is None else CodingWindowsWorkerStageReviewV1.from_bytes(raw)
-    if review is not None and review.attempt_id != attempt_id:
-        raise CodingWindowsWorkerStageRetirementError(
-            "coding_worker_stage_retirement_start_invalid"
-        )
-    return review
 
 
 def _read_receipt(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> CodingWindowsWorkerStageRetirementReceiptV1 | None:
-    raw = read_windows_private_receipt(
+    return _read_attempt_retirement_record(
         _receipt_path(product, attempt_id),
-        maximum_bytes=_MAX_RECEIPT_BYTES,
-        allow_unpublished_stage=True,
+        attempt_id,
+        CodingWindowsWorkerStageRetirementReceiptV1,
+        _MAX_RECEIPT_BYTES,
+        CodingWindowsWorkerStageRetirementError,
+        "coding_worker_stage_retirement_receipt_invalid",
     )
-    receipt = (
-        None
-        if raw is None
-        else CodingWindowsWorkerStageRetirementReceiptV1.from_bytes(raw)
-    )
-    if receipt is not None and receipt.attempt_id != attempt_id:
-        raise CodingWindowsWorkerStageRetirementError(
-            "coding_worker_stage_retirement_receipt_invalid"
-        )
-    return receipt
 
 
 def _read_root_delete_intent(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> CodingWindowsWorkerStageRetirementReceiptV1 | None:
-    raw = read_windows_private_receipt(
+    return _read_attempt_retirement_record(
         _root_delete_intent_path(product, attempt_id),
-        maximum_bytes=_MAX_RECEIPT_BYTES,
-        allow_unpublished_stage=True,
+        attempt_id,
+        CodingWindowsWorkerStageRetirementReceiptV1,
+        _MAX_RECEIPT_BYTES,
+        CodingWindowsWorkerStageRetirementError,
+        "coding_worker_stage_retirement_root_intent_invalid",
     )
-    receipt = (
-        None
-        if raw is None
-        else CodingWindowsWorkerStageRetirementReceiptV1.from_bytes(raw)
-    )
-    if receipt is not None and receipt.attempt_id != attempt_id:
-        raise CodingWindowsWorkerStageRetirementError(
-            "coding_worker_stage_retirement_root_intent_invalid"
-        )
-    return receipt
 
 
 def _start_path(product: WindowsLocalWheelProductSessionOwner, attempt_id: str):
