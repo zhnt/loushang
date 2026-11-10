@@ -2,11 +2,27 @@
 
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
-- Implementation status: partial（A81完整delegated Goal Work/Session轮次交接已接通获有界接受、P2/P3/A80完整canonical Catalog custody、P2/A79完整Product selected revision输入、P1/A78完整Linux恢复/evidence及A1–A71指定路径、A74三类payload恢复、A77完整Linux history proof、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口及A76备份拓扑存储）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
+- Implementation status: partial（A82系统成本复核及私有适配退出、A81完整delegated Goal Work/Session轮次交接已接通获有界接受、P2/P3/A80完整canonical Catalog custody、P2/A79完整Product selected revision输入、P1/A78完整Linux恢复/evidence及A1–A71指定路径、A74三类payload恢复、A77完整Linux history proof、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口及A76备份拓扑存储）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A81完整delegated Goal Work/Session轮次交接）
+## 当前状态（2026-11-10，A82系统成本复核与无消费者适配退出）
+
+对原1845源冻结基线和A81全部1967源逐文件核实：A81系统净增12986，
+不是Harness单独增长；Harness本身+31195、Code−23576，其他接收/上游区域
++5367。同期原main提交树净增3583，余9403包含重构及合并适配，不冒称独占归因。
+现有证据证明职责归位，未证明全系统更简单；已定位A56效果回借、A80接口层和
+A78重复装配等复杂度债。下一实施优先少层/去重，不继续只按Code目录减量选题。
+完整组件账、口径及可减/必要边界见[系统成本复核](coding-convergence-system-cost-audit.md)。
+
+本片实际仅删除A81误保留的无消费者私有_HistorySource及import，Code/系统各−10，
+接收侧0；其余7个顶层定义AST保持，真实shared builder/公开DTO/持久合同保持。
+原67固定加原公开兼容模块77过（5.76s），单源mypy/Ruff/format通过，三视角窄核
+无阻断。当前Coding430文件114169行、系统1967源647770行，距15K仍99169行。
+这10行不代表全量增长已解决；完整P1–P4/领域化/15K和原兼容恢复义务继续。
+必要适度增长仍须有具体职责/复用/全部适配成本依据，不新增或放宽PR gate。
+
+## A81历史交付（2026-11-10，完整delegated Goal Work/Session轮次交接）
 
 从A80 `a442f3c7a`接续；完整family选择/确认、Work创建/交付/完成、报告发布、
 失败interrupt、取消/idle结清及release/close重试已接入原HarnessWork Session集成。

@@ -12,10 +12,7 @@ from loushang.harness.multiagent import (
     ControlLimits,
     ForkTier,
 )
-from loushang.harness.session.multiagent import (
-    AgentSessionHistorySource,
-    build_agent_context_plan,
-)
+from loushang.harness.session.multiagent import build_agent_context_plan
 from loushang.harnesswork.goal import GoalError
 from loushang.harnesswork.goal.records import canonical
 
@@ -85,13 +82,6 @@ def message_digest(messages):
 
 def detach_message(message):
     return deserialize_message(json.loads(canonical(serialize_message(message))))
-
-
-class _HistorySource(AgentSessionHistorySource):
-    def __init__(self, manager, blobs):
-        super().__init__(
-            manager, blobs, error_type=GoalError, detach_message=detach_message
-        )
 
 
 def build_context(

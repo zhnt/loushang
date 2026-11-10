@@ -141,3 +141,13 @@ runtime-core89.63%未达原90%阈值。冻结A80源同失败目标935过/2skip/7
 ExecutionScope，不消除 calculator/repository 的真实用户能力。普通 Worker、P2
 启动/Plugin/Session、其余托管/Continuity与P4入口/存量职责继续。
 KD003仍未实施；KD011/A33仍待用户且不采用。完整P1–P4/≤15K Goal保持partial。
+
+
+## A82后续：退出无消费者私有history适配
+
+本文件的147行及兼容类保留描述是A81交付时点。A82对真实消费者及公开/持久
+合同复核发现，Code私有_HistorySource已无调用，实际两入口直接使用共享builder；
+曾存在私FQN不是继续保留的依据。因此删除该壳及unused import，Code源147→137。
+原7个其余顶层定义AST及所有实际算法保持，原固定加公开兼容77项通过。
+原A81成本/源码/fixture记录不重写；当前计量与复杂度债见
+[系统成本复核](../coding-convergence-system-cost-audit.md)。
