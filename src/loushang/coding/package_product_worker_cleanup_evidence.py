@@ -58,19 +58,6 @@ class CodingPosixWorkerCleanupEvidenceAuthority(
             super().current_tree_witness(attempt_id=attempt_id),
         )
 
-    def _complete_repair_verified(
-        self,
-        *,
-        review: CodingWorkerHistoryRetentionReviewV1,
-        receipt_fingerprint: str,
-        attempt_id: str,
-    ) -> bool:
-        return super()._complete_repair_verified(
-            review=review,
-            receipt_fingerprint=receipt_fingerprint,
-            attempt_id=attempt_id,
-        )
-
     def verify_tree_settlement(
         self,
         *,
@@ -92,33 +79,6 @@ class CodingPosixWorkerCleanupEvidenceAuthority(
             witness=witness,
             evidence_authority_id=evidence_authority_id,
             evidence_authority_fingerprint=evidence_authority_fingerprint,
-        )
-
-    def _verify_tree_review(
-        self,
-        *,
-        receipt_fingerprint: str,
-        attempt_id: str,
-        owner_generation: int,
-        host_identity: str,
-        boot_identity: str,
-        witness: object,
-        evidence_authority_id: str,
-        evidence_authority_fingerprint: str,
-        group_status: str,
-        current_boot_identity: str | None,
-    ) -> bool:
-        return super()._verify_tree_review(
-            receipt_fingerprint=receipt_fingerprint,
-            attempt_id=attempt_id,
-            owner_generation=owner_generation,
-            host_identity=host_identity,
-            boot_identity=boot_identity,
-            witness=witness,
-            evidence_authority_id=evidence_authority_id,
-            evidence_authority_fingerprint=evidence_authority_fingerprint,
-            group_status=group_status,
-            current_boot_identity=current_boot_identity,
         )
 
     def verify_changed_boot_absence(

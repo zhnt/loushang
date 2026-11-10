@@ -112,3 +112,13 @@ Code及Core两个真实context入口仍调用原共享builder，由其直接构�
 每批分别证明旧操作体退出、实际复用、接口/兼容全成本及状态/资源权威没有复制。
 新增共享模块须有具体职责和成本依据；不以“Coding减少”单项接受架构收益。
 必要、适度系统增长的原准则保持，不能把本审计擅自改成新PR门禁或无条件净减指标。
+
+
+## A83后续：退出cleanup authority两私有转发
+
+实际移除 `_complete_repair_verified` 与 `_verify_tree_review` 两原样super覆盖，
+Code源153→113，接收侧无新增，整模块在仅移除两定义后的AST与原源完全一致。
+公开入口/签名/DTO/authority身份不变，私有实现metadata随继承改变；Core正常、
+UnderGuard/Registered分派及C5静态绑定均核实保持。原143固定观察通过（23.09s），
+未改反射probe或任何期望。三个独立视角窄接受；不把40行解释为9k成本债已解决。
+当前Coding114129/系统647730，完整Goal保持partial。
