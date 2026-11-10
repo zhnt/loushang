@@ -685,3 +685,77 @@ Code仍保原公开类型、两mode与typed薄入口，normal strict-history与J
 机制、两源全成本（Code−63/系统+11）、实际114项及三视角有界接受统一见
 [KD010 §17](windows-worker-semantic-convergence.md#17-a40恢复证明合同澄清与纯历史判据实际归位)。
 这不接受尚待用户的A33 Product协调图，不提供native效果/授权或整个Goal完成证明。
+
+
+## A107：初始 V1 封口复用原 HistoryPublication
+
+原 Code rotate_v2 中五流初始封口的完整 root pin/RootedFileIO/bind、缺锁恢复、
+rollback/read/manifest/seal/reread 与成功后的 currentness 现在归原 HistoryPublication。
+该 owner 已负责同五流 Rooted 发布/退休；原 segmented init/read/rollback/seal 和
+Journal IO 继续直接复用，不重复计收益。已有 _lock_streams 与 Code 两处五锁循环
+合一：只给原循环加默认 False 的 empty-supervisor 分支，commit/retire 仍不扫描或
+初始化缺失锁；初封的合格 True 分支才执行原扫描/建锁/空 head 程序。
+
+Code 保 Linux、精确 Product 类型/coding 准入，quiescence→active拒绝→GC/current
+以及最新 checkpoint 的原六项 empty-supervisor 资格。Core 借现有
+HistorySnapshotAccess，Code 直接复用 _CodingHistoryAccess；不新建 reader、manager、
+DTO、state 或 Code IO callback。两个新 static 操作不构造 HistoryPublication 实例
+或读取其 reader。公开函数/错误身份和私有封口薄入口保留；公开路径在原政策之后
+直接调用 Core 完整同步操作。
+
+### 原副作用与错误范围
+
+空 supervisor 缺锁时可先创建 lock/active/head，再因 owner/preparation 存在而拒绝；
+不能将文件拒绝移到锁/恢复之前。存在检查仍只调用原 RootedFile.stat，不换成有界
+读；其原私有/regular 文件准入也保持。rollback、manifest0 可能在后续坏流拒绝前
+已发生；跨流 seal 可部分成功，不新增原子批回滚。root 关闭或最后 currentness
+失败时也可能已写完。三层原 with 的普通同步方法保关闭顺序和异常链，不引入新
+contextmanager/ExitStack 或额外前置 assert，不缓存两次 state_root。
+
+Code 原 lock=sibling 在 try 外，复用 Core 原 loop 后 sibling 在 try 内，不能说两
+完整锁体字面 AST 相同。真实 RootedFile.sibling 仅 borrow/name 检查和纯投影，不
+产生 FileNotFoundError；实际缺席来自 acquire_lock。RootedFile 无析构 FD，锁 FD
+保存在原 _Operation.lock_fds，helper 返回不提前解锁。任意假对象的 sibling 缺失
+异常/析构时点不在等价承诺内。锁后完整封口体仅错误/预算/存在 helper 名回绑后
+AST 同；Core 普通 False 分支去新可选分支可还原原整个函数 AST，其余原发布/
+退休/owner/unlink 方法与 Code 前置政策保持。
+
+### 新消费者及门禁边界
+
+这是 Code rotate→Core Publication 的新增真实依赖，不用 Code 别的 wrapper 隐藏。
+三独立技术评审与 Root 在完整 Goal 授权内接受此原 owner 方向。C54 原消费者清单
+只增加一个精确路径、Publication 模块/类子集条件下的可选扣减：保原87必需成员、
+原 map/逐路径精确检查、scanner、7节点49断言。可选路径不成为必需存在条件。
+旧 pass 时该路径不在观察集合，guard 不读取它；原 pass 仍 pass。96静态反事实、
+整模块逆 AST 证明范围只缩减，无新 gate/覆盖/route/workflow/platform 或 merge
+失败条件。门禁扩张批准不被推断。
+
+### 成本与有界验证
+
+| 生产源码 | 原物理行 | 当前物理行 | 变化 |
+| --- | ---: | ---: | ---: |
+| Coding history_rotate_v2 | 214 | 89 | −125 |
+| 原 HistoryPublication | 180 | 344 | +164 |
+| 全系统 | 648081 | 648120 | +39 |
+
+两处重复锁环确已合用；其余封口程序属于职责迁移，系统仍净增39，不称净精简。
+全部 import/参数/薄入口/类型/格式计入。当前 Coding430源113219行，系统1968源
+648120行；相对 Goal−24536/+13326、距15K尚98219行。其余1966源/13资源 SHA 同。
+C54测试净增14行；新增显式 probe243行、JSONL274行（273case+26个去重字节值，
+1,564,224 bytes）另计，默认 PR 不发现此 probe。字节池只从冻结旧值无损生成，
+解码后完整273记录等原值，不从候选生成期望。
+
+原 rotate10项过；原 shared/边界27项过。候选6模块44项过（10rotate、7stage、
+7commit、5retire、8既有publication固定对照、7C54），原断言未放宽。另旧源进程内
+路径/SHA守卫捕获273观察（18基础、253单点与2多重关闭故障）；旧273回放过、
+候选273回放过、持久化273在最终来源/SHA守卫下再过，不重复累加为覆盖数。
+初版270用直接写文件的0664模式，提前触发私有拒绝；原脚本/值/运行结果保留。
+仍在旧源上补取0600合法 owner/intent/artifact，并保3个显式0664负例，形成273。
+
+观察使用真实 Rooted 文件/锁/文件字节和权限，但 Product registry/GC/current/
+checkpoint 资格由原测试夹具控制。close 故障为真实 scope 关闭后注入，不冒充
+os.close/fsync/EINTR 或 FD 普查；每个故障用新树，不冒充逐故障同树重试，原两项
+partial-success/retry 节点另提供真实重试证据。四处 candidate-wheel 调用需 host
+runtime，本批保 skip-host-runtime，未计入覆盖。两源限定 mypy、Ruff及依赖图
+检查通过；三独立实际评审/Root 有界接受、旧值与修正及完整帧保留在树外 A107。
+完整 C07、P1–P4、15K及其它历史欠账仍未完成；KD003未实施，KD011/A33待用户未采用。

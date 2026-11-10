@@ -334,3 +334,13 @@ TranscriptIO，reader仍为Code领域适配。当前430源113344/系统1968源64
 相对Goal−24411/+13287，距15K98344；其余1966源/13资源SHA同。显式probe205+
 JSONL21行（4632 bytes）另计，不进默认PR gate。完整验证及限制见
 [A106](key-designs/resume-history-task-custody-convergence.md)。
+
+
+## A107：初始Worker五流封口与原锁循环合用
+
+Coding214→89（−125）、原Publication180→344（+164），系统净+39。全部绑定/参数/
+import/类型/格式计入；普通五锁环合一，其余完整封口是职责迁移，不是系统净精简。
+当前430源113219/系统1968源648120，相对Goal−24536/+13326，距15K98219；其余1966源
+和13资源SHA同。C54范围缩减净增14测试行，显式probe243+JSONL274行（1,564,224B）
+另计。字节池273case/26去重字节值可无损重建旧预期，不进默认PR gate。详见
+[KD004 A107](key-designs/worker-history-responsibility-convergence.md#a107初始-v1-封口复用原-historypublication)。

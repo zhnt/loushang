@@ -27,7 +27,20 @@ A53已完成完整七源R5原型与三视角设计评审，因具体异常scope�
 下一版须按Session上层驱动Worker准备/资源交接重做完整候选，不预支净删或
 接受；详见[KD008 §19](key-designs/worker-product-runtime-convergence.md#19-a53完整-ordinary-联合源码已构建r5-r2不采用)。
 
-## 当前状态（2026-11-10，A106历史读取任务归位）
+## 当前状态（2026-11-10，A107初始Worker封口归位）
+
+初始V1五流封口的完整Rooted程序已归原HistoryPublication，直接复用原五锁循环；
+默认False的commit/retire保持严格缺锁拒绝，合格empty-supervisor才走原恢复分支。
+Code保Product/Linux/coding、quiescence/GC及checkpoint资格，无新manager/reader/IO回借。
+Code−125/Core+164/系统+39；普通锁环合一，其余是职责迁移，非系统净精简。
+当前Coding113219/系统648120，距15K尚98219，相对Goal−24536/+13326；其余1966源/13资源同。
+候选44原验证过（含8既有固定对照），另273旧磁盘观察回放过；C54新增精确可选
+消费者范围只缩减，原87成员/7节点49断言保持。详细成本、夹具修正、真实/受控范围
+及未跑host-runtime限制见[KD004 A107](key-designs/worker-history-responsibility-convergence.md#a107初始-v1-封口复用原-historypublication)。
+两源Ruff/限定mypy/依赖图通过；完整P1–P4仍active/partial，五项Hosting、AI coverage、
+早期构造/绑定及其它历史失败不由本片关闭。KD003未实施，KD011/A33待用户未采用。
+
+## A106历史交付（2026-11-10，历史读取任务归位）
 
 历史读取的loop/容量/Task创建与失败close、保留/完成观察、shield/指纹/交付拒绝
 和drain已归原Session runtime，直接复用原Transcript source/IO及settled_io；Code保

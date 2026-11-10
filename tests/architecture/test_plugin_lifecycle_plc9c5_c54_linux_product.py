@@ -4,7 +4,7 @@ import ast
 import json
 from pathlib import Path
 
-from tests.architecture._source_imports import imported_modules
+from tests.architecture._source_imports import imported_modules, resolved_imports
 
 CANARY = Path("src/loushang/coding/_product_worker_canary.py")
 CANARY_LIFECYCLE = Path("src/loushang/harness/worker/_product_attempt_lifecycle.py")
@@ -470,7 +470,21 @@ def test_c54_has_one_product_root_and_one_way_dependencies() -> None:
             for imported in _imports(path)
         )
     }
-    assert worker_consumers == {
+    optional_initial_seal = {
+        path
+        for path in worker_consumers
+        if path == CODING_ROOT / "package_product_worker_history_rotate_v2.py"
+        and {
+            imported
+            for imported in resolved_imports(path)
+            if imported.startswith("loushang.harness.worker")
+        }
+        <= {
+            "loushang.harness.worker.history._publication",
+            "loushang.harness.worker.history._publication.HistoryPublication",
+        }
+    }
+    assert worker_consumers - optional_initial_seal == {
         CANARY,
         APPHOST_PRODUCT,
         APPHOST_CANARY,
