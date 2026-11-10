@@ -17,6 +17,7 @@ pub struct TrayHost {
     enable: bool,
     reconnect: bool,
     start: bool,
+    start_label: String,
     stop: bool,
 }
 
@@ -33,7 +34,6 @@ pub struct TrayProjection {
     enable_label: String,
     info_label: String,
     reconnect_label: String,
-    start_label: String,
     stop_label: String,
     web_url: Option<String>,
     hosts: Vec<TrayHost>,
@@ -128,7 +128,7 @@ fn apply(app: &AppHandle, projection: TrayProjection) -> tauri::Result<()> {
             ("enable", &projection.enable_label, host.enable),
             ("info", &projection.info_label, true),
             ("reconnect", &projection.reconnect_label, host.reconnect),
-            ("start", &projection.start_label, host.start),
+            ("start", &host.start_label, host.start),
             ("stop", &projection.stop_label, host.stop),
         ] {
             // Show only the applicable start/stop action, or both disabled if unknown.

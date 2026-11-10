@@ -22,6 +22,7 @@ const errors = {
   authentication_failed: "localHost.errors.authentication",
   protocol_incompatible: "localHost.errors.protocol",
   connection_failed: "localHost.errors.connection",
+  connection_unavailable: "localHost.errors.connection",
   client_disconnected: "localHost.errors.disconnected",
   attachment_unavailable: "localHost.errors.attachment",
   management_unavailable: "localHost.errors.unavailable",
@@ -176,6 +177,10 @@ export default function LocalHostGate() {
     enabled: !legacy, selectedId, localName: i18n.t("shell:tray.localHost"),
     workspace, host, supported: supported === true, busy, connection: trayConnection,
     onSelect: (id) => activateHost(id),
+    onConfigureStart: () => {
+      requestHostSettings((value) => value + 1);
+      void invoke("show_tray_window").catch(() => {});
+    },
     onManage: (action, path, instanceId) => action === "connect" && connectionId.current
       ? activateHost(connectionId.current, false) : perform(action, path, instanceId),
   });
@@ -209,7 +214,8 @@ export default function LocalHostGate() {
         </label>
         <div className="local-host-actions">
           <button disabled={busy || !supported || !workspace} onClick={() => void perform("status")}>{t("localHost.refresh")}</button>
-          {host.state === "not_running" ? <button disabled={busy || !supported} onClick={() => void perform("start")}>{t("localHost.start")}</button> : null}
+          {host.state === "not_running" || (isTauri() && selectedId === "local" && host.state === "unknown" && !host.errorCode) ?
+            <button disabled={busy || !supported || !workspace.trim()} onClick={() => void perform("start", workspace.trim())}>{t("localHost.start")}</button> : null}
           {host.state === "running" ? <>
             <button disabled={busy} onClick={() => void perform("connect")}>{t(client ? "localHost.reconnect" : "localHost.connect")}</button>
             <button disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>

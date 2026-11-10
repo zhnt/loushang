@@ -20,13 +20,16 @@ export const listTrayHosts = () => request<HostDirectory>({ operation: "connecti
 export const selectTrayHost = (connectionId: string) => request<HostDirectory>({ operation: "connections/select", connectionId });
 const atHost = <T,>(connectionId: string, value: Record<string, unknown>) => request<T>({ operation: "host/request", connectionId, request: value });
 const unknown = (workspace: string): HostProbe => ({ host: { state: "unknown", errorCode: null }, workspace, supported: false, connection: "unknown" });
-const service = (state: HostState): TrayHost["service"] => state === "not_running" || state === "exited" ? "stopped" : state;
+const service = (state: HostState): TrayHost["service"] => state === "not_running" ? "stopped" : state === "exited" ? "unknown" : state;
+const needsWorkspace = (entry: SavedHost, state: HostStatus) =>
+  entry.selected && entry.kind === "local" && (state.state === "unknown" || state.state === "exited");
 
 /** Saved connections come from the shared native configuration, never localStorage. */
 export function useTrayHosts(options: {
   enabled: boolean; selectedId: string; localName: string; workspace: string; host: HostStatus; supported: boolean; busy: boolean;
   connection: TrayConnection;
   onSelect: (id: string) => Promise<void>;
+  onConfigureStart: () => void;
   onManage: (action: HostAction, workspace?: string, instanceId?: string) => Promise<void>;
 }) {
   const latest = useRef(options); latest.current = options;
@@ -98,6 +101,7 @@ export function useTrayHosts(options: {
       selected: entry.selected, connection: state.connection, service: service(state.host.state),
       busy: switching || workingIds.includes(entry.id) || (entry.selected && options.busy),
       manageable: state.supported, canEnable: !options.busy && !switching,
+      configureStart: needsWorkspace(entry, state.host),
       canStop: Boolean(state.host.instanceId), webUrl: entry.webUrl ?? undefined };
   });
 
@@ -126,6 +130,10 @@ export function useTrayHosts(options: {
     const entry = entries.find((item) => item.id === id);
     if (!entry) return;
     const state = currentProbe(entry);
+    if (action === "start" && needsWorkspace(entry, state.host)) {
+      latest.current.onConfigureStart();
+      return;
+    }
     if (action === "info" || action === "stop") {
       setDetails({ entry, probe: state, confirm: action === "stop" });
       return;

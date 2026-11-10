@@ -16,6 +16,7 @@ export interface TrayHost {
   manageable: boolean;
   canStop?: boolean;
   canEnable?: boolean;
+  configureStart?: boolean;
   webUrl?: string;
 }
 export interface TrayModel { userName: string; language: string; hosts: TrayHost[] }
@@ -28,7 +29,7 @@ export function availableTrayAction(host: TrayHost, action: TrayAction): boolean
   // Reconnect is also the recovery path when status/identity is unavailable.
   if (action === "reconnect") return true;
   if (!host.manageable) return false;
-  if (action === "start") return host.service === "stopped";
+  if (action === "start") return host.service === "stopped" || host.configureStart === true;
   return host.service === "running" && host.canStop !== false;
 }
 export function trayProjection(model: TrayModel, revision: number) {
@@ -41,11 +42,12 @@ export function trayProjection(model: TrayModel, revision: number) {
     currentLabel: current ? `${text.current}${separator}${dots[current.connection]} ${current.name}${status}` : `⚪ ${text.none}`,
     showLabel: text.showLabel, webLabel: text.webLabel, manageLabel: text.manageLabel,
     quitLabel: text.quitLabel, enableLabel: text.enableLabel, infoLabel: text.infoLabel,
-    reconnectLabel: text.reconnectLabel, startLabel: text.startLabel, stopLabel: text.stopLabel,
+    reconnectLabel: text.reconnectLabel, stopLabel: text.stopLabel,
     webUrl: current?.webUrl ?? null,
     hosts: model.hosts.map((host) => ({
       id: host.id, label: `${dots[host.connection]} ${host.name}${host.selected ? " ✓" : ""}`,
       serviceLabel: `${text.service}${separator}${text[host.service]}`,
+      startLabel: host.configureStart ? `${text.startLabel}…` : text.startLabel,
       enable: availableTrayAction(host, "enable"), reconnect: availableTrayAction(host, "reconnect"),
       start: availableTrayAction(host, "start"), stop: availableTrayAction(host, "stop"),
     })),

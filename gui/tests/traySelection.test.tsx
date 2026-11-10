@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useEffect, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import LocalHostGate from "../src/LocalHostGate";
-const backend = vi.hoisted(() => ({ invoke: vi.fn(), settings: vi.fn(), create: vi.fn(), listeners: new Map<string, (event: any) => void>() }));
+const backend = vi.hoisted(() => ({ invoke: vi.fn(), settings: vi.fn(), create: vi.fn(), createNative: vi.fn(), listeners: new Map<string, (event: any) => void>() }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: backend.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: async (name: string, callback: (event: any) => void) => {
   backend.listeners.set(name, callback);
@@ -12,14 +12,16 @@ vi.mock("../src/client/hostApi", () => ({
   sharedSettings: (request: any) => backend.settings(request),
   webRequest: (request: any, id?: string) => backend.settings({ operation: "host/request", connectionId: id, request }),
 }));
-vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: async () => false, createNativeLiveClient: () => { throw new Error("Unexpected direct native connection"); } }));
+vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: async () => false, createNativeLiveClient: backend.createNative }));
 vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: backend.create }));
-vi.mock("../src/App", () => ({ default: () => null, HarnessGui: ({ client, hostSettings, onConnectionChange }: {
-  client: { id: string } | null; hostSettings: ReactNode; onConnectionChange: (state: string) => void;
+vi.mock("../src/App", () => ({ default: () => null, HarnessGui: ({ client, hostSettings, hostSettingsRequest, onConnectionChange }: {
+  client: { id: string } | null; hostSettings: ReactNode; hostSettingsRequest: number; onConnectionChange: (state: string) => void;
 }) => {
   const [draft, setDraft] = useState("");
   useEffect(() => onConnectionChange(client ? "connected" : "disconnected"), [client, onConnectionChange]);
-  return <main><p>{client?.id ?? "offline"}</p><textarea aria-label="Draft" value={draft} onChange={(event) => setDraft(event.target.value)} />{hostSettings}</main>;
+  return <main><p>{client?.id ?? "offline"}</p><textarea aria-label="Draft" value={draft} onChange={(event) => setDraft(event.target.value)} />
+    {hostSettingsRequest > 0 ? <section aria-label="Host settings">{hostSettings}</section> : hostSettings}
+  </main>;
 } }));
 const saved = [
   { id: "local", kind: "local", name: "Local", workspace: "/local", webUrl: "http://127.0.0.1:1422" },
@@ -29,6 +31,7 @@ let selected: string;
 beforeEach(() => {
   selected = "local";
   backend.invoke.mockReset(); backend.settings.mockReset(); backend.create.mockReset(); backend.listeners.clear();
+  backend.createNative.mockReset().mockReturnValue({ id: "native" });
   HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   HTMLDialogElement.prototype.close = function () { this.open = false; };
   backend.create.mockImplementation((workspace, id) => ({ workspace, id }));
@@ -57,6 +60,33 @@ function click(id: string, action: string) {
   act(() => backend.listeners.get("gui://tray-host-action")?.({ payload: { hostId: id, action, revision: projection().revision } }));
 }
 describe("tray selection integration", () => {
+  it("opens Host settings from Start when the local Host cannot be reached and starts a newly chosen workspace", async () => {
+    const settings = backend.settings.getMockImplementation()!;
+    backend.settings.mockImplementation(async (request) => {
+      if (request.operation === "environment") return { supported: true, workspace: "/local", remote: false, connectionId: "local" };
+      return settings(request);
+    });
+    const invoke = backend.invoke.getMockImplementation()!;
+    backend.invoke.mockImplementation(async (command, args) => {
+      if (command === "local_host_action" && args.request.action === "connect") return {
+        state: "unknown", errorCode: "connection_unavailable", instanceId: "old-instance", workspace: "/local",
+      };
+      if (command === "local_host_action" && args.request.action === "start") return {
+        state: "running", errorCode: null, instanceId: "new-instance", workspace: args.request.workspace,
+      };
+      return invoke(command, args);
+    });
+    render(<LocalHostGate />);
+    await waitFor(() => expect(projection()?.hosts[0]).toMatchObject({ start: true, startLabel: "Start…" }));
+    click("local", "start");
+    expect(await screen.findByRole("region", { name: "Host settings" })).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent("connection_unavailable");
+    expect(backend.invoke).not.toHaveBeenCalledWith("local_host_action", { request: expect.objectContaining({ action: "start" }) });
+    fireEvent.change(screen.getByDisplayValue("/local"), { target: { value: "/new-workspace" } });
+    fireEvent.click(screen.getByRole("button", { name: /start and connect/i }));
+    await waitFor(() => expect(backend.createNative).toHaveBeenCalledOnce());
+    expect(backend.invoke).toHaveBeenCalledWith("local_host_action", { request: { action: "start", workspace: "/new-workspace" } });
+  });
   it("switches the bound client and Web destination while retaining the mounted draft", async () => {
     render(<LocalHostGate />);
     await waitFor(() => expect(projection()?.hosts[1]?.enable).toBe(true));

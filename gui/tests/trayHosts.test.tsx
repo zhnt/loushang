@@ -10,6 +10,7 @@ const directory: HostDirectory = { selectedId: "local", connections: [
 function options() { return {
   enabled: true, selectedId: "local", localName: "Local Host", workspace: "/local", host: { state: "running" as const, errorCode: null, instanceId: "local-instance" },
   supported: true, busy: false, connection: "connected" as const, onSelect: vi.fn(async () => {}), onManage: vi.fn(async () => {}),
+  onConfigureStart: vi.fn(),
 }; }
 beforeEach(() => {
   native.invoke.mockReset();
