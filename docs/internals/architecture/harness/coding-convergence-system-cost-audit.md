@@ -488,3 +488,12 @@ snapshot状态；Windows观察使用POSIX效果和受控native端口，不构成
 AI未选中，无新gate/平台/断言。三视角设计/实际、A拒绝及六源SHA保在树外
 `coding-convergence-continue/a125-expiry-name-dedup`。本批为真实同域算法去重，不替代
 完整P1–P4；既有单项JSON错误文本失败和其它旧差距未随此批关闭。
+
+## A126：完整model Work配置寿命归原集成
+
+Code237→196（−41），原HarnessWork.planning68→139（+71），系统+30；纯profile、
+继承导入、六个类型声明和必要排版全部计入，旧布局未全量格式化。真实四caller接入，
+同一对象/原delegate与Session配置owner，没有第二套Task/overlay账本或Code IO回调。
+430 Code源112224，1969系统源648324，较Goal−25531/+13530，距15K97224。
+其它1967源/13资源同；测试272行/gzip1432B与文档另列。本片是完整职责归位而非
+重复算法净删除；A125+A126合计Code−65/系统+6。验证、AI旧失败及边界见[A126](key-designs/planning-work-configuration-custody-convergence.md)。

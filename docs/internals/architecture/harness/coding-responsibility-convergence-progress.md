@@ -26,7 +26,20 @@ dispose前立即重试，新租约不受旧Session关闭影响，最终租约/�
 普查结论。1968源/13资源SHA同A109，精简收益0，完整Goal保持active/partial。
 详情及限制见[KD009 §25](key-designs/startup-session-assembly-convergence.md#25-a110构造后交接窗口的有界核实不新增清理机制)。
 
-## 当前状态（2026-11-10，A125两平台expiry命名去重）
+## 当前状态（2026-11-10，A126完整model Work配置寿命归位）
+
+原HarnessWork.planning的私有Work适配执行同一实例的reservation/allowance/configure/
+delegate/idle/release/fence/leave程序，直接用原Session/Allowance/Work owners；Code原
+Scope类/FQN/构造形状与四caller保留，仅绑定phase、step-tools和错误纯值。Code−41/
+Core+71/系统+30，Coding112224/系统648324，较Goal−25531/+13530，距15K97224；
+非系统净精简。旧151 Work测试与29冻结观察接续，实际181过/1capture skip/7deselect，
+持久29另通过。AI935过但旧coverage89.87/runtime89.62未达90，门禁仍失败；79源SHA
+与每行coverage集合精确同A117，未降阈值。其它验证和限制见[A126](key-designs/planning-work-configuration-custody-convergence.md)。
+A125+A126合计Code−65/系统+6，测试与文档另计。旧pretry失败及最后policy reset失败
+可跳leave的优先级保持，不称全部清理失败修复。完整P1–P4仍active/partial，其它
+Hosting/覆盖率/构造差距及KD003/KD011/A33原边界保持。
+
+## A125历史交付（2026-11-10，两平台expiry命名去重）
 
 完整相同的持久expiry命名程序共享既有Code records，两个expiry与两个backup snapshot
 调用链接通，无新Core机制；Code/系统−24。Coding112265/系统648294，较Goal−25490/

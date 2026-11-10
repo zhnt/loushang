@@ -1,5 +1,7 @@
 # COD-RESP-GOAL-002：Coding 领域化与公共机制职责归一
 
+- A126：完整model Work配置寿命归原HarnessWork规划集成，Code保纯profile；Code−41/Core+71/系统+30，完整Goal仍partial，见[A126](key-designs/planning-work-configuration-custody-convergence.md)。
+
 - A125：两平台expiry命名共享原Coding记录模块，四条真实调用链接通；Code/系统−24、Core0，完整Goal仍partial，见[A125](coding-convergence-system-cost-audit.md#a125两平台expiry命名同域去重)。
 
 - A124：删除七个已退出主路且无消费者的私有薄壳，保留动态probe实际依赖；Code/系统−63、Core0，完整Goal仍partial，见[A124](key-designs/worker-history-responsibility-convergence.md#a124七个已退出主路的私有薄壳)。

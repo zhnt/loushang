@@ -66,3 +66,74 @@ class PlanningWork:
 
     async def cancel_and_wait(self, operation, context):
         return await self.delegate.cancel_and_wait(operation, context)
+
+
+class _ScopedSessionWork:
+    """Retain an admitted model Work configuration until its Session is idle."""
+
+    _scoped_phase: str
+    _step_tools: dict[str, tuple[str, ...]]
+    _error_type: type[Exception]
+    _binding_error: str
+    _unsupported_step: str
+    _failed_allowance: str
+
+    def __init__(
+        self,
+        delegate,
+        *,
+        session,
+        allowance,
+        policy,
+        phase,
+        execution=None,
+        step_aliases=None,
+    ):
+        self.delegate, self.session, self.allowance = delegate, session, allowance
+        self.policy, self.phase = policy, phase
+        self.step_aliases = dict(step_aliases or {})
+        self.execution = execution
+
+    async def execute(self, operation, context):
+        if self.execution is None:
+            raise self._error_type(self._binding_error)
+        reservation = self.execution()
+        if reservation is None:
+            raise self._error_type(self._binding_error)
+        self.allowance.enter(operation.operation_id, self.phase)
+        step = context.step_id if self.phase == self._scoped_phase else None
+        step = self.step_aliases.get(step, step)
+        self.policy.step = step
+        tools = next(
+            (names for name, names in self._step_tools.items() if step == name), ()
+        )
+        try:
+            if self.phase == self._scoped_phase and step not in self._step_tools:
+                raise self._error_type(self._unsupported_step)
+            self.session.configure_execution(
+                reservation,
+                stream_fn=self.allowance.stream,
+                tool_names=tuple(tools),
+                additional_policy=self.policy,
+            )
+            result = await self.delegate.execute(operation, context)
+            if self.phase == self._scoped_phase and self.allowance.failed:
+                raise self._error_type(self._failed_allowance)
+            return result
+        finally:
+            # Do not end the phase while an original Session invocation is live.
+            try:
+                await self.session.wait_for_idle()
+                self.policy.step = None
+                self.session.runtime.execution_configuration.release_execution(
+                    reservation
+                )
+            except BaseException:
+                self.allowance.fenced = True
+                raise
+            finally:
+                self.policy.step = None
+                self.allowance.leave(operation.operation_id)
+
+    async def cancel_and_wait(self, operation, context):
+        return await self.delegate.cancel_and_wait(operation, context)

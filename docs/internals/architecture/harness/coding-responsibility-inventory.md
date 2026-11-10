@@ -1,5 +1,7 @@
 # Coding 逐文件职责与处置清单 R2
 
+- A126：完整model Work配置寿命归原HarnessWork规划集成，Code保纯profile；Code−41/Core+71/系统+30，完整Goal仍partial，见[A126](key-designs/planning-work-configuration-custody-convergence.md)。
+
 - A125：两平台expiry命名共享原Coding记录模块，四条真实调用链接通；Code/系统−24、Core0，完整Goal仍partial，见[A125](coding-convergence-system-cost-audit.md#a125两平台expiry命名同域去重)。
 
 - A124：删除七个已退出主路且无消费者的私有薄壳，保留动态probe实际依赖；Code/系统−63、Core0，完整Goal仍partial，见[A124](key-designs/worker-history-responsibility-convergence.md#a124七个已退出主路的私有薄壳)。
@@ -105,7 +107,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [adapters/_goal_planning_limits.py](../../../../src/loushang/coding/adapters/_goal_planning_limits.py) | C12 | 99 | M | C12 Goal/Work/证据适配 | 6361118f9e51 | 99 | 6361118f9e51 |
 | [adapters/_goal_planning_response.py](../../../../src/loushang/coding/adapters/_goal_planning_response.py) | C12 | 45 | M | C12 Goal/Work/证据适配 | 7cdacc26a57b | 45 | 7cdacc26a57b |
 | [adapters/_goal_planning_shared.py](../../../../src/loushang/coding/adapters/_goal_planning_shared.py) | C12 | 162 | M | C12 Goal/Work/证据适配 | ef707defac27 | 162 | ef707defac27 |
-| [adapters/_goal_planning_work.py](../../../../src/loushang/coding/adapters/_goal_planning_work.py) | C12 | 237 | M | C12 Goal/Work/证据适配 | 35d41406b91d | 237 | 35d41406b91d |
+| [adapters/_goal_planning_work.py](../../../../src/loushang/coding/adapters/_goal_planning_work.py) | C12 | 237 | M | C12 Goal/Work/证据适配 | 35d41406b91d | 196 | 028fb43095cb |
 | [adapters/_goal_proposal.py](../../../../src/loushang/coding/adapters/_goal_proposal.py) | C12 | 220 | M | C12 Goal/Work/证据适配 | e48b5eaef6cc | 220 | e48b5eaef6cc |
 | [adapters/_goal_repository.py](../../../../src/loushang/coding/adapters/_goal_repository.py) | C12 | 1,423 | M | C12 Goal/Work/证据适配 | 945099f58eab | 1,423 | 945099f58eab |
 | [adapters/_goal_repository_driver.py](../../../../src/loushang/coding/adapters/_goal_repository_driver.py) | C12 | 155 | M | C12 Goal/Work/证据适配 | e4e6774a9f1e | 155 | e4e6774a9f1e |
@@ -510,7 +512,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C09 | 34 | 9,527 |
 | C10 | 12 | 5,469 |
 | C11 | 25 | 9,308 |
-| C12 | 25 | 7,097 |
+| C12 | 25 | 7,056 |
 | C13 | 21 | 5,668 |
 | C14 | 13 | 3,608 |
 | C15 | 2 | 2,036 |
@@ -527,4 +529,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 112,265 |
+| 合计 | 430 | 112,224 |

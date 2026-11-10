@@ -14,6 +14,9 @@ from loushang.harnesswork.goal.records import canonical, plain
 from loushang.harnesswork.integrations.planning import (
     PlanningWork as _SharedPlanningWork,
 )
+from loushang.harnesswork.integrations.planning import (
+    _ScopedSessionWork as _SharedScopedSessionWork,
+)
 
 from . import _goal_driver as driver
 from ._goal_calculator import put
@@ -104,59 +107,15 @@ class PlanningToolPolicy:
         return PolicyDecision.allow()
 
 
-class ScopedSessionWork:
-    """Bind the original Session overlay and retain it until its turn settles."""
+class ScopedSessionWork(_SharedScopedSessionWork):
+    """Bind Coding model steps to the original admitted Work lifetime."""
 
-    def __init__(self, delegate, *, session, allowance, policy, phase, execution=None, step_aliases=None):
-        self.delegate, self.session, self.allowance = delegate, session, allowance
-        self.policy, self.phase = policy, phase
-        self.step_aliases = dict(step_aliases or {})
-        self.execution = execution
-
-    async def execute(self, operation, context):
-        if self.execution is None:
-            raise GoalError("Goal model Work requires a Session execution binding")
-        reservation = self.execution()
-        if reservation is None:
-            raise GoalError("Goal model Work requires a Session execution binding")
-        self.allowance.enter(operation.operation_id, self.phase)
-        step = context.step_id if self.phase == "repair" else None
-        step = self.step_aliases.get(step, step)
-        self.policy.step = step
-        tools = (
-            ["read"]
-            if step == "inspect"
-            else ["read", "edit", "write"]
-            if step == "repair"
-            else []
-        )
-        try:
-            if self.phase == "repair" and step not in {"inspect", "repair"}:
-                raise GoalError("unsupported Method step in model-planning profile")
-            self.session.configure_execution(
-                reservation, stream_fn=self.allowance.stream, tool_names=tuple(tools),
-                additional_policy=self.policy,
-            )
-            result = await self.delegate.execute(operation, context)
-            if self.phase == "repair" and self.allowance.failed:
-                raise GoalError("repair model allowance failed")
-            return result
-        finally:
-            # Do not end the phase while an original Session invocation is live.
-            try:
-                await self.session.wait_for_idle()
-                self.policy.step = None
-                self.session.runtime.execution_configuration.release_execution(reservation)
-            except BaseException:
-                self.allowance.fenced = True
-                raise
-            finally:
-                self.policy.step = None
-                self.allowance.leave(operation.operation_id)
-
-    async def cancel_and_wait(self, operation, context):
-        return await self.delegate.cancel_and_wait(operation, context)
-
+    _scoped_phase = "repair"
+    _step_tools = {"inspect": ("read",), "repair": ("read", "edit", "write")}
+    _error_type = GoalError
+    _binding_error = "Goal model Work requires a Session execution binding"
+    _unsupported_step = "unsupported Method step in model-planning profile"
+    _failed_allowance = "repair model allowance failed"
 
 class ScopedVerificationWork:
     """Authorize only the already admitted verifier's exact command and input."""

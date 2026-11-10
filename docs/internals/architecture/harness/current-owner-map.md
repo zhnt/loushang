@@ -62,6 +62,13 @@ path admission, diagnostic label and byte budget through its public thin reader.
 Ordinary JsonConfigStore.load/save remain unchanged; lazy platform imports keep
 Config's cold module closure unchanged. See [A123](key-designs/settings-snapshot-read-custody-convergence.md).
 
+HarnessWork's existing planning integration owns one admitted model Work's whole
+configuration lifetime on the original Work object: direct reservation, allowance,
+Session configuration, delegate execution, idle wait, release and fencing. Coding
+retains the phase/step/tool and diagnostic profile on its original class; existing
+Session admission/configuration and call allowance remain the sole underlying
+owners. Verification has a different finally contract and is unchanged. See [A126](key-designs/planning-work-configuration-custody-convergence.md).
+
 ## Scope
 
 Harness is the cross-Product execution substrate. It owns reusable mechanisms,
