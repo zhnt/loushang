@@ -6,7 +6,26 @@
 - Owner: Coding与各原接收组件；方法采用本地archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 目标：[完整Goal](coding-responsibility-convergence-goal.md)：Coding归属≤15,000行；按2026-11-09用户修订，优先复用并满足职责/架构准则时允许必要、适度的系统源码增加。保持完整成本计量，不缩成Worker或另减8K。以下历史快照中的严格净减要求不覆盖该新准则。
 
-## 当前状态（2026-11-10，A94 H5当前边界协调）
+## 当前状态（2026-11-10，A97 Continuity迁移支路去重）
+
+配置Continuity的首次安装与缺失迁移记录两条支路，已合用原先完全相同的
+`migrate_legacy_enablement`及desired重读程序。`unseen or ... is None`保原短路：
+首次不读取迁移Journal，已见安装只查一次；迁移、状态重读和后续拒绝时点不变。
+原Core迁移owner保持，不新增helper、API、字段、框架、门禁或测试。
+Code1609→1597，本批Coding/系统各−12（重复body/header−15，条件排版+3）；接收/
+兼容适配均0。逆变换后全模块AST等原；1967其余源及13资源SHA不变。
+原配置bootstrap模块30过；Ruff/format、单源mypy与现行依赖图检查通过。三独立
+职责/运行/兼容视角对精确实物有界接受，不外推原生平台或完整Continuity收敛。
+当前Coding430源113567、系统1968源647760；较Goal起点−24188/+12966，距15K
+尚98567。完整P1–P4仍active/partial；原5项Hosting边界欠账未关闭，KD003未实施，
+KD011/A33待用户且未采用。
+
+A95缓存候选和A96普通Session整链重迁均未采用：前者现成安全IO合同不同且仅
+51行残余窗口；后者与A35/A37/A49/A51同池，现有Construction/Catalog/Refresh/
+Graph/Plugin清理已共享，尚未证明新增整体适配的收益。完整关闭资格与政策仍混合
+未最终处置，不据此把5541行都判为领域必要，也不重复记已有机制收益。
+
+## A94历史交付（2026-11-10，H5当前边界协调）
 
 A63之前的显式Product query已直接采用Hosting adapter；A63将完整程序归原Session，
 旧H5仅扫描Harness而遗漏原Code位置，故历史“无生产装配”不能继续作为全局Current。

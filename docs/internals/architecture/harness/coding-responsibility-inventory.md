@@ -6,6 +6,7 @@
 - Owner: Coding / shared-layer architecture；静态分析 Codex。
 - 原审计基线：`739f947d6099257af1aec56ae587426d8cd8ec7d`；427 个 Python 文件、145,842 个物理行，含空行/注释/文档字符串。
 
+A97配置Continuity退出重复迁移支路，Coding/系统均−12；不新增共享接口，原30项回归通过。
 当前430个Python文件均重新计量并核SHA；原审计列与候选处置保留供追溯。当前行数包括已接通但尚待最终切片验证的源码；各批接受范围以执行记录为准。
 A93完整Windows backend custody接入，Code−176/接收+312/系统+136；见[A93](key-designs/windows-backend-release-custody-convergence.md)。
 A92复用原Continuity激活lease机制，Coding430源SHA/行数不变、系统减28；见[A92](key-designs/activation-lease-lifecycle-convergence.md)。
@@ -142,7 +143,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [composition_provenance.py](../../../../src/loushang/coding/composition_provenance.py) | C01 | 214 | M | C01 启动、Plugin 与资源装配 | 30a8b59d8d49 | 214 | 30a8b59d8d49 |
 | [composition_sets.py](../../../../src/loushang/coding/composition_sets.py) | C01 | 236 | M | C01 启动、Plugin 与资源装配 | e77cb0ebf1e1 | 236 | e77cb0ebf1e1 |
 | [continuity.py](../../../../src/loushang/coding/continuity.py) | C04 | 1,555 | M | C04 Continuity | cb0943f7d549 | 1,359 | 0119e90b2357 |
-| [continuity_bootstrap.py](../../../../src/loushang/coding/continuity_bootstrap.py) | C04 | 1,622 | M | C04 Continuity | acbe4067566c | 1,609 | 76e2fc91bd73 |
+| [continuity_bootstrap.py](../../../../src/loushang/coding/continuity_bootstrap.py) | C04 | 1,622 | M | C04 Continuity | acbe4067566c | 1,597 | 42e150efd7e9 |
 | [control/__init__.py](../../../../src/loushang/coding/control/__init__.py) | C26 | 39 | R/K | C26 配置兼容导出与路径 | 6bbbc65acf54 | 39 | 6bbbc65acf54 |
 | [control/settings_store.py](../../../../src/loushang/coding/control/settings_store.py) | C26 | 13 | K | C26 配置兼容导出与路径 | ff84662c1150 | 13 | ff84662c1150 |
 | [diagnostics/__init__.py](../../../../src/loushang/coding/diagnostics/__init__.py) | C20 | 5 | R/K | C20 诊断 profile/呈现 | dbec8c0a2694 | 5 | dbec8c0a2694 |
@@ -473,7 +474,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C01 | 22 | 12,966 |
 | C02 | 28 | 8,043 |
 | C03 | 15 | 4,132 |
-| C04 | 2 | 2,968 |
+| C04 | 2 | 2,956 |
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
 | C07 | 112 | 22,241 |
@@ -498,4 +499,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 113,579 |
+| 合计 | 430 | 113,567 |

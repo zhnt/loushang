@@ -240,3 +240,11 @@ Code release205→129（−76）、installed234→148（−86）、approval owne
 最终受影响25过、文档9过；扩大Hosting结果及仍开放5项基线问题见
 [H5 A94证据](../hosting/harness-worker-adapter-h5.md#a94-reconciliation-evidence)。
 原A93失败记录保历史，不回写旧结果；完整Goal仍未达标。
+
+## A97后续：退出配置Continuity的重复迁移支路
+
+Code/系统均−12：删除重复body/header15行，合并短路条件排版增加3行；接收组件与
+兼容适配均0，不新增API/manager/gate。1609→1597的原文件逆变换后整AST同，
+原30项配置bootstrap回归通过。当前Coding113567/系统647760，较Goal起点−24188/
++12966；仍有系统累计增长及完整15K差距，详见[当前执行记录](coding-responsibility-convergence-progress.md)。
+A95缓存和A96普通Session候选不采用，生产收益0，避免重复此前不经济的适配方案。

@@ -1061,22 +1061,10 @@ def _reconcile_enabled_instances(
         )
         legacy_disabled = plugin_id in legacy_disabled_plugin_ids
         manifest_default = package.manifest.enabled
-        if unseen:
-            lifecycle.common.migrate_legacy_enablement(
-                key,
-                package_revision,
-                legacy_disabled=legacy_disabled,
-                manifest_enabled_default=manifest_default,
-                legacy_input_fingerprint=(
-                    plugin_enablement_legacy_input_fingerprint(
-                        key,
-                        legacy_disabled=legacy_disabled,
-                        manifest_enabled_default=manifest_default,
-                    )
-                ),
-            )
-            state = lifecycle.desired.snapshot().installation(key)
-        elif lifecycle.common.enablement_migrations.journal.snapshot(key) is None:
+        if (
+            unseen
+            or lifecycle.common.enablement_migrations.journal.snapshot(key) is None
+        ):
             lifecycle.common.migrate_legacy_enablement(
                 key,
                 package_revision,
