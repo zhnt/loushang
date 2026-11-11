@@ -70,7 +70,7 @@ def test_status_by_name_and_id_from_other_cwd_never_starts(namespace, tmp_path, 
     before = tree(tmp_path)
     assert lmux.main(["status", "-t", "dev"]) == 0
     named = json.loads(capsys.readouterr().out)
-    assert named["serviceId"] == service.service_id and named["workspace"] == str(tmp_path)
+    assert named["serviceId"] == service.service_id and named["hostRoot"] == str(tmp_path)
     assert named["instanceId"] is None and named["recordedPhase"] is None
     assert named["liveStatus"] == "not_probed" and named["observation"] == "recorded_only"
     assert named["temporary"]["actualRoot"] is None

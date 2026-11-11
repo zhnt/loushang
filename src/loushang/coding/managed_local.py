@@ -62,19 +62,13 @@ class CodingManagedLocalLaunchV1:
         LocalConnectionRecordV1(
             endpoint=self.endpoint, application_id=self.application.application_id,
             product_id="coding", instance="0" * 32 if self.instance_id is None else self.instance_id,
-            key=bytes(32), port=1, scopes=self.scopes,
+            key=bytes(32), port=1, scopes=self.scopes, mux_management=True,
         )
 
     @property
     def scopes(self) -> tuple[LocalRecordScopeV1, ...]:
-        # Connection admission identifies the Host. Workspace scopes are
-        # obtained only through authenticated Workspace.open afterwards.
-        from hashlib import sha256
-
-        from loushang.appserver.protocol import SessionScopeV1
-
-        return (LocalRecordScopeV1(SessionScopeV1.CWD,
-                sha256(str(self.application.host_root).encode()).hexdigest()),)
+        # Workspace scopes are learned after authenticating the Host.
+        return ()
 
 
 class CodingManagedLocalCommandV1(CodingLocalCommandV1):

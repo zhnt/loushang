@@ -720,6 +720,7 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "managed/_files.py",
         "managed/_database.py",
         "managed/registry.py",
+        "managed/workspaces.py",
         "managed/storage_budget.py",
         "managed/event_log.py",
         "managed/_capture_native.py",

@@ -53,7 +53,7 @@ def request(invocation, fd):
     # The child creates no descendants/Product. EOF from starter close ends it.
     code = "import socket,sys; s=socket.socket(fileno=int(sys.argv[1])); s.recv(1); s.close()"
     return ProcessLaunchRequest(
-        (sys.executable, "-c", code, str(fd)), invocation.service.workspace,
+        (sys.executable, "-c", code, str(fd)), invocation.service.host_root,
         tuple(os.environ.items()),
         ProcessStreamSpec(ProcessStdinMode.CLOSED, ProcessStdoutMode.DISCARD, ProcessStderrMode.DISCARD),
     )

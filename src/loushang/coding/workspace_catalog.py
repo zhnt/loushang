@@ -6,8 +6,9 @@ import asyncio
 import hashlib
 from pathlib import Path
 
-from loushang.apphost.workspaces import WorkspaceRegistry
+from loushang.apphost.managed.workspaces import WorkspaceRegistry
 
+from .hosted_catalog import _MAX_TRANSCRIPT_BYTES
 from .managed_catalog import CodingManagedSessionCatalogV1
 
 
@@ -25,6 +26,7 @@ class CodingWorkspaceCatalog:
         self._root = session_root
         self._state = store_state_root
         self._catalogs: dict[Path, CodingManagedSessionCatalogV1] = {}
+        self._loaded = False
         self._closed = False
 
     async def workspace(self, request):
@@ -33,7 +35,7 @@ class CodingWorkspaceCatalog:
         if request.action == "register":
             await self.register(request.path)
         elif request.action == "open":
-            await self.select(request.path)
+            selected = await self.select(request.path)
         elif request.action == "unregister":
             path = Path(request.path)
             catalog = self._catalogs.get(path)
@@ -43,15 +45,21 @@ class CodingWorkspaceCatalog:
             self._catalogs.pop(path, None)
         entries = self._catalogs.items()
         if request.action == "open":
-            entries = [(Path(request.path).resolve(), self._catalogs[Path(request.path).resolve()])]
+            entries = [(selected.cwd, self._catalogs[selected.cwd])]
         return WorkspaceResultV1(tuple(
             WorkspaceInfoV1(str(path), catalog.scopes[0].scope, catalog.scopes[0].fingerprint)
             for path, catalog in entries
         ))
 
     async def load(self) -> None:
-        for path in await asyncio.to_thread(self.registry.list):
-            self._add(path)
+        if not self._loaded:
+            for path in await asyncio.to_thread(self._load_paths):
+                self._add(path)
+            self._loaded = True
+
+    def _load_paths(self) -> tuple[Path, ...]:
+        self.registry.open()
+        return self.registry.list()
 
     @property
     def scopes(self):
@@ -105,6 +113,11 @@ class CodingWorkspaceCatalog:
                              and item.fingerprint == scope.scope_fingerprint)
         return await catalog.discover_sessions(scope, stop=stop)
 
+    async def workspace_identities(self, fingerprint, scope, *, limit):
+        catalog = self._find(lambda item: item.fingerprint == fingerprint
+                             and item.discovery_scope is scope)
+        return await catalog.list_identities((scope,), limit=limit)
+
     async def list_identities(self, scopes, *, limit):
         result = []
         for catalog in self._catalogs.values():
@@ -114,7 +127,7 @@ class CodingWorkspaceCatalog:
         return tuple(result)
 
     async def open_candidate(self, reference):
-        return await self._for_reference(reference).open_candidate(reference)
+        return await self._for_reference(reference).open_history_candidate(reference, max_bytes=_MAX_TRANSCRIPT_BYTES)
 
     async def find_created_candidate(self, request):
         return await self._for_create(request).find_created_candidate(request)

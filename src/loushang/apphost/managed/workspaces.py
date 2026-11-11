@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from time import monotonic
 
-from .managed._files import ManagedStorageError, PrivateManagedDirectory
+from ._files import ManagedStorageError, PrivateManagedDirectory
 
 
 def canonical_workspace(value: str) -> Path:

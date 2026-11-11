@@ -37,10 +37,9 @@ def _parser() -> argparse.ArgumentParser:
     logs.add_argument("--limit", type=int, default=50, help="maximum visible events, 1..100 (default: 50)")
     start = commands.add_parser("start", help="explicitly start/reuse a named mux's service; never replay mux creation")
     start.add_argument("-t", "--target", required=True)
-    server = commands.add_parser("server", help="manage a workspace service independently of mux names")
+    server = commands.add_parser("server", help="manage the Host independently of workspace and mux names")
     server_commands = server.add_subparsers(dest="server_action", required=True)
-    server_start = server_commands.add_parser("start", help="start/reuse a workspace service without creating a mux")
-    server_start.add_argument("--workspace", help="service workspace; defaults to cwd")
+    server_start = server_commands.add_parser("start", help="start/reuse the Host without opening a workspace")
     server_start.add_argument("--name", help="optional stable service alias (separate from mux names)")
     server_start.add_argument("--trace-for", type=int, metavar="SECONDS",
                               help="request bounded trace for this new instance only, 1..3600 seconds")

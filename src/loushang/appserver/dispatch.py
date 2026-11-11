@@ -26,6 +26,7 @@ from .protocol import (
     SessionSnapshotRequestV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceRequestV1,
 )
 
 
@@ -37,7 +38,7 @@ async def dispatch_request(
     value = request.payload
     match request.operation:
         case AppOperationV1.WORKSPACE:
-            return await service_port.workspace(value)
+            return await service_port.workspace(cast(WorkspaceRequestV1, value))
         case AppOperationV1.MUX_CREATE:
             return await service_port.create_mux(cast(MuxCreateV1, value))
         case AppOperationV1.MUX_LIST:

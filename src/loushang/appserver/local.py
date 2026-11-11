@@ -117,6 +117,7 @@ class LocalAppServerV1:
                                 product_id=product_id, scopes=scopes, port=1,
                                 instance="0" * 32 if instance is None else instance, key=bytes(32),
                                 session_execution=execution_scope_factory is not None,
+                                mux_management=managed_mux_scope_factory is not None,
                                 resume_input_lookup=resume_input_lookup)
         self._instance = instance
         self._directory, self._endpoint = directory, endpoint

@@ -193,7 +193,7 @@ def test_real_cli_cold_new_global_ls_attach_and_warm_new(managed_cli, tmp_path, 
     assert lmux.main(["ls"]) == 0
     listing = json.loads(capsys.readouterr().out)
     assert [item["name"] for item in listing["muxes"]] == [first_name]
-    assert listing["muxes"][0]["workspace"] == str(tmp_path)
+    assert listing["muxes"][0]["hostRoot"] == commands[-1].defaults.namespace.platform_home
     assert listing["muxes"][0]["status"] == "unknown" and listing["muxes"][0]["tabs"] is None
     assert lmux.main(["attach", "-t", first_name]) == 0, repr(commands[-1].failure)
     assert commands[-1].creation is None
@@ -223,7 +223,7 @@ def test_stop_and_explicit_restart_restore_mux_without_recreating_it(managed_cli
     monkeypatch.setattr(terminal, "run_hosted_mux_shell", screen)
     assert lmux.main(["new", "-s", "dev"]) == 0, repr(commands[-1].failure)
     first = commands[-1].creation._coordinator._starter
-    service_id = ManagedServiceKeyV1("coding", str(tmp_path)).service_id
+    service_id = ManagedServiceKeyV1("coding", commands[-1].defaults.namespace.platform_home).service_id
 
     def stop(native):
         # This test process is the actual original Popen parent. An unrelated
@@ -533,7 +533,7 @@ def test_stop_confirmation_requires_complete_line_before_operation(managed_cli, 
     assert lmux.main(["new", "-s", "pending"]) == 0
     service = commands[-1].service
     assert service is None  # Native admission handles settled by command finalizer.
-    key = ManagedServiceKeyV1("coding", str(Path.cwd()))
+    key = ManagedServiceKeyV1("coding", commands[0].defaults.namespace.platform_home)
     # prepare new has reserved the name but run has not created a journal state.
     # Supply a recorded state through the existing journal read seam, not a fake
     # confirmation implementation.

@@ -502,6 +502,7 @@ class AppServiceV1:
         "_execution_registry",
         "_workspaces",
         "_workspace_lock",
+        "_workspace_pending",
         "_continuity_application_id",
         "_continuity_lease",
         "_continuity_owner_epoch",
@@ -548,6 +549,7 @@ class AppServiceV1:
         self.product_id = product_id
         self._workspaces = workspaces
         self._workspace_lock = asyncio.Lock()
+        self._workspace_pending: dict[str, int] = {}
         if managed_mux is not None and type(managed_mux) is not ManagedMuxServiceBindingV1:
             raise TypeError("invalid managed Mux service binding")
         self._managed_mux = managed_mux
@@ -599,7 +601,9 @@ class AppServiceV1:
         if request.action == "unregister":
             listed = await self._workspaces.workspace(WorkspaceRequestV1("list"))
             fingerprints = {w.scope_fingerprint for w in listed.workspaces if w.path == request.path}
-            if any(s.identity.scope_fingerprint in fingerprints for s in self._sessions.values()):
+            owners = (*self._sessions.values(), *self._cleanup_debt)
+            if (fingerprints.intersection(self._workspace_pending)
+                    or any(s.identity.scope_fingerprint in fingerprints for s in owners)):
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return await self._workspaces.workspace(request)
 
@@ -1103,10 +1107,20 @@ class AppServiceV1:
         return AckV1()
 
     async def open_member(self, request: MuxMemberOpenV1) -> MuxSpaceV1:
-        # Membership changes and Session admission share one writer. Execution
-        # tasks run outside this lock and remain concurrent across workspaces.
-        async with self._workspace_lock:
+        if self._workspaces is None:
             return await self._open_member(request)
+        self._require_request(request, MuxMemberOpenV1)
+        fingerprint = request.session.scope_fingerprint
+        async with self._workspace_lock:
+            self._workspace_pending[fingerprint] = self._workspace_pending.get(fingerprint, 0) + 1
+        try:
+            return await self._open_member(request)
+        finally:
+            pending = self._workspace_pending[fingerprint] - 1
+            if pending:
+                self._workspace_pending[fingerprint] = pending
+            else:
+                del self._workspace_pending[fingerprint]
 
     async def _open_member(self, request: MuxMemberOpenV1) -> MuxSpaceV1:
         self._require_request(request, MuxMemberOpenV1)

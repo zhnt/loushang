@@ -65,7 +65,7 @@ def test_global_lookup_from_other_cwd_is_readonly_and_contains_no_native_facts(o
     result = reader.resolve("main", deadline=monotonic() + 5)
     assert result.instance == state.handoff.instance
     assert result.recorded_phase is ManagedHandoffPhaseV1.COMMITTED
-    assert result.service.workspace == str(tmp_path)
+    assert result.service.host_root == str(tmp_path)
     assert not result.stop_requested and not result.cleanly_stopped
     assert result.reservation == registry.resolve("main")
     assert reader.list_muxes(deadline=monotonic() + 5) == (result,)

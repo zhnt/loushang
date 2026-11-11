@@ -69,10 +69,10 @@ def test_roundtrip_is_pure_immutable_and_does_not_echo_paths(monkeypatch):
 @pytest.mark.parametrize("key,value", [
     ("version", "loushang.managed-child/v2"), ("userId", True),
     ("userId", 1.0), ("userId", -1), ("userId", 2**32),
-    ("workspace", "/a/../b"), ("platformHome", "/"),
+    ("hostRoot", "/a/../b"), ("platformHome", "/"),
     ("instanceId", "x"), ("attemptId", "c" * 31),
-    ("runtimeRoot", "/private/平台/lmux"), ("profile", "local/v1"),
-    ("productId", None), ("machineId", []), ("workspace", "/x\ud800"),
+    ("runtimeRoot", "/private/平台/hosts"), ("profile", "local/v1"),
+    ("productId", None), ("machineId", []), ("hostRoot", "/x\ud800"),
     ("factory", "attacker.module:factory"), ("fd", 4), ("key", "secret"),
     ("namespaceKey", "0" * 64), ("serviceId", "0" * 64),
 ])

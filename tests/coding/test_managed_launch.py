@@ -30,7 +30,7 @@ def test_coding_launch_binds_exact_workspace_layout_and_explicit_session_roots(d
         cwd_sessions=tmp_path / "cwd-sessions", home_sessions=tmp_path / "home-sessions",
         session_discovery=True,
     )
-    assert launch.application.workspace == Path(value.service.workspace)
+    assert launch.application.workspace == Path(value.service.host_root)
     assert launch.application.application_root == Path(deployment[4].application)
     assert launch.connection_root == Path(deployment[4].connection)
     assert launch.application.cwd_sessions == tmp_path / "cwd-sessions"
@@ -42,7 +42,7 @@ def test_coding_launch_binds_exact_workspace_layout_and_explicit_session_roots(d
 
 def test_other_product_is_rejected_before_any_path_admission(deployment, tmp_path, monkeypatch):
     value = invocation(deployment, tmp_path)
-    service = ManagedServiceKeyV1("work", value.service.workspace)
+    service = ManagedServiceKeyV1("work", value.service.host_root)
     other = ManagedChildInvocationV1(value.namespace, service, ManagedInstanceRefV1(
         value.namespace.namespace_key, service.service_id, value.instance.instance_id,
     ), value.attempt_id, value.runtime_root)

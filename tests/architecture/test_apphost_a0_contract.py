@@ -403,6 +403,7 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
         Path("src/loushang/coding/cli/lmux_stop_all.py"),
         Path("src/loushang/coding/managed_bootstrap.py"),
         Path("src/loushang/coding/managed_catalog.py"),
+        Path("src/loushang/coding/workspace_catalog.py"),
         Path("src/loushang/coding/managed_local.py"),
         Path("src/loushang/coding/managed_process.py"),
     }

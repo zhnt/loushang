@@ -68,7 +68,7 @@ from loushang.appserver.managed_mux_close import (
     ManagedMuxCloseStateV1,
     ManagedMuxCloseV1,
 )
-from loushang.appserver.protocol import MuxSelectorV1
+from loushang.appserver.protocol import MuxReadV1, MuxSelectorV1, WorkspaceRequestV1
 
 from ..managed_process import APPLICATION_ID, ENDPOINT, coding_managed_process_request
 from .lmux_stop_all import StopAll
@@ -84,7 +84,7 @@ def _emit(value: object, output: TextIO) -> None:
 
 
 def _observation(value: ManagedMuxObservationV1) -> dict[str, object]:
-    return {"name": value.name, "workspace": value.service.workspace, "serviceId": value.service.service_id,
+    return {"name": value.name, "hostRoot": value.service.host_root, "serviceId": value.service.service_id,
             "creationOperationId": value.reservation.operation_id,
             "recordedPhase": None if value.recorded_phase is None else value.recorded_phase.value,
             "stopRequested": value.stop_requested, "cleanlyStopped": value.cleanly_stopped,
@@ -123,6 +123,7 @@ class ManagedMuxCommand:
         self.connection: ManagedConnectionLeaseV1 | None = None
         self.shell: HostedMuxShellV1 | None = None
         self.target: str | None = None
+        self.workspace: Path | None = None
         self.mux_space_id: str | None = None
         self.close_manager: ManagedMuxManagerV1 | None = None
         self.close_inspection: ManagedMuxInspectionV1 | None = None
@@ -165,10 +166,11 @@ class ManagedMuxCommand:
             self.trace_deadline_ms = int((monotonic() + trace_for) * 1000)
         selected_service = None
         if args.action in (None, "new", "server"):
-            workspace = Path(getattr(args, "workspace", None) or Path.cwd()).expanduser().resolve(strict=True)
-            if not workspace.is_dir():
-                raise ManagedContractError()
-            selected_service = ManagedServiceKeyV1("coding", str(workspace))
+            selected_service = ManagedServiceKeyV1("coding", self.defaults.namespace.platform_home)
+            if args.action in (None, "new"):
+                self.workspace = Path(getattr(args, "workspace", None) or Path.cwd()).expanduser().resolve(strict=True)
+                if not self.workspace.is_dir():
+                    raise ManagedContractError()
         self.namespace = ManagedNamespaceAdmissionV1(
             self.defaults.namespace, runtime_root=str(self.defaults.platform.runtime),
             create_if_missing=args.action in (None, "new", "server"),
@@ -308,7 +310,7 @@ class ManagedMuxCommand:
             for item in snapshot.muxes:
                 muxes.setdefault(item.service.service_id, []).append(item.name)
             services = [{"serviceId": item.service.service_id, "productId": item.service.product_id,
-                         "workspace": item.service.workspace, "profile": item.service.profile,
+                         "hostRoot": item.service.host_root, "profile": item.service.profile,
                          "instanceId": None if item.instance is None else item.instance.instance_id,
                          "revision": item.revision,
                          "recordedPhase": None if item.recorded_phase is None else item.recorded_phase.value,
@@ -339,7 +341,7 @@ class ManagedMuxCommand:
                                "event": record.event.event, "code": record.event.code} for record in records]}, self.stdout)
             return False
         _emit({"serviceId": service_id, "productId": observed.service.product_id,
-               "workspace": observed.service.workspace, "profile": observed.service.profile,
+               "hostRoot": observed.service.host_root, "profile": observed.service.profile,
                "instanceId": None if observed.instance is None else observed.instance.instance_id,
                "revision": observed.revision,
                "recordedPhase": None if observed.recorded_phase is None else observed.recorded_phase.value,
@@ -473,7 +475,7 @@ class ManagedMuxCommand:
         _emit({"action": "stop_all_preview", "namespaceKey": self.defaults.namespace.namespace_key,
                "ordering": "service_id", "budgetSeconds": 30, "sharedBudget": True,
                "services": [{"serviceId": item.service.service_id, "productId": item.service.product_id,
-                   "workspace": item.service.workspace,
+                   "hostRoot": item.service.host_root,
                    "instanceId": None if item.instance is None else item.instance.instance_id,
                    "muxes": [mux.name for mux in snapshot.muxes if mux.service == item.service]}
                    for item in snapshot.services]}, self.stdout)
@@ -598,7 +600,7 @@ class ManagedMuxCommand:
                                                 "--operation", reservation.operation_id, "--continue"],
                             "requiresConfirmation": True}
         _emit({"status": status, "serviceId": reservation.service.service_id,
-               "workspace": reservation.service.workspace, "name": reservation.name,
+               "hostRoot": reservation.service.host_root, "name": reservation.name,
                "operationId": reservation.operation_id,
                "muxId": None if created is None else created.mux_space_id,
                "originInstanceId": None if created is None else created.instance_id,
@@ -727,9 +729,21 @@ class ManagedMuxCommand:
             from loushang.harnesstui.mux.shell import HostedMuxShellV1
             from loushang.harnesstui.mux.terminal import run_hosted_mux_shell
 
+            if self.workspace is not None:
+                await connection.client.workspace(WorkspaceRequestV1("register", str(self.workspace)))
+                workspaces = (await connection.client.workspace(WorkspaceRequestV1("open", str(self.workspace)))).workspaces
+                scopes = tuple((item.scope, item.scope_fingerprint) for item in workspaces)
+            else:
+                mux = await connection.client.read_mux(MuxReadV1(selector))
+                scopes = tuple(dict.fromkeys((member.session.scope, member.session.scope_fingerprint) for member in mux.members))
+                if not scopes:
+                    workspaces = (await connection.client.workspace(WorkspaceRequestV1("list"))).workspaces
+                    if len(workspaces) != 1:
+                        raise ManagedStorageError("unavailable")
+                    scopes = tuple((item.scope, item.scope_fingerprint) for item in workspaces)
             self.shell = HostedMuxShellV1(
                 connection.client, selector=selector, product_id="coding",
-                scopes=tuple((item.scope, item.fingerprint) for item in connection.scopes),
+                scopes=scopes,
                 discovery_client=connection.discovery_client,
                 execution_client=connection.execution_client,
                 transcript_theme=terminal_transcript_theme(),

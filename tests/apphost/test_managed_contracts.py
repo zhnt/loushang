@@ -43,7 +43,7 @@ def test_managed_values_are_pure_private_and_immutable(monkeypatch):
     assert "/private" not in repr(namespace)
     assert "/workspace" not in repr(key)
     with pytest.raises(FrozenInstanceError):
-        key.workspace = "/other"  # type: ignore[misc]
+        key.host_root = "/other"  # type: ignore[misc]
 
 
 def test_namespace_and_service_keys_cover_all_binding_dimensions():
@@ -55,7 +55,7 @@ def test_namespace_and_service_keys_cover_all_binding_dimensions():
         )
     )}) == 4
     key = ManagedServiceKeyV1("coding", "/workspace")
-    assert len({key.service_id, replace(key, workspace="/other").service_id,
+    assert len({key.service_id, replace(key, host_root="/other").service_id,
                 replace(key, product_id="work").service_id}) == 3
     assert len(key.service_id) == 64
 

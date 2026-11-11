@@ -42,7 +42,8 @@
         "turn/interrupt",
         "interaction/respond",
         "attachment/read_events",
-        "sessions/list"
+        "sessions/list",
+        "workspace/request"
       ]
     },
     "payload": {
@@ -66,5 +67,5 @@
   ],
   "title": "Loushang App Request V1 Vocabulary",
   "type": "object",
-  "x-loushang-note": "Payload strictness is enforced by the closed reference codec. sessions/list additionally requires an explicitly admitted discovery connection profile; codec recognition grants no capability."
+  "x-loushang-note": "Payload strictness is enforced by the closed reference codec. sessions/list additionally requires an explicitly admitted discovery connection profile. workspace/request requires a managed profile and an explicit Host Workspace port; codec recognition grants no capability."
 }

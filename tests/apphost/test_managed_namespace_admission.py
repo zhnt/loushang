@@ -78,7 +78,7 @@ def test_first_home_creates_bound_registry_but_no_sessions_or_service(tmp_path):
         assert record.database_identity == registry._database._file_identity
         assert record.registry_lock_identity == registry._database._lock_identity
         assert not (tmp_path / "home/data").exists()
-        assert not (tmp_path / "home/lmux/machines" / ("a" * 32) / "lifecycle").exists()
+        assert not (tmp_path / "home/hosts/machines" / ("a" * 32) / "lifecycle").exists()
         with pytest.raises(ManagedStorageError, match="closed"):
             admission.open(deadline=monotonic() + 10)
     finally:
@@ -113,7 +113,7 @@ def test_missing_read_only_namespace_never_creates_anything(tmp_path):
 def test_missing_admission_with_control_residue_never_creates_witness(tmp_path, residue):
     ns = namespace(tmp_path)
     path = (Path(resolve_managed_registry_root(ns)).parent if residue == "machine"
-            else tmp_path / "runtime/lmux" / ns.namespace_key)
+            else tmp_path / "runtime/hosts" / ns.namespace_key)
     current = tmp_path
     for part in path.relative_to(tmp_path).parts:
         current /= part

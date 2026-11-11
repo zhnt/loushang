@@ -98,7 +98,7 @@ def test_admission_path_is_pure_separate_from_lmux_and_namespace_bound(tmp_path,
     admission = resolve_managed_admission_root(namespace)
     registry = resolve_managed_registry_root(namespace)
     assert admission == Path(namespace.platform_home) / "state/managed-deployments" / namespace.namespace_key
-    assert not admission.is_relative_to(Path(namespace.platform_home) / "lmux")
+    assert not admission.is_relative_to(Path(namespace.platform_home) / "hosts")
     assert not registry.is_relative_to(admission) and not admission.is_relative_to(registry)
     assert resolve_managed_admission_root(replace(namespace, machine_id="b" * 32)) != admission
     assert resolve_managed_admission_root(replace(namespace, user_id=124)) != admission

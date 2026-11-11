@@ -495,10 +495,17 @@ class CodingAppHostHostedSessionResolverV1:
         request: SessionOpenSpecV1,
     ) -> AppHostSessionLeaseV1:
         scope = _apphost_scope(request.scope)
-        projections = await self._sessions.list_identities(
-            (scope,),
-            limit=CODING_HOSTED_APPLICATION_MAX_CANDIDATES,
-        )
+        from .workspace_catalog import CodingWorkspaceCatalog
+
+        catalog = self._sessions
+        if type(catalog) is CodingWorkspaceCatalog:
+            projections = await catalog.workspace_identities(
+                request.scope_fingerprint, scope, limit=CODING_HOSTED_APPLICATION_MAX_CANDIDATES,
+            )
+        else:
+            projections = await catalog.list_identities(
+                (scope,), limit=CODING_HOSTED_APPLICATION_MAX_CANDIDATES,
+            )
         if (
             not isinstance(projections, tuple)
             or len(projections) > CODING_HOSTED_APPLICATION_MAX_CANDIDATES

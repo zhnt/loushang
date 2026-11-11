@@ -46,7 +46,7 @@ class CodingManagedApplicationLaunchV1:
             if not isinstance(path, Path) or not path.is_absolute() or path != path.resolve():
                 raise ValueError("managed application requires canonical paths")
         if not self.host_root.is_dir() or not self.application_root.parent.is_dir():
-            raise ValueError("managed workspace and application parent must exist")
+            raise ValueError("managed Host root and application parent must exist")
         for data in (
             self.session_root, self.session_root.parent / "session-assets",
             self.session_root.parent / ".session-blob-writers",
@@ -80,20 +80,15 @@ def create_coding_managed_attempt(
     if managed_mux is not None and (type(managed_mux) is not ManagedMuxServiceBindingV1
                                     or managed_mux.application_id != launch.application_id):
         raise ValueError("managed Mux binding does not match application")
-    from loushang.apphost.workspaces import WorkspaceRegistry
+    from loushang.apphost.managed.workspaces import WorkspaceRegistry
 
     from .workspace_catalog import CodingWorkspaceCatalog
 
-    registry = WorkspaceRegistry(launch.application_root.parent / "workspaces")
-    try:
-        registry.open()
-        catalog = CodingWorkspaceCatalog(
-            registry, launch.session_root,
-            launch.store_state_root or launch.application_root.parent / "session-stores",
-        )
-    except BaseException:
-        registry.close()
-        raise
+    catalog = CodingWorkspaceCatalog(
+        WorkspaceRegistry(launch.application_root.parent / "workspaces"),
+        launch.session_root,
+        launch.store_state_root or launch.application_root.parent / "session-stores",
+    )
     return _create_coding_attempt(
         application_root=launch.application_root, application_id=launch.application_id,
         catalog=catalog, generation=token_hex(16), model=model, stream_fn=stream_fn, tools=tools,
@@ -143,11 +138,11 @@ def create_coding_managed_launch(
 
 def _managed_control_roots(invocation: ManagedChildInvocationV1) -> tuple[Path, ...]:
     return (
-        Path(invocation.namespace.platform_home) / "lmux",
-        Path(invocation.runtime_root) / "lmux",
+        Path(invocation.namespace.platform_home) / "hosts",
+        Path(invocation.runtime_root) / "hosts",
         Path(resolve_managed_admission_root(invocation.namespace)).parent,
         Path(invocation.namespace.platform_home) / "state/session-stores",
-        *((Path(invocation.temporary_override) / "lmux",) if invocation.temporary_override is not None else ()),
+        *((Path(invocation.temporary_override) / "hosts",) if invocation.temporary_override is not None else ()),
     )
 
 
