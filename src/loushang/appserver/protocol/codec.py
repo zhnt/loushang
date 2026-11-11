@@ -56,6 +56,9 @@ from .model import (
     TranscriptRecordV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceInfoV1,
+    WorkspaceRequestV1,
+    WorkspaceResultV1,
 )
 
 MAX_MESSAGE_BYTES = 1_048_576
@@ -186,7 +189,11 @@ def encode_response(response: AppResponseV1) -> bytes:
     result = response.result
     result_type: str
     value: _Object
-    if type(result) is AckV1:
+    if type(result) is WorkspaceResultV1:
+        result_type, value = "workspaces", {"workspaces": [
+            {"path": item.path, "scope": item.scope.value, "scopeFingerprint": item.scope_fingerprint}
+            for item in result.workspaces]}
+    elif type(result) is AckV1:
         result_type, value = "ack", {}
     elif type(result) is AppFailureV1:
         result_type, value = "error", {"code": result.code.value}
@@ -249,7 +256,19 @@ def decode_response(payload: bytes) -> AppResponseV1:
         raise InvalidAppMessageError()
     result_type = _string(root["resultType"])
     raw = root["result"]
-    if result_type == "ack":
+    if result_type == "workspaces":
+        value = _object(raw, {"workspaces"})
+        rows = value["workspaces"]
+        if type(rows) is not list or len(rows) > 128:
+            raise InvalidAppMessageError()
+        workspaces = []
+        for row in rows:
+            item = _object(row, {"path", "scope", "scopeFingerprint"})
+            workspaces.append(_construct(WorkspaceInfoV1, path=_string(item["path"]),
+                scope=_enum(SessionScopeV1, item["scope"]),
+                scope_fingerprint=_string(item["scopeFingerprint"])))
+        result = _construct(WorkspaceResultV1, workspaces=tuple(workspaces))
+    elif result_type == "ack":
         _object(raw, set())
         result: object = AckV1()
     elif result_type == "error":
@@ -385,6 +404,9 @@ def _decode_event(value: object) -> AttachmentEventV1:
 def _encode_request_payload(request: AppRequestV1) -> _Object:
     payload = request.payload
     operation = request.operation
+    if operation is AppOperationV1.WORKSPACE:
+        query = cast(WorkspaceRequestV1, payload)
+        return {"action": query.action, "path": query.path}
     if operation is AppOperationV1.MUX_CREATE:
         return {"name": cast(MuxCreateV1, payload).name}
     if operation is AppOperationV1.MUX_LIST:
@@ -462,6 +484,10 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
 
 
 def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
+    if operation is AppOperationV1.WORKSPACE:
+        value = _object(raw, {"action", "path"})
+        return _construct(WorkspaceRequestV1, action=_string(value["action"]),
+                          path=_optional_string(value["path"]))
     if operation is AppOperationV1.MUX_CREATE:
         value = _object(raw, {"name"})
         return _construct(MuxCreateV1, name=_string(value["name"]))

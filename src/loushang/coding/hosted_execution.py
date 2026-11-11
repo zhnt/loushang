@@ -22,7 +22,6 @@ from loushang.appserver.protocol import (
     SessionOpenSpecV1,
     SessionSnapshotV1,
 )
-from loushang.appservice.discovery_ports import HostedSessionDiscoveryScopeV1
 from loushang.appservice.execution_contract import (
     ExecutionContentEventV1,
     ExecutionObservationV1,
@@ -95,9 +94,7 @@ def _admit_execution_projection(
             or owner._lease.profile_binding is not owner._binding
             or owner._lease.binding_key != SessionBindingKeyV1(
                 original.product_id, original.continuity_id, original.session_id)
-            or resolver._scopes is None or HostedSessionDiscoveryScopeV1(
-                request.product_id, request.scope, request.scope_fingerprint,
-            ) not in resolver._scopes
+            or not resolver.admits(request)
             or owner.identity != replace(original, scope=request.scope,
                                         scope_fingerprint=request.scope_fingerprint)
             or not _identity_matches_open(request, owner.identity)

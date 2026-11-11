@@ -59,7 +59,7 @@ def resolve_managed_registry_root(namespace: ManagedNamespaceV1) -> PurePosixPat
     """Namespace-level index location, independent of service and client cwd."""
     if type(namespace) is not ManagedNamespaceV1:
         raise ManagedContractError()
-    return PurePosixPath(namespace.platform_home) / "lmux" / "machines" / namespace.machine_id / "registry"
+    return PurePosixPath(namespace.platform_home) / "hosts" / "machines" / namespace.machine_id / "registry"
 
 
 def resolve_managed_admission_root(namespace: ManagedNamespaceV1) -> PurePosixPath:
@@ -75,8 +75,8 @@ def resolve_managed_service_paths(
     if type(namespace) is not ManagedNamespaceV1 or type(service) is not ManagedServiceKeyV1:
         raise ManagedContractError()
     _path(runtime_root)
-    root = PurePosixPath(namespace.platform_home) / "lmux"
-    runtime = PurePosixPath(runtime_root) / "lmux" / namespace.namespace_key / service.service_id
+    root = PurePosixPath(namespace.platform_home) / "hosts"
+    runtime = PurePosixPath(runtime_root) / "hosts" / namespace.namespace_key / service.service_id
     # Durable shared state is not deployment scratch, regardless of which
     # subsystem owns a witness beneath it.
     admission = PurePosixPath(namespace.platform_home) / "state"
@@ -116,9 +116,9 @@ def resolve_managed_paths(
     ):
         raise ManagedContractError()
     stable = resolve_managed_service_paths(namespace, service, runtime_root=runtime_root)
-    root = PurePosixPath(namespace.platform_home) / "lmux"
+    root = PurePosixPath(namespace.platform_home) / "hosts"
     runtime_base = PurePosixPath(runtime_root)
-    runtime = runtime_base / "lmux" / namespace.namespace_key / service.service_id
+    runtime = runtime_base / "hosts" / namespace.namespace_key / service.service_id
     if _overlaps(root, runtime):
         raise ManagedContractError()
     machine = root / "machines" / namespace.machine_id
@@ -128,7 +128,7 @@ def resolve_managed_paths(
         _path(temporary_override)
         temporary = (
             PurePosixPath(temporary_override)
-            / "lmux" / namespace.namespace_key / service.service_id
+            / "hosts" / namespace.namespace_key / service.service_id
             / instance.instance_id
         )
         if (_overlaps(root, temporary) or _overlaps(runtime, temporary)

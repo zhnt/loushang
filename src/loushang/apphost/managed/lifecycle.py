@@ -496,9 +496,9 @@ class ManagedServiceJournalV1:
 
     def _read_state(self, connection: sqlite3.Connection) -> ManagedServiceStateV1 | None:
         service = self._service
-        key = connection.execute("SELECT product, workspace, profile FROM services WHERE service_id=?",
+        key = connection.execute("SELECT product, host_root, profile FROM services WHERE service_id=?",
                                  (service.service_id,)).fetchone()
-        if key != (service.product_id, service.workspace, service.profile):
+        if key != (service.product_id, service.host_root, service.profile):
             raise ManagedStorageError("conflict")
         if self._database.service_admission_required:
             control = self._read_control(connection)

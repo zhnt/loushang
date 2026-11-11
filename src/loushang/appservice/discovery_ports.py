@@ -64,9 +64,9 @@ def require_admitted_scopes(
     scopes: tuple[HostedSessionDiscoveryScopeV1, ...] | None, product_id: str,
 ) -> None:
     if scopes is not None and (
-        type(scopes) is not tuple or not 1 <= len(scopes) <= 2
+        type(scopes) is not tuple or not 0 <= len(scopes) <= 256
         or any(type(scope) is not HostedSessionDiscoveryScopeV1 for scope in scopes)
-        or len({scope.scope for scope in scopes}) != len(scopes)
+        or len({(scope.scope, scope.scope_fingerprint) for scope in scopes}) != len(scopes)
         or any(scope.product_id != product_id for scope in scopes)
     ):
         raise ValueError("invalid admitted Session scopes")
@@ -78,7 +78,26 @@ class HostedSessionDiscoveryBindingV1:
     scopes: tuple[HostedSessionDiscoveryScopeV1, ...]
     port: HostedSessionDiscoveryPortV1 = field(repr=False)
 
+    scope_provider: Callable[[], tuple[HostedSessionDiscoveryScopeV1, ...]] | None = field(default=None, repr=False)
+    product_id: str = field(default="", kw_only=True)
+
+    @property
+    def current_scopes(self) -> tuple[HostedSessionDiscoveryScopeV1, ...]:
+        scopes = self.scopes if self.scope_provider is None else self.scope_provider()
+        require_admitted_scopes(scopes, self.product_id if self.scope_provider is not None else self.scopes[0].product_id)
+        return scopes
+
     def __post_init__(self) -> None:
+        if self.scope_provider is not None:
+            if not callable(self.scope_provider):
+                raise TypeError("invalid scope provider")
+            require_admitted_scopes(self.current_scopes, self.product_id)
+            # Validate service metadata even before a workspace has been registered.
+            SessionListResultV1(self.product_id, SessionScopeV1.CWD, "0" * 64,
+                                self.generation_id, (), True)
+            if not inspect.iscoroutinefunction(getattr(self.port, "discover_sessions", None)):
+                raise TypeError("invalid Product discovery port")
+            return
         if (
             type(self.scopes) is not tuple or not 1 <= len(self.scopes) <= 2
             or any(type(scope) is not HostedSessionDiscoveryScopeV1 for scope in self.scopes)

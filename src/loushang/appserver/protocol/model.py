@@ -105,6 +105,7 @@ class AppOperationV1(str, Enum):
     INTERACTION_RESPOND = "interaction/respond"
     ATTACHMENT_READ_EVENTS = "attachment/read_events"
     SESSIONS_LIST = "sessions/list"
+    WORKSPACE = "workspace/request"
 
 
 @dataclass(frozen=True, slots=True)
@@ -694,8 +695,48 @@ class AttachmentEventsV1:
             raise ValueError("invalid event batch")
 
 
+@dataclass(frozen=True, slots=True)
+class WorkspaceRequestV1:
+    action: str
+    path: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.action not in {"list", "register", "open", "unregister"}:
+            raise ValueError("invalid workspace action")
+        if self.action == "list":
+            if self.path is not None:
+                raise ValueError("list has no workspace path")
+        elif (type(self.path) is not str or not self.path.startswith("/")
+              or len(self.path) > 4096 or "\0" in self.path):
+            raise ValueError("invalid workspace path")
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceInfoV1:
+    path: str
+    scope: SessionScopeV1
+    scope_fingerprint: str
+
+    def __post_init__(self) -> None:
+        WorkspaceRequestV1("open", self.path)
+        if type(self.scope) is not SessionScopeV1 or type(self.scope_fingerprint) is not str or not _FINGERPRINT.fullmatch(self.scope_fingerprint):
+            raise ValueError("invalid workspace scope")
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceResultV1:
+    workspaces: tuple[WorkspaceInfoV1, ...]
+
+    def __post_init__(self) -> None:
+        if (type(self.workspaces) is not tuple or len(self.workspaces) > 128
+                or any(type(item) is not WorkspaceInfoV1 for item in self.workspaces)
+                or len({item.path for item in self.workspaces}) != len(self.workspaces)):
+            raise ValueError("invalid workspace result")
+
+
 AppRequestPayloadV1: TypeAlias = (
-    MuxCreateV1
+    WorkspaceRequestV1
+    | MuxCreateV1
     | MuxListV1
     | MuxReadV1
     | MuxAttachV1
@@ -714,6 +755,7 @@ AppRequestPayloadV1: TypeAlias = (
 
 
 _PAYLOAD_TYPES: dict[AppOperationV1, type[object]] = {
+    AppOperationV1.WORKSPACE: WorkspaceRequestV1,
     AppOperationV1.MUX_CREATE: MuxCreateV1,
     AppOperationV1.MUX_LIST: MuxListV1,
     AppOperationV1.MUX_READ: MuxReadV1,
@@ -771,7 +813,8 @@ class MuxListResultV1:
 
 
 AppResultPayloadV1: TypeAlias = (
-    AckV1
+    WorkspaceResultV1
+    | AckV1
     | AppFailureV1
     | MuxSpaceV1
     | MuxListResultV1
@@ -794,6 +837,7 @@ class AppResponseV1:
         if self.protocol_version != APP_PROTOCOL_VERSION:
             raise ValueError("unsupported app protocol version")
         if type(self.result) not in {
+            WorkspaceResultV1,
             AckV1,
             AppFailureV1,
             MuxSpaceV1,
@@ -808,6 +852,7 @@ class AppResponseV1:
 
 
 __all__ = [
+    "WorkspaceRequestV1", "WorkspaceInfoV1", "WorkspaceResultV1",
     "APP_PROTOCOL_VERSION",
     "MAX_MEMBERS",
     "MAX_MUX_SPACES",

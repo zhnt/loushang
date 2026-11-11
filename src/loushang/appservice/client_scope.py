@@ -363,6 +363,10 @@ class AppClientScopeV1:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return controller
 
+    async def workspace(self, request):
+        self._require_open()
+        return await self._service.workspace(request)
+
     async def attach_mux(self, request: MuxAttachV1) -> MuxAttachmentV1:
         self._service._require_request(request, MuxAttachV1)
         mux = await self._canonical(request.selector)

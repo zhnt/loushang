@@ -22,6 +22,7 @@ from loushang.appservice.discovery_ports import (
 )
 from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
+from loushang.appservice.ports import HostedWorkspacePort
 from loushang.foundation._owned_tasks import (
     _join_failure_first,
 )
@@ -104,6 +105,7 @@ class HostedApplicationRequestV1:
     service_id_factory: Callable[[], str] | None = None
     discovery: HostedSessionDiscoveryBindingV1 | None = None
     execution: HostedExecutionServiceBindingV1 | None = None
+    workspaces: HostedWorkspacePort | None = None
     managed_mux: ManagedMuxServiceBindingV1 | None = None
 
     def __post_init__(self) -> None:
@@ -456,6 +458,7 @@ def create_hosted_application_runtime(
     service = AppServiceV1(
         product_id=request.product_id,
         resolver=request.resolver,
+        workspaces=request.workspaces,
         id_factory=request.service_id_factory,
         close_timeout_seconds=request.service_close_timeout_seconds,
         discovery=request.discovery,

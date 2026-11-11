@@ -220,7 +220,7 @@ class ManagedMuxManagerV1:
 
     def _reservation(self, connection: sqlite3.Connection, name: str, operation: str) -> None:
         row = connection.execute(
-            "SELECT m.name, s.product, s.workspace, s.profile, m.operation_id, s.service_id "
+            "SELECT m.name, s.product, s.host_root, s.profile, m.operation_id, s.service_id "
             "FROM muxes m JOIN services s USING(service_id) WHERE m.name=?", (name,),
         ).fetchone()
         if row is None or _decode(row) != ManagedMuxReservationV1(name, self._service, operation):
@@ -379,7 +379,7 @@ class ManagedMuxManagerV1:
 
     def _historical_creation(self, connection: sqlite3.Connection, reservation: ManagedMuxReservationV1) -> ManagedMuxCreatedV1:
         row = connection.execute(
-            "SELECT m.name, s.product, s.workspace, s.profile, m.operation_id, s.service_id "
+            "SELECT m.name, s.product, s.host_root, s.profile, m.operation_id, s.service_id "
             "FROM mux_intents m JOIN services s USING(service_id) WHERE m.operation_id=?",
             (reservation.operation_id,),
         ).fetchone()

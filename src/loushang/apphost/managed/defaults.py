@@ -52,15 +52,15 @@ def resolve_managed_defaults(
         raise ManagedContractError()
     paths = resolve_platform_paths(environ=values, home=home, temporary_root="/tmp")
     namespace = ManagedNamespaceV1(str(paths.home), os.geteuid(), linux_machine_key(domain=MACHINE_DOMAIN))
-    runtime = paths.runtime / "lmux" / namespace.namespace_key
+    runtime = paths.runtime / "hosts" / namespace.namespace_key
     # Reject conflicting default roots before granting any creation intent.
-    for durable in (paths.home / "lmux", paths.state, paths.data):
+    for durable in (paths.home / "hosts", paths.state, paths.data):
         if runtime.is_relative_to(durable) or durable.is_relative_to(runtime):
             raise ManagedContractError()
     temporary_override = str(paths.temporary) if values.get("LOUSHANG_TMPDIR") else None
     if temporary_override is not None:
-        temporary = Path(temporary_override) / "lmux" / namespace.namespace_key
-        for other in (paths.home / "lmux", paths.state, paths.data, runtime):
+        temporary = Path(temporary_override) / "hosts" / namespace.namespace_key
+        for other in (paths.home / "hosts", paths.state, paths.data, runtime):
             if temporary.is_relative_to(other) or other.is_relative_to(temporary):
                 raise ManagedContractError()
     return ManagedDefaultsV1(namespace, paths, temporary_override)

@@ -42,8 +42,8 @@ _SCHEMA = (
     "temporary_high_water INTEGER NOT NULL CHECK(typeof(temporary_high_water)='integer' "
     "AND temporary_high_water BETWEEN 0 AND 9223372036854775807)) WITHOUT ROWID",
     "CREATE TABLE services (service_id TEXT PRIMARY KEY NOT NULL, "
-    "product TEXT NOT NULL, workspace TEXT NOT NULL, profile TEXT NOT NULL, "
-    "UNIQUE(product, workspace, profile)) WITHOUT ROWID",
+    "product TEXT NOT NULL, host_root TEXT NOT NULL, profile TEXT NOT NULL, "
+    "UNIQUE(product, host_root, profile)) WITHOUT ROWID",
     "CREATE TABLE muxes (name TEXT PRIMARY KEY NOT NULL, "
     "service_id TEXT NOT NULL REFERENCES services(service_id), "
     "operation_id TEXT NOT NULL UNIQUE, "

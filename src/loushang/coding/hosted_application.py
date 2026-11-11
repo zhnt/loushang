@@ -70,6 +70,7 @@ from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.appservice.ports import (
     HostedSessionResolutionErrorV1,
     HostedSessionResolutionFailureV1,
+    HostedWorkspacePort,
 )
 from loushang.harness.runtime import await_owned_task
 
@@ -137,6 +138,7 @@ class CodingForegroundHostedApplicationRequestV1:
     discovery: HostedSessionDiscoveryBindingV1 | None = field(default=None, repr=False)
     admitted_scopes: tuple[HostedSessionDiscoveryScopeV1, ...] | None = None
     execution: HostedExecutionServiceBindingV1 | None = field(default=None, repr=False)
+    workspaces: HostedWorkspacePort | None = field(default=None, repr=False)
     method: CodingHostedMethodV1 | None = field(default=None, repr=False, kw_only=True)
     goal: HostedGoalSetup | None = field(default=None, repr=False, kw_only=True)
     session_owner: CodingHostedSessionOwnerV1 | None = field(default=None, repr=False)
@@ -383,14 +385,22 @@ class CodingAppHostHostedSessionResolverV1:
         self._operation_id = operation_id_factory
         self._scopes = admitted_scopes
 
+    def admits(self, request: SessionOpenSpecV1) -> bool:
+        from .workspace_catalog import CodingWorkspaceCatalog
+
+        scope = HostedSessionDiscoveryScopeV1(
+            request.product_id, request.scope, request.scope_fingerprint,
+        )
+        if type(self._sessions) is CodingWorkspaceCatalog:
+            return self._sessions.admits(scope)
+        return self._scopes is None or scope in self._scopes
+
     async def open_session(self, request: SessionOpenSpecV1) -> HostedSessionPortV1:
         if type(request) is not SessionOpenSpecV1 or request.product_id != (
             CODING_PRODUCT_ID
         ):
             raise ValueError("Coding hosted open request is invalid")
-        if self._scopes is not None and HostedSessionDiscoveryScopeV1(
-            request.product_id, request.scope, request.scope_fingerprint,
-        ) not in self._scopes:
+        if not self.admits(request):
             raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.UNAVAILABLE)
         if self._method is not None or self._goal is not None:
             if request.session_id is not None or self._method_used:
@@ -528,6 +538,10 @@ async def create_coding_foreground_hosted_application(
         raise TypeError("Coding foreground hosted application request is invalid")
     if request.managed_mux is not None:
         raise ValueError("managed Mux requires Coding application continuity")
+    from .workspace_catalog import CodingWorkspaceCatalog
+
+    if type(request.sessions) is CodingWorkspaceCatalog:
+        await request.sessions.load()
     product_factory = CodingForegroundProductFactoryV1(request.session_factory, session_owner=request.session_owner)
     catalog: AppHostCatalogV1 | None = None
     runtime: AppHostRuntimeV1 | None = None
@@ -622,6 +636,7 @@ def _coding_hosted_application_request(
         discovery=request.discovery,
         execution=request.execution,
         managed_mux=request.managed_mux,
+        workspaces=request.workspaces,
     )
 
 
@@ -689,7 +704,12 @@ def _require_managed_selection(
     if not enabled:
         return
     from .managed_catalog import CodingManagedSessionCatalogV1
+    from .workspace_catalog import CodingWorkspaceCatalog
 
+    if type(sessions) is CodingWorkspaceCatalog:
+        if scopes is None:
+            raise ValueError("workspace selection requires explicit scopes")
+        return
     if type(sessions) is not CodingManagedSessionCatalogV1 or scopes != tuple(
         HostedSessionDiscoveryScopeV1("coding", scope.scope, scope.fingerprint) for scope in sessions.scopes
     ):

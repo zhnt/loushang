@@ -27,13 +27,35 @@ class CodingWorkspaceCatalog:
         self._catalogs: dict[Path, CodingManagedSessionCatalogV1] = {}
         self._closed = False
 
+    async def workspace(self, request):
+        from loushang.appserver.protocol import WorkspaceInfoV1, WorkspaceResultV1
+
+        if request.action == "register":
+            await self.register(request.path)
+        elif request.action == "open":
+            await self.select(request.path)
+        elif request.action == "unregister":
+            path = Path(request.path)
+            catalog = self._catalogs.get(path)
+            if catalog is not None:
+                await catalog.close()
+            await asyncio.to_thread(self.registry.unregister, request.path)
+            self._catalogs.pop(path, None)
+        entries = self._catalogs.items()
+        if request.action == "open":
+            entries = [(Path(request.path).resolve(), self._catalogs[Path(request.path).resolve()])]
+        return WorkspaceResultV1(tuple(
+            WorkspaceInfoV1(str(path), catalog.scopes[0].scope, catalog.scopes[0].fingerprint)
+            for path, catalog in entries
+        ))
+
     async def load(self) -> None:
         for path in await asyncio.to_thread(self.registry.list):
             self._add(path)
 
     @property
     def scopes(self):
-        return tuple(scope for catalog in self._catalogs.values() for scope in catalog.scopes)
+        return tuple(catalog.scopes[0] for catalog in self._catalogs.values())
 
     @property
     def pending_sessions(self):

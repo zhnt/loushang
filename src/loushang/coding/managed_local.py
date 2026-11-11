@@ -47,7 +47,7 @@ class CodingManagedLocalLaunchV1:
         if (type(self.application) is not CodingManagedApplicationLaunchV1
                 or type(self.session_discovery) is not bool or not isinstance(root, Path)
                 or not root.is_absolute() or root != root.resolve()
-                or not root.parent.is_dir() or self.application.workspace.is_relative_to(root)):
+                or not root.parent.is_dir() or self.application.host_root.is_relative_to(root)):
             raise ValueError("invalid managed connection root")
         for durable in (
             self.application.application_root, self.application.session_root,
@@ -67,7 +67,14 @@ class CodingManagedLocalLaunchV1:
 
     @property
     def scopes(self) -> tuple[LocalRecordScopeV1, ...]:
-        return tuple(LocalRecordScopeV1(scope.scope, scope.fingerprint) for scope in self.application.scopes)
+        # Connection admission identifies the Host. Workspace scopes are
+        # obtained only through authenticated Workspace.open afterwards.
+        from hashlib import sha256
+
+        from loushang.appserver.protocol import SessionScopeV1
+
+        return (LocalRecordScopeV1(SessionScopeV1.CWD,
+                sha256(str(self.application.host_root).encode()).hexdigest()),)
 
 
 class CodingManagedLocalCommandV1(CodingLocalCommandV1):
@@ -151,7 +158,7 @@ def create_coding_managed_local_launch(
         temporary_override=invocation.temporary_override,
     )
     application = CodingManagedApplicationLaunchV1(
-        Path(invocation.service.workspace), Path(paths.application), application_id, session_root,
+        Path(invocation.service.host_root), Path(paths.application), application_id, session_root,
         store_state_root=store_state_root,
     )
     state = application.store_state_root

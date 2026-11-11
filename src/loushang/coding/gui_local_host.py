@@ -36,7 +36,7 @@ from loushang.apphost.managed.stopper import ManagedServiceStopOperationV1
 from loushang.appserver.client import AppConnectionClosedError
 from loushang.appserver.local_auth import LocalAuthenticationError
 from loushang.appserver.local_record import LocalRecordError
-from loushang.appserver.protocol import InvalidAppMessageError
+from loushang.appserver.protocol import AppServiceError, InvalidAppMessageError
 from loushang.hosting.errors import HostingError
 
 from .managed_process import APPLICATION_ID, ENDPOINT, coding_managed_process_request
@@ -54,22 +54,18 @@ async def operate(request: dict, *, request_factory=None) -> dict:
         return {**reply, "errorCode": "platform_unsupported"}
     stage = "inspection"
     try:
-        if (type(request) is not dict or set(request) - {"action", "workspace", "instanceId"}
-                or request.get("action") not in {"status", "start", "connect", "stop", "restart"}
-                or type(request.get("workspace")) is not str):
+        if (type(request) is not dict
+                or set(request) - {"action", "workspace", "workspaceAction", "instanceId"}
+                or request.get("action") not in {"status", "start", "connect", "stop", "restart", "workspace"}):
             raise ValueError("invalid request")
         action = request["action"]
-        workspace = Path(request["workspace"]).expanduser()
-        if not workspace.is_absolute() or not workspace.resolve(strict=True).is_dir():
-            raise ValueError("invalid workspace")
-        workspace = workspace.resolve(strict=True)
-        service = ManagedServiceKeyV1("coding", str(workspace))
         defaults = resolve_managed_defaults()
         namespace = defaults.namespace
+        service = ManagedServiceKeyV1("coding", namespace.platform_home)
         runtime = str(defaults.platform.runtime)
         paths = resolve_managed_service_paths(namespace, service, runtime_root=runtime)
         deadline = monotonic() + (60 if action == "restart" else 30)
-        reply.update(workspace=str(workspace), serviceId=service.service_id)
+        reply.update(serviceId=service.service_id)
         factory = request_factory or (lambda invocation, descriptor: coding_managed_process_request(
             invocation, descriptor, executable=sys.executable, environment=os.environ))
         async with AsyncExitStack() as owners:
@@ -139,15 +135,30 @@ async def operate(request: dict, *, request_factory=None) -> dict:
             reply.update(state="running", instanceId=connection.instance.instance_id,
                          serviceInstanceId=connection.execution_client.service_instance_id,
                          pid=None if state.native_identity is None else state.native_identity.pid)
-            if action == "status":
+            reply.update(recordRoot=str(paths.connection))
+            if action != "workspace":
                 return reply
+            from hashlib import sha256
+
+            from loushang.appserver.protocol import WorkspaceRequestV1
+
+            operation = request.get("workspaceAction")
+            result = await connection.client.workspace(WorkspaceRequestV1(operation, request.get("workspace")))
+            reply["workspaces"] = [
+                {"path": item.path, "scope": item.scope.value, "scopeFingerprint": item.scope_fingerprint}
+                for item in result.workspaces
+            ]
+            if operation != "open":
+                return reply
+            workspace = result.workspaces[0].path
+            reply["workspace"] = workspace
             stage = "mux"
             snapshot = await _settled_native(lambda: discovery.snapshot_namespace(deadline=deadline, wait_for_lock=True))
             reservations = {item.name: item.reservation for item in snapshot.muxes if item.service == service}
             live = await connection.client.list_muxes()
             available = sorted(item.name for item in live.mux_spaces if item.name in reservations)
-            name = "main" if "main" in available else available[0] if available else "gui-" + service.service_id[:60]
-            if not available:
+            name = "ws-" + sha256(workspace.encode()).hexdigest()[:60]
+            if name not in available:
                 reservation = reservations.get(name)
                 if reservation is None:
                     reservation = ManagedMuxReservationV1(name, service, token_hex(16))
@@ -174,6 +185,8 @@ async def operate(request: dict, *, request_factory=None) -> dict:
         return {**reply, "state": "unknown", "errorCode": "authentication_failed"}
     except AppConnectionClosedError:
         return {**reply, "state": "unknown", "errorCode": "connection_failed"}
+    except AppServiceError as error:
+        return {**reply, "state": "unknown", "errorCode": error.code.value}
     except LocalRecordError as error:
         return {**reply, "state": "unknown", "errorCode": error.code.value}
     except ManagedStorageError as error:

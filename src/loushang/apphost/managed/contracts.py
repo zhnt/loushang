@@ -68,21 +68,21 @@ class ManagedNamespaceV1:
 
 @dataclass(frozen=True, slots=True)
 class ManagedServiceKeyV1:
-    """One Product/workspace/profile reuse key, independent of Mux or instance."""
+    """One Product/host_root/profile reuse key, independent of Mux or instance."""
 
     product_id: str
-    workspace: str = field(repr=False)
+    host_root: str = field(repr=False)
     profile: str = MANAGED_LOCAL_PROFILE
 
     def __post_init__(self) -> None:
         _match(self.product_id, _ID)
-        _path(self.workspace)
+        _path(self.host_root)
         if type(self.profile) is not str or self.profile != MANAGED_LOCAL_PROFILE:
             raise ManagedContractError()
 
     @property
     def service_id(self) -> str:
-        return _digest("service/v1", self.product_id, self.workspace, self.profile)
+        return _digest("service/v1", self.product_id, self.host_root, self.profile)
 
 
 @dataclass(frozen=True, slots=True)

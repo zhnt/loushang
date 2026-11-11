@@ -24,6 +24,7 @@ from loushang.appserver.protocol import (
     MuxSelectorV1,
     SessionModelSelectV1,
     SessionOpenSpecV1,
+    SessionScopeV1,
     SessionSnapshotRequestV1,
     encode_response,
 )
@@ -38,12 +39,13 @@ def execution_value(value):
 
 
 class WebHostClient:
-    def __init__(self, root: Path, mux_name: str):
+    def __init__(self, root: Path, mux_name: str | None = None, *, workspace_scope=None):
         self.directory = LocalConnectionDirectoryV1(root)
         self.connection = LocalAppClientConnectionV1(
             self.directory, "workspace", expected_product_id="coding"
         )
-        self.selector = MuxSelectorV1(name=mux_name)
+        self.selector = None if mux_name is None else MuxSelectorV1(name=mux_name)
+        self.workspace_scope = workspace_scope
         self.attachment = None
         self.lock = asyncio.Lock()
         self.epoch = "1"
@@ -53,6 +55,8 @@ class WebHostClient:
             await self.connection.start()
             if self.connection.execution_client is None:
                 raise ValueError("execution_unavailable")
+            if self.selector is None:
+                return
             await self.attach()
             if not self.attachment.mux_space.members:
                 continuity = (
@@ -97,9 +101,11 @@ class WebHostClient:
             )
             scope, fingerprint = identity.scope, identity.scope_fingerprint
         else:
+            if self.workspace_scope is None:
+                raise ValueError("workspace_not_selected")
             scope, fingerprint = (
-                self.connection.scopes[0].scope,
-                self.connection.scopes[0].fingerprint,
+                SessionScopeV1(self.workspace_scope["scope"]),
+                self.workspace_scope["scopeFingerprint"],
             )
         continuity = continuity or "gui-new-" + token_hex(16)
         mux = await self.connection.client.open_member(

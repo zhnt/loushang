@@ -50,3 +50,20 @@ def test_registry_rejects_untrusted_store_permissions(tmp_path):
             owner.open()
     finally:
         owner.close()
+
+
+@pytest.mark.parametrize('document', ['{}', '["relative"]', '["/a", "/a"]', '["/b", "/a"]'])
+def test_registry_refuses_corrupt_membership_instead_of_silently_starting_fresh(tmp_path, document):
+    from loushang.apphost.managed._files import ManagedStorageError
+
+    root = tmp_path / 'registry'
+    owner = WorkspaceRegistry(root)
+    try:
+        owner.open()
+        path = root / 'workspaces.json'
+        path.write_text(document)
+        path.chmod(0o600)
+        with pytest.raises(ManagedStorageError, match='invalid_record'):
+            owner.list()
+    finally:
+        owner.close()

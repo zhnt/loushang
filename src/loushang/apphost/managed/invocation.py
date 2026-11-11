@@ -26,7 +26,7 @@ _VERSION_TRACE = "loushang.managed-child/v3"
 _MAX_BYTES = 64 * 1024
 _MAX_SCRATCH_BYTES = 96 * 1024
 _FIELDS = frozenset({
-    "version", "platformHome", "userId", "machineId", "productId", "workspace",
+    "version", "platformHome", "userId", "machineId", "productId", "hostRoot",
     "profile", "instanceId", "attemptId", "runtimeRoot",
 })
 _SCRATCH_FIELDS = _FIELDS | {"temporaryRoot"}
@@ -65,7 +65,7 @@ class ManagedChildInvocationV1:
             "userId": self.namespace.user_id,
             "machineId": self.namespace.machine_id,
             "productId": self.service.product_id,
-            "workspace": self.service.workspace,
+            "hostRoot": self.service.host_root,
             "profile": self.service.profile,
             "instanceId": self.instance.instance_id,
             "attemptId": self.attempt_id,
@@ -104,7 +104,7 @@ class ManagedChildInvocationV1:
             else:
                 raise ManagedContractError()
             namespace = ManagedNamespaceV1(record["platformHome"], record["userId"], record["machineId"])
-            service = ManagedServiceKeyV1(record["productId"], record["workspace"], record["profile"])
+            service = ManagedServiceKeyV1(record["productId"], record["hostRoot"], record["profile"])
             instance = ManagedInstanceRefV1(namespace.namespace_key, service.service_id, record["instanceId"])
             return cls(namespace, service, instance, record["attemptId"], record["runtimeRoot"], temporary, trace_deadline)
         except (ValueError, TypeError, RecursionError):

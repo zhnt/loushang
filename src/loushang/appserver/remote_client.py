@@ -80,6 +80,8 @@ from .protocol import (
     SessionSnapshotV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceRequestV1,
+    WorkspaceResultV1,
     decode_response,
     encode_request,
 )
@@ -395,6 +397,9 @@ class RemoteAppClientV1:
 
     async def create_mux(self, request: MuxCreateV1) -> MuxSpaceV1:
         return await self._call(AppOperationV1.MUX_CREATE, request, MuxSpaceV1)
+
+    async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
+        return await self._call(AppOperationV1.WORKSPACE, request, WorkspaceResultV1)
 
     async def list_muxes(self) -> MuxListResultV1:
         return await self._call(AppOperationV1.MUX_LIST, MuxListV1(), MuxListResultV1)

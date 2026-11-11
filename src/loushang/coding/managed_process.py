@@ -51,7 +51,7 @@ def coding_managed_process_request(
     effective["LOUSHANG_TMPDIR"] = _temporary(invocation)
     return ProcessLaunchRequest(
         (executable, "-m", "loushang.coding.managed_process", invocation.to_json(), str(selected), str(descriptor)),
-        invocation.service.workspace, tuple(effective.items()),
+        invocation.namespace.platform_home, tuple(effective.items()),
         ProcessStreamSpec(ProcessStdinMode.CLOSED, ProcessStdoutMode.DISCARD, ProcessStderrMode.DISCARD),
     )
 
@@ -135,7 +135,7 @@ def _run(arguments: Sequence[str]) -> int:
             )
 
             with observability_runtime_context(
-                session_id=None, cwd=invocation.service.workspace, mode="managed",
+                session_id=None, cwd=invocation.service.host_root, mode="managed",
                 trace_sink=trace, trace_scopes=frozenset({"turn.start.performance", "host"}),
             ):
                 bootstrap.trace_sink_installed(trace)

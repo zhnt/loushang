@@ -53,8 +53,8 @@ class ManagedNamespaceAdmissionV1:
         _path(runtime_root)
         admission = Path(resolve_managed_admission_root(namespace))
         registry = Path(resolve_managed_registry_root(namespace))
-        runtime = Path(runtime_root) / "lmux" / namespace.namespace_key
-        if (_overlaps(PurePosixPath(runtime), PurePosixPath(namespace.platform_home) / "lmux")
+        runtime = Path(runtime_root) / "hosts" / namespace.namespace_key
+        if (_overlaps(PurePosixPath(runtime), PurePosixPath(namespace.platform_home) / "hosts")
                 or _overlaps(PurePosixPath(runtime), PurePosixPath(namespace.platform_home) / "state")):
             raise ManagedContractError()
         self._namespace = namespace

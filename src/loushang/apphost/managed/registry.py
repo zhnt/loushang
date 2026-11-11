@@ -124,7 +124,7 @@ class ManagedRegistryV1:
             # History never reactivates a released operation, even under the
             # same name. Only the exact still-active intent is an idempotent retry.
             old = connection.execute(
-                "SELECT m.name, s.product, s.workspace, s.profile, m.operation_id, s.service_id "
+                "SELECT m.name, s.product, s.host_root, s.profile, m.operation_id, s.service_id "
                 "FROM mux_intents m JOIN services s USING(service_id) WHERE m.operation_id=?",
                 (reservation.operation_id,),
             ).fetchone()
@@ -138,10 +138,10 @@ class ManagedRegistryV1:
                 raise ManagedStorageError("conflict")
             key = reservation.service
             stored = connection.execute(
-                "SELECT product, workspace, profile FROM services WHERE service_id=?",
+                "SELECT product, host_root, profile FROM services WHERE service_id=?",
                 (key.service_id,),
             ).fetchone()
-            if stored is not None and stored != (key.product_id, key.workspace, key.profile):
+            if stored is not None and stored != (key.product_id, key.host_root, key.profile):
                 raise ManagedStorageError("conflict")
             if connection.execute("SELECT count(*) FROM mux_intents").fetchone()[0] >= MAX_MUXES:
                 raise ManagedStorageError("capacity")
@@ -150,7 +150,7 @@ class ManagedRegistryV1:
                 if connection.execute("SELECT count(*) FROM services").fetchone()[0] >= MAX_SERVICES:
                     raise ManagedStorageError("capacity")
                 connection.execute("INSERT INTO services VALUES (?, ?, ?, ?)",
-                                   (key.service_id, key.product_id, key.workspace, key.profile))
+                                   (key.service_id, key.product_id, key.host_root, key.profile))
             values = (reservation.name, key.service_id, reservation.operation_id)
             connection.execute("INSERT INTO mux_intents VALUES (?, ?, ?)", values)
             connection.execute("INSERT INTO muxes VALUES (?, ?, ?)", values)
@@ -165,7 +165,7 @@ class ManagedRegistryV1:
         key = reservation.service
         with self._database.transaction(write=True, deadline=deadline, wait_for_lock=wait_for_lock) as connection:
             rows = connection.execute(
-                "SELECT a.name, s.product, s.workspace, s.profile, a.operation_id, s.service_id "
+                "SELECT a.name, s.product, s.host_root, s.profile, a.operation_id, s.service_id "
                 "FROM service_aliases a JOIN services s USING(service_id) "
                 "WHERE a.name=? OR a.service_id=? OR a.operation_id=?",
                 (reservation.name, key.service_id, reservation.operation_id),
@@ -175,9 +175,9 @@ class ManagedRegistryV1:
                     raise ManagedStorageError("conflict")
             else:
                 stored = connection.execute(
-                    "SELECT product, workspace, profile FROM services WHERE service_id=?", (key.service_id,),
+                    "SELECT product, host_root, profile FROM services WHERE service_id=?", (key.service_id,),
                 ).fetchone()
-                if stored is not None and stored != (key.product_id, key.workspace, key.profile):
+                if stored is not None and stored != (key.product_id, key.host_root, key.profile):
                     raise ManagedStorageError("conflict")
                 if (connection.execute("SELECT count(*) FROM service_aliases").fetchone()[0] >= MAX_SERVICES
                         or stored is None and connection.execute("SELECT count(*) FROM services").fetchone()[0] >= MAX_SERVICES):
@@ -185,7 +185,7 @@ class ManagedRegistryV1:
                 self._database.admit_growth(connection)
                 if stored is None:
                     connection.execute("INSERT INTO services VALUES (?, ?, ?, ?)",
-                                       (key.service_id, key.product_id, key.workspace, key.profile))
+                                       (key.service_id, key.product_id, key.host_root, key.profile))
                 connection.execute("INSERT INTO service_aliases VALUES (?, ?, ?)",
                                    (reservation.name, key.service_id, reservation.operation_id))
         _check_deadline(deadline)
@@ -197,7 +197,7 @@ class ManagedRegistryV1:
         require_service_alias(name)
         with self._database.transaction(deadline=deadline, wait_for_lock=wait_for_lock) as connection:
             row = connection.execute(
-                "SELECT a.name, s.product, s.workspace, s.profile, a.operation_id, s.service_id "
+                "SELECT a.name, s.product, s.host_root, s.profile, a.operation_id, s.service_id "
                 "FROM service_aliases a JOIN services s USING(service_id) WHERE a.name=?", (name,),
             ).fetchone()
             result = None if row is None else _decode_alias(row)
@@ -208,7 +208,7 @@ class ManagedRegistryV1:
         require_mux_name(name)
         with self._database.transaction() as connection:
             row = connection.execute(
-                "SELECT m.name, s.product, s.workspace, s.profile, m.operation_id, s.service_id "
+                "SELECT m.name, s.product, s.host_root, s.profile, m.operation_id, s.service_id "
                 "FROM muxes m JOIN services s USING(service_id) WHERE m.name=?",
                 (name,),
             ).fetchone()
@@ -225,7 +225,7 @@ class ManagedRegistryV1:
         _match(operation_id, _HEX32)
         with self._database.transaction(deadline=deadline, wait_for_lock=wait_for_lock) as connection:
             row = connection.execute(
-                "SELECT m.name, s.product, s.workspace, s.profile, m.operation_id, s.service_id "
+                "SELECT m.name, s.product, s.host_root, s.profile, m.operation_id, s.service_id "
                 "FROM mux_intents m JOIN services s USING(service_id) WHERE m.operation_id=?",
                 (operation_id,),
             ).fetchone()
@@ -267,7 +267,7 @@ class ManagedRegistryV1:
             require_mux_name(after)
         with self._database.transaction() as connection:
             return tuple(_decode(row) for row in connection.execute(
-                "SELECT m.name, s.product, s.workspace, s.profile, m.operation_id, s.service_id "
+                "SELECT m.name, s.product, s.host_root, s.profile, m.operation_id, s.service_id "
                 "FROM muxes m JOIN services s USING(service_id) "
                 "WHERE m.name>? ORDER BY m.name LIMIT ?", (after or "", limit),
             ).fetchall())

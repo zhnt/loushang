@@ -28,6 +28,8 @@ from .protocol import (
     SessionSnapshotV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceRequestV1,
+    WorkspaceResultV1,
 )
 
 
@@ -40,6 +42,8 @@ class AppConnectionClosedError(AppServiceError):
 
 class AppClientV1(Protocol):
     """Legacy type identity for the canonical AppServicePortV1 contract."""
+
+    async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1: ...
 
     async def create_mux(self, request: MuxCreateV1) -> MuxSpaceV1: ...
 

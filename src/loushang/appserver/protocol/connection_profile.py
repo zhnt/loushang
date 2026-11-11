@@ -169,6 +169,8 @@ def require_profile_operation(
     """Codec recognition is not permission to use an optional operation."""
     if type(operation) is not AppOperationV1:
         raise ValueError("invalid application operation")
+    if operation is AppOperationV1.WORKSPACE and not supports_managed_mux(profile):
+        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
     discovery = supports_session_discovery(profile)
     if operation is AppOperationV1.SESSIONS_LIST and not discovery:
         raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)

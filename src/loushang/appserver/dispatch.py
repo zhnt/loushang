@@ -36,6 +36,8 @@ async def dispatch_request(
     service_port = client
     value = request.payload
     match request.operation:
+        case AppOperationV1.WORKSPACE:
+            return await service_port.workspace(value)
         case AppOperationV1.MUX_CREATE:
             return await service_port.create_mux(cast(MuxCreateV1, value))
         case AppOperationV1.MUX_LIST:
