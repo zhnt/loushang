@@ -381,3 +381,22 @@ async def test_G13_BOUNDED_PRIVATE_STORAGE_failed_replace_keeps_old_record(
     assert await lease.load() == first
     assert not tuple(root.glob("*.tmp"))
     await lease.close()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows managed continuity paths")
+@_async_test
+async def test_windows_continuity_publishes_at_long_managed_paths(tmp_path: Path) -> None:
+    parent = tmp_path / ("x" * max(16, 224 - len(str(tmp_path))))
+    parent.mkdir()
+    root = parent / "application"
+    store = JsonFileApplicationContinuityStoreV1(root)
+    lease = await store.acquire(application_id="coding.default", owner_epoch="epoch-1")
+    try:
+        record = _record()
+        await lease.commit(expected_revision=None, record=record)
+        assert await lease.load() == record
+        assert len(await store.list_applications()) == 1
+        await lease.delete(expected_revision=1)
+        assert await lease.load() is None
+    finally:
+        await lease.close()

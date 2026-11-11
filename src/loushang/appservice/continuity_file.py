@@ -40,6 +40,12 @@ class JsonFileApplicationContinuityStoreV1:
     def root(self) -> Path:
         return self._root
 
+    @property
+    def _io_root(self) -> Path:
+        if sys.platform == "win32" and len(self._root.drive) == 2:
+            return Path("\\\\?\\" + str(self._root))
+        return self._root
+
     async def acquire(
         self,
         *,
@@ -76,7 +82,7 @@ class JsonFileApplicationContinuityStoreV1:
             raise ValueError("invalid continuity listing limit")
         self._prepare_root()
         try:
-            paths = sorted(self._root.glob("*.json"))
+            paths = sorted(self._io_root.glob("*.json"))
         except OSError:
             raise _error(ApplicationContinuityErrorCodeV1.UNAVAILABLE) from None
         if len(paths) > limit:
@@ -87,14 +93,15 @@ class JsonFileApplicationContinuityStoreV1:
         return tuple(continuity_summary(item) for item in records)
 
     def _prepare_root(self) -> None:
+        root = self._io_root
         try:
-            if self._root.exists() or self._root.is_symlink():
-                info = self._root.lstat()
+            if root.exists() or root.is_symlink():
+                info = root.lstat()
                 if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
                     raise _error(ApplicationContinuityErrorCodeV1.UNAVAILABLE)
             else:
-                self._root.mkdir(mode=0o700, parents=False)
-            if os.name != "nt" and self._root.stat().st_mode & 0o077:
+                root.mkdir(mode=0o700, parents=False)
+            if os.name != "nt" and root.stat().st_mode & 0o077:
                 raise _error(ApplicationContinuityErrorCodeV1.UNAVAILABLE)
         except ApplicationContinuityError:
             raise
@@ -165,7 +172,7 @@ class JsonFileApplicationContinuityStoreV1:
             os.close(descriptor)
             descriptor = None
             os.replace(temporary, path)
-            _fsync_directory(self._root)
+            _fsync_directory(self._io_root)
         except ApplicationContinuityError:
             raise
         except OSError:
@@ -185,7 +192,7 @@ class JsonFileApplicationContinuityStoreV1:
             if path.is_symlink():
                 raise _error(ApplicationContinuityErrorCodeV1.UNAVAILABLE)
             path.unlink()
-            _fsync_directory(self._root)
+            _fsync_directory(self._io_root)
         except ApplicationContinuityError:
             raise
         except OSError:
@@ -201,7 +208,7 @@ class JsonFileApplicationContinuityStoreV1:
                 self._active.discard(application_id)
 
     def _path(self, application_id: str, suffix: str) -> Path:
-        return self._root / f"{application_id}{suffix}"
+        return self._io_root / f"{application_id}{suffix}"
 
 
 class _JsonFileApplicationContinuityLeaseV1:
@@ -285,7 +292,7 @@ class _JsonFileApplicationContinuityLeaseV1:
 
 
 def _open_private(path: Path, *, create: bool, exclusive: bool = False) -> int:
-    flags = os.O_RDWR
+    flags = os.O_RDWR | getattr(os, "O_BINARY", 0)
     if create:
         flags |= os.O_CREAT
     if exclusive:
