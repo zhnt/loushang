@@ -68,6 +68,10 @@ class WindowsPrivateDirectoryAcl:
         )
 
     @property
+    def user_sid(self) -> str:
+        return self._user_sid
+
+    @property
     def security_descriptor(self) -> int:
         if self._descriptor.value is None:
             raise ValueError("Windows private directory ACL owner is closed")

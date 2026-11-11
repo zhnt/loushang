@@ -148,3 +148,30 @@ def test_contract_edge_has_only_closed_standard_library_dependencies():
             assert node.level == 0
             imports.add(node.module)
     assert imports <= {"__future__", "re", "dataclasses", "enum", "hashlib", "pathlib"}
+
+
+def test_windows_managed_addresses_use_sid_and_case_insensitive_drive_paths():
+    from loushang.apphost.managed.paths import resolve_managed_paths
+
+    home = r"C:\Users\Test\.loushang"
+    namespace = ManagedNamespaceV1(home, "S-1-5-21-1-2-3-1000", "a" * 32)
+    service = ManagedServiceKeyV1("coding", home)
+    assert replace(namespace, platform_home=home.lower()).namespace_key == namespace.namespace_key
+    assert replace(service, host_root=home.lower()).service_id == service.service_id
+    instance = ManagedInstanceRefV1(namespace.namespace_key, service.service_id, "b" * 32)
+    paths = resolve_managed_paths(namespace, service, instance, runtime_root=r"C:\Scratch")
+    assert str(paths.connection).startswith("C:\\Scratch\\hosts\\")
+    assert str(paths.application).startswith(home + "\\hosts\\")
+    with pytest.raises(ManagedContractError):
+        resolve_managed_paths(namespace, service, instance, runtime_root="/tmp")
+    with pytest.raises(ManagedContractError):
+        replace(namespace, user_id=1000)
+
+
+@pytest.mark.parametrize("path", [
+    r"C:relative", r"\rooted", r"\\server\share", r"\\?\C:\example",
+    r"C:\path\..\other", r"C:\path\name:stream", r"C:\CON\data", "C:\\trailing.\\data",
+])
+def test_windows_managed_addresses_reject_ambiguous_native_paths(path):
+    with pytest.raises(ManagedContractError):
+        ManagedServiceKeyV1("coding", path)

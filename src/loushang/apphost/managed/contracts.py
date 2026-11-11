@@ -1,4 +1,4 @@
-"""Pure values for the optional Linux managed-deployment boundary.
+"""Pure values for the managed-deployment boundary.
 
 These values neither admit filesystem paths nor authorize processes/connections.
 An owner must validate native facts and CAS transitions under its lifecycle fence.
@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from hashlib import sha256
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, PureWindowsPath
 
 MANAGED_DEPLOYMENT_VERSION = "loushang.managed/v1"
 MANAGED_LOCAL_PROFILE = "local-managed/v1"
@@ -19,6 +19,8 @@ _ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}\Z")
 _MUX_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 _HEX32 = re.compile(r"[0-9a-f]{32}\Z")
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
+_DRIVE = re.compile(r"[A-Za-z]:\\")
+_SID = re.compile(r"S-1-(?:0|[1-9][0-9]{0,14})(?:-(?:0|[1-9][0-9]{0,9})){1,15}\Z")
 _UNSAFE_TEXT = re.compile(r"[\x00-\x1f\x7f-\x9f\ud800-\udfff]")
 
 
@@ -48,21 +50,23 @@ class ManagedNamespaceV1:
     """Injected local identity; home is lexical, not yet filesystem-admitted."""
 
     platform_home: str = field(repr=False)
-    user_id: int
+    user_id: int | str = field(repr=False)
     machine_id: str
 
     def __post_init__(self) -> None:
-        _path(self.platform_home)
-        if self.platform_home == "/":
+        home = _path(self.platform_home)
+        if home == home.parent:
             raise ManagedContractError()
-        if type(self.user_id) is not int or not 0 <= self.user_id < 2**32:
+        if isinstance(home, PureWindowsPath):
+            _match(self.user_id, _SID)
+        elif type(self.user_id) is not int or not 0 <= self.user_id < 2**32:
             raise ManagedContractError()
         _match(self.machine_id, _HEX32)
 
     @property
     def namespace_key(self) -> str:
         return _digest(
-            "namespace/v1", self.platform_home, str(self.user_id), self.machine_id
+            "namespace/v1", _path_key(self.platform_home), str(self.user_id), self.machine_id
         )
 
 
@@ -82,7 +86,7 @@ class ManagedServiceKeyV1:
 
     @property
     def service_id(self) -> str:
-        return _digest("service/v1", self.product_id, self.host_root, self.profile)
+        return _digest("service/v1", self.product_id, _path_key(self.host_root), self.profile)
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,26 +178,39 @@ class ManagedStopEvidenceV1:
         )
 
 
-def _match(value: str, pattern: re.Pattern[str]) -> None:
+def _match(value: object, pattern: re.Pattern[str]) -> None:
     if type(value) is not str or pattern.fullmatch(value) is None:
         raise ManagedContractError()
 
 
-def _path(value: str) -> None:
+def _path(value: str) -> PurePosixPath | PureWindowsPath:
     if (
         type(value) is not str
         or not 1 <= len(value) <= 4096
         or _UNSAFE_TEXT.search(value) is not None
     ):
         raise ManagedContractError()
-    path = PurePosixPath(value)
-    if (
-        not path.is_absolute()
-        or value.startswith("//")
-        or ".." in path.parts
-        or str(path) != value
-    ):
+    if _DRIVE.match(value) is not None:
+        windows = PureWindowsPath(value)
+        if str(windows) != value or any(_invalid_windows_part(part) for part in windows.parts[1:]):
+            raise ManagedContractError()
+        return windows
+    posix = PurePosixPath(value)
+    if not posix.is_absolute() or value.startswith("//") or ".." in posix.parts or str(posix) != value:
         raise ManagedContractError()
+    return posix
+
+
+def _invalid_windows_part(part: str) -> bool:
+    return (
+        part.endswith((".", " "))
+        or any(character in '<>:"|?*' for character in part)
+        or PureWindowsPath(part).is_reserved()
+    )
+
+
+def _path_key(value: str) -> str:
+    return value.lower() if _DRIVE.match(value) is not None else value
 
 
 def _digest(*parts: str) -> str:

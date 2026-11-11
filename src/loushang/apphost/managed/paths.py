@@ -7,7 +7,7 @@ check permissions, links, stable identity, capacity and Session-root isolation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, PureWindowsPath
 
 from .contracts import (
     ManagedContractError,
@@ -16,6 +16,8 @@ from .contracts import (
     ManagedServiceKeyV1,
     _path,
 )
+
+ManagedPath = PurePosixPath | PureWindowsPath
 
 # Names shared by the two diagnostic formats in one retained directory. These
 # are layout facts only; each consumer must validate its own files and charges.
@@ -30,56 +32,61 @@ MANAGED_LOG_DIRECTORY_NAMES = frozenset({
 class ManagedServicePathsV1:
     """Stable service paths, available before an instance is reserved."""
 
-    registry: PurePosixPath = field(repr=False)
-    lifecycle: PurePosixPath = field(repr=False)
-    application: PurePosixPath = field(repr=False)
-    control: PurePosixPath = field(repr=False)
-    logs: PurePosixPath = field(repr=False)
-    cache: PurePosixPath = field(repr=False)
-    connection: PurePosixPath = field(repr=False)
-    runtime_control: PurePosixPath = field(repr=False)
+    registry: ManagedPath = field(repr=False)
+    lifecycle: ManagedPath = field(repr=False)
+    application: ManagedPath = field(repr=False)
+    control: ManagedPath = field(repr=False)
+    logs: ManagedPath = field(repr=False)
+    cache: ManagedPath = field(repr=False)
+    connection: ManagedPath = field(repr=False)
+    runtime_control: ManagedPath = field(repr=False)
 
 
 @dataclass(frozen=True, slots=True)
 class ManagedDeploymentPathsV1:
     """Resolved locations only: possessing this value grants no IO capability."""
 
-    registry: PurePosixPath = field(repr=False)
-    lifecycle: PurePosixPath = field(repr=False)
-    application: PurePosixPath = field(repr=False)
-    control: PurePosixPath = field(repr=False)
-    logs: PurePosixPath = field(repr=False)
-    temporary: PurePosixPath = field(repr=False)
-    cache: PurePosixPath = field(repr=False)
-    connection: PurePosixPath = field(repr=False)
-    runtime_control: PurePosixPath = field(repr=False)
+    registry: ManagedPath = field(repr=False)
+    lifecycle: ManagedPath = field(repr=False)
+    application: ManagedPath = field(repr=False)
+    control: ManagedPath = field(repr=False)
+    logs: ManagedPath = field(repr=False)
+    temporary: ManagedPath = field(repr=False)
+    cache: ManagedPath = field(repr=False)
+    connection: ManagedPath = field(repr=False)
+    runtime_control: ManagedPath = field(repr=False)
 
 
-def resolve_managed_registry_root(namespace: ManagedNamespaceV1) -> PurePosixPath:
+def _namespace_home(namespace: ManagedNamespaceV1) -> ManagedPath:
+    if type(namespace) is not ManagedNamespaceV1:
+        raise ManagedContractError()
+    return _path(namespace.platform_home)
+
+
+def resolve_managed_registry_root(namespace: ManagedNamespaceV1) -> ManagedPath:
     """Namespace-level index location, independent of service and client cwd."""
-    if type(namespace) is not ManagedNamespaceV1:
-        raise ManagedContractError()
-    return PurePosixPath(namespace.platform_home) / "hosts" / "machines" / namespace.machine_id / "registry"
+    return _namespace_home(namespace) / "hosts" / "machines" / namespace.machine_id / "registry"
 
 
-def resolve_managed_admission_root(namespace: ManagedNamespaceV1) -> PurePosixPath:
+def resolve_managed_admission_root(namespace: ManagedNamespaceV1) -> ManagedPath:
     """Independent durable initialization witness; resolving grants no IO."""
-    if type(namespace) is not ManagedNamespaceV1:
-        raise ManagedContractError()
-    return PurePosixPath(namespace.platform_home) / "state" / "managed-deployments" / namespace.namespace_key
+    return _namespace_home(namespace) / "state" / "managed-deployments" / namespace.namespace_key
 
 
 def resolve_managed_service_paths(
     namespace: ManagedNamespaceV1, service: ManagedServiceKeyV1, *, runtime_root: str,
 ) -> ManagedServicePathsV1:
-    if type(namespace) is not ManagedNamespaceV1 or type(service) is not ManagedServiceKeyV1:
+    if type(service) is not ManagedServiceKeyV1:
         raise ManagedContractError()
-    _path(runtime_root)
-    root = PurePosixPath(namespace.platform_home) / "hosts"
-    runtime = PurePosixPath(runtime_root) / "hosts" / namespace.namespace_key / service.service_id
+    home = _namespace_home(namespace)
+    runtime_base = _path(runtime_root)
+    if type(runtime_base) is not type(home) or type(_path(service.host_root)) is not type(home):
+        raise ManagedContractError()
+    root = home / "hosts"
+    runtime = runtime_base / "hosts" / namespace.namespace_key / service.service_id
     # Durable shared state is not deployment scratch, regardless of which
     # subsystem owns a witness beneath it.
-    admission = PurePosixPath(namespace.platform_home) / "state"
+    admission = _path(namespace.platform_home) / "state"
     if _overlaps(root, runtime) or _overlaps(admission, runtime):
         raise ManagedContractError()
     machine = root / "machines" / namespace.machine_id
@@ -116,8 +123,8 @@ def resolve_managed_paths(
     ):
         raise ManagedContractError()
     stable = resolve_managed_service_paths(namespace, service, runtime_root=runtime_root)
-    root = PurePosixPath(namespace.platform_home) / "hosts"
-    runtime_base = PurePosixPath(runtime_root)
+    root = _path(namespace.platform_home) / "hosts"
+    runtime_base = _path(runtime_root)
     runtime = runtime_base / "hosts" / namespace.namespace_key / service.service_id
     if _overlaps(root, runtime):
         raise ManagedContractError()
@@ -125,14 +132,16 @@ def resolve_managed_paths(
     server = machine / "servers" / service.service_id
     temporary = server / "tmp" / instance.instance_id
     if temporary_override is not None:
-        _path(temporary_override)
+        scratch = _path(temporary_override)
+        if type(scratch) is not type(root):
+            raise ManagedContractError()
         temporary = (
-            PurePosixPath(temporary_override)
+            scratch
             / "hosts" / namespace.namespace_key / service.service_id
             / instance.instance_id
         )
         if (_overlaps(root, temporary) or _overlaps(runtime, temporary)
-                or _overlaps(PurePosixPath(namespace.platform_home) / "state", temporary)):
+                or _overlaps(_path(namespace.platform_home) / "state", temporary)):
             raise ManagedContractError()
     return ManagedDeploymentPathsV1(
         registry=stable.registry,
@@ -147,7 +156,7 @@ def resolve_managed_paths(
     )
 
 
-def _overlaps(left: PurePosixPath, right: PurePosixPath) -> bool:
+def _overlaps(left: ManagedPath, right: ManagedPath) -> bool:
     return left.is_relative_to(right) or right.is_relative_to(left)
 
 

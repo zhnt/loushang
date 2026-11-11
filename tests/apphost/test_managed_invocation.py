@@ -97,7 +97,9 @@ def test_every_field_is_required_and_duplicates_never_overwrite():
 
 @pytest.mark.parametrize("payload", [
     None, b"{}", "", "null", "true", "[]", "{}", "{", "\ud800",
-    "[" * 2000 + "]" * 2000, " " * 65537, "\"" + "界" * 24000 + "\"",
+    "[" * 2000 + "]" * 2000,
+    pytest.param(" " * 65537, id="oversized-ascii"),
+    pytest.param("\"" + "界" * 24000 + "\"", id="oversized-utf8"),
     '{"userId":NaN}', '{"userId":Infinity}', '{"userId":-Infinity}',
 ])
 def test_malformed_oversized_or_nonobject_input_is_bounded(payload):
