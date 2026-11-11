@@ -719,6 +719,7 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "managed/contracts.py",
         "managed/paths.py",
         "managed/_files.py",
+        "managed/_windows_files.py",
         "managed/_database.py",
         "managed/registry.py",
         "managed/workspaces.py",

@@ -527,6 +527,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "managed/contracts.py",
         "managed/paths.py",
         "managed/_files.py",
+        "managed/_windows_files.py",
         "managed/_database.py",
         "managed/registry.py",
         "managed/workspaces.py",

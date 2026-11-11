@@ -46,7 +46,7 @@ def test_xdg_runtime_precedence(tmp_path):
 
 
 def test_platform_rejection_before_uid_or_path_lookup(monkeypatch):
-    monkeypatch.setattr(module.sys, "platform", "win32")
+    monkeypatch.setattr(module.sys, "platform", "darwin")
     monkeypatch.setattr(module, "resolve_platform_paths", lambda **k: pytest.fail("unsupported lookup"))
     with pytest.raises(HostingError) as caught:
         module.resolve_managed_defaults(environ={})

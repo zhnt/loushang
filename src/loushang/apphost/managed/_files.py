@@ -1,4 +1,4 @@
-"""Linux private-file owner for managed deployment storage, with no domain policy.
+"""Native private-file owner for managed deployment storage, with no domain policy.
 
 The caller injects a narrow canonical directory. Parents must exist unless
 explicit parent creation is requested for new deployment initialization.
@@ -23,8 +23,24 @@ from pathlib import Path
 from secrets import token_hex
 from threading import RLock
 from time import monotonic, sleep
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_directory,
+    windows_final_directory_path,
+    windows_flush_directory,
+    windows_rename_at,
+    windows_stat_at,
+    windows_unlink_at,
+)
+
+from . import _windows_files
+from .contracts import _invalid_windows_part
+
+if TYPE_CHECKING:
+    from os import _ScandirIterator
+
+_WINDOWS = sys.platform == "win32"
 _NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,95}\Z")
 MAX_RECORD_BYTES = 16 * 1024
 FileIdentity = tuple[int, int]
@@ -143,7 +159,7 @@ class PrivateManagedDirectory:
         self._create_parents = create_parents
         self._exclusive_create = exclusive_create
         self._attempted = self._opened = self._closing = False
-        if sys.platform != "linux":
+        if sys.platform not in {"linux", "win32"}:
             raise ManagedStorageError("unsupported")
         if (type(create) is not bool or type(defer_open) is not bool or not isinstance(root, Path)
                 or type(create_parents) is not bool or (create_parents and not create)
@@ -158,6 +174,9 @@ class PrivateManagedDirectory:
         if (
             not root.is_absolute() or root == root.parent
             or ".." in root.parts or str(root).startswith("//") or "\0" in str(root)
+            or (_WINDOWS and (len(root.drive) != 2 or any(
+                _invalid_windows_part(part) for part in root.parts[1:]
+            )))
         ):
             raise ManagedStorageError("unavailable")
         if defer_open:
@@ -188,19 +207,18 @@ class PrivateManagedDirectory:
             _check_deadline(deadline)
             self._attempted = True
             root = self._root
-            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-            self._anchor = os.open("/", flags)
+            self._anchor = self._open_directory(root.anchor)
             parent = self._anchor
             for part in root.parts[1:-1]:
                 _check_deadline(deadline)
                 if self._create_parents:
                     self._prepare_entry(parent, part, deadline=deadline)
-                fd = os.open(part, flags, dir_fd=parent)
+                fd = self._open_directory(part, parent)
                 self._opening_fd = fd
                 identity = self._validate_parent(os.fstat(fd))
                 self._parents.append((parent, part, fd, identity))
                 self._opening_fd = None
-                if self._create_parents:
+                if parent in self._sync_pending:
                     self._check_parents()
                     _check_deadline(deadline)
                     self._sync_parent(parent)
@@ -214,25 +232,24 @@ class PrivateManagedDirectory:
                     # Record possible publication debt before mkdir. A lost
                     # receipt must not authorize adopting or deleting the leaf.
                     self._sync_pending.add(parent)
-                    os.mkdir(root.name, mode=0o700, dir_fd=parent)
+                    self._mkdir(parent, root.name)
                 elif self._create_parents:
                     self._prepare_entry(parent, root.name, deadline=deadline)
                 else:
                     try:
-                        os.mkdir(root.name, mode=0o700, dir_fd=parent)
+                        self._mkdir(parent, root.name)
                     except FileExistsError:
                         pass
                     else:
                         self._sync_pending.add(parent)
-                        os.fsync(parent)
-                        self._sync_pending.discard(parent)
+                        self._sync_parent(parent)
             self._check_parents()
             _check_deadline(deadline)
-            fd = os.open(root.name, flags, dir_fd=parent)
+            fd = self._open_directory(root.name, parent, private=True)
             self._fd = fd
-            self._identity = self._validate(os.fstat(fd), directory=True)
+            self._identity = self._validate_fd(fd, directory=True)
             self._check()
-            if self._create_parents or self._exclusive_create:
+            if parent in self._sync_pending:
                 _check_deadline(deadline)
                 self._sync_parent(parent)
                 self._check()
@@ -247,25 +264,116 @@ class PrivateManagedDirectory:
         finally:
             self._mutex.release()
 
+    @staticmethod
+    def _open_directory(name: str, parent: int | None = None, *, private: bool = False) -> int:
+        if _WINDOWS:
+            return open_windows_directory(
+                name, dir_fd=parent, writable=private, read_control=private,
+            )
+        return os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+
+    @staticmethod
+    def _mkdir(parent: int, name: str) -> None:
+        if _WINDOWS:
+            _windows_files.create_directory(parent, name)
+        else:
+            os.mkdir(name, mode=0o700, dir_fd=parent)
+
+    @staticmethod
+    def _stat(parent: int, name: str) -> os.stat_result:
+        if _WINDOWS:
+            return windows_stat_at(parent, name)
+        return os.stat(name, dir_fd=parent, follow_symlinks=False)
+
+    @staticmethod
+    def _unlink(parent: int, name: str, *, unlink_open_file: bool = False) -> None:
+        if _WINDOWS:
+            windows_unlink_at(parent, name, unlink_open_file=unlink_open_file)
+        else:
+            os.unlink(name, dir_fd=parent)
+
+    @staticmethod
+    def _scan_entries(parent: int) -> _ScandirIterator[str]:
+        if _WINDOWS:
+            return os.scandir(windows_final_directory_path(parent))
+        return os.scandir(parent)
+
+    def _validate_fd(self, fd: int, info: os.stat_result | None = None, *,
+                     directory: bool = False) -> FileIdentity:
+        if info is None:
+            info = os.fstat(fd)
+        if _WINDOWS:
+            return _windows_files.validate(fd, info, directory=directory)
+        return self._validate(info, directory=directory)
+
+    def _validate_entry(self, parent: int, name: str, *, directory: bool = False) -> FileIdentity:
+        if not _WINDOWS:
+            return self._validate(self._stat(parent, name), directory=directory)
+        if directory:
+            fd = self._open_directory(name, parent, private=True)
+        else:
+            fd = _windows_files.open_file(parent, name, os.O_RDONLY, share_delete=True)
+        primary = None
+        try:
+            return self._validate_fd(fd, directory=directory)
+        except BaseException as error:
+            primary = error
+            raise
+        finally:
+            self._close_preserving_primary(fd, primary=primary)
+
     def _prepare_entry(self, parent: int, name: str, *, deadline: float | None) -> None:
         self._check_parents()
         _check_deadline(deadline)
-        # EEXIST may be another initializer's not-yet-synced mkdir. Each
-        # successful admission obtains its own durability evidence.
+        # Traversal of existing Windows system ancestors must succeed for
+        # ordinary users with no write access there.
+        if _WINDOWS:
+            try:
+                self._stat(parent, name)
+            except FileNotFoundError:
+                pass
+            else:
+                return
+        # A racing initializer may have published the child before syncing it.
         self._sync_pending.add(parent)
         with suppress(FileExistsError):
-            os.mkdir(name, mode=0o700, dir_fd=parent)
+            self._mkdir(parent, name)
         self._check_parents()
         _check_deadline(deadline)
 
     def _sync_parent(self, parent: int) -> None:
         # Bind the child inode before collecting durability evidence, and
         # recheck it afterwards. Pre-open fsync could cover a replaced edge.
-        os.fsync(parent)
+        if _WINDOWS and parent != self._fd:
+            # Ancestors are pinned with traverse access. Only request a write
+            # handle when this operation needs to persist an entry there.
+            if parent == self._anchor:
+                ancestor, name = None, self._root.anchor
+            else:
+                ancestor, name, _, _ = next(entry for entry in self._parents if entry[2] == parent)
+            fd = open_windows_directory(name, dir_fd=ancestor)
+            primary = None
+            try:
+                if not os.path.samestat(os.fstat(fd), os.fstat(parent)):
+                    raise ManagedStorageError("conflict")
+                windows_flush_directory(fd)
+            except BaseException as error:
+                primary = error
+                raise
+            finally:
+                self._close_preserving_primary(fd, primary=primary)
+        elif _WINDOWS:
+            windows_flush_directory(parent)
+        else:
+            os.fsync(parent)
         self._sync_pending.discard(parent)
 
     @staticmethod
     def _validate_parent(info: os.stat_result) -> FileIdentity:
+        if _WINDOWS:
+            if not stat.S_ISDIR(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+                raise ManagedStorageError("unavailable")
+            return info.st_dev, info.st_ino
         # Trusted root-owned sticky ancestors such as /tmp are allowed, but
         # the retained final root itself must still be owner-private.
         if (
@@ -277,7 +385,7 @@ class PrivateManagedDirectory:
 
     def _check_parents(self) -> None:
         for parent, name, fd, identity in self._parents:
-            current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            current = self._stat(parent, name)
             if (
                 self._validate_parent(current) != identity
                 or self._validate_parent(os.fstat(fd)) != identity
@@ -299,18 +407,15 @@ class PrivateManagedDirectory:
         if self._fd is None:
             raise ManagedStorageError("closed")
         self._check_parents()
+        assert self._parent is not None
         if (
-            self._validate(os.fstat(self._fd), directory=True) != self._identity
-            or self._validate(os.stat(self._root.name, dir_fd=self._parent, follow_symlinks=False),
-                              directory=True) != self._identity
+            self._validate_fd(self._fd, directory=True) != self._identity
+            or self._validate_entry(self._parent, self._root.name, directory=True) != self._identity
         ):
             raise ManagedStorageError("conflict")
         for name, (fd, identity) in self._locks.items():
-            info = os.stat(name, dir_fd=self._fd, follow_symlinks=False)
-            if (info.st_dev, info.st_ino) != identity:
+            if self._validate_entry(self._fd, name) != identity or self._validate_fd(fd) != identity:
                 raise ManagedStorageError("conflict")
-            self._validate(info)
-            self._validate(os.fstat(fd))
         return self._fd
 
     @contextmanager
@@ -343,33 +448,37 @@ class PrivateManagedDirectory:
         finally:
             self._mutex.release()
 
-    def _open(self, name: str, flags: int, *, create: bool = False, retain: bool = False) -> int:
+    def _open(self, name: str, flags: int, *, create: bool = False, retain: bool = False,
+              share_delete: bool = False) -> int:
         _name(name)
         parent = self._check()
         if create:
             self._sync_pending.add(parent)
-        fd = os.open(
-            name, flags | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
-            0o600, dir_fd=parent,
-        )
+        fd = self._open_file(parent, name, flags, share_delete=share_delete)
         if retain:
             self._close_pending.add(fd)
         try:
-            identity = self._validate(os.fstat(fd))
+            identity = self._validate_fd(fd)
             self._check_named(name, identity)
             if create:
-                os.fsync(parent)
-                self._sync_pending.discard(parent)
+                self._sync_parent(parent)
                 self._check_named(name, identity)
             return fd
         except BaseException as error:
             self._close_preserving_primary(fd, primary=error)
             raise
 
+    @staticmethod
+    def _open_file(parent: int, name: str, flags: int, *, share_delete: bool = False) -> int:
+        if _WINDOWS:
+            return _windows_files.open_file(parent, name, flags, share_delete=share_delete)
+        return os.open(
+            name, flags | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK, 0o600, dir_fd=parent,
+        )
+
     def _check_named(self, name: str, expected: FileIdentity) -> None:
         parent = self._check()
-        info = os.stat(name, dir_fd=parent, follow_symlinks=False)
-        if self._validate(info) != expected:
+        if self._validate_entry(parent, name) != expected:
             raise ManagedStorageError("conflict")
 
     def read(self, name: str) -> ManagedFileSnapshot | None:
@@ -393,7 +502,7 @@ class PrivateManagedDirectory:
                 after = os.fstat(fd)
                 if len(chunks) > MAX_RECORD_BYTES:
                     raise ManagedStorageError("invalid_record")
-                identity = self._validate(after)
+                identity = self._validate_fd(fd, after)
                 self._check_named(name, identity)
                 if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
                     after.st_size, after.st_mtime_ns, after.st_ctime_ns
@@ -408,19 +517,20 @@ class PrivateManagedDirectory:
 
     def _data_snapshot(self, name: str, fd: int, capacity: int) -> ManagedDataFileSnapshot:
         before = os.fstat(fd)
-        identity = self._validate(before)
+        identity = self._validate_fd(fd, before)
         if before.st_size > capacity:
             raise ManagedStorageError("capacity")
         start = max(0, before.st_size - MAX_RECORD_BYTES)
         tail = bytearray()
+        read_at = _windows_files.read_at if _WINDOWS else os.pread
         while len(tail) < before.st_size - start:
-            block = os.pread(fd, before.st_size - start - len(tail), start + len(tail))
+            block = read_at(fd, before.st_size - start - len(tail), start + len(tail))
             if not block:
                 raise ManagedStorageError("conflict")
             tail.extend(block)
         after = os.fstat(fd)
         self._check_named(name, identity)
-        if (self._validate(after) != identity or
+        if (self._validate_fd(fd, after) != identity or
                 (before.st_size, before.st_mtime_ns, before.st_ctime_ns) !=
                 (after.st_size, after.st_mtime_ns, after.st_ctime_ns)):
             raise ManagedStorageError("conflict")
@@ -498,7 +608,7 @@ class PrivateManagedDirectory:
             with self._operation() as parent:
                 if not self._locks or self.cleanup_pending or self._data_failed:
                     raise ManagedStorageError("busy")
-                fd = self._open(name, os.O_RDONLY, retain=True)
+                fd = self._open(name, os.O_RDONLY, retain=True, share_delete=True)
                 primary = None
                 try:
                     if self._data_snapshot(name, fd, capacity) != expected:
@@ -633,7 +743,7 @@ class PrivateManagedDirectory:
             if removal.phase == "new":
                 if self._io_cleanup_pending or self._data_failed:
                     raise ManagedStorageError("busy")
-                removal.fd = self._open(removal.name, os.O_RDONLY, retain=True)
+                removal.fd = self._open(removal.name, os.O_RDONLY, retain=True, share_delete=True)
                 removal.phase = "opened"
             fd = removal.fd
             if fd is None:
@@ -655,10 +765,10 @@ class PrivateManagedDirectory:
                 if self._data_snapshot(removal.isolated_name, fd, removal.capacity) != removal.isolated:
                     raise ManagedStorageError("conflict")
                 self._check_named(removal.isolated_name, removal.expected.identity)
-                if self._validate(os.fstat(fd)) != removal.expected.identity:
+                if self._validate_fd(fd) != removal.expected.identity:
                     raise ManagedStorageError("conflict")
                 removal.phase = "unlink_unknown"
-                os.unlink(removal.isolated_name, dir_fd=parent)
+                self._unlink(parent, removal.isolated_name, unlink_open_file=True)
                 after_unlink = os.fstat(fd)
                 if ((after_unlink.st_dev, after_unlink.st_ino) != removal.expected.identity
                         or after_unlink.st_nlink != 0):
@@ -685,7 +795,7 @@ class PrivateManagedDirectory:
             if self._scan is not None:
                 raise ManagedStorageError("busy")
             names: list[str] = []
-            self._scan = os.scandir(parent)
+            self._scan = self._scan_entries(parent)
             primary = None
             try:
                 for entry in self._scan:
@@ -888,6 +998,8 @@ class PrivateManagedDirectory:
                         self._sync_pending.add(parent)
                     if truncate:
                         os.ftruncate(fd, 0)
+                    if _WINDOWS:
+                        os.lseek(fd, 0, os.SEEK_END)
                     remaining = memoryview(content)
                     while remaining:
                         written = os.write(fd, remaining)
@@ -936,17 +1048,20 @@ class PrivateManagedDirectory:
                                 | (os.O_EXCL if exclusive_create else 0), create=create)
             except FileExistsError as error:
                 raise _storage_error("conflict", error) from None
-            fcntl = import_module("fcntl")
+            fcntl = None if _WINDOWS else import_module("fcntl")
             primary = None
             try:
-                identity = self._validate(os.fstat(fd))
+                identity = self._validate_fd(fd)
                 if os.fstat(fd).st_size != 0:
                     raise ManagedStorageError("invalid_record")
                 while True:
                     _check_deadline(deadline)
                     self._check_named(name, identity)
                     try:
-                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        if fcntl is None:
+                            _windows_files.lock_file(fd)
+                        else:
+                            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                         break
                     except BlockingIOError:
                         if not wait_for_lock:
@@ -985,17 +1100,16 @@ class PrivateManagedDirectory:
             if self.read(name) != expected:
                 raise ManagedStorageError("conflict")
             temporary = "pending-" + token_hex(16)
-            fd = os.open(
-                temporary, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
-                | os.O_CLOEXEC | os.O_NONBLOCK, 0o600, dir_fd=parent,
+            fd = self._open_file(
+                parent, temporary, os.O_RDWR | os.O_CREAT | os.O_EXCL, share_delete=True,
             )
             self._pending[temporary] = None
             published = False
             try:
-                identity = self._validate(os.fstat(fd))
+                identity = self._validate_fd(fd)
                 self._pending[temporary] = identity
                 self._check_named(temporary, identity)
-                os.fsync(parent)
+                self._sync_parent(parent)
                 remaining = memoryview(content)
                 while remaining:
                     written = os.write(fd, remaining)
@@ -1007,17 +1121,19 @@ class PrivateManagedDirectory:
                 if self.read(name) != expected:
                     raise ManagedStorageError("conflict")
                 self._sync_pending.add(parent)
-                os.replace(temporary, name, src_dir_fd=parent, dst_dir_fd=parent)
+                if _WINDOWS:
+                    windows_rename_at(parent, temporary, name, replace=expected is not None)
+                else:
+                    os.replace(temporary, name, src_dir_fd=parent, dst_dir_fd=parent)
                 published = True
                 self._pending.pop(temporary)
-                os.fsync(parent)
-                self._sync_pending.discard(parent)
+                self._sync_parent(parent)
             finally:
                 primary = sys.exception()
                 failures = []
                 if not published and self._pending[temporary] is None:
                     try:
-                        self._pending[temporary] = self._validate(os.fstat(fd))
+                        self._pending[temporary] = self._validate_fd(fd)
                     except BaseException as error:
                         failures.append(error)
                 try:
@@ -1074,12 +1190,11 @@ class PrivateManagedDirectory:
                 except FileNotFoundError:
                     pass
                 else:
-                    os.unlink(name, dir_fd=parent)
+                    self._unlink(parent, name)
                 self._unlinked.add(name)
             # A failed sync retains debt. Retrying only syncs the directory;
             # it must never unlink a subsequently created same-name file.
-            os.fsync(parent)
-            self._sync_pending.discard(parent)
+            self._sync_parent(parent)
             del self._pending[name]
             self._unlinked.discard(name)
 
@@ -1100,8 +1215,7 @@ class PrivateManagedDirectory:
                     os.fsync(fd)
                     self._data_sync_pending.remove(fd)
                 for parent in tuple(self._sync_pending):
-                    os.fsync(parent)
-                    self._sync_pending.remove(parent)
+                    self._sync_parent(parent)
             except OSError:
                 # Keep the original parent fd alive; retry sync, never mkdir
                 # or deletion. Unknown close still follows the existing ledger.
@@ -1139,6 +1253,12 @@ class PrivateManagedDirectory:
 
 
 def _rename_data_noreplace(parent: int, source: str, target: str) -> None:
+    if _WINDOWS:
+        try:
+            windows_rename_at(parent, source, target)
+        except FileExistsError:
+            raise ManagedStorageError("conflict") from None
+        return
     # Same Linux primitive already used by package materialization. No fallback
     # to rename/replace: absence checks cannot prevent destination overwrite.
     import ctypes
@@ -1160,7 +1280,8 @@ def _data_arguments(name: str, capacity: int) -> None:
 
 
 def _name(name: str) -> None:
-    if type(name) is not str or _NAME.fullmatch(name) is None:
+    if (type(name) is not str or _NAME.fullmatch(name) is None
+            or (_WINDOWS and _invalid_windows_part(name))):
         raise ManagedStorageError("invalid_record")
 
 

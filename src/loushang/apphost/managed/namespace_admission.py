@@ -1,4 +1,4 @@
-"""Retained Linux namespace storage admission, independent of service readiness.
+"""Retained native namespace storage admission, independent of service readiness.
 
 An explicit first-use request may initialize absent storage. Existing witnesses
 are always opened without creation. Failed attempts never delete or adopt their
