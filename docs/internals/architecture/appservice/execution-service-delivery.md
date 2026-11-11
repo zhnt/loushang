@@ -936,3 +936,20 @@ provider, not installed-package, Windows/macOS lifecycle or external-model
 acceptance. The graphical clicks were not automated. Submission recovery remains
 in-process and service-instance scoped. Offline approval behavior, TUI migration,
 tray, remote Hosts and crash recovery remain outside G1.
+
+## AppServer over a protected port forward — 2026-11-11
+
+The AppHost delivery implementer reviewed the AppServer, AppHost lifecycle,
+and desktop changes on the `feature/gui-apphost-delivery` branch based on
+`0c3793ba8`. The accepted deployment uses an optional AppHost loopback listener
+with an independently provisioned application credential. OpenSSH supplies
+machine authentication and encryption between machines. AppServer uses its
+existing authenticated frames, capability handshake and application handlers.
+The local management record and stop authority stay on the AppHost machine.
+Both listeners share AppHost readiness, peer limits and shutdown.
+
+Linux tests exercised a Rust client through a forwarded port, rejected the
+local management credential and remote stop mode, and verified that the same
+OpenSSH forward reconnects after AppHost restarts. The desktop route and
+configuration are covered by the Tauri tests. Windows GUI acceptance and
+Windows native managed service acceptance require separate native runs.

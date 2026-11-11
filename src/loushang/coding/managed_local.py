@@ -19,6 +19,7 @@ from loushang.appserver.local_record import LocalConnectionRecordV1, LocalRecord
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.harness.tools.core import ToolDefinition
 
+from .app_tunnel import read_app_tunnel
 from .hosted_continuity import CodingHostedContinuityAttemptV1
 from .hosted_local import CodingLocalCommandV1, _LocalLaunchFacts
 from .hosted_session import CodingHostedProductRuntimeFactoryForSession
@@ -35,6 +36,7 @@ class CodingManagedLocalLaunchV1:
     connection_root: Path = field(repr=False)
     endpoint: str
     session_discovery: bool = field(default=False, kw_only=True)
+    app_tunnel: LocalConnectionRecordV1 | None = field(default=None, repr=False, kw_only=True)
     instance_id: str | None = field(default=None, kw_only=True)
     managed_mux: ManagedMuxServiceBindingV1 | None = field(default=None, repr=False, kw_only=True)
 
@@ -110,6 +112,10 @@ class CodingManagedLocalCommandV1(CodingLocalCommandV1):
         assert type(self._launch) is CodingManagedLocalLaunchV1
         return self._launch.managed_mux is not None
 
+    def _app_tunnel(self) -> LocalConnectionRecordV1 | None:
+        assert type(self._launch) is CodingManagedLocalLaunchV1
+        return self._launch.app_tunnel
+
     def _session_execution(self) -> bool:
         return True
 
@@ -163,10 +169,13 @@ def create_coding_managed_local_launch(
         for managed in _managed_control_roots(invocation):
             if data.is_relative_to(managed) or managed.is_relative_to(data):
                 raise ManagedContractError()
+    home = Path(invocation.namespace.platform_home)
+    tunnel = read_app_tunnel(home) if invocation.service.host_root == str(home) else None
     return CodingManagedLocalLaunchV1(
         application, Path(paths.connection), endpoint, session_discovery=session_discovery,
         instance_id=invocation.instance.instance_id,
         managed_mux=managed_mux,
+        app_tunnel=tunnel,
     )
 
 

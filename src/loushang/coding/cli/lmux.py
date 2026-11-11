@@ -44,6 +44,10 @@ def _parser() -> argparse.ArgumentParser:
     server_start.add_argument("--name", help="optional stable service alias (separate from mux names)")
     server_start.add_argument("--trace-for", type=int, metavar="SECONDS",
                               help="request bounded trace for this new instance only, 1..3600 seconds")
+    tunnel = server_commands.add_parser(
+        "provision-tunnel", help="issue an app-only credential for a protected port forward"
+    )
+    tunnel.add_argument("--port", type=int, required=True, help="AppHost-side loopback port")
     stop = commands.add_parser("stop", help="gracefully stop a selected service; never force-kill")
     stopped = stop.add_mutually_exclusive_group(required=True)
     stopped.add_argument("--server", help="service alias or exact service ID")
@@ -81,6 +85,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error("non-interactive create --continue requires --yes")
     if args.action == "close" and (bool(args.server) != bool(args.operation) or args.continue_close and not args.operation):
         parser.error("--operation requires --server; --continue requires both")
+    if getattr(args, "server_action", None) == "provision-tunnel":
+        from loushang.apphost.managed.defaults import resolve_managed_defaults
+
+        from ..app_tunnel import provision_app_tunnel
+
+        if not 1 <= args.port <= 65535:
+            parser.error("--port must be between 1 and 65535")
+        try:
+            defaults = resolve_managed_defaults()
+            path = provision_app_tunnel(defaults.platform.home, args.port)
+        except FileExistsError:
+            parser.error("app tunnel directory already exists")
+        except FileNotFoundError:
+            parser.error("initialize Loushang home before provisioning a tunnel")
+        print(path)
+        return 0
+
     from loushang.apphost.managed.contracts import (
         ManagedContractError,
         require_mux_name,

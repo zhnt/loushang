@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
+use std::num::NonZeroU16;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::Url;
@@ -25,9 +26,11 @@ struct SavedDirectory {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SavedServer {
     id: String,
-    url: String,
+    tunnel_port: NonZeroU16,
+    web_url: Option<String>,
     name: Option<String>,
 }
 
@@ -39,6 +42,8 @@ struct Entry {
     kind: &'static str,
     selected: bool,
     web_url: Option<Url>,
+    #[serde(skip)]
+    tunnel_port: Option<NonZeroU16>,
 }
 
 pub(crate) struct Directory {
@@ -66,19 +71,24 @@ impl Directory {
             kind: LOCAL,
             selected: selected == LOCAL,
             web_url: local_url(root),
+            tunnel_port: None,
         }];
         let mut ids = HashSet::new();
         for server in saved.servers {
             if !valid_id(&server.id) || !ids.insert(server.id.clone()) {
                 return Err(CONFIG_ERROR);
             }
-            let url = parse_web_url(&server.url).ok_or(CONFIG_ERROR)?;
+            let web_url = match server.web_url {
+                Some(url) => Some(parse_web_url(&url).ok_or(CONFIG_ERROR)?),
+                None => None,
+            };
             entries.push(Entry {
                 selected: server.id == selected,
                 name: server.name.unwrap_or_else(|| server.id.clone()),
                 id: server.id,
                 kind: "remote",
-                web_url: Some(url),
+                web_url,
+                tunnel_port: Some(server.tunnel_port),
             });
         }
         let directory = Self { selected, entries };
@@ -97,8 +107,8 @@ impl Directory {
             .ok_or("unknown_connection")
     }
 
-    pub(crate) fn endpoint(&self, id: &str) -> Result<Url> {
-        self.entry(id)?.web_url.clone().ok_or("host_unavailable")
+    pub(crate) fn tunnel_port(&self, id: &str) -> Result<Option<NonZeroU16>> {
+        Ok(self.entry(id)?.tunnel_port)
     }
 
     pub(crate) fn listing(self) -> Value {
@@ -268,7 +278,7 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let root = home.path();
         let mut document = json!({ "version": 1, "defaultWorkspace": "/saved",
-            "servers": [{ "id": "office", "url": "https://office.example/base", "extra": 42 }],
+            "servers": [{ "id": "office", "webUrl": "https://office.example/base", "tunnelPort": 24420, "extra": 42 }],
             "extension": ["preserve me"] });
         write_document(root, &document).unwrap();
         fs::write(root.join("host.json"), "invalid json").unwrap();
@@ -305,12 +315,12 @@ mod tests {
         fs::write(root.join("host.json"), r#"{"web":{"port":0}}"#).unwrap();
         let record = root.join("state/web/endpoint.json");
         fs::write(&record, r#"{"url":"http://127.0.0.1:42000"}"#).unwrap();
-        let active = Directory::read(root).unwrap().endpoint(LOCAL).unwrap();
+        let active = Directory::read(root).unwrap().entries[0]
+            .web_url
+            .clone()
+            .unwrap();
         assert_eq!(active.port(), Some(42000));
         fs::write(&record, r#"{"url":"http://example.test:42000"}"#).unwrap();
-        assert_eq!(
-            Directory::read(root).unwrap().endpoint(LOCAL),
-            Err("host_unavailable")
-        );
+        assert_eq!(Directory::read(root).unwrap().entries[0].web_url, None);
     }
 }

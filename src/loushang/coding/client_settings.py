@@ -40,19 +40,22 @@ def connections() -> dict:
         ):
             raise ValueError("invalid_connection_id")
         ids.add(identifier)
-        url = server.get("url")
-        if not isinstance(url, str) or len(url) > 4096:
-            raise ValueError("invalid_server_url")
-        parsed = urlsplit(url)
-        if (
-            not parsed.hostname
-            or parsed.username
-            or parsed.password
-            or parsed.query
-            or parsed.fragment
-            or parsed.scheme not in {"http", "https"}
-        ):
-            raise ValueError("invalid_server_url")
+        port = server.get("tunnelPort")
+        if type(port) is not int or not 1 <= port <= 65535:
+            raise ValueError("invalid_tunnel_port")
+        url = server.get("webUrl")
+        if url is not None:
+            if not isinstance(url, str) or len(url) > 4096:
+                raise ValueError("invalid_server_url")
+            parsed = urlsplit(url)
+            if (
+                not parsed.hostname
+                or "@" in parsed.netloc
+                or parsed.query
+                or parsed.fragment
+                or parsed.scheme not in {"http", "https"}
+            ):
+                raise ValueError("invalid_server_url")
     if value.get("defaultConnection") and value["defaultConnection"] not in ids:
         raise ValueError("unknown_connection")
     return value
@@ -132,7 +135,7 @@ def connection_list() -> dict:
             "name": item.get("name", item["id"]),
             "kind": "remote",
             "selected": item["id"] == selected,
-            "webUrl": item["url"],
+            "webUrl": item.get("webUrl"),
         }
         for item in value["servers"]
     )

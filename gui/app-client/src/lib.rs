@@ -5,7 +5,7 @@ pub mod frontend;
 pub mod read_stop;
 
 pub use app_client::{
-    AppClient, ConnectionOptions, ControlAuthority, ControlCommand, ControlResult,
+    AppClient, AppTarget, ConnectionOptions, ControlAuthority, ControlCommand, ControlResult,
     CreateSessionResult, LiveEventRound, LiveInitialSnapshot, MemberEvents, ModelControlResult,
     WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope,
 };

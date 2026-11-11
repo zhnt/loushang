@@ -24,7 +24,7 @@ fn main() {
                 app_client::ConnectionOptions {
                     prepare_default_session,
                     workspace_scope: None,
-                    root: &root,
+                    target: loushang_app_client::AppTarget::Local(&root),
                     timeout: std::time::Duration::from_millis(timeout),
                     cancel: None,
                     attach: true,

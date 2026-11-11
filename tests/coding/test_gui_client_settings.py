@@ -31,7 +31,7 @@ def test_preferences_merge_across_clients_and_restart(tmp_path):
 
 def test_connections_preserve_server_entries(tmp_path, monkeypatch):
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path))
-    value = {"version": 1, "servers": [{"id": "remote", "url": "https://example.test"}]}
+    value = {"version": 1, "servers": [{"id": "remote", "webUrl": "https://example.test", "tunnelPort": 24420}]}
     (tmp_path / "connections.json").write_text(json.dumps(value))
     remember_workspace("/workspace")
     assert connections() == {**value, "lastWorkspace": "/workspace"}
@@ -47,7 +47,7 @@ def test_connection_listing_selection_and_secret_rejection(tmp_path, monkeypatch
         "version": 1,
         "defaultWorkspace": "/work",
         "servers": [
-            {"id": "office", "name": "Office", "url": "http://192.0.2.10:1422"}
+            {"id": "office", "name": "Office", "webUrl": "http://192.0.2.10:1422", "tunnelPort": 24420}
         ],
     }
     (tmp_path / "connections.json").write_text(json.dumps(saved))
@@ -63,7 +63,7 @@ def test_connection_listing_selection_and_secret_rejection(tmp_path, monkeypatch
         settings_request({"operation": "connections/select", "connectionId": "missing"})
     settings_request({"operation": "connections/select", "connectionId": "local"})
     assert "defaultConnection" not in connections()
-    saved["servers"][0]["url"] = "https://user:secret@host.example"
+    saved["servers"][0]["webUrl"] = "https://user:secret@host.example"
     (tmp_path / "connections.json").write_text(json.dumps(saved))
     with pytest.raises(ValueError, match="invalid_server_url"):
         settings_request({"operation": "connections/list"})

@@ -196,20 +196,65 @@ already exist through the managed management entry. Reconnect attaches the
 original Mux and reads its existing members.
 
 Without explicit connection arguments, the native window reads `connections.json`
-and opens even when the selected endpoint is unavailable. With the local Host's
-Web endpoint running, select an existing absolute Workspace directory, then choose
-**Start and connect** or connect to its running Host. Startup uses the existing
-managed coordinator and admitted Mux creation; an empty Mux receives the existing
-default Session initialization. Closing the GUI only disconnects the client.
-Stop and restart require confirmation because they interrupt active executions;
-restart preserves Session history but does not resume an interrupted execution.
-An unconfirmed instance is never automatically replaced.
+and opens even when the selected endpoint is unavailable. The desktop uses the
+shared Rust AppClient for both local and tunneled AppServer connections.
+Use `lmux` to start or stop a local managed Host separately. Closing the GUI
+releases its client connection and leaves the Host running.
 
-Local and remote management requests go to the selected Host API. The browser
-and desktop write the same v1 connection settings using the shared SQLite lock.
-Managed storage retains its existing private-directory and trusted-ancestor
-requirements. Explicit local record arguments continue to use the native
-AppClient on supported platforms.
+### Connect Windows or Linux desktop to a Linux AppHost
+
+Use OpenSSH port forwarding to protect traffic between machines. AppHost opens
+its optional app-only listener on `127.0.0.1`. The desktop connects to the
+forwarded loopback port and authenticates with a separately issued application
+credential. The credential allows Workspace, Session and Execution operations.
+Service lifecycle remains under the local `lmux` commands.
+
+On the Linux Host, initialize its Loushang home and provision the credential
+while the Host is stopped. The provision command prints the credential path.
+The staged Host package provides the same command as
+`loushang-host provision-tunnel --port 24419`.
+
+```sh
+uv run lmux server provision-tunnel --port 24419
+uv run lmux server start
+```
+
+Transfer the issued file over a trusted channel to
+`$LOUSHANG_HOME/app-tunnels/office/` on the client, keeping the original filename.
+On Linux, grant the client user exclusive access with directory mode 0700 and
+file mode 0600. On Windows, apply protected owner and LocalSystem full access to
+both the directory and the file. For newly created entries, run PowerShell as
+the same account that will launch the GUI:
+
+```powershell
+$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$sddl = "O:${sid}D:P(A;;FA;;;${sid})(A;;FA;;;SY)"
+$homeDir = if ($env:LOUSHANG_HOME) { $env:LOUSHANG_HOME } else { Join-Path $HOME ".loushang" }
+$credentialDir = Join-Path $homeDir "app-tunnels/office"
+foreach ($path in @($credentialDir) + @(Get-ChildItem $credentialDir -File | ForEach-Object FullName)) {
+    $acl = Get-Acl -LiteralPath $path
+    $acl.SetSecurityDescriptorSddlForm($sddl)
+    Set-Acl -LiteralPath $path -AclObject $acl
+}
+```
+
+Save this configuration as `connections.json` in the client's Loushang home.
+`webUrl` is optional and controls the tray's Open Web action.
+
+```json
+{"version":1,"defaultConnection":"office","servers":[{"id":"office","tunnelPort":24420}]}
+```
+
+Keep the forward open while using the GUI. Select the saved connection and use
+Workspace paths on the Linux Host.
+
+```sh
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:24420:127.0.0.1:24419 linux-user@linux-host
+```
+
+To revoke or rotate the credential, stop the Host, remove the provisioned
+`app-tunnel` directory, then start the Host with a newly provisioned credential
+or with the app-only listener disabled.
 
 Linux record admission uses no-follow directory/file descriptors, current-user
 ownership, private 0700/0600 modes, single-link regular files, bounded reads and
@@ -217,7 +262,7 @@ identity/version revalidation. Windows retains its existing handle/DACL checks.
 The connection selects the validated record's semantic Execution profile,
 including `local-detachable-discovery-execution-managed/v2`; capability order,
 managed closure prerequisites, authentication digest and exact hello are checked.
-Legacy valid record decoding remains available, but a live GUI requires Execution.
+The live GUI requires the Execution capability.
 Unknown submit receipts are queried without replay only on the same service
 instance; a replacement Host is reported as an unknown outcome.
 

@@ -23,10 +23,10 @@ _HOST = (
     _DIRECTORY
     + r"""
 case ${1:-} in
-  start) shift; exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.lmux server start "$@" ;;
+  start|provision-tunnel) action=$1; shift; exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.lmux server "$action" "$@" ;;
   status|stop) exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.lmux "$@" ;;
-  -h|--help) printf '%s\n' 'Usage: loushang-host {start|status|stop} [arguments]'; exit 0 ;;
-  *) printf '%s\n' 'Usage: loushang-host {start|status|stop} [arguments]' >&2; exit 2 ;;
+  -h|--help) printf '%s\n' 'Usage: loushang-host {start|status|stop|provision-tunnel} [arguments]'; exit 0 ;;
+  *) printf '%s\n' 'Usage: loushang-host {start|status|stop|provision-tunnel} [arguments]' >&2; exit 2 ;;
 esac
 """
 )

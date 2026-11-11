@@ -177,7 +177,7 @@ pub(crate) fn start_live_connection(app: tauri::AppHandle) -> Result<(), String>
                     ConnectionOptions {
                         prepare_default_session: true,
                         workspace_scope: None,
-                        root: &launch.record_root,
+                        target: loushang_app_client::AppTarget::Local(&launch.record_root),
                         timeout: Duration::from_secs(5),
                         cancel: None,
                         attach: true,

@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddr, TcpStream};
+use std::num::NonZeroU16;
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
 use std::thread::{self, JoinHandle};
@@ -153,11 +154,21 @@ struct Hello {
     restart_recovery: bool,
 }
 
+/// A tunnel is a loopback TCP port forwarded by an external protected transport.
+#[derive(Clone, Copy)]
+pub enum AppTarget<'a> {
+    Local(&'a Path),
+    Tunnel {
+        credential_root: &'a Path,
+        forwarded_port: NonZeroU16,
+    },
+}
+
 /// `publish` must only perform a bounded local handoff. It runs after the full
 /// snapshot membership barrier and before ongoing reads become observable.
 #[derive(Clone)]
 pub struct ConnectionOptions<'a> {
-    pub root: &'a Path,
+    pub target: AppTarget<'a>,
     pub timeout: Duration,
     pub cancel: Option<Duration>,
     pub attach: bool,
@@ -178,8 +189,9 @@ type OpenChannel = (
 #[allow(clippy::too_many_arguments)]
 fn open_channel(
     client: &AppClient,
-    record: &transport_auth::record_value::Record,
+    record: &Record,
     profile: &str,
+    address: SocketAddr,
     deadline: &RequestDeadline,
     cancel: Option<Duration>,
     stop: Option<&super::read_stop::ReadStop>,
@@ -187,7 +199,6 @@ fn open_channel(
     request_thinking: bool,
 ) -> Result<OpenChannel, ()> {
     client.1.set("connection_failed");
-    let address = SocketAddr::from((Ipv4Addr::LOCALHOST, record.port()));
     let stream = TcpStream::connect_timeout(&address, deadline.remaining().map_err(|_| ())?)
         .map_err(|_| ())?;
     let (finish, receiver) = mpsc::channel();
@@ -256,7 +267,7 @@ fn run_attempt(
     let owner = &client.0;
     client.1.set("record_invalid");
     let ConnectionOptions {
-        root,
+        target,
         timeout,
         cancel,
         attach,
@@ -268,7 +279,7 @@ fn run_attempt(
     } = options;
     let deadline = RequestDeadline::new(timeout)?;
     let attempt = owner.begin()?;
-    let (record, profile) = client.load_record(root)?;
+    let (record, profile, address) = client.load_record(target)?;
     if cancel == Some(Duration::ZERO) {
         return Err(());
     }
@@ -276,6 +287,7 @@ fn run_attempt(
         client,
         &record,
         &profile,
+        address,
         &deadline,
         cancel,
         stop.as_ref(),
@@ -373,39 +385,55 @@ impl AppClient {
         self.1.get()
     }
 
-    fn load_record(&self, root: &Path) -> Result<(Record, String), ()> {
+    fn load_record(&self, target: AppTarget<'_>) -> Result<(Record, String, SocketAddr), ()> {
+        let (root, endpoint, forwarded_port) = match target {
+            AppTarget::Local(root) => (root, "workspace", None),
+            AppTarget::Tunnel {
+                credential_root,
+                forwarded_port,
+            } => (credential_root, "app-tunnel", Some(forwarded_port)),
+        };
         self.1.set("record_invalid");
-        let name = Record::filename("workspace")?;
+        let name = Record::filename(endpoint)?;
         let record = Record::decode(&record_native::read(root, &name)?)?;
         self.1.set("protocol_incompatible");
         let profile = record.semantic_profile()?;
-        record.selected("workspace", &profile)?;
+        record.selected(endpoint, &profile)?;
         if !record.supports_execution() {
             return Err(());
         }
-        Ok((record, profile))
+        let port = forwarded_port.map_or_else(|| record.port(), NonZeroU16::get);
+        Ok((
+            record,
+            profile,
+            SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
+        ))
     }
 
     /// Issue one Workspace request without acquiring a Mux attachment.
     pub fn workspace(
         &self,
-        root: &Path,
+        target: AppTarget<'_>,
         timeout: Duration,
         request: WorkspaceRequest<'_>,
     ) -> Result<WorkspaceResult, ()> {
-        self.request_once(root, timeout, |channel, _| {
+        self.request_once(target, timeout, |channel, _| {
             workspace::workspace_request(channel, request)
         })
     }
 
-    pub fn instance(&self, root: &Path, timeout: Duration) -> Result<String, ()> {
-        self.request_once(root, timeout, |_, hello| {
+    pub fn instance(&self, target: AppTarget<'_>, timeout: Duration) -> Result<String, ()> {
+        self.request_once(target, timeout, |_, hello| {
             Ok(hello.service_instance_id.clone())
         })
     }
 
-    pub fn muxes(&self, root: &Path, timeout: Duration) -> Result<Vec<serde_json::Value>, ()> {
-        self.request_once(root, timeout, |channel, _| {
+    pub fn muxes(
+        &self,
+        target: AppTarget<'_>,
+        timeout: Duration,
+    ) -> Result<Vec<serde_json::Value>, ()> {
+        self.request_once(target, timeout, |channel, _| {
             let response = attachment::request(channel, "mux/list", "1", serde_json::json!({}))?;
             if response.result_type != "muxList" {
                 return Err(());
@@ -423,7 +451,7 @@ impl AppClient {
 
     fn request_once<T>(
         &self,
-        root: &Path,
+        target: AppTarget<'_>,
         timeout: Duration,
         operation: impl FnOnce(
             &mut transport_auth::Channel<DeadlineStream, DeadlineStream>,
@@ -432,9 +460,9 @@ impl AppClient {
     ) -> Result<T, ()> {
         let deadline = RequestDeadline::new(timeout)?;
         let attempt = self.0.begin()?;
-        let (record, profile) = self.load_record(root)?;
+        let (record, profile, address) = self.load_record(target)?;
         let (stream, _cancel, mut channel, hello) = open_channel(
-            self, &record, &profile, &deadline, None, None, &attempt, false,
+            self, &record, &profile, address, &deadline, None, None, &attempt, false,
         )?;
         let result = operation(&mut channel, &hello);
         let _ = stream.shutdown(Shutdown::Both);

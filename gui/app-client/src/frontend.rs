@@ -1,13 +1,14 @@
 //! Browser and desktop requests use the same AppServer client.
 use crate::{
-    AppClient, ConnectionOptions, ControlCommand, ControlResult, CreateSessionResult,
+    AppClient, AppTarget, ConnectionOptions, ControlCommand, ControlResult, CreateSessionResult,
     ModelControlResult, WorkspaceInfo, WorkspaceRequest, WorkspaceResult,
 };
 use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
-    path::{Path, PathBuf},
+    num::NonZeroU16,
+    path::PathBuf,
     sync::{mpsc, Arc, Mutex},
     time::Duration,
 };
@@ -20,6 +21,7 @@ type Result<T> = std::result::Result<T, String>;
 #[derive(Clone)]
 pub struct Backend {
     root: PathBuf,
+    tunnel: Option<(PathBuf, NonZeroU16)>,
     requests: Arc<Mutex<()>>,
 }
 
@@ -27,7 +29,16 @@ impl Backend {
     pub fn new(root: PathBuf) -> Self {
         Self {
             root,
+            tunnel: None,
             requests: Arc::new(Mutex::new(())),
+        }
+    }
+
+    pub fn through_tunnel(&self, root: PathBuf, port: NonZeroU16) -> Self {
+        Self {
+            tunnel: Some((root.clone(), port)),
+            root,
+            requests: self.requests.clone(),
         }
     }
 
@@ -53,14 +64,23 @@ impl Backend {
     }
 
     fn host_request(&self, operation: &str, request: &Value) -> Result<Value> {
-        let root = self.record_root()?;
+        let record_root;
+        let target = if let Some((credential_root, forwarded_port)) = &self.tunnel {
+            Some(AppTarget::Tunnel {
+                credential_root,
+                forwarded_port: *forwarded_port,
+            })
+        } else {
+            record_root = self.record_root()?;
+            record_root.as_deref().map(AppTarget::Local)
+        };
         match operation {
             "environment" => Ok(json!({
-                "supported": root.is_some(), "manageable": false, "workspace": self.last_workspace()?,
+                "supported": target.is_some(), "manageable": false, "workspace": self.last_workspace()?,
             })),
-            "manage" => status(root.as_deref(), field(request, "action")?),
-            "workspace" => self.workspace(root.as_deref().ok_or("not_connected")?, request),
-            "live" => live_request(root.as_deref().ok_or("not_connected")?, request),
+            "manage" => status(target, field(request, "action")?),
+            "workspace" => self.workspace(target.ok_or("not_connected")?, request),
+            "live" => live_request(target.ok_or("not_connected")?, request),
             _ => Err("unknown_operation".into()),
         }
     }
@@ -82,24 +102,24 @@ impl Backend {
         }
     }
 
-    fn workspace(&self, root: &Path, request: &Value) -> Result<Value> {
+    fn workspace(&self, target: AppTarget<'_>, request: &Value) -> Result<Value> {
         let action = field(request, "action")?;
         let operation = match action {
-            "navigation" => return self.navigation(root),
-            "create-chat" => return create_chat(root, request),
-            "open" => return self.open(root, field(request, "path")?),
+            "navigation" => return self.navigation(target),
+            "create-chat" => return create_chat(target, request),
+            "open" => return self.open(target, field(request, "path")?),
             "list" => WorkspaceRequest::List,
             "register" => WorkspaceRequest::Register(field(request, "path")?),
             "unregister" => WorkspaceRequest::Unregister(field(request, "path")?),
             _ => return Err("unknown_operation".into()),
         };
-        Ok(json!({"workspaces": workspaces(root, operation)?}))
+        Ok(json!({"workspaces": workspaces(target, operation)?}))
     }
 
-    fn open(&self, root: &Path, path: &str) -> Result<Value> {
-        let opened = open_workspace(root, path)?;
+    fn open(&self, target: AppTarget<'_>, path: &str) -> Result<Value> {
+        let opened = open_workspace(target, path)?;
         let mux = mux_name(&opened.path);
-        let mut connection = options(root, &mux, Some(&opened));
+        let mut connection = options(target, &mux, Some(&opened));
         connection.prepare_default_session = true;
         AppClient::default()
             .run(connection, &mut |_| Ok(()))
@@ -108,10 +128,10 @@ impl Backend {
         Ok(json!({"workspaces": [opened]}))
     }
 
-    fn navigation(&self, root: &Path) -> Result<Value> {
-        let projects = workspaces(root, WorkspaceRequest::Projects)?;
+    fn navigation(&self, target: AppTarget<'_>) -> Result<Value> {
+        let projects = workspaces(target, WorkspaceRequest::Projects)?;
         let muxes = AppClient::default()
-            .muxes(root, TIMEOUT)
+            .muxes(target, TIMEOUT)
             .map_err(|_| "connection_failed")?;
         let database = self.database()?;
         let chats = |name: &str| -> Result<Vec<Value>> {
@@ -229,9 +249,9 @@ fn mux_name(path: &str) -> String {
     )
 }
 
-fn workspaces(root: &Path, request: WorkspaceRequest<'_>) -> Result<Vec<WorkspaceInfo>> {
+fn workspaces(target: AppTarget<'_>, request: WorkspaceRequest<'_>) -> Result<Vec<WorkspaceInfo>> {
     match AppClient::default()
-        .workspace(root, TIMEOUT, request)
+        .workspace(target, TIMEOUT, request)
         .map_err(|_| "connection_failed")?
     {
         WorkspaceResult::Accepted(items) => Ok(items),
@@ -244,29 +264,41 @@ fn single(items: Vec<WorkspaceInfo>) -> Result<WorkspaceInfo> {
     Ok(workspace)
 }
 
-fn open_workspace(root: &Path, path: &str) -> Result<WorkspaceInfo> {
-    single(workspaces(root, WorkspaceRequest::Open(path))?)
+fn open_workspace(target: AppTarget<'_>, path: &str) -> Result<WorkspaceInfo> {
+    single(workspaces(target, WorkspaceRequest::Open(path))?)
 }
 
-fn status(root: Option<&Path>, action: &str) -> Result<Value> {
+fn status(target: Option<AppTarget<'_>>, action: &str) -> Result<Value> {
     if !matches!(action, "connect" | "status") {
         return Err("service_managed_externally".into());
     }
-    match root.and_then(|root| AppClient::default().instance(root, TIMEOUT).ok()) {
-        Some(instance) => Ok(
-            json!({"state": "running", "errorCode": null, "manageable": false, "serviceInstanceId": instance}),
-        ),
-        None => Ok(json!({"state": "not_running", "errorCode": null, "manageable": false})),
+    let client = AppClient::default();
+    if let Some(target) = target {
+        match client.instance(target, TIMEOUT) {
+            Ok(instance) => {
+                return Ok(json!({
+                    "state": "running", "errorCode": null,
+                    "manageable": false, "serviceInstanceId": instance,
+                }))
+            }
+            Err(()) if matches!(target, AppTarget::Tunnel { .. }) => {
+                return Ok(json!({
+                    "state": "unknown", "errorCode": client.failure_code(), "manageable": false,
+                }))
+            }
+            Err(()) => {}
+        }
     }
+    Ok(json!({"state": "not_running", "errorCode": null, "manageable": false}))
 }
 
 fn options<'a>(
-    root: &'a Path,
+    target: AppTarget<'a>,
     mux: &'a str,
     workspace: Option<&'a WorkspaceInfo>,
 ) -> ConnectionOptions<'a> {
     ConnectionOptions {
-        root,
+        target,
         mux_name: mux,
         workspace_scope: workspace,
         timeout: TIMEOUT,
@@ -328,7 +360,7 @@ fn control_on<T>(
 }
 
 fn create(
-    root: &Path,
+    target: AppTarget<'_>,
     mux: &str,
     workspace: Option<&WorkspaceInfo>,
     input: &Value,
@@ -338,7 +370,7 @@ fn create(
     getrandom::getrandom(&mut entropy).map_err(|_| "host_unavailable")?;
     let continuity_id = entropy.iter().map(|byte| format!("{byte:02x}")).collect();
     let source_session_id = input["sourceSessionId"].as_str().map(str::to_owned);
-    match control(options(root, mux, workspace), |reply| {
+    match control(options(target, mux, workspace), |reply| {
         ControlCommand::CreateSession {
             source_session_id,
             continuity_id,
@@ -353,7 +385,7 @@ fn create(
     }
 }
 
-fn create_chat(root: &Path, request: &Value) -> Result<Value> {
+fn create_chat(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     let title = request
         .get("title")
         .map(|value| value.as_str().ok_or("invalid_request"))
@@ -364,27 +396,27 @@ fn create_chat(root: &Path, request: &Value) -> Result<Value> {
     }
     let (path, mux, scope) = match request.get("path").filter(|path| !path.is_null()) {
         Some(path) => {
-            let workspace = open_workspace(root, path.as_str().ok_or("invalid_request")?)?;
+            let workspace = open_workspace(target, path.as_str().ok_or("invalid_request")?)?;
             (workspace.path.clone(), mux_name(&workspace.path), workspace)
         }
         None => {
-            let scope = single(workspaces(root, WorkspaceRequest::AllocateTemporary)?)?;
+            let scope = single(workspaces(target, WorkspaceRequest::AllocateTemporary)?)?;
             (TEMPORARY.into(), TEMPORARY_MUX.into(), scope)
         }
     };
-    let result = create(root, &mux, Some(&scope), &json!({"title": title}))?;
+    let result = create(target, &mux, Some(&scope), &json!({"title": title}))?;
     Ok(json!({"workspace": path, "sessionId": result["sessionId"]}))
 }
 
-fn live_request(root: &Path, request: &Value) -> Result<Value> {
+fn live_request(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     let path = field(request, "workspace")?;
     let workspace = if path == TEMPORARY {
         None
     } else {
-        Some(open_workspace(root, path)?)
+        Some(open_workspace(target, path)?)
     };
     live(
-        root,
+        target,
         workspace.as_ref(),
         field(request, "action")?,
         &request["input"],
@@ -392,7 +424,7 @@ fn live_request(root: &Path, request: &Value) -> Result<Value> {
 }
 
 fn live(
-    root: &Path,
+    target: AppTarget<'_>,
     workspace: Option<&WorkspaceInfo>,
     action: &str,
     input: &Value,
@@ -400,10 +432,10 @@ fn live(
     let mux = workspace
         .map(|item| mux_name(&item.path))
         .unwrap_or_else(|| TEMPORARY_MUX.into());
-    let options = options(root, &mux, workspace);
+    let options = options(target, &mux, workspace);
     match action {
         "snapshot" => snapshot(options),
-        "create" => create(root, &mux, workspace, input),
+        "create" => create(target, &mux, workspace, input),
         _ => session_control(options, action, input),
     }
 }
@@ -520,15 +552,15 @@ mod tests {
 
     #[test]
     fn invalid_chat_titles_are_rejected_before_workspace_allocation() {
-        let root = Path::new("unconfigured");
+        let target = AppTarget::Local(std::path::Path::new("unconfigured"));
         for title in ["   ".to_owned(), "a".repeat(257)] {
             assert_eq!(
-                create_chat(root, &json!({"title": title})),
+                create_chat(target, &json!({"title": title})),
                 Err("invalid_request".into())
             );
         }
         assert_eq!(
-            create_chat(root, &json!({"title": "a".repeat(256)})),
+            create_chat(target, &json!({"title": "a".repeat(256)})),
             Err("connection_failed".into())
         );
     }
