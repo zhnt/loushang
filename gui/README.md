@@ -315,10 +315,10 @@ uv run python scripts/gui/check_deb_package.py dist/deb/loushang_<version>_amd64
 
 Install the generated file with `sudo apt install /absolute/path/to/package.deb`.
 The application menu and `/usr/bin/loushang` use the bundled runtime under
-`/opt/loushang`. Local startup uses the same managed Host entrypoint as the tray;
-GUI close/quit leaves that Host running. A saved remote connection remains
-selected. `loushang --workspace /absolute/path --status` and `--stop` manage the
-local Host. Stop running Hosts before replacing or removing this test package.
+`/opt/loushang`. Run `loushang --start-only` to start the bundled managed
+AppHost explicitly. The GUI attaches to an already running Host and leaves it
+running after exit. A saved remote connection remains selected.
+Use `loushang --status` and `loushang --stop` to manage the local Host. Stop running Hosts before replacing or removing this test package.
 Settings and Session data remain outside the installed program directory.
 
 This Ubuntu 26.10 amd64 candidate declares native system-library dependencies.
@@ -356,7 +356,8 @@ uv run python scripts/gui/build_linux_portable.py
 ```
 
 Extract `dist/desktop/loushang-linux-x86_64.tar.gz` outside the checkout and
-double-click the native `loushang` executable. To choose a workspace explicitly, run
+run `./loushang --start-only` to start the bundled AppHost, then double-click
+the native `loushang` executable. To choose a workspace explicitly, run
 `./loushang --workspace /path/to/workspace` inside the extracted directory.
 No Python/uv/Node/Rust installation is needed at runtime. Compatible Linux
 GTK/WebKit system libraries are still required. See the included `README.txt`

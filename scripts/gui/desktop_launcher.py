@@ -48,24 +48,30 @@ def main() -> int:
             raise RuntimeError(f"Host operation failed: {value['errorCode']}")
         return value
 
+    if args.start_only:
+        host = operate("start")
+        if host.get("state") != "running" or not host.get("recordRoot"):
+            raise RuntimeError("Host did not become ready")
+        print(json.dumps(host))
+        return 0
+
     if args.status or args.stop:
         status = operate("status")
         if args.stop and status["state"] == "running":
             status = operate("stop", instanceId=status["instanceId"])
         print(json.dumps(status))
         return 0
-    # A saved remote connection remains authoritative for normal desktop opens.
-    if not args.start_only and connections().get("defaultConnection"):
-        return subprocess.call(
-            [str(package / "bin/harness-gui")], cwd=workspace, env=environment
-        )
-    host = operate("start")
-    if host.get("state") != "running" or not host.get("recordRoot"):
-        raise RuntimeError("Host did not become ready")
-    if args.start_only:
-        print(json.dumps(host))
-        return 0
-    environment["LOUSHANG_APP_RECORD_ROOT"] = host["recordRoot"]
+
+    if "LOUSHANG_APP_RECORD_ROOT" not in environment and not connections().get(
+        "defaultConnection"
+    ):
+        try:
+            status = operate("status")
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+            print(f"Loushang: {error}", file=sys.stderr)
+        else:
+            if status.get("state") == "running":
+                environment["LOUSHANG_APP_RECORD_ROOT"] = status["recordRoot"]
     return subprocess.call(
         [str(package / "bin/harness-gui")], cwd=workspace, env=environment
     )

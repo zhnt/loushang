@@ -15,11 +15,10 @@ The host must provide compatible glibc, GTK 3, WebKitGTK 4.1, libayatana-appindi
 and their system dependencies. This candidate is built and tested on Ubuntu 26.10
 x86_64; compatibility with other distributions is not yet established.
 
-The launcher starts AppHost when needed and reuses it for subsequent windows.
-Closing the GUI leaves AppHost running so sessions remain available. To stop it:
-  ./loushang --workspace /same/workspace --stop
-To inspect it:
-  ./loushang --workspace /same/workspace --status
+Start the bundled AppHost explicitly before connecting the desktop:
+  ./loushang --start-only
+Closing the GUI leaves AppHost running so sessions remain available. Use
+./loushang --status to check it and ./loushang --stop to stop it.
 
 AppHost uses the same managed service as lmux. Its state stays outside the
 package, in LOUSHANG_HOME (default ~/.loushang).
