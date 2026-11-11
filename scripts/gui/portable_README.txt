@@ -21,10 +21,8 @@ Closing the GUI leaves AppHost running so sessions remain available. To stop it:
 To inspect it:
   ./loushang --workspace /same/workspace --status
 
-AppHost state is separate from the extracted application, beneath
-$XDG_STATE_HOME/loushang/desktop/v1 (default ~/.local/state/loushang/desktop/v1),
-keyed by the resolved workspace path. --state-root overrides the parent directory.
-Keep using the same state root and workspace when replacing this package.
+AppHost uses the same managed service as lmux. Its state stays outside the
+package, in LOUSHANG_HOME (default ~/.loushang).
 Stop the host before moving/removing the extracted application directory.
 Existing workspace settings and normal user provider configuration are used.
 Credentials, user settings, sessions and model API access are NOT included.

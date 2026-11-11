@@ -340,8 +340,9 @@ Use `systemctl --user enable loushang-host.service` to start the Host with the
 user manager. The desktop launcher's local Host commands still manage the
 existing desktop route separately. Provider credentials and
 optional external tools/Plugin worker runtimes are not included. The opt-in
-checker extracts the actual deb and verifies relocated imports, real Host
-startup, reuse, stop and restart without provider calls or system installation.
+checker extracts the actual deb and verifies relocated imports, Host lifecycle,
+and the bundled Rust Web server against the packaged AppHost. It runs without
+provider calls or system installation.
 
 ## Linux portable package candidate
 
@@ -365,8 +366,9 @@ Credentials and optional external worker/tool runtimes are not bundled.
 
 For opt-in real packaged lifecycle checks, run
 `uv run python scripts/gui/check_portable_package.py /path/to/extracted/package`.
-This does not call a model or add a CI gate. Native UI/provider acceptance must
-also be performed against the extracted package; a source-tree run is insufficient.
+The checker serves the bundled Web UI and opens a real Workspace against the
+packaged AppHost. Run native window and provider acceptance separately against
+the extracted package.
 
 ## Browser layout playback
 
@@ -573,4 +575,6 @@ listener is port 1422. Set the AppServer record directory as shown above.
 
 Run `cargo test --locked --manifest-path gui/web/Cargo.toml` for listener tests.
 The standalone GUI package includes `bin/loushang-web` and `web/` assets. Invoke
-`loushang-gui web` to run them. The Host is packaged separately.
+`loushang-gui web` to run them. The Host is packaged separately. After staging
+both programs, verify their independent startup and connection with
+`uv run python scripts/gui/check_split_linux_programs.py /path/to/host /path/to/gui`.

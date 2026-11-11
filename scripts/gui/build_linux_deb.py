@@ -21,9 +21,9 @@ def run(*args: str, cwd: Path = ROOT) -> str:
 def install_command(stage: Path, package: Path, name: str, python_args: str) -> None:
     launcher = package / name
     launcher.write_text(
-        '#!/bin/sh\nset -eu\n'
+        "#!/bin/sh\nset -eu\n"
         'launcher=$(/usr/bin/readlink -f -- "$0")\n'
-        'package=${launcher%/*}\n'
+        "package=${launcher%/*}\n"
         f'exec "$package/runtime/bin/python3" -I {python_args} "$@"\n'
     )
     launcher.chmod(0o755)
@@ -60,10 +60,8 @@ def main() -> None:
         package.parent.mkdir(parents=True)
         shutil.move(str(work / "portable/loushang-linux-x86_64"), package)
         shutil.copy2(
-            ROOT / "scripts/gui/deb_launcher.py", package / "desktop_launcher.py"
-        )
-        shutil.copy2(
-            ROOT / "scripts/gui/tui_appclient_entry.py", package / "tui_appclient_entry.py"
+            ROOT / "scripts/gui/tui_appclient_entry.py",
+            package / "tui_appclient_entry.py",
         )
         # The portable GUI already contains the Rust Web binary and web/ assets.
         manifest_file = package / "manifest.json"
@@ -71,9 +69,6 @@ def main() -> None:
         manifest.update(
             format="loushang-linux-deb/v1",
             version=version,
-            launcherSha256=hashlib.sha256(
-                (package / "desktop_launcher.py").read_bytes()
-            ).hexdigest(),
         )
         manifest_file.write_text(json.dumps(manifest, indent=2) + "\n")
         (package / "README.txt").write_text(
@@ -92,7 +87,9 @@ def main() -> None:
         )
         (stage / "usr/bin").mkdir(parents=True)
         (stage / "usr/bin/loushang").symlink_to("../../opt/loushang/loushang")
-        install_command(stage, package, "loushang-tui", '"$package/tui_appclient_entry.py"')
+        install_command(
+            stage, package, "loushang-tui", '"$package/tui_appclient_entry.py"'
+        )
         install_command(stage, package, "loushang-mux", "-m loushang.coding.cli.mux")
         unit = stage / "usr/lib/systemd/user/loushang-host.service"
         unit.parent.mkdir(parents=True)
