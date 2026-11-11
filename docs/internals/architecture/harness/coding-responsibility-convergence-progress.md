@@ -1,5 +1,14 @@
 # COD-RESP-GOAL-002 执行记录
 
+## PR #886交付核对
+
+A146已验收源码进入交付。首轮 CI 发现 AppHost 历史源码清单、Wave A 旧单文件预算和
+Windows 私有数据删除的旧中断挂点。清单仅放行实际共享实现，保留原必需路径和触发。
+预算以主线2aa2f7deb的676行 Hosted Session、559行 execution总量及345行最大文件为基线，
+当前实物分别为655、502和343行。Windows 中断挂点改为实际成员删除owner，断言保留。
+35项相邻架构检查本地通过。生产源码及A146计量保持。A147仅做只读核对，尚未实施。
+
+
 - Authority: descriptive progress；候选架构不因此成为已接受Target。
 - Design status: partial；Goal已激活，波次设计逐项评审。
 - Implementation status: partial（A82系统成本复核及私有适配退出、A81完整delegated Goal Work/Session轮次交接已接通获有界接受、P2/P3/A80完整canonical Catalog custody、P2/A79完整Product selected revision输入、P1/A78完整Linux恢复/evidence及A1–A71指定路径、A74三类payload恢复、A77完整Linux history proof、P2/A73审批协调及A75任务custody、P2/D3及D1/D2/startup接入、P3指定托管路径及A68临时载荷custody、P4指定入口及A76备份拓扑存储）；各切面真实接受及回归终态见下文，整个Worker、P2与完整Goal尚未完成。A18树外原型不计生产精简。

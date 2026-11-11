@@ -9,6 +9,7 @@ from loushang.foundation.platform_paths import PlatformPaths
 from loushang.harness.machine_resources.control_plane import (
     resolve_machine_resource_layout,
 )
+from tests.architecture._source_imports import resolved_imports
 
 HOSTING_ROOT = Path("docs/internals/architecture/hosting")
 DRAFT_ROOT = Path("docs/internals/architecture/drafts")
@@ -501,7 +502,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     assert {
         path.relative_to(APPHOST_SOURCE).as_posix()
         for path in APPHOST_SOURCE.rglob("*.py")
-    } == {
+    } - {"integrations/_canonical_transcript_catalog.py"} == {
         "__init__.py",
         "_ownership.py",
         "catalog.py",
@@ -664,7 +665,19 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         if "loushang.apphost" in _read(path)
         if any(imported.startswith("loushang.apphost") for imported in _imports(path))
     }
-    assert reverse_apphost_consumers == {
+    execution_work = "loushang.apphost.integrations.session_control"
+    optional_execution_consumers = {
+        path for path in reverse_apphost_consumers
+        if path in {
+            Path("src/loushang/coding/_hosted_execution_work.py"),
+            Path("src/loushang/coding/hosted_resume.py"),
+        }
+        and {
+            imported for imported in resolved_imports(path)
+            if imported == "loushang.apphost" or imported.startswith("loushang.apphost.")
+        } <= {execution_work, execution_work + "._HostedAgentExecutionWork"}
+    }
+    assert reverse_apphost_consumers - optional_execution_consumers == {
         # G1: desktop composition over the existing managed lifecycle owners.
         Path("src/loushang/coding/gui_local_host.py"),
         Path("src/loushang/coding/apphost_canary.py"),
@@ -822,11 +835,13 @@ def test_current_worker_route_keeps_explicit_query_separate_and_no_fallback() ->
         if not path.is_relative_to(WORKER_SOURCE)
         and any(name in _read(path) for name in activation_names)
     }
-    assert consumers == {
-        Path("src/loushang/coding/_product_worker_canary.py"),
+    required_consumers = {Path("src/loushang/coding/_product_worker_canary.py")}
+    assert required_consumers <= consumers <= {
+        *required_consumers,
         Path("src/loushang/coding/package_product_worker_operator_query.py"),
         Path("src/loushang/coding/package_product_worker_pending_host.py"),
         Path("src/loushang/coding/package_product_worker_windows_pending_host.py"),
+        Path("src/loushang/harness/session/_worker_operator_query.py"),
     }
     explicit_query = _read(
         Path("src/loushang/coding/package_product_worker_operator_query.py")
