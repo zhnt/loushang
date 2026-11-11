@@ -43,6 +43,7 @@ from loushang.coding.resource_runtime import CodingPackageMaterializer
 from loushang.foundation.platform_paths import PlatformPaths
 from loushang.harness.plugin_management import (
     PluginDesiredStateMutationV1,
+    PluginInstanceRuntimeLedger,
     PluginLifecycleError,
     PluginManagementApplicationCommandV1,
     PluginManagementCommandV1,
@@ -98,6 +99,31 @@ def _lifecycle(root: Path):
     lifecycle.reconcile_retirements()
     lifecycle.complete_startup_recovery()
     return lifecycle
+
+
+def test_reconcile_without_retirement_intents_reads_instance_runtime_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "state", cwd=tmp_path / "workspace"
+    )
+    lifecycle = build_coding_plugin_lifecycle(layout)
+    reads = 0
+    original_snapshot = PluginInstanceRuntimeLedger.snapshot
+
+    def track_snapshot(self):
+        nonlocal reads
+        if self is lifecycle.instances:
+            reads += 1
+        return original_snapshot(self)
+
+    monkeypatch.setattr(PluginInstanceRuntimeLedger, "snapshot", track_snapshot)
+    try:
+        lifecycle.reconcile_retirements()
+        assert reads == 1
+    finally:
+        lifecycle.release_owned_process_startup_lease()
 
 
 def test_coding_pre_b_package_mapping_rejects_unmapped_member(
