@@ -312,16 +312,13 @@ class PrivateManagedDirectory:
             )
         return self._validate(info, directory=directory)
 
-    def _validate_entry(self, parent: int, name: str, *, directory: bool = False) -> FileIdentity:
+    def _validate_entry(self, parent: int, name: str) -> FileIdentity:
         if not _WINDOWS:
-            return self._validate(self._stat(parent, name), directory=directory)
-        if directory:
-            fd = self._open_directory(name, parent, private=True)
-        else:
-            fd = _windows_files.open_file(parent, name, os.O_RDONLY, share_delete=True)
+            return self._validate(self._stat(parent, name))
+        fd = _windows_files.open_file(parent, name, os.O_RDONLY, share_delete=True)
         primary = None
         try:
-            return self._validate_fd(fd, directory=directory)
+            return self._validate_fd(fd)
         except BaseException as error:
             primary = error
             raise
@@ -414,14 +411,21 @@ class PrivateManagedDirectory:
             raise ManagedStorageError("closed")
         self._check_parents()
         assert self._parent is not None
-        if (
-            self._validate_fd(self._fd, directory=True) != self._identity
-            or self._validate_entry(self._parent, self._root.name, directory=True) != self._identity
-        ):
+        if self._validate_fd(self._fd, directory=True) != self._identity:
+            raise ManagedStorageError("conflict")
+        named = self._stat(self._parent, self._root.name)
+        # On Windows the retained handle proved the ACL and streams. The
+        # rooted name lookup only needs to identify the same file object.
+        named_identity = (named.st_dev, named.st_ino) if _WINDOWS else self._validate(named, directory=True)
+        if named_identity != self._identity:
             raise ManagedStorageError("conflict")
         for name, (fd, identity) in self._locks.items():
-            if self._validate_entry(self._fd, name) != identity or self._validate_fd(fd) != identity:
+            info = self._stat(self._fd, name)
+            if (info.st_dev, info.st_ino) != identity:
                 raise ManagedStorageError("conflict")
+            if not _WINDOWS:
+                self._validate(info)
+            self._validate_fd(fd)
         return self._fd
 
     @contextmanager

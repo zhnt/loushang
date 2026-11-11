@@ -177,6 +177,7 @@ class ManagedChildApplicationV1:
                         break
                     self._emit("starting")
                     self._prepare_task = _spawn(self._application.prepare(deadline=self._startup_deadline))
+                    self._prepare_task.add_done_callback(lambda _: self._wakeup.set())
                 if state.handoff.phase is ManagedHandoffPhaseV1.COMMITTED:
                     self._committed = True
             if self._prepare_task is not None and self._prepare_task.done():
@@ -210,9 +211,12 @@ class ManagedChildApplicationV1:
                     if _failed(self._wait_task):
                         failure = "activation_failed"
                     break
+            # Give the original prepare task time to take the lifecycle fence.
+            # Its completion wakes this driver before the next stop poll.
+            preparing = self._prepare_task is not None and not self._prepare_task.done()
             self._wakeup.clear()
             with suppress(TimeoutError):
-                await asyncio.wait_for(self._wakeup.wait(), 0.25 if self.accepting else 0.05)
+                await asyncio.wait_for(self._wakeup.wait(), 0.25 if self.accepting or preparing else 0.05)
         if failure is not None:
             raise ManagedChildError(failure)
 

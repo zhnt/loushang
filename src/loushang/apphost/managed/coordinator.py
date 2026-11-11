@@ -228,7 +228,7 @@ class ManagedServiceCoordinatorV1:
                     return
             # The child's recovery holds this same lifecycle fence. Leave
             # room for it to take the lock before another parent read.
-            interval = 0.25 if state.handoff.phase is ManagedHandoffPhaseV1.PROVISIONAL else 0.05
+            interval = 1.0 if state.handoff.phase is ManagedHandoffPhaseV1.PROVISIONAL else 0.05
             await self._pause(deadline, interval=interval)
             current = await self._read(deadline)
             if current is None:

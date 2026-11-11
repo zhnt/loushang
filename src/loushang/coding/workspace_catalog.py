@@ -5,12 +5,18 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import sys
 from pathlib import Path
 
 from loushang.apphost.managed.workspaces import WorkspaceRegistry
+from loushang.appserver.protocol import SessionScopeV1
 from loushang.harness.transcript.store_admission import TranscriptStoreAdmission
 
-from .hosted_catalog import _MAX_TRANSCRIPT_BYTES
+from .hosted_catalog import (
+    _MAX_TRANSCRIPT_BYTES,
+    CodingHostedScopeV1,
+    CodingHostedSessionCatalogV1,
+)
 from .managed_catalog import CodingManagedSessionCatalogV1
 
 
@@ -27,7 +33,7 @@ class CodingWorkspaceCatalog:
         self.registry = registry
         self._root = session_root
         self._state = store_state_root
-        self._catalogs: dict[Path, CodingManagedSessionCatalogV1] = {}
+        self._catalogs: dict[Path, CodingHostedSessionCatalogV1] = {}
         self._loaded = False
         self._closed = False
 
@@ -78,21 +84,31 @@ class CodingWorkspaceCatalog:
     def pending_sessions(self):
         return tuple(session for catalog in self._catalogs.values() for session in catalog.pending_sessions)
 
-    def _add(self, path: Path) -> CodingManagedSessionCatalogV1:
+    def _add(self, path: Path) -> CodingHostedSessionCatalogV1:
         if self._closed:
             raise ValueError("workspace_catalog_closed")
         if path not in self._catalogs:
-            leaf = hashlib.sha256(str(path).encode()).hexdigest()
-            previous = self._root / leaf
-            witness = TranscriptStoreAdmission(previous, state_root=self._state).witness_root
-            # Preserve existing identities and surface missing-store errors
-            # when an admission witness survives. New stores get their own
-            # family parent, separate from the flat Coding transcripts.
-            root = previous if os.path.lexists(previous) or os.path.lexists(witness) else self._root / "workspaces" / leaf
-            self._catalogs[path] = CodingManagedSessionCatalogV1(
-                session_root=root, workspace=path, store_state_root=self._state,
-            )
+            self._catalogs[path] = self._create_catalog(path)
         return self._catalogs[path]
+
+    def _create_catalog(self, path: Path) -> CodingHostedSessionCatalogV1:
+        leaf = hashlib.sha256(str(path).encode()).hexdigest()
+        root = self._root / "workspaces" / leaf
+        if sys.platform == "win32":
+            # Use the native hosted Session writer with separate scope roots.
+            return CodingHostedSessionCatalogV1(tuple(
+                CodingHostedScopeV1(scope, root / scope.value, path)
+                for scope in (SessionScopeV1.CWD, SessionScopeV1.USER_HOME)
+            ))
+        previous = self._root / leaf
+        witness = TranscriptStoreAdmission(previous, state_root=self._state).witness_root
+        # A surviving witness identifies the original store even if its data
+        # directory is missing. New stores use the workspaces family.
+        if os.path.lexists(previous) or os.path.lexists(witness):
+            root = previous
+        return CodingManagedSessionCatalogV1(
+            session_root=root, workspace=path, store_state_root=self._state,
+        )
 
     async def register(self, value: str) -> Path:
         path = await asyncio.to_thread(self.registry.register, value)
@@ -141,7 +157,10 @@ class CodingWorkspaceCatalog:
         return tuple(result)
 
     async def open_candidate(self, reference):
-        return await self._for_reference(reference).open_history_candidate(reference, max_bytes=_MAX_TRANSCRIPT_BYTES)
+        catalog = self._for_reference(reference)
+        if sys.platform == "win32":
+            return await catalog.open_candidate(reference)
+        return await catalog.open_history_candidate(reference, max_bytes=_MAX_TRANSCRIPT_BYTES)
 
     async def find_created_candidate(self, request):
         return await self._for_create(request).find_created_candidate(request)
