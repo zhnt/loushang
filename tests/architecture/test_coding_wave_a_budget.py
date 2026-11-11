@@ -109,7 +109,8 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
     # Hosted SDK Method and bounded Goal integration add 29 bootstrap lines.
     assert sum(groups["g16"].values()) <= 900 + 53 + 29, groups["g16"]
     for path, limit in {
-        "cli/mux.py": 258,
+        # Main 794156c3b adds systemd AppHost management to this owner.
+        "cli/mux.py": 277,
         "hosted_bootstrap.py": 288 + 29,
         "hosted_local.py": 402,
     }.items():
