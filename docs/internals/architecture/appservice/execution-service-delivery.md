@@ -951,7 +951,18 @@ Both listeners share AppHost readiness, peer limits and shutdown.
 Linux tests exercised a Rust client through a forwarded port, rejected the
 local management credential and remote stop mode, and verified that the same
 OpenSSH forward reconnects after AppHost restarts. The desktop route and
-configuration are covered by the Tauri tests. A Windows 10 x64 native workspace probe built from `bd1c58358` authenticated
-through an SSH reverse forward, registered and opened a Linux Workspace, and
-reconnected after the Linux AppHost restarted. The full graphical run and
-Windows native managed service acceptance remain separate.
+configuration are covered by the Tauri tests. On Windows 10 x64, the native
+workspace probe and release Tauri GUI built from `bd1c58358` authenticated
+through an SSH reverse forward and opened a Linux Workspace. The desktop
+displayed the selected Session and a connected status. After a graceful Linux
+AppHost stop and restart, the same window recovered the same Session ID under
+the new service instance, without refreshing the WebView. The test used an
+isolated connection and credentials and made no model calls. Windows native
+managed service acceptance remains a separate phase.
+
+The major-version toolchain configuration at `1b128df31` was verified on the
+same Windows machine. Node 24.19.0 and npm 11.17.0 completed `npm ci` from the
+existing package cache and passed `npm run doctor`.
+
+After retiring the duplicate packaged Workspace entry point, the complete
+offline AppService gate passed with 2,587 tests and 16 skips.
