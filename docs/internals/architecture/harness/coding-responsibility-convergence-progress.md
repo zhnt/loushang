@@ -35,6 +35,20 @@ START native_revision==2特殊校验在草稿中遗漏。未装Product，生产�
 [A129](key-designs/worker-history-responsibility-convergence.md#a129完整windows退休闭包原型未采用)。
 完整Goal仍active/partial；A129当时仍用A128已接受计量，不以树外原型报减少。
 
+## A142共用Windows根删除意图
+
+四类 Windows Worker 退休在原 stage 作用域内共用根删除意图事务。首次读取缺失时才
+求值写入路径并写入，随后重新读取并比对。崩溃入口仍传入预先求得的路径，沿用完整
+退休的 stage 内错误。发生写入或比对错误时，仍保留根目录供重试。
+
+200 条受控新旧观察逐字节一致，涵盖现有及缺失意图、写入确认丢失、清理异常和重试。
+136 项既有回归、183 项架构检查、类型检查、依赖图和文档检查通过。两处 Windows
+原生测试改为在实际删除方法注入中断，受控删除验证挂点生效，原脚本
+可编译，原生运行未覆盖。三项独立评审与验证记录存于树外 `a142-root-delete-intent`。
+
+Coding 减7行，Harness 增14行，系统净增7行。当前 Coding 111648行，系统648176行。
+较 Goal 起点分别减少26107行和增加13382行，距15K还差96648行。P1–P4仍在进行。
+
 ## A141共用Windows退休记录与完成收据发布
 
 四类 Windows Worker 退休通过原 Package Product 共用 START、根删除意图和完成收据

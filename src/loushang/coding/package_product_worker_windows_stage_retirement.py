@@ -339,17 +339,16 @@ def _remove_remaining_stage(
         read_intent = read_root_delete_intent or (
             lambda: _read_root_delete_intent(product, review.attempt_id)
         )
-        if read_intent() is None:
-            write_windows_private_receipt(
+        _records.ensure_root_delete_intent(
+            receipt,
+            path=lambda: (
                 root_delete_intent_path
-                or _root_delete_intent_path(product, review.attempt_id),
-                receipt.to_bytes(),
-                maximum_bytes=_MAX_RECEIPT_BYTES,
-            )
-        if read_intent() != receipt:
-            raise CodingWindowsWorkerStageRetirementError(
-                "coding_worker_stage_retirement_root_intent_changed"
-            )
+                or _root_delete_intent_path(product, review.attempt_id)
+            ),
+            read=read_intent,
+            write=write_windows_private_receipt,
+            changed_message="coding_worker_stage_retirement_root_intent_changed",
+        )
 
 
 def _stage_exists(root: int, attempt_id: str) -> bool:

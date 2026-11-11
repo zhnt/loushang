@@ -271,16 +271,13 @@ def _remove_remaining_stage(
             raise CodingWindowsWorkerUnlaunchedRetirementError(
                 "coding_worker_unlaunched_retirement_extra_member"
             )
-        if _read_root_intent(product, review.attempt_id) is None:
-            write_windows_private_receipt(
-                _root_intent_path(product, review.attempt_id),
-                receipt.to_bytes(),
-                maximum_bytes=_MAX_RECEIPT_BYTES,
-            )
-        if _read_root_intent(product, review.attempt_id) != receipt:
-            raise CodingWindowsWorkerUnlaunchedRetirementError(
-                "coding_worker_unlaunched_retirement_root_intent_changed"
-            )
+        _records.ensure_root_delete_intent(
+            receipt,
+            path=lambda: _root_intent_path(product, review.attempt_id),
+            read=lambda: _read_root_intent(product, review.attempt_id),
+            write=write_windows_private_receipt,
+            changed_message="coding_worker_unlaunched_retirement_root_intent_changed",
+        )
 
 
 def _other_retirement_artifact_present(

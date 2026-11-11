@@ -6768,7 +6768,7 @@ import json
 import sys
 from pathlib import Path
 from unittest.mock import patch
-import loushang.coding.package_product_worker_windows_partial_stage_retirement as partial_retirement_module
+from loushang.harness.worker.payload._windows_stage_retirement import WindowsStageRetirement
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package_product_runtime import open_coding_fenced_product_application_owner
 from loushang.coding.package_product_worker_windows_recovery_inventory import CodingWindowsWorkerRecoveryAdmissionError, _current_after_verified_retirements_under_gc_guard, inspect_coding_windows_product_worker_offline_recovery
@@ -6790,7 +6790,7 @@ try:
     repeated = retire_coding_windows_product_worker_complete_stage(product, expected_review=review)
     partial_review = review_coding_windows_product_worker_partial_stage(product, attempt_id="8" * 32)
     with patch.object(
-        partial_retirement_module, "_delete_directory_if_empty",
+        WindowsStageRetirement, "delete_directory_if_empty",
         side_effect=OSError("injected partial directory interruption"),
     ):
         try:
@@ -7198,7 +7198,7 @@ from unittest.mock import patch
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package_product_runtime import open_coding_fenced_product_application_owner
 import loushang.coding.package_product_worker_windows_payload as payload_module
-import loushang.coding.package_product_worker_windows_unlaunched_stage_retirement as unlaunched_retirement_module
+from loushang.harness.worker.payload._windows_stage_retirement import WindowsStageRetirement
 from loushang.coding.package_product_worker_windows_payload import CodingWindowsWorkerPayloadMaterializationError, materialize_coding_windows_product_worker_payload
 from loushang.coding.package_product_worker_windows_recovery_inventory import CodingWindowsWorkerRecoveryAdmissionError, _current_after_verified_retirements_under_gc_guard, _inspect_windows_worker_recovery_inventory_under_gc_guard, inspect_coding_windows_product_worker_offline_recovery
 from loushang.coding.package_product_worker_windows_receipt import CodingWindowsWorkerProductReceiptOwner
@@ -7235,7 +7235,7 @@ try:
         else:
             raise AssertionError("Unretired reservation was admitted")
     unlaunched_review = review_coding_windows_product_worker_settled_unlaunched(product, attempt_id="a" * 32)
-    with patch.object(unlaunched_retirement_module, "_delete_directory_if_empty", side_effect=OSError("injected unlaunched retirement interruption")):
+    with patch.object(WindowsStageRetirement, "delete_directory_if_empty", side_effect=OSError("injected unlaunched retirement interruption")):
         try:
             retire_coding_windows_product_worker_settled_unlaunched_stage(product, expected_review=unlaunched_review)
         except OSError as error:

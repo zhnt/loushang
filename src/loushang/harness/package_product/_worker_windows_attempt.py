@@ -276,6 +276,20 @@ class WindowsWorkerRetirementRecords(Generic[_RetirementReviewT, IntentT]):
             invalid_error=lambda: self.error_type(self.receipt_invalid),
         )
 
+    def ensure_root_delete_intent(
+        self,
+        receipt: IntentT,
+        *,
+        path: Callable[[], Path],
+        read: Callable[[], IntentT | None],
+        write: _ReceiptWriter,
+        changed_message: str,
+    ) -> None:
+        if read() is None:
+            write(path(), receipt.to_bytes(), maximum_bytes=self.receipt_maximum_bytes)
+        if read() != receipt:
+            raise self.error_type(changed_message)
+
     def publish_receipt(
         self,
         product: WindowsLocalWheelProductSessionOwner,
