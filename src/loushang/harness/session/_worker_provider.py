@@ -10,6 +10,7 @@ from typing import Protocol, TypeVar
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderCandidateEnvelope,
     CapabilityProviderOwnerAuthority,
+    _admit_provider_for_duration,
 )
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
@@ -112,14 +113,12 @@ def _prepare_worker_provider_binding(
                 or (admission_window <= 0)
             ):
                 raise error_type(f"{error_prefix}_renewal_changed")
-            eligibility = renewing_provider_owner.grant_eligibility(
-                current_candidate, issued_at=now, expires_at=now + admission_window
-            )
-            renewed = renewing_provider_owner.admit(
+            renewed = _admit_provider_for_duration(
+                renewing_provider_owner,
                 current_candidate,
-                eligibility=eligibility,
                 issued_at=now,
-                expires_at=now + admission_window,
+                eligibility_duration=admission_window,
+                admission_duration=admission_window,
             )
             if (
                 renewed.candidate_fingerprint

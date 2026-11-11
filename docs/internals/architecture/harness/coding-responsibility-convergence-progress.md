@@ -35,6 +35,21 @@ START native_revision==2特殊校验在草稿中遗漏。未装Product，生产�
 [A129](key-designs/worker-history-responsibility-convergence.md#a129完整windows退休闭包原型未采用)。
 完整Goal仍active/partial；A129当时仍用A128已接受计量，不以树外原型报减少。
 
+## A146共用Worker Provider签发与选择
+
+普通 Worker 启动和操作员查询在原 Session 装配中共用单 Provider 选择。原 Capability
+owner 负责资格和准入签发，Worker 续期复用同一程序。各入口保留原时钟、有效期与策略
+读取，继续先完成选择计划，再读取 owner 快照并调用原 Resolver。
+
+127条新旧对照逐字节一致，其中112次注入故障实际触达。对照用真实 owner、计划和
+Resolver，控制时钟与故障端口。初版观察脚本误读选择结果的 fingerprint 属性，改为
+对照原序列化值及 admission 指纹。69项回归、1项 Linux 离线 Product 事务和192项
+架构检查通过。Windows 原生运行未覆盖。三项独立评审与验证记录
+存于树外 `a146-provider-selection`。
+
+Coding 减45行，Harness 增57行，系统净增12行。当前 Coding 111514行，系统648192行。
+较 Goal 起点分别减少26241行和增加13398行，距15K还差96514行。P1–P4仍在进行。
+
 ## A145共用普通Worker能力绑定与准入投影
 
 POSIX、Windows 待启动计划和操作员查询共用原 Worker Capability 的绑定构造。两个计划

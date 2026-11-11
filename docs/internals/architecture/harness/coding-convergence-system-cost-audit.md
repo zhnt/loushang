@@ -639,3 +639,11 @@ Coding 新增49行、删除90行。原 Worker Capability 查询新增41行、删
 三个绑定构造及三个准入构造分别共用一份投影。两平台的 Resume 配对归原 Coding 绑定。
 当前430份 Coding 源码111559行、Harness 362126行、1969份系统源码648180行。
 相对 Goal 起点分别净减26196行、净增33807行和净增13386行。见[A145](coding-responsibility-convergence-progress.md#a145共用普通worker能力绑定与准入投影)。
+
+
+## A146 共用 Worker Provider 签发与选择
+
+Coding 新增18行、删除63行。原 Capability 与 Session 层新增63行、删除6行。
+系统净增12行。两条 Provider 选择流程共用 Session 装配，续期复用同一签发程序。
+当前430份 Coding 源码111514行、Harness 362183行、1969份系统源码648192行。
+相对 Goal 起点分别净减26241行、净增33864行和净增13398行。见[A146](coding-responsibility-convergence-progress.md#a146共用worker-provider签发与选择)。

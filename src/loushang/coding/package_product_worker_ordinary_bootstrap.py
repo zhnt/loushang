@@ -9,11 +9,6 @@ from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
 )
-from loushang.harness.capabilities.provider_selection import (
-    ProductCapabilityProviderChoice,
-    ProductCapabilityProviderResolver,
-    ProductCapabilityProviderSelectionPlanV1,
-)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
@@ -40,7 +35,6 @@ from .package_product_worker_provider import (
     prepare_coding_selected_worker_provider_candidate,
 )
 from .package_product_worker_query_consumer import (
-    CODING_WORKER_QUERY_CAPABILITY_ID,
     CODING_WORKER_QUERY_DEFINITION,
     coding_worker_query_owner_authority,
 )
@@ -50,6 +44,7 @@ from .package_product_worker_receipt import (
 )
 from .package_product_worker_resume import CodingWorkerResumeSettlementBinding
 from .package_product_worker_session_composition import (
+    _WORKER_SESSION_COMPOSITION,
     CodingProductWorkerOrdinarySessionBinding,
     compose_coding_product_worker_with_ordinary_session,
 )
@@ -214,34 +209,15 @@ def prepare_coding_product_worker_ordinary_binding(
         base_policy_binding=base_policy,
     )
     evaluated_at = base_context.evaluated_at
-    eligibility = provider_owner.grant_eligibility(
-        candidate,
-        issued_at=evaluated_at,
-        expires_at=evaluated_at + 300_000,
-    )
-    admission = provider_owner.admit(
-        candidate,
-        eligibility=eligibility,
-        issued_at=evaluated_at,
-        expires_at=evaluated_at + 180_000,
-    )
-    resolved = ProductCapabilityProviderResolver().resolve(
-        ProductCapabilityProviderSelectionPlanV1(
-            product_id="coding",
-            roots=(CODING_WORKER_QUERY_CAPABILITY_ID,),
-            choices=(
-                ProductCapabilityProviderChoice(
-                    capability_id=CODING_WORKER_QUERY_CAPABILITY_ID,
-                    provider_id=provider.provider_id,
-                    candidate_fingerprint=admission.candidate_fingerprint,
-                ),
-            ),
-            policy_revision=base_policy.policy_revision,
-        ),
-        definitions=(CODING_WORKER_QUERY_DEFINITION,),
-        admissions=(admission,),
-        owner_snapshots=(provider_owner.snapshot(),),
+    resolved = _WORKER_SESSION_COMPOSITION.select_provider(
+        owner=provider_owner,
+        candidate=candidate,
+        definition=CODING_WORKER_QUERY_DEFINITION,
+        provider_id=lambda: provider.provider_id,
+        policy_revision=lambda: base_policy.policy_revision,
         evaluated_at=evaluated_at,
+        eligibility_duration=300_000,
+        admission_duration=180_000,
     )
     if type(product_owner) is WindowsLocalWheelProductSessionOwner:
         assert type(receipt_owner) is CodingWindowsWorkerProductReceiptOwner

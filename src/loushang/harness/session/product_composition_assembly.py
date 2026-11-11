@@ -40,6 +40,7 @@ from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderCandidateEnvelope,
     CapabilityProviderOwnerAuthority,
     CapabilityProviderOwnerSnapshot,
+    _admit_provider_for_duration,
 )
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
@@ -132,6 +133,44 @@ class _WorkerSessionComposition:
     error_prefix: str
     invalid_composition_inputs: str
     invalid_session_inputs: str
+
+    def select_provider(
+        self,
+        *,
+        owner: CapabilityProviderOwnerAuthority,
+        candidate: CapabilityProviderCandidateEnvelope,
+        definition: CapabilityDefinition,
+        provider_id: Callable[[], str],
+        policy_revision: Callable[[], str],
+        evaluated_at: int,
+        eligibility_duration: int,
+        admission_duration: int,
+    ) -> ResolvedCapabilityProviderSet:
+        admission = _admit_provider_for_duration(
+            owner,
+            candidate,
+            issued_at=evaluated_at,
+            eligibility_duration=eligibility_duration,
+            admission_duration=admission_duration,
+        )
+        return ProductCapabilityProviderResolver().resolve(
+            ProductCapabilityProviderSelectionPlanV1(
+                product_id=self.product_id,
+                roots=(self.worker_requirement.capability,),
+                choices=(
+                    ProductCapabilityProviderChoice(
+                        capability_id=self.worker_requirement.capability,
+                        provider_id=provider_id(),
+                        candidate_fingerprint=admission.candidate_fingerprint,
+                    ),
+                ),
+                policy_revision=policy_revision(),
+            ),
+            definitions=(definition,),
+            admissions=(admission,),
+            owner_snapshots=(owner.snapshot(),),
+            evaluated_at=evaluated_at,
+        )
 
     def compose(
         self,

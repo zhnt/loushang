@@ -22,11 +22,6 @@ from loushang.harness.capabilities import (
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderOwnerAuthority,
 )
-from loushang.harness.capabilities.provider_selection import (
-    ProductCapabilityProviderChoice,
-    ProductCapabilityProviderResolver,
-    ProductCapabilityProviderSelectionPlanV1,
-)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -82,6 +77,7 @@ from .package_product_worker_receipt import (
     open_coding_product_selected_worker_receipt_owner,
 )
 from .package_product_worker_session_composition import (
+    _WORKER_SESSION_COMPOSITION,
     prepare_coding_product_worker_session_inputs,
 )
 from .package_product_worker_start_gate import CodingProductWorkerStartGate
@@ -202,32 +198,15 @@ class _CodingOperatorQueryPolicy:
             provider=provider,
         )
         now = int(time.time())
-        eligibility = owner.grant_eligibility(
-            candidate, issued_at=now, expires_at=now + 300
-        )
-        admission = owner.admit(
-            candidate,
-            eligibility=eligibility,
-            issued_at=now,
-            expires_at=now + 180,
-        )
-        resolved = ProductCapabilityProviderResolver().resolve(
-            ProductCapabilityProviderSelectionPlanV1(
-                product_id="coding",
-                roots=(CODING_WORKER_QUERY_CAPABILITY_ID,),
-                choices=(
-                    ProductCapabilityProviderChoice(
-                        capability_id=CODING_WORKER_QUERY_CAPABILITY_ID,
-                        provider_id=CODING_WORKER_QUERY_PROVIDER_ID,
-                        candidate_fingerprint=admission.candidate_fingerprint,
-                    ),
-                ),
-                policy_revision=self.receipt.policy.product_policy_revision,
-            ),
-            definitions=(CODING_WORKER_QUERY_DEFINITION,),
-            admissions=(admission,),
-            owner_snapshots=(owner.snapshot(),),
+        resolved = _WORKER_SESSION_COMPOSITION.select_provider(
+            owner=owner,
+            candidate=candidate,
+            definition=CODING_WORKER_QUERY_DEFINITION,
+            provider_id=lambda: CODING_WORKER_QUERY_PROVIDER_ID,
+            policy_revision=lambda: self.receipt.policy.product_policy_revision,
             evaluated_at=now,
+            eligibility_duration=300,
+            admission_duration=180,
         )
 
         return prepare_coding_product_worker_session_inputs(
