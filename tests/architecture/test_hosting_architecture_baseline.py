@@ -703,6 +703,7 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "_ownership.py",
         "application.py",
         "catalog.py",
+        "client_preferences.py",
         "contracts.py",
         "continuity.py",
         "errors.py",

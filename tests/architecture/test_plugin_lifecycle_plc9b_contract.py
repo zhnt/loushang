@@ -2096,6 +2096,41 @@ def test_plc9b1_dark_kernel_preserves_visible_unsafe_debt() -> None:
         assert forbidden not in author_sdk
 
 
+def _require_foundation_imports(
+    path: Path, allowed: set[tuple[str, str]],
+) -> None:
+    """Bound a shared primitive by exact module and symbol."""
+    actual = set()
+    for node in ast.walk(ast.parse(_source(path), filename=str(path))):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("loushang.foundation"):
+            actual.update((node.module, item.name) for item in node.names)
+        elif isinstance(node, ast.Import):
+            actual.update((item.name, "") for item in node.names if item.name.startswith("loushang.foundation"))
+    assert actual == allowed, path
+
+
+def _require_package_kernel_imports(path: Path, permitted: dict[str, set[str]]) -> None:
+    prefix = "loushang.harness.resources.packages.plugin_lifecycle"
+    for node in ast.walk(ast.parse(_source(path), filename=str(path))):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(prefix):
+            assert {name.name for name in node.names} <= permitted.get(node.module, set()), path
+        elif isinstance(node, ast.Import):
+            assert not any(name.name.startswith(prefix) for name in node.names), path
+
+
+def _require_worker_package_primitives(path: Path) -> None:
+    prefix = "loushang.harness.resources.packages.plugin_lifecycle"
+    _require_package_kernel_imports(path, {
+        f"{prefix}.records": {"canonical_json_bytes"},
+        f"{prefix}._record_schema": {"RecordField", "RecordSchema"},
+        f"{prefix}.windows_quarantine": {
+            "open_windows_deletion_entry_at", "open_windows_directory", "open_windows_regular_file_at",
+            "windows_delete_open_entry", "windows_directory_stream_names", "windows_flush_directory",
+            "windows_flush_file", "windows_listdir_at", "windows_regular_file_stream_names", "windows_stat_at",
+        },
+    })
+
+
 def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
     package_facade = _source(PACKAGE_ROOT / "__init__.py")
     kernel_sources = {path: _source(path) for path in OWNER_KERNEL_ROOT.glob("*.py")}
@@ -2154,13 +2189,31 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
     # transport, author SDK, and other runtime layers may not import it.
     assert production_importers
     for path in set(production_importers):
-        if path.is_relative_to(Path("src/loushang/coding")):
+        if path == Path("src/loushang/coding/plugin_dependency_grants.py"):
+            _require_package_kernel_imports(path, {
+                "loushang.harness.resources.packages.plugin_lifecycle._exact_product_source": {
+                    "resolve_installed_product_root",
+                },
+            })
+        elif path == Path("src/loushang/harness/config/store.py"):
+            # Windows configuration reads reuse the rooted file primitives.
+            _require_package_kernel_imports(path, {
+                "loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover": {
+                    "_PinnedWindowsAuthority",
+                },
+                "loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine": {
+                    "open_windows_regular_file_at", "windows_stat_at",
+                },
+            })
+        elif path.is_relative_to(Path("src/loushang/coding")):
             assert path.name.startswith("package_") or path.name in {
                 "_plugin_lifecycle.py",
                 "_external_data_product_composition.py",
                 # First-party Product composition owns Windows root preparation.
                 "_product_capability_plugin_composition.py",
             }, path
+        elif path.is_relative_to(Path("src/loushang/harness/worker")):
+            _require_worker_package_primitives(path)
         elif path.is_relative_to(Path("src/loushang/harness/package_product")):
             pass
         elif path.is_relative_to(Path("src/loushang/harness/plugin_management")):
@@ -2480,6 +2533,8 @@ def test_plc9b3c_recursive_builder_is_selection_only_dark_and_unpromoted() -> No
 
 
 def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
+    _require_foundation_imports(CLOSURE_JOURNAL, {("loushang.foundation.json", "_unique_json_object_hook")})
+    _require_foundation_imports(CLOSURE_RUNTIME, set())
     contract = _source(CONTRACT)
     inventory = _source(INVENTORY)
     package_facade = _source(PACKAGE_ROOT / "__init__.py")
@@ -2520,7 +2575,6 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
         "CommittedPackageSet",
         "TransactionPin",
         "loushang.coding",
-        "loushang.foundation",
         "subprocess",
         "urllib.request",
     ):
@@ -2667,6 +2721,7 @@ def test_plc9b3e1_typed_commit_records_are_strict_dark_and_unpromoted() -> None:
 
 
 def test_plc9b3e2a_transaction_pin_contract_is_narrow_dark_and_unpromoted() -> None:
+    _require_foundation_imports(TRANSACTION_PINS, {("loushang.foundation.json", "_unique_json_object_hook")})
     contract = _source(CONTRACT)
     inventory = _source(INVENTORY)
     source = _source(TRANSACTION_PINS)
@@ -2714,7 +2769,6 @@ def test_plc9b3e2a_transaction_pin_contract_is_narrow_dark_and_unpromoted() -> N
         "loushang.harness.plugin_management",
         "loushang.harness.resources.plugins.revisions",
         "loushang.coding",
-        "loushang.foundation",
         "subprocess",
     )
     assert not any(
@@ -2852,6 +2906,8 @@ def test_plc9b3e2b_transaction_pin_runtime_orders_effects_and_recovers_dark() ->
 
 
 def test_plc9b3e3a_staging_and_atomic_set_contracts_are_dark_and_role_safe() -> None:
+    _require_foundation_imports(STAGING, {("loushang.foundation.json", "_unique_json_object_hook")})
+    _require_foundation_imports(COMMITTED_SETS, {("loushang.foundation.json", "_unique_json_object_hook")})
     contract = _source(CONTRACT)
     inventory = _source(INVENTORY)
     index = _source(INDEX)
@@ -2921,8 +2977,7 @@ def test_plc9b3e3a_staging_and_atomic_set_contracts_are_dark_and_role_safe() -> 
             "loushang.harness.plugin_management",
             "loushang.harness.resources.plugins.revisions",
             "loushang.coding",
-            "loushang.foundation",
-            "subprocess",
+                "subprocess",
         )
         assert not any(
             module == forbidden or module.startswith(f"{forbidden}.")
@@ -3686,6 +3741,7 @@ def test_plc9b4a_commit_admission_is_dark_read_only_and_exact() -> None:
 
 
 def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
+    _require_foundation_imports(RETENTION_HANDOFF, {("loushang.foundation.json", "_unique_json_object_hook")})
     contract = _source(CONTRACT)
     inventory = _source(INVENTORY)
     index = _source(INDEX)
@@ -3723,7 +3779,6 @@ def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
         "loushang.harness.plugin_management",
         "loushang.harness.resources.plugins.revisions",
         "loushang.coding",
-        "loushang.foundation",
         "os",
         "subprocess",
     )
@@ -4096,6 +4151,7 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
 
 
 def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
+    _require_foundation_imports(WINDOWS_EPOCH_CUTOVER, {("loushang.foundation.windows_private_acl", "WindowsPrivateDirectoryAcl")})
     contract = _source(CONTRACT)
     inventory = _source(INVENTORY)
     index = _source(INDEX)
@@ -4149,7 +4205,6 @@ def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
         "loushang.harness.plugin_management",
         "loushang.harness.resources.plugins",
         "loushang.coding",
-        "loushang.foundation",
     )
     assert not any(
         module == forbidden or module.startswith(f"{forbidden}.")

@@ -60,7 +60,7 @@ def test_contribution_kinds_have_one_canonical_closed_definition() -> None:
 
     for path in (
         Path("src/loushang/harness/session/product_composition_assembly.py"),
-        Path("src/loushang/coding/_resource_catalog_adapter.py"),
+        Path("src/loushang/coding/_product_capability_plugin_composition.py"),
     ):
         source = path.read_text(encoding="utf-8")
         assert "_EXTERNAL_CONTRIBUTION_KINDS" not in source

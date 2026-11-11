@@ -286,18 +286,38 @@ def test_plc9c1_through_c4_runtime_is_present_but_default_dark() -> None:
     )
     assert "enabled: bool = False" in adapter_binding
     assert "worker_disabled_by_policy" in adapter_binding
-    worker_imports = {
-        imported for path in WORKER_ROOT.rglob("*.py") for imported in _imports(path)
+    management_prefix = "loushang.harness.plugin_management"
+    bounded_management_imports = {
+        "_ordinary_prepare.py": {
+            (f"{management_prefix}.package_product", "PackageProductRuntimeReadError"),
+        },
+        "history/_opt_in_store.py": {
+            (f"{management_prefix}.package_gc_reservation", "PluginPackageGcReservationJournal"),
+        },
+        "history/_retention.py": {
+            (f"{management_prefix}.package_gc_reservation", "PluginPackageGcReservationSnapshotV1"),
+            (f"{management_prefix}.records", "PluginPackageRevisionRefV1"),
+        },
     }
-    assert not any(
-        imported.startswith(
-            (
-                "loushang.harness.plugin_management",
-                "loushang.harness.capabilities.component_runtime",
-            )
-        )
-        for imported in worker_imports
-    )
+    for path in WORKER_ROOT.rglob("*.py"):
+        imports = _imports(path)
+        assert not any(
+            imported.startswith("loushang.harness.capabilities.component_runtime")
+            for imported in imports
+        ), path
+        tree = ast.parse(_source(path))
+        management_imports = {
+            (node.module, item.name)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(management_prefix)
+            for item in node.names
+        }
+        allowed = bounded_management_imports.get(path.relative_to(WORKER_ROOT).as_posix(), set())
+        assert management_imports == allowed, path
+        expected_imports = {module for module, _ in allowed} | {
+            f"{module}.{symbol}" for module, symbol in allowed
+        }
+        assert {name for name in imports if name.startswith(management_prefix)} == expected_imports, path
     worker_consumers = {
         path
         for path in harness_paths
@@ -309,8 +329,15 @@ def test_plc9c1_through_c4_runtime_is_present_but_default_dark() -> None:
     }
     assert worker_consumers == {
         SANDBOX_RUNTIME,
+        HARNESS_ROOT / "package_product/_linux_worker_history.py",
+        HARNESS_ROOT / "package_product/_linux_worker_native_release.py",
+        HARNESS_ROOT / "package_product/_linux_worker_recovery.py",
+        HARNESS_ROOT / "package_product/_windows_worker_backend_release.py",
+        HARNESS_ROOT / "package_product/_worker_windows_attempt.py",
         HARNESS_ROOT / "package_product/product_worker_candidate.py",
         HARNESS_ROOT / "package_product/product_worker_wheel_admission.py",
+        HARNESS_ROOT / "session/_worker_operator_query.py",
+        HARNESS_ROOT / "session/_worker_provider.py",
     }
 
 
