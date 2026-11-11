@@ -30,7 +30,7 @@ from loushang.appservice.continuity import (
     ApplicationContinuityRecordV1,
     require_application_id,
 )
-from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
+from loushang.appservice.managed_mux import CommitMux, ManagedMuxServiceBindingV1
 from loushang.appservice.managed_mux_close import (
     ManagedMuxCloseBindingV1,
     ManagedMuxCloseRecoveryBindingV1,
@@ -39,6 +39,7 @@ from loushang.appservice.managed_mux_close import (
 from loushang.hosting.service import LinuxServiceIdentityV1
 
 from ._files import ManagedStorageError, _check_deadline
+from .connection import _settled_native
 from .contracts import (
     _HEX32,
     _HEX64,
@@ -149,7 +150,29 @@ class ManagedMuxManagerV1:
         return ManagedMuxServiceBindingV1(
             self._application_id, self._service.service_id, self._instance.instance_id,
             self.prepare, closing=None if self._startup_attempt is None else self.closing_binding(),
+            ensure_named=self.ensure_named,
         )
+
+    def _reserve_named(self, name: str, deadline: float) -> ManagedMuxReservationV1:
+        existing = self._registry.resolve(name)
+        if existing is None:
+            candidate = ManagedMuxReservationV1(name, self._service, token_hex(16))
+            try:
+                return self._registry.reserve_mux(candidate, deadline=deadline, wait_for_lock=True)
+            except ManagedStorageError as error:
+                if error.code != "conflict":
+                    raise
+                existing = self._registry.resolve(name)
+        if existing is None or existing.service != self._service:
+            raise ManagedStorageError("conflict")
+        return existing
+
+    async def ensure_named(self, name: str, commit: CommitMux) -> None:
+        deadline = monotonic() + 10
+        reservation = await _settled_native(self._reserve_named, name, deadline)
+        permit = await _settled_native(lambda: self.issue_create(reservation, deadline=deadline))
+        created = await commit(permit)
+        await _settled_native(lambda: self.record_created(permit, created, deadline=deadline))
 
     def closing_binding(self) -> ManagedMuxCloseBindingV1:
         """Recovery activates only with the original bootstrap startup identity."""

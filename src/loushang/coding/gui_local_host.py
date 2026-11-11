@@ -10,7 +10,6 @@ import json
 import os
 import sys
 from contextlib import AsyncExitStack
-from hashlib import sha256
 from pathlib import Path
 from secrets import token_hex
 from time import monotonic
@@ -38,15 +37,12 @@ from loushang.appserver.client import AppConnectionClosedError
 from loushang.appserver.local_auth import LocalAuthenticationError
 from loushang.appserver.local_record import LocalRecordError
 from loushang.appserver.protocol import AppServiceError, InvalidAppMessageError
+from loushang.appservice.managed_mux import project_mux_name
 from loushang.hosting.errors import HostingError
 
 from .managed_process import APPLICATION_ID, ENDPOINT, coding_managed_process_request
 
 TEMPORARY_MUX = "gui-temporary"
-
-
-def project_mux_name(path: str) -> str:
-    return "ws-" + sha256(path.encode()).hexdigest()[:60]
 
 
 async def operate(request: dict, *, request_factory=None) -> dict:

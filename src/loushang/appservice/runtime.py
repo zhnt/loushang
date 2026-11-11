@@ -75,7 +75,11 @@ from .execution_registry import (
     ExecutionServiceErrorV1,
 )
 from .execution_service import HostedExecutionServiceBindingV1
-from .managed_mux import ManagedMuxAdmissionV1, ManagedMuxServiceBindingV1
+from .managed_mux import (
+    ManagedMuxAdmissionV1,
+    ManagedMuxServiceBindingV1,
+    project_mux_name,
+)
 from .managed_mux_close import ManagedMuxCloseAdmissionV1, ManagedMuxCloseUseV1
 from .ports import (
     HostedSessionPortV1,
@@ -605,7 +609,20 @@ class AppServiceV1:
             if (fingerprints.intersection(self._workspace_pending)
                     or any(s.identity.scope_fingerprint in fingerprints for s in owners)):
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        return await self._workspaces.workspace(request)
+        result = await self._workspaces.workspace(request)
+        binding = self._managed_mux
+        if request.action == "open" and binding is not None and binding.ensure_named is not None:
+            if len(result.workspaces) != 1:
+                raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            try:
+                await binding.ensure_named(
+                    project_mux_name(result.workspaces[0].path), self.create_managed_mux,
+                )
+            except AppServiceError:
+                raise
+            except Exception:
+                raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+        return result
 
     @property
     def continuity_enabled(self) -> bool:
