@@ -35,6 +35,22 @@ START native_revision==2特殊校验在草稿中遗漏。未装Product，生产�
 [A129](key-designs/worker-history-responsibility-convergence.md#a129完整windows退休闭包原型未采用)。
 完整Goal仍active/partial；A129当时仍用A128已接受计量，不以树外原型报减少。
 
+## A141共用Windows退休记录与完成收据发布
+
+四类 Windows Worker 退休通过原 Package Product 共用 START、根删除意图和完成收据
+的路径构造与类型化读取。Coding 提供原命名、上限、DTO、错误和未启动修订检查。
+完成收据共用写入、回读、比较和权限复核，均在原描述符借用内执行。根删除意图继续在
+原 stage 作用域内执行，启动意图继续在归还外层描述符后复核权限。
+
+302 条读取与168条公开入口受控新旧观察逐字节一致。公开入口对照覆盖写入确认丢失、
+回读缺失或解码失败、权限及作用域退出失败、存储状态和重试。初版缺少私有 START
+签名的 Path 导入，已补齐。136 项既有回归、183 项架构检查、类型检查、依赖图和文档检查通过。
+Windows 原生运行未覆盖。
+三项独立评审与验证记录存于树外 `a141-retirement-completion`。
+
+Coding 减135行，Harness 增91行，系统净减44行。当前 Coding 111655行，系统648169行。
+较 Goal 起点分别减少26100行和增加13375行，距15K还差96655行。P1–P4仍在进行。
+
 ## A140共用Windows退休冲突扫描
 
 完整、部分、未启动和崩溃退休共用原 Package Product 的借用根枚举。描述符释放后，

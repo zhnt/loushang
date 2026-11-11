@@ -14,8 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from loushang.harness.package_product._worker_windows_attempt import (
-    IntentT,
-    decode_windows_worker_attempt_record,
+    WindowsWorkerRetirementRecords,
     inspect_windows_product_worker_retirement_ids,
     list_windows_worker_state_root_names,
 )
@@ -228,16 +227,14 @@ def retire_coding_windows_product_worker_complete_stage(
                     raise CodingWindowsWorkerStageRetirementError(
                         "coding_worker_stage_retirement_stage_retained"
                     )
-                write_windows_private_receipt(
-                    _receipt_path(product, start.attempt_id),
-                    receipt.to_bytes(),
-                    maximum_bytes=_MAX_RECEIPT_BYTES,
+                _records.publish_receipt(
+                    product,
+                    start,
+                    receipt,
+                    write=write_windows_private_receipt,
+                    read=_read_receipt,
+                    changed_message="coding_worker_stage_retirement_publication_changed",
                 )
-                if _read_receipt(product, start.attempt_id) != receipt:
-                    raise CodingWindowsWorkerStageRetirementError(
-                        "coding_worker_stage_retirement_publication_changed"
-                    )
-                product.assert_root_gc_authority_current()
                 return receipt
 
 
@@ -412,76 +409,29 @@ def _retirement_attempt_ids_from_names(names: tuple[str, ...]) -> frozenset[str]
     return frozenset(attempts)
 
 
-def _read_attempt_retirement_record(
-    path: Path,
-    attempt_id: str,
-    record_type: type[IntentT],
-    maximum_bytes: int,
-    error_type: type[Exception],
-    invalid_message: str,
-) -> IntentT | None:
-    raw = read_windows_private_receipt(
+def _read_retirement_bytes(path: Path, maximum_bytes: int) -> bytes | None:
+    return read_windows_private_receipt(
         path, maximum_bytes=maximum_bytes, allow_unpublished_stage=True
     )
-    return decode_windows_worker_attempt_record(
-        raw,
-        record_type,
-        attempt_id,
-        invalid_error=lambda: error_type(invalid_message),
-    )
 
 
-def _read_review(
-    product: WindowsLocalWheelProductSessionOwner, attempt_id: str
-) -> CodingWindowsWorkerStageReviewV1 | None:
-    return _read_attempt_retirement_record(
-        _start_path(product, attempt_id),
-        attempt_id,
-        CodingWindowsWorkerStageReviewV1,
-        _MAX_REVIEW_BYTES,
-        CodingWindowsWorkerStageRetirementError,
-        "coding_worker_stage_retirement_start_invalid",
-    )
-
-
-def _read_receipt(
-    product: WindowsLocalWheelProductSessionOwner, attempt_id: str
-) -> CodingWindowsWorkerStageRetirementReceiptV1 | None:
-    return _read_attempt_retirement_record(
-        _receipt_path(product, attempt_id),
-        attempt_id,
-        CodingWindowsWorkerStageRetirementReceiptV1,
-        _MAX_RECEIPT_BYTES,
-        CodingWindowsWorkerStageRetirementError,
-        "coding_worker_stage_retirement_receipt_invalid",
-    )
-
-
-def _read_root_delete_intent(
-    product: WindowsLocalWheelProductSessionOwner, attempt_id: str
-) -> CodingWindowsWorkerStageRetirementReceiptV1 | None:
-    return _read_attempt_retirement_record(
-        _root_delete_intent_path(product, attempt_id),
-        attempt_id,
-        CodingWindowsWorkerStageRetirementReceiptV1,
-        _MAX_RECEIPT_BYTES,
-        CodingWindowsWorkerStageRetirementError,
-        "coding_worker_stage_retirement_root_intent_invalid",
-    )
-
-
-def _start_path(product: WindowsLocalWheelProductSessionOwner, attempt_id: str):
-    return product.state_root / f"worker-stage-retire-{attempt_id}.json"
-
-
-def _receipt_path(product: WindowsLocalWheelProductSessionOwner, attempt_id: str):
-    return product.state_root / f"worker-stage-retired-{attempt_id}.json"
-
-
-def _root_delete_intent_path(
-    product: WindowsLocalWheelProductSessionOwner, attempt_id: str
-):
-    return product.state_root / f"worker-stage-root-delete-{attempt_id}.json"
+_records = WindowsWorkerRetirementRecords(
+    stem="worker-stage",
+    review_type=CodingWindowsWorkerStageReviewV1,
+    receipt_type=CodingWindowsWorkerStageRetirementReceiptV1,
+    review_maximum_bytes=_MAX_REVIEW_BYTES,
+    receipt_maximum_bytes=_MAX_RECEIPT_BYTES,
+    read_bytes=_read_retirement_bytes,
+    error_type=CodingWindowsWorkerStageRetirementError,
+    start_invalid="coding_worker_stage_retirement_start_invalid",
+    root_intent_invalid="coding_worker_stage_retirement_root_intent_invalid",
+    receipt_invalid="coding_worker_stage_retirement_receipt_invalid",
+)
+_start_path = _records.start_path
+_read_review = _records.read_start
+_root_delete_intent_path = _records.root_intent_path
+_read_receipt = _records.read_receipt
+_read_root_delete_intent = _records.read_root_intent
 
 
 __all__ = [

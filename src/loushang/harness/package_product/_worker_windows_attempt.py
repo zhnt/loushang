@@ -205,6 +205,97 @@ def decode_windows_worker_attempt_record(
     return record
 
 
+_RetirementReviewT = TypeVar("_RetirementReviewT", bound=_IntentRecord)
+
+
+class _ReceiptWriter(Protocol):
+    def __call__(self, path: Path, payload: bytes, *, maximum_bytes: int) -> None: ...
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class WindowsWorkerRetirementRecords(Generic[_RetirementReviewT, IntentT]):
+    stem: str
+    review_type: type[_RetirementReviewT]
+    receipt_type: type[IntentT]
+    review_maximum_bytes: int
+    receipt_maximum_bytes: int
+    read_bytes: Callable[[Path, int], bytes | None]
+    error_type: type[Exception]
+    start_invalid: str
+    root_intent_invalid: str
+    receipt_invalid: str
+
+    def start_path(
+        self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
+    ) -> Path:
+        return product.state_root / f"{self.stem}-retire-{attempt_id}.json"
+
+    def root_intent_path(
+        self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
+    ) -> Path:
+        return product.state_root / f"{self.stem}-root-delete-{attempt_id}.json"
+
+    def receipt_path(
+        self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
+    ) -> Path:
+        return product.state_root / f"{self.stem}-retired-{attempt_id}.json"
+
+    def read_start(
+        self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
+    ) -> _RetirementReviewT | None:
+        return decode_windows_worker_attempt_record(
+            self.read_bytes(
+                self.start_path(product, attempt_id), self.review_maximum_bytes
+            ),
+            self.review_type,
+            attempt_id,
+            invalid_error=lambda: self.error_type(self.start_invalid),
+        )
+
+    def read_root_intent(
+        self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
+    ) -> IntentT | None:
+        return decode_windows_worker_attempt_record(
+            self.read_bytes(
+                self.root_intent_path(product, attempt_id), self.receipt_maximum_bytes
+            ),
+            self.receipt_type,
+            attempt_id,
+            invalid_error=lambda: self.error_type(self.root_intent_invalid),
+        )
+
+    def read_receipt(
+        self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
+    ) -> IntentT | None:
+        return decode_windows_worker_attempt_record(
+            self.read_bytes(
+                self.receipt_path(product, attempt_id), self.receipt_maximum_bytes
+            ),
+            self.receipt_type,
+            attempt_id,
+            invalid_error=lambda: self.error_type(self.receipt_invalid),
+        )
+
+    def publish_receipt(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        review: _RetirementReviewT,
+        receipt: IntentT,
+        *,
+        write: _ReceiptWriter,
+        read: Callable[[WindowsLocalWheelProductSessionOwner, str], IntentT | None],
+        changed_message: str,
+    ) -> None:
+        write(
+            self.receipt_path(product, review.attempt_id),
+            receipt.to_bytes(),
+            maximum_bytes=self.receipt_maximum_bytes,
+        )
+        if read(product, review.attempt_id) != receipt:
+            raise self.error_type(changed_message)
+        product.assert_root_gc_authority_current()
+
+
 class _PayloadSelection(Protocol):
     @property
     def digest(self) -> str: ...

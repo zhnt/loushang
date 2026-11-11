@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -28,8 +29,9 @@ from .package_product_worker_windows_reserved_review import (
 )
 from .package_product_worker_windows_stage_retirement import (
     CodingWindowsWorkerStageRetirementReceiptV1,
+    WindowsWorkerRetirementRecords,
     _has_other_retirement_artifact,
-    _read_attempt_retirement_record,
+    _read_retirement_bytes,
     _retirement,
     _stage_exists,
 )
@@ -143,16 +145,14 @@ def retire_coding_windows_product_worker_settled_unlaunched_stage(
                     raise CodingWindowsWorkerUnlaunchedRetirementError(
                         "coding_worker_unlaunched_retirement_stage_retained"
                     )
-                write_windows_private_receipt(
-                    _receipt_path(product, start.attempt_id),
-                    receipt.to_bytes(),
-                    maximum_bytes=_MAX_RECEIPT_BYTES,
+                _records.publish_receipt(
+                    product,
+                    start,
+                    receipt,
+                    write=write_windows_private_receipt,
+                    read=_read_receipt,
+                    changed_message="coding_worker_unlaunched_retirement_publication_changed",
                 )
-                if _read_receipt(product, start.attempt_id) != receipt:
-                    raise CodingWindowsWorkerUnlaunchedRetirementError(
-                        "coding_worker_unlaunched_retirement_publication_changed"
-                    )
-                product.assert_root_gc_authority_current()
                 return receipt
 
 
@@ -286,62 +286,45 @@ def _remove_remaining_stage(
 def _other_retirement_artifact_present(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> bool:
-    return _has_other_retirement_artifact(product, attempt_id, "worker-unlaunched-stage")
+    return _has_other_retirement_artifact(
+        product, attempt_id, "worker-unlaunched-stage"
+    )
+
+
+_records = WindowsWorkerRetirementRecords(
+    stem="worker-unlaunched-stage",
+    review_type=CodingWindowsWorkerReservedNoEffectReviewV1,
+    receipt_type=CodingWindowsWorkerStageRetirementReceiptV1,
+    review_maximum_bytes=_MAX_REVIEW_BYTES,
+    receipt_maximum_bytes=_MAX_RECEIPT_BYTES,
+    read_bytes=_read_retirement_bytes,
+    error_type=CodingWindowsWorkerUnlaunchedRetirementError,
+    start_invalid="coding_worker_unlaunched_retirement_start_invalid",
+    root_intent_invalid="coding_worker_unlaunched_retirement_receipt_invalid",
+    receipt_invalid="coding_worker_unlaunched_retirement_receipt_invalid",
+)
+
+
+def _start_path(
+    product: WindowsLocalWheelProductSessionOwner, *, start_id: str
+) -> Path:
+    return _records.start_path(product, start_id)
 
 
 def _read_start(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> CodingWindowsWorkerReservedNoEffectReviewV1 | None:
-    invalid = "coding_worker_unlaunched_retirement_start_invalid"
-    review = _read_attempt_retirement_record(
-        _start_path(product, start_id=attempt_id),
-        attempt_id,
-        CodingWindowsWorkerReservedNoEffectReviewV1,
-        _MAX_REVIEW_BYTES,
-        CodingWindowsWorkerUnlaunchedRetirementError,
-        invalid,
-    )
+    review = _records.read_start(product, attempt_id)
     if review is not None and review.native_revision != 2:
-        raise CodingWindowsWorkerUnlaunchedRetirementError(invalid)
+        raise CodingWindowsWorkerUnlaunchedRetirementError(
+            "coding_worker_unlaunched_retirement_start_invalid"
+        )
     return review
 
 
-def _read_receipt(
-    product: WindowsLocalWheelProductSessionOwner, attempt_id: str
-) -> CodingWindowsWorkerStageRetirementReceiptV1 | None:
-    return _read_attempt_retirement_record(
-        _receipt_path(product, attempt_id),
-        attempt_id,
-        CodingWindowsWorkerStageRetirementReceiptV1,
-        _MAX_RECEIPT_BYTES,
-        CodingWindowsWorkerUnlaunchedRetirementError,
-        "coding_worker_unlaunched_retirement_receipt_invalid",
-    )
-
-
-def _read_root_intent(
-    product: WindowsLocalWheelProductSessionOwner, attempt_id: str
-) -> CodingWindowsWorkerStageRetirementReceiptV1 | None:
-    return _read_attempt_retirement_record(
-        _root_intent_path(product, attempt_id),
-        attempt_id,
-        CodingWindowsWorkerStageRetirementReceiptV1,
-        _MAX_RECEIPT_BYTES,
-        CodingWindowsWorkerUnlaunchedRetirementError,
-        "coding_worker_unlaunched_retirement_receipt_invalid",
-    )
-
-
-def _start_path(product: WindowsLocalWheelProductSessionOwner, *, start_id: str):
-    return product.state_root / f"worker-unlaunched-stage-retire-{start_id}.json"
-
-
-def _receipt_path(product: WindowsLocalWheelProductSessionOwner, attempt_id: str):
-    return product.state_root / f"worker-unlaunched-stage-retired-{attempt_id}.json"
-
-
-def _root_intent_path(product: WindowsLocalWheelProductSessionOwner, attempt_id: str):
-    return product.state_root / f"worker-unlaunched-stage-root-delete-{attempt_id}.json"
+_root_intent_path = _records.root_intent_path
+_read_receipt = _records.read_receipt
+_read_root_intent = _records.read_root_intent
 
 
 __all__ = [
