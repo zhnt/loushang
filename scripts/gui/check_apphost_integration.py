@@ -236,8 +236,11 @@ async def control_round(root, session_id):
         if not line:
             stdout, stderr = await process.communicate()
             raise AssertionError((process.returncode, stdout, stderr))
-        control = json.loads(line)
-        assert control == {"accepted": True, "reason": None, "type": "control"}, control
+        initial = json.loads(line)
+        assert initial["type"] == "initial", initial
+        control = json.loads(await asyncio.wait_for(process.stdout.readline(), 8))
+        assert control["type"] == "control" and control["accepted"], control
+        assert control["reason"] is None and control["executionId"], control
         rounds = []
         async with asyncio.timeout(8):
             while True:

@@ -1,6 +1,6 @@
 //! Desktop ownership only; no AppHost stop, reconnect or transport semantics.
-use crate::read_stop::ReadStop;
 use crate::read_worker::{ReadWorker, WorkerFailure};
+use loushang_app_client::read_stop::ReadStop;
 use std::sync::Mutex;
 
 #[derive(Default)]

@@ -1,0 +1,25 @@
+[package]
+name = "loushang-app-client"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+hmac = "0.12.1"
+sha2 = "0.10.9"
+getrandom = "0.2.17"
+
+[target.'cfg(all(unix, not(target_os = "linux")))'.dependencies]
+rustix = { version = "1.1.6", features = ["fs", "process"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
+[lints.clippy]
+# Preserve the existing adapter's opaque errors at the crate boundary.
+result_unit_err = "allow"

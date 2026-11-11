@@ -21,11 +21,11 @@ fn positive(raw: &RawValue) -> bool {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Envelope {
+pub(super) struct Envelope {
     protocol_version: String,
     request_id: String,
-    result_type: String,
-    result: Box<RawValue>,
+    pub(super) result_type: String,
+    pub(super) result: Box<RawValue>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -162,7 +162,7 @@ struct SnapshotRequest<'a> {
     control: Control<'a>,
     expected_instance_id: &'a str,
 }
-fn request<R: Read, W: Write, P: Serialize>(
+pub(super) fn request<R: Read, W: Write, P: Serialize>(
     channel: &mut Channel<R, W>,
     operation: &str,
     id: &str,
@@ -224,7 +224,7 @@ pub(crate) struct ReadSession {
 }
 
 #[derive(Clone)]
-pub(crate) struct ControlAuthority {
+pub struct ControlAuthority {
     attachment_id: String,
     controller_generation: String,
     instance: String,
@@ -241,19 +241,19 @@ struct SessionTemplate {
     scope_fingerprint: String,
 }
 
-pub(crate) enum ControlResult {
+pub enum ControlResult {
     Accepted,
     Submitted(String),
     Missing,
     Rejected(String),
 }
 
-pub(crate) enum ModelControlResult {
+pub enum ModelControlResult {
     Accepted(Value),
     Rejected(String),
 }
 
-pub(crate) enum CreateSessionResult {
+pub enum CreateSessionResult {
     Accepted(String),
     Rejected(String),
 }
@@ -267,7 +267,7 @@ pub(crate) struct InitialSnapshot {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct MemberEvents {
+pub struct MemberEvents {
     pub(crate) member_id: String,
     pub(crate) session_id: String,
     pub(crate) events: Vec<Value>,
@@ -736,20 +736,13 @@ impl ControlAuthority {
         decode_model_result(&response.result_type, &response.result)
     }
 
-    pub(crate) fn service_instance_id(&self) -> &str {
+    pub fn service_instance_id(&self) -> &str {
         &self.instance
     }
 
     fn payload(&self, session_id: &str) -> Result<Value, ()> {
-        let member_id = self.members.get(session_id).ok_or(())?;
-        let generation: Value =
-            serde_json::from_str(&self.controller_generation).map_err(|_| ())?;
         Ok(json!({
-            "control": {
-                "attachmentId": self.attachment_id,
-                "controllerGeneration": generation,
-                "memberId": member_id,
-            },
+            "control": self.app_payload(session_id)?,
             "expectedInstanceId": self.instance,
         }))
     }
@@ -927,7 +920,7 @@ fn decode_create_result(
     Err(())
 }
 
-fn decode_app_error(result_type: &str, result: &RawValue) -> Result<Option<String>, ()> {
+pub(super) fn decode_app_error(result_type: &str, result: &RawValue) -> Result<Option<String>, ()> {
     if result_type != "error" {
         return Ok(None);
     }

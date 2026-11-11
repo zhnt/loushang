@@ -54,7 +54,7 @@ const APP_ERROR_CODES = new Set([
 ]);
 
 export async function nativeLiveAvailable(): Promise<boolean> {
-  return isTauri() && await invoke<boolean>("live_readonly_available");
+  return isTauri() && await invoke<boolean>("live_connection_available");
 }
 
 export function createNativeLiveClient(): HarnessClientUiPort {
@@ -149,7 +149,7 @@ export function createNativeLiveClient(): HarnessClientUiPort {
         rejectInitial(new Error("The native live connection failed."));
         notifyConnection("resync-required");
       }));
-      await invoke("start_live_readonly");
+      await invoke("start_live_connection");
     } catch (error) {
       for (const unlisten of unlisteners) unlisten();
       rejectInitial(error instanceof Error ? error : new Error("Unable to start native live connection."));
@@ -199,7 +199,7 @@ export function createNativeLiveClient(): HarnessClientUiPort {
     },
     async requestResync() {
       await ensureStarted();
-      await invoke("resync_live_readonly");
+      await invoke("resync_live_connection");
     },
     async submitText(input) {
       const receipt = await invoke<{ accepted: boolean; reason?: string | null; executionId?: string | null }>("live_submit_text", { input });

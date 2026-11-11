@@ -1,11 +1,8 @@
 //! Observe one validated live event round through the desktop AppClient adapter.
 #[allow(dead_code, unused_imports)]
-#[path = "../../../../src-tauri/src/app_client/mod.rs"]
-mod app_client;
+use loushang_app_client as app_client;
 #[path = "../probe_completion.rs"]
 mod probe_completion;
-#[path = "../../../../src-tauri/src/read_stop.rs"]
-mod read_stop;
 #[allow(dead_code)]
 #[path = "../../../../src-tauri/src/read_worker.rs"]
 mod read_worker;

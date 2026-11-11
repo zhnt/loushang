@@ -1273,12 +1273,10 @@ version = "0.1.0"
 dependencies = [
  "getrandom 0.2.17",
  "gtk",
- "hmac",
- "libc",
+ "loushang-app-client",
  "loushang-web",
  "reqwest",
  "rusqlite",
- "rustix",
  "serde",
  "serde_json",
  "sha2",
@@ -1286,7 +1284,6 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-os",
  "tempfile",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1908,6 +1905,20 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+
+[[package]]
+name = "loushang-app-client"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.2.17",
+ "hmac",
+ "libc",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "loushang-web"

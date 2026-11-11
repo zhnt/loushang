@@ -1,8 +1,8 @@
 //! Native fixture-file admission experiment. No endpoint discovery or connection.
-#[path = "../../../../src-tauri/src/app_client/record_native.rs"]
+#[path = "../../../../app-client/src/app_client/record_native.rs"]
 mod native;
 #[allow(dead_code)]
-#[path = "../../../../src-tauri/src/app_client/record_value.rs"]
+#[path = "../../../../app-client/src/app_client/record_value.rs"]
 mod record_value;
 
 fn main() {

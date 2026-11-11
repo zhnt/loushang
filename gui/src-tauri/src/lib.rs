@@ -1,5 +1,3 @@
-#[allow(dead_code)]
-mod app_client;
 mod client_settings;
 mod connection_directory;
 mod connection_lifecycle;
@@ -10,8 +8,6 @@ mod project_folder;
 mod tray;
 mod web_link;
 // Exit joins run on the blocking pool.
-#[allow(dead_code)]
-mod read_stop;
 #[allow(dead_code)]
 mod read_worker;
 
@@ -88,15 +84,15 @@ pub fn run() {
         fixture_bridge_handshake,
         client_settings::client_settings,
         offline_account::offline_account,
-        live_bridge::live_readonly_available,
+        live_bridge::live_connection_available,
         live_bridge::live_submit_text,
         live_bridge::live_interrupt,
         live_bridge::live_create_session,
         live_bridge::live_session_models,
         live_bridge::live_select_model,
-        live_bridge::resync_live_readonly,
-        live_bridge::start_live_readonly,
-        live_bridge::stop_live_readonly
+        live_bridge::resync_live_connection,
+        live_bridge::start_live_connection,
+        live_bridge::stop_live_connection
     ]);
     #[cfg(not(feature = "fixture-bridge"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -106,15 +102,15 @@ pub fn run() {
         project_folder::pick_project_folder,
         client_settings::client_settings,
         offline_account::offline_account,
-        live_bridge::live_readonly_available,
+        live_bridge::live_connection_available,
         live_bridge::live_submit_text,
         live_bridge::live_interrupt,
         live_bridge::live_create_session,
         live_bridge::live_session_models,
         live_bridge::live_select_model,
-        live_bridge::resync_live_readonly,
-        live_bridge::start_live_readonly,
-        live_bridge::stop_live_readonly
+        live_bridge::resync_live_connection,
+        live_bridge::start_live_connection,
+        live_bridge::stop_live_connection
     ]);
     builder
         .setup(|app| {

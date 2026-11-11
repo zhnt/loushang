@@ -11,13 +11,14 @@ import type { ProjectNavigationProps } from "../src/client/projectDirectory";
 
 const native = vi.hoisted(() => ({
   invoke: vi.fn(), create: vi.fn(() => ({})), listeners: new Map<string, (value: any) => void>(),
+  available: vi.fn(async () => false),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: native.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async (name, callback) => {
   native.listeners.set(name, callback);
   return () => native.listeners.delete(name);
 }) }));
-vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: async () => false }));
+vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: native.available }));
 vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: native.create }));
 vi.mock("../src/DesktopFrame", () => ({ DesktopFrame: () => <header>Desktop</header> }));
 vi.mock("../src/App", () => ({
@@ -105,6 +106,13 @@ beforeEach(() => {
 });
 
 describe("local managed Host presentation", () => {
+  it("does not query the Web Host directory while selecting a direct native connection", async () => {
+    native.available.mockResolvedValueOnce(true);
+    render(<LocalHostGate />);
+    expect(await screen.findByText("Fixture")).toBeVisible();
+    expect(native.invoke.mock.calls.filter(([command]) => command === "client_settings")).toEqual([]);
+  });
+
   it("routes tray start and stop through management and the existing shutdown confirmation", async () => {
     render(<LocalHostGate />);
     const projection = () => {

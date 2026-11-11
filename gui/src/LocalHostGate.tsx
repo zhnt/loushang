@@ -37,7 +37,7 @@ const errors = {
 export default function LocalHostGate() {
   const { t, i18n } = useTranslation("workspace");
   const account = useOfflineAccount();
-  const [legacy, setLegacy] = useState(false);
+  const [route, setRoute] = useState<"detecting" | "native" | "web">("detecting");
   const [supported, setSupported] = useState<boolean | null>(null);
   const [workspace, setWorkspace] = useState("");
   const [directory, setDirectory] = useState(emptyDirectory);
@@ -220,7 +220,10 @@ export default function LocalHostGate() {
     let active = true;
     const initialGeneration = generation.current;
     void (async () => {
-      if (await nativeLiveAvailable()) { if (active) setLegacy(true); return; }
+      const native = await nativeLiveAvailable();
+      if (!active) return;
+      setRoute(native ? "native" : "web");
+      if (native) return;
       const environment = await sharedSettings<{ supported: boolean; workspace: string; connectionId?: string }>({ operation: "environment" });
       if (!active || initialGeneration !== generation.current) return;
       connectionId.current = environment.connectionId;
@@ -251,7 +254,7 @@ export default function LocalHostGate() {
     : connection === "connected" ? "connected"
     : connection === "connecting" || connection === "resync-required" ? "connecting" : "disconnected";
   const trayHosts = useTrayHosts({
-    enabled: !legacy, selectedId, localName: i18n.t("shell:tray.localHost"),
+    enabled: route === "web", selectedId, localName: i18n.t("shell:tray.localHost"),
     workspace, host, supported: supported === true, busy, connection: trayConnection,
     onSelect: (id) => activateHost(id),
     onManage: (action, path, instanceId) => action === "connect" && connectionId.current
@@ -260,7 +263,7 @@ export default function LocalHostGate() {
   useSystemTray({ userName: account?.name ?? "", language: i18n.resolvedLanguage ?? "en-US", hosts: trayHosts.hosts },
     trayHosts.action, (error) => { setTrayError(error); requestHostSettings((value) => value + 1); });
 
-  if (legacy) return <App account={account} />;
+  if (route === "native") return <App account={account} />;
   const reason = host.errorCode;
   const errorLabel = reason && reason in errors ? t(errors[reason as keyof typeof errors])
     : reason?.startsWith("start_") || reason === "spawn_failed" ? t("localHost.errors.start")

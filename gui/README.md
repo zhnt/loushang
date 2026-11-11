@@ -12,6 +12,15 @@ product fixture mode. Deterministic clients live under `tests/support/` only.
 The browser adapter reuses authenticated AppClient/ExecutionClient contracts;
 React uses the same validated snapshot projection as the native bridge.
 
+The native AppServer client is the standalone Rust crate `gui/app-client`.
+Tauri's native bridge and the protocol integration probes link the same crate.
+It uses the existing authenticated AppServer TCP frames and local connection
+records. Run its unit tests with
+`cargo test --locked --manifest-path gui/app-client/Cargo.toml`. To verify it
+against a real local AppHost with a deterministic model, run
+`uv run python scripts/gui/check_apphost_integration.py` from the repository root.
+The regular desktop and browser routes described below still use the Web adapter.
+
 ## Shared local storage and browser access
 
 `npm --prefix gui run dev` starts Vite in desktop mode and opens the Tauri
