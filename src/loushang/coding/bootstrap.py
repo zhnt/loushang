@@ -1111,7 +1111,6 @@ def _create_agent_session(
                     deferred_lsp_management_state_cleanup = (
                         create_lifecycle_cleanup_claim()
                     )
-            lifecycle.reconcile_retirements()
             lifecycle.complete_startup_recovery()
             if "coding.base" in requested_plugin_ids:
                 coding_base_plugin_assembly = prepare_managed_coding_base_plugin_assembly(

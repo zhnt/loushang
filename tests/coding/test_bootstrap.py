@@ -224,6 +224,57 @@ def test_create_agent_session_uses_manager_header_as_agent_session_id(tmp_path) 
     assert session.get_model_selection().model_id == "faux-model"
 
 
+def test_new_session_completes_plugin_recovery_without_a_preliminary_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.session_manager import SessionManager
+
+    # Exercise the managed Coding lifecycle on hosts that also support the
+    # direct Product route (for example, Linux CI).
+    monkeypatch.setattr(
+        coding_bootstrap, "_select_direct_coding_product_factory", lambda *args, **kwargs: None
+    )
+    events: list[str] = []
+    original_reconcile = (
+        plugin_lifecycle_module.CodingPluginLifecycle.reconcile_retirements
+    )
+    original_complete = (
+        plugin_lifecycle_module.CodingPluginLifecycle.complete_startup_recovery
+    )
+
+    def track_reconcile(self) -> None:
+        events.append("reconcile")
+        original_reconcile(self)
+
+    def track_complete(self) -> None:
+        events.append("complete")
+        original_complete(self)
+
+    monkeypatch.setattr(
+        plugin_lifecycle_module.CodingPluginLifecycle,
+        "reconcile_retirements",
+        track_reconcile,
+    )
+    monkeypatch.setattr(
+        plugin_lifecycle_module.CodingPluginLifecycle,
+        "complete_startup_recovery",
+        track_complete,
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
+    )
+
+    session = create_agent_session(session_manager=manager, model=_model())
+
+    assert events[0] == "complete"
+    assert session.agent.session_id == manager.get_header().conversation_id
+
+
 def test_explicit_worker_route_requires_materialized_transcript_before_product_selection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
