@@ -156,7 +156,8 @@ class ManagedDatabase:
             raise ManagedContractError()
         self._directory = PrivateManagedDirectory(root, create=create, defer_open=True,
                                                   exclusive_create=exclusive_create,
-                                                  create_parents=create_parents)
+                                                  create_parents=create_parents,
+                                                  inherit_windows_children=True)
         self._namespace = namespace
         self._create = create
         self._exclusive_create = exclusive_create
@@ -207,6 +208,9 @@ class ManagedDatabase:
     @property
     def cleanup_pending(self) -> bool:
         return self._cleanup_connection is not None or self._directory.cleanup_pending
+
+    def _idle_cleanup_pending(self) -> bool:
+        return self._cleanup_connection is not None or self._directory._idle_cleanup_pending()
 
     @property
     def deployment_id(self) -> str:

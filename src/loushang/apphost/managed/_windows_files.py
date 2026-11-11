@@ -16,16 +16,16 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
 )
 
 
-def create_directory(parent: int, name: str) -> None:
-    with WindowsPrivateDirectoryAcl(inherit_children=True) as acl:
+def create_directory(parent: int, name: str, *, inherit_children: bool) -> None:
+    with WindowsPrivateDirectoryAcl(inherit_children=inherit_children) as acl:
         fd = open_windows_directory(
             name, dir_fd=parent, create_new=True, security_descriptor=acl.security_descriptor,
         )
     os.close(fd)
 
 
-def validate(fd: int, info: os.stat_result, *, directory: bool = False) -> tuple[int, int]:
-    with WindowsPrivateDirectoryAcl(inherit_children=True) as acl:
+def validate(fd: int, info: os.stat_result, *, directory: bool, inherit_children: bool) -> tuple[int, int]:
+    with WindowsPrivateDirectoryAcl(inherit_children=inherit_children or not directory) as acl:
         acl.validate(fd, inherited_file=not directory)
     streams = windows_directory_stream_names if directory else windows_regular_file_stream_names
     if (not (stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode))

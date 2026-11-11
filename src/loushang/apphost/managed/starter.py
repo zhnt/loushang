@@ -8,14 +8,18 @@ Closing releases parent-local resources, not a committed background service.
 
 from __future__ import annotations
 
-import os
 import socket
+import sys
 from collections.abc import Callable
 from secrets import token_hex
 from threading import Event, RLock
 
 from loushang.hosting.contracts import ProcessLaunchRequest
 from loushang.hosting.service_process import LinuxServiceProcessV1
+from loushang.hosting.service_windows import (
+    WindowsServiceLaunchRequestV1,
+    WindowsServiceProcessV1,
+)
 
 from ._files import ManagedStorageError, _check_deadline
 from .contracts import (
@@ -25,12 +29,15 @@ from .contracts import (
     ManagedNamespaceV1,
     ManagedServiceKeyV1,
 )
+from .defaults import current_managed_user
 from .invocation import ManagedChildInvocationV1, _validate_trace_deadline
 from .layout import ManagedLayoutPreparationV1
 from .lifecycle import ManagedServiceJournalV1, ManagedServiceStateV1
 from .paths import resolve_managed_paths, resolve_managed_service_paths
 
-ManagedLaunchRequestFactoryV1 = Callable[[ManagedChildInvocationV1, int], ProcessLaunchRequest]
+ManagedLaunchRequestFactoryV1 = Callable[
+    [ManagedChildInvocationV1, int], ProcessLaunchRequest | WindowsServiceLaunchRequestV1,
+]
 
 
 class ManagedServiceStarterV1:
@@ -55,7 +62,7 @@ class ManagedServiceStarterV1:
         resolve_managed_paths(namespace, service, ManagedInstanceRefV1(
             namespace.namespace_key, service.service_id, "0" * 32,
         ), runtime_root=runtime_root, temporary_override=temporary_override)
-        if (namespace.user_id != os.geteuid()
+        if (namespace.user_id != current_managed_user()
                 or type(journal) is not ManagedServiceJournalV1 or not callable(request_factory)
                 or journal._namespace != namespace or journal._service != service
                 or str(journal._fence._root) != str(paths.lifecycle)
@@ -68,7 +75,7 @@ class ManagedServiceStarterV1:
         self._attempt = token_hex(16)
         self._state: ManagedServiceStateV1 | None = None
         self._layout: ManagedLayoutPreparationV1 | None = None
-        self._process: LinuxServiceProcessV1 | None = None
+        self._process: LinuxServiceProcessV1 | WindowsServiceProcessV1 | None = None
         self._endpoints: tuple[socket.socket, socket.socket] | None = None
         self._closed_endpoints: set[int] = set()
         self._unknown_endpoints: set[int] = set()
@@ -119,14 +126,30 @@ class ManagedServiceStarterV1:
             request = self._request_factory(invocation, self._endpoints[1].fileno())
             self._check(deadline)
             self._require_provisional(deadline)
-            self._process = LinuxServiceProcessV1(request, self._endpoints[1])
-            # Admission linearizes here. Native spawn cannot be preempted after
-            # this check; its original owner remains retained through the effect.
-            self._check(deadline)
-            self._process.spawn()
+            self._spawn(request, deadline)
             return self.register_birth(deadline=deadline)
         finally:
             self._mutex.release()
+
+    def _spawn(self, request: ProcessLaunchRequest | WindowsServiceLaunchRequestV1, deadline: float) -> None:
+        assert self._endpoints is not None
+        parent, child = self._endpoints
+        # Retain the native owner before spawn. Deadline expiry cannot discard
+        # a process or permit a second launch for this attempt.
+        if sys.platform == "win32":
+            if type(request) is not WindowsServiceLaunchRequestV1:
+                raise ManagedContractError()
+            windows = WindowsServiceProcessV1(request, child, self._attempt)
+            self._process = windows
+            self._check(deadline)
+            windows.spawn(parent, deadline=deadline)
+        else:
+            if type(request) is not ProcessLaunchRequest:
+                raise ManagedContractError()
+            linux = LinuxServiceProcessV1(request, child)
+            self._process = linux
+            self._check(deadline)
+            linux.spawn()
 
     def _require_current(self, deadline: float) -> ManagedServiceStateV1:
         observed = self._journal.read(deadline=deadline)

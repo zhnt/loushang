@@ -7,7 +7,6 @@ directory creation, recovery or mutation. Consumers still PrepareConnection.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
 from ._files import ManagedStorageError, _check_deadline
@@ -21,6 +20,7 @@ from .contracts import (
     _match,
     require_mux_name,
 )
+from .defaults import current_managed_user
 from .lifecycle import _decode_state
 from .paths import resolve_managed_registry_root
 from .registry import (
@@ -96,7 +96,7 @@ class ManagedDiscoveryV1:
 
     def __init__(self, registry: ManagedRegistryV1, namespace: ManagedNamespaceV1) -> None:
         root = resolve_managed_registry_root(namespace)
-        if (type(registry) is not ManagedRegistryV1 or namespace.user_id != os.geteuid()
+        if (type(registry) is not ManagedRegistryV1 or namespace.user_id != current_managed_user()
                 or registry._database._namespace != namespace.namespace_key
                 or str(registry._database._directory._root) != str(root)):
             raise ManagedContractError()

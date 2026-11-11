@@ -46,6 +46,19 @@ class ServiceHandoffPortV1(Protocol):
     def abort(self, deadline: float, /) -> ServiceHandoffPhaseV1: ...
 
 
+def require_service_channel(endpoint: socket.socket) -> None:
+    """Validate a connected local stream before ownership transfer."""
+    family = socket.AF_INET if sys.platform == "win32" else socket.AF_UNIX
+    try:
+        if endpoint.family != family or endpoint.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) != socket.SOCK_STREAM:
+            raise _error(HostingFailureCategory.INVALID_REQUEST)
+        peer = endpoint.getpeername()
+        if family == socket.AF_INET and (endpoint.getsockname()[0] != "127.0.0.1" or peer[0] != "127.0.0.1"):
+            raise _error(HostingFailureCategory.INVALID_REQUEST)
+    except OSError:
+        raise _error(HostingFailureCategory.INVALID_REQUEST) from None
+
+
 class _HandoffChannel:
     """Own a supplied stream socket; no timeout can erase a durable decision."""
 
@@ -57,7 +70,7 @@ class _HandoffChannel:
     _close_started: bool
 
     def __init__(self, endpoint: socket.socket, port: ServiceHandoffPortV1) -> None:
-        if sys.platform != "linux":
+        if sys.platform not in {"linux", "win32"}:
             raise _error(HostingFailureCategory.PLATFORM_UNSUPPORTED)
         if not isinstance(endpoint, socket.socket) or any(
             not callable(getattr(port, name, None)) for name in ("observe", "commit", "abort")
@@ -65,8 +78,7 @@ class _HandoffChannel:
             raise _error(HostingFailureCategory.INVALID_REQUEST)
         # Admission precedes ownership transfer: failed construction leaves the
         # supplied socket with its caller, which must close it in a finally.
-        if endpoint.family != socket.AF_UNIX or endpoint.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) != socket.SOCK_STREAM:
-            raise _error(HostingFailureCategory.INVALID_REQUEST)
+        require_service_channel(endpoint)
         endpoint.setblocking(False)
         endpoint.set_inheritable(False)
         self._endpoint, self._port = endpoint, port

@@ -20,6 +20,7 @@ from threading import Event, RLock
 from time import monotonic
 
 from .errors import HostingError, HostingFailureCategory
+from .service_windows import WindowsServiceIdentityV1, WindowsServiceObserverV1
 
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 _PROC_LIMIT = 4096
@@ -159,6 +160,17 @@ class LinuxServiceObserverV1:
                 self._close_unknown = False
         finally:
             self._mutex.release()
+
+
+
+ServiceIdentityV1 = LinuxServiceIdentityV1 | WindowsServiceIdentityV1
+ServiceObserverV1 = LinuxServiceObserverV1 | WindowsServiceObserverV1
+
+
+def reopen_service_observer(expected: ServiceIdentityV1) -> ServiceObserverV1:
+    if isinstance(expected, WindowsServiceIdentityV1):
+        return WindowsServiceObserverV1.reopen(expected)
+    return LinuxServiceObserverV1.reopen(expected)
 
 
 def _observe(pid: int) -> LinuxServiceIdentityV1:

@@ -1,4 +1,4 @@
-"""Dedicated Coding child entry for the managed Linux deployment.
+"""Dedicated Coding child entry for the managed deployment.
 
 The parent supplies a durable invocation and one inherited control descriptor.
 This module does not initialize directories, discover services or infer stop
@@ -8,6 +8,7 @@ claim; after binding, the existing child process owner controls all settlement.
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import sys
@@ -27,6 +28,10 @@ from loushang.hosting.contracts import (
     ProcessStdoutMode,
     ProcessStreamSpec,
 )
+from loushang.hosting.service_windows import (
+    WindowsServiceLaunchRequestV1,
+    read_windows_service_startup,
+)
 
 APPLICATION_ID = "coding.default"
 ENDPOINT = "workspace"
@@ -35,7 +40,7 @@ ENDPOINT = "workspace"
 def coding_managed_process_request(
     invocation: ManagedChildInvocationV1, descriptor: int, *, executable: str,
     environment: Mapping[str, str], session_root: Path | None = None,
-) -> ProcessLaunchRequest:
+) -> ProcessLaunchRequest | WindowsServiceLaunchRequestV1:
     """Pure launch material for the installed module, with frozen home/runtime."""
     if type(invocation) is not ManagedChildInvocationV1 or invocation.service.product_id != "coding":
         raise ManagedContractError()
@@ -49,15 +54,23 @@ def coding_managed_process_request(
     effective["LOUSHANG_HOME"] = invocation.namespace.platform_home
     effective["LOUSHANG_RUNTIME_DIR"] = invocation.runtime_root
     effective["LOUSHANG_TMPDIR"] = _temporary(invocation)
-    return ProcessLaunchRequest(
-        (executable, "-m", "loushang.coding.managed_process", invocation.to_json(), str(selected), str(descriptor)),
-        invocation.namespace.platform_home, tuple(effective.items()),
+    executable_args = (executable, "-m", "loushang.coding.managed_process")
+    invocation_json = invocation.to_json()
+    windows = sys.platform == "win32"
+    arguments = ("--inherited", str(descriptor)) if windows else (invocation_json, str(selected), str(descriptor))
+    request = ProcessLaunchRequest(
+        (*executable_args, *arguments), invocation.namespace.platform_home, tuple(effective.items()),
         ProcessStreamSpec(ProcessStdinMode.CLOSED, ProcessStdoutMode.DISCARD, ProcessStderrMode.DISCARD),
     )
+    if windows:
+        startup = json.dumps([invocation_json, str(selected)], ensure_ascii=False, separators=(",", ":"))
+        return WindowsServiceLaunchRequestV1(request, startup.encode("utf-8"))
+    return request
 
 
 def _descriptor(value: int) -> None:
-    if type(value) is not int or not 3 <= value < 2**31:
+    maximum = 2**64 if sys.platform == "win32" else 2**31
+    if type(value) is not int or not 3 <= value < maximum:
         raise ManagedContractError()
 
 
@@ -68,25 +81,44 @@ def _temporary(invocation: ManagedChildInvocationV1) -> str:
     ).temporary)
 
 
+def _numeric_descriptor(value: str) -> int:
+    if not value.isascii() or not value.isdecimal() or len(value) > 20:
+        raise ManagedContractError()
+    descriptor = int(value)
+    _descriptor(descriptor)
+    return descriptor
+
+
+def _startup_settings(payload: str, session_root: str) -> tuple[ManagedChildInvocationV1, str]:
+    invocation = ManagedChildInvocationV1.from_json(payload)
+    if invocation.service.product_id != "coding":
+        raise ManagedContractError()
+    _path(session_root)
+    return invocation, session_root
+
+
 def _run(arguments: Sequence[str]) -> int:
     if len(arguments) != 3:
         raise ManagedContractError()
-    invocation = ManagedChildInvocationV1.from_json(arguments[0])
-    if invocation.service.product_id != "coding":
+    windows = sys.platform == "win32"
+    if windows and arguments[0] != "--inherited":
         raise ManagedContractError()
-    _path(arguments[1])
-    if not arguments[2].isascii() or not arguments[2].isdecimal() or len(arguments[2]) > 10:
-        raise ManagedContractError()
-    descriptor = int(arguments[2])
-    _descriptor(descriptor)
-    # Invocation identity wins over mutable inherited environment. Product
-    # configuration is consumed only after this dedicated process is bound.
-    os.environ["LOUSHANG_HOME"] = invocation.namespace.platform_home
-    os.environ["LOUSHANG_RUNTIME_DIR"] = invocation.runtime_root
-    os.environ["LOUSHANG_TMPDIR"] = _temporary(invocation)
-    endpoint = socket.socket(fileno=descriptor)
+    settings = None if windows else _startup_settings(arguments[0], arguments[1])
+    endpoint = socket.socket(fileno=_numeric_descriptor(arguments[1 if windows else 2]))
     bootstrap: ManagedChildBootstrapV1 | None = None
     try:
+        if settings is None:
+            payload = read_windows_service_startup(endpoint, _numeric_descriptor(arguments[2]))
+            decoded = json.loads(payload)
+            if (type(decoded) is not list or len(decoded) != 2
+                    or any(type(item) is not str for item in decoded)):
+                raise ManagedContractError()
+            settings = _startup_settings(decoded[0], decoded[1])
+        invocation, session_root = settings
+        # Invocation identity wins over mutable inherited environment.
+        os.environ["LOUSHANG_HOME"] = invocation.namespace.platform_home
+        os.environ["LOUSHANG_RUNTIME_DIR"] = invocation.runtime_root
+        os.environ["LOUSHANG_TMPDIR"] = _temporary(invocation)
         # The frontend imports this module only to construct launch material.
         # Load the backend in its actual child, with endpoint cleanup already
         # owned and before the native admission budget begins.
@@ -111,7 +143,7 @@ def _run(arguments: Sequence[str]) -> int:
                     raise
                 sleep(0.01)  # Same admission and frozen budget, never a new owner.
         launch = create_coding_managed_local_launch(
-            invocation, session_root=Path(arguments[1]), application_id=APPLICATION_ID,
+            invocation, session_root=Path(session_root), application_id=APPLICATION_ID,
             endpoint=ENDPOINT, session_discovery=True,
             store_state_root=Path(invocation.namespace.platform_home) / "state/session-stores",
             managed_mux=bootstrap.managed_mux_binding(application_id=APPLICATION_ID),

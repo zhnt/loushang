@@ -134,7 +134,8 @@ class PrivateManagedDirectory:
     """One retained directory; not an authority to recursively clean its parent."""
 
     def __init__(self, root: Path, *, create: bool = False, defer_open: bool = False,
-                 create_parents: bool = False, exclusive_create: bool = False) -> None:
+                 create_parents: bool = False, exclusive_create: bool = False,
+                 inherit_windows_children: bool = False) -> None:
         self._fd: int | None = None
         self._parents: list[tuple[int, str, int, FileIdentity]] = []
         self._anchor: int | None = None
@@ -158,12 +159,14 @@ class PrivateManagedDirectory:
         self._scan_close_unknown = False
         self._create_parents = create_parents
         self._exclusive_create = exclusive_create
+        self._inherit_windows_children = inherit_windows_children
         self._attempted = self._opened = self._closing = False
         if sys.platform not in {"linux", "win32"}:
             raise ManagedStorageError("unsupported")
         if (type(create) is not bool or type(defer_open) is not bool or not isinstance(root, Path)
                 or type(create_parents) is not bool or (create_parents and not create)
-                or type(exclusive_create) is not bool or (exclusive_create and not create)):
+                or type(exclusive_create) is not bool or (exclusive_create and not create)
+                or type(inherit_windows_children) is not bool):
             raise ManagedStorageError("unavailable")
         if create_parents:
             try:
@@ -272,10 +275,11 @@ class PrivateManagedDirectory:
             )
         return os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
 
-    @staticmethod
-    def _mkdir(parent: int, name: str) -> None:
+    def _mkdir(self, parent: int, name: str) -> None:
         if _WINDOWS:
-            _windows_files.create_directory(parent, name)
+            _windows_files.create_directory(
+                parent, name, inherit_children=self._inherit_windows_children and parent == self._parent,
+            )
         else:
             os.mkdir(name, mode=0o700, dir_fd=parent)
 
@@ -303,7 +307,9 @@ class PrivateManagedDirectory:
         if info is None:
             info = os.fstat(fd)
         if _WINDOWS:
-            return _windows_files.validate(fd, info, directory=directory)
+            return _windows_files.validate(
+                fd, info, directory=directory, inherit_children=self._inherit_windows_children,
+            )
         return self._validate(info, directory=directory)
 
     def _validate_entry(self, parent: int, name: str, *, directory: bool = False) -> FileIdentity:
@@ -1155,6 +1161,15 @@ class PrivateManagedDirectory:
     @property
     def cleanup_pending(self) -> bool:
         return bool(self._creations) or self._data_cleanup_pending
+
+    def _idle_cleanup_pending(self) -> bool:
+        """Inspect unsettled state only when no other native operation owns it."""
+        if not self._mutex.acquire(blocking=False):
+            return False
+        try:
+            return self.cleanup_pending
+        finally:
+            self._mutex.release()
 
     @property
     def _data_cleanup_pending(self) -> bool:

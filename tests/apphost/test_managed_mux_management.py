@@ -460,3 +460,40 @@ def test_real_management_lost_registry_replies_do_not_rotate_permit_or_result(ow
             await service.close()
 
     asyncio.run(scenario())
+
+
+def test_recovery_close_distinguishes_active_native_io_from_unsettled_release(owners):
+    from threading import Event, Thread
+
+    from loushang.apphost.managed.mux_management import ManagedMuxRecoveryAdmission
+    from loushang.appservice.managed_mux_close import ManagedMuxCloseUseV1
+
+    manager, _, _ = _ready(owners)
+    fence = manager._journal._fence
+    entered, release = Event(), Event()
+    marker = -1
+
+    def close_in_progress():
+        with fence._mutex:
+            fence._uncertain_closes.add(marker)
+            entered.set()
+            assert release.wait(5)
+            fence._uncertain_closes.remove(marker)
+
+    worker = Thread(target=close_in_progress)
+    worker.start()
+    try:
+        assert entered.wait(5)
+        admission = ManagedMuxRecoveryAdmission(manager, None, ManagedMuxCloseUseV1.ADMIT)
+        asyncio.run(admission.close())
+    finally:
+        release.set()
+        worker.join(5)
+
+    fence._uncertain_closes.add(marker)
+    try:
+        admission = ManagedMuxRecoveryAdmission(manager, None, ManagedMuxCloseUseV1.ADMIT)
+        with pytest.raises(ManagedStorageError, match="unavailable"):
+            asyncio.run(admission.close())
+    finally:
+        fence._uncertain_closes.remove(marker)

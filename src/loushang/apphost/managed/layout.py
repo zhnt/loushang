@@ -49,6 +49,7 @@ class ManagedLayoutPreparationV1:
             PrivateManagedDirectory(
                 path, create=not (require_control_roots and index < 2),
                 create_parents=not (require_control_roots and index < 2), defer_open=True,
+                inherit_windows_children=index == 0,
             )
             for index, path in enumerate(paths)
         )

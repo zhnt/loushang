@@ -1,4 +1,4 @@
-"""Private Linux process shell; no Product stages or native termination policy."""
+"""Private managed process shell; no Product stages or native termination policy."""
 
 from __future__ import annotations
 

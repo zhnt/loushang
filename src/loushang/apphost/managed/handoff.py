@@ -8,11 +8,12 @@ from time import monotonic
 from typing import Literal
 
 from loushang.hosting.errors import HostingError
-from loushang.hosting.service import LinuxServiceIdentityV1
+from loushang.hosting.service import LinuxServiceIdentityV1, ServiceIdentityV1
 from loushang.hosting.service_handoff import (
     ServiceChildHandoffV1,
     ServiceHandoffPhaseV1,
 )
+from loushang.hosting.service_windows import WindowsServiceIdentityV1
 
 from ._files import ManagedStorageError
 from .contracts import _HEX32, ManagedContractError, ManagedInstanceRefV1, _match
@@ -30,12 +31,12 @@ class ManagedServiceHandoffPortV1:
 
     def __init__(
         self, journal: ManagedServiceJournalV1, instance: ManagedInstanceRefV1,
-        attempt_id: str, *, native_identity: LinuxServiceIdentityV1 | None = None,
+        attempt_id: str, *, native_identity: ServiceIdentityV1 | None = None,
     ) -> None:
         if type(journal) is not ManagedServiceJournalV1 or type(instance) is not ManagedInstanceRefV1:
             raise ManagedContractError()
         _match(attempt_id, _HEX32)
-        if native_identity is not None and type(native_identity) is not LinuxServiceIdentityV1:
+        if native_identity is not None and type(native_identity) not in {LinuxServiceIdentityV1, WindowsServiceIdentityV1}:
             raise ManagedContractError()
         self._journal, self._instance, self._attempt = journal, instance, attempt_id
         self._native = native_identity
@@ -85,9 +86,9 @@ class ManagedChildControlV1:
 
     def __init__(
         self, journal: ManagedServiceJournalV1, instance: ManagedInstanceRefV1,
-        attempt_id: str, native_identity: LinuxServiceIdentityV1, endpoint: socket.socket,
+        attempt_id: str, native_identity: ServiceIdentityV1, endpoint: socket.socket,
     ) -> None:
-        if type(native_identity) is not LinuxServiceIdentityV1:
+        if type(native_identity) not in {LinuxServiceIdentityV1, WindowsServiceIdentityV1}:
             raise ManagedContractError()
         self._port = ManagedServiceHandoffPortV1(
             journal, instance, attempt_id, native_identity=native_identity,

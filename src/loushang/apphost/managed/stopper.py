@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
@@ -11,8 +10,12 @@ from pathlib import Path
 from time import monotonic
 from typing import TypeVar
 
-from loushang.hosting.service import LinuxServiceObserverV1
+from loushang.hosting.service import ServiceObserverV1, reopen_service_observer
 from loushang.hosting.service_group import LinuxServiceGroupObservationV1
+from loushang.hosting.service_windows import (
+    WindowsServiceJobV1,
+    WindowsServiceObserverV1,
+)
 
 from ._files import ManagedStorageError, _check_deadline
 from .child import _spawn
@@ -23,7 +26,7 @@ from .contracts import (
     ManagedNamespaceV1,
     ManagedServiceKeyV1,
 )
-from .defaults import ManagedDefaultsV1
+from .defaults import ManagedDefaultsV1, current_managed_user
 from .discovery import ManagedDiscoverySnapshotV1, ManagedServiceObservationV1
 from .lifecycle import ManagedServiceJournalV1, ManagedServiceStateV1
 from .namespace_admission import ManagedNamespaceAdmissionV1
@@ -44,14 +47,14 @@ class ManagedServiceStopOperationV1:
                  service: ManagedServiceKeyV1, instance: ManagedInstanceRefV1, *, runtime_root: str) -> None:
         paths = resolve_managed_service_paths(namespace, service, runtime_root=runtime_root)
         if (type(journal) is not ManagedServiceJournalV1 or type(instance) is not ManagedInstanceRefV1
-                or namespace.user_id != os.geteuid() or instance.namespace_key != namespace.namespace_key
+                or namespace.user_id != current_managed_user() or instance.namespace_key != namespace.namespace_key
                 or instance.service_id != service.service_id or journal._namespace != namespace
                 or journal._service != service or str(journal._fence._root) != str(paths.lifecycle)
                 or str(journal._database._directory._root) != str(paths.registry)):
             raise ManagedContractError()
         self._journal, self._instance = journal, instance
-        self._observer: LinuxServiceObserverV1 | None = None
-        self._group: LinuxServiceGroupObservationV1 | None = None
+        self._observer: ServiceObserverV1 | None = None
+        self._group: LinuxServiceGroupObservationV1 | WindowsServiceJobV1 | None = None
         self._native_uncertain = self._close_unknown = False
         self._state: ManagedServiceStateV1 | None = None
         self._task: asyncio.Task[ManagedServiceStateV1] | None = None
@@ -117,10 +120,13 @@ class ManagedServiceStopOperationV1:
     def _admit(self, state: ManagedServiceStateV1) -> None:
         assert state.native_identity is not None
         self._native_uncertain = True
-        self._observer = LinuxServiceObserverV1.reopen(state.native_identity)
+        self._observer = reopen_service_observer(state.native_identity)
         self._native_uncertain = False
-        self._group = LinuxServiceGroupObservationV1(self._observer)
-        self._group.admit()
+        if isinstance(self._observer, WindowsServiceObserverV1):
+            self._group = self._observer.open_scope(state.handoff.attempt_id)
+        else:
+            self._group = LinuxServiceGroupObservationV1(self._observer)
+            self._group.admit()
 
     def _observe(self) -> tuple[bool, bool]:
         assert self._observer is not None and self._group is not None
@@ -170,6 +176,9 @@ class ManagedServiceStopOperationV1:
     async def _close_once(self) -> None:
         if self._task is not None:
             await asyncio.gather(self._task, return_exceptions=True)
+        if isinstance(self._group, WindowsServiceJobV1):
+            await _settled_native(self._group.close)
+            self._group = None
         if self._observer is not None:
             if self._close_unknown:
                 raise ManagedStorageError("unavailable")
