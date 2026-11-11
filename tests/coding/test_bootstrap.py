@@ -228,9 +228,15 @@ def test_new_session_completes_plugin_recovery_without_a_preliminary_pass(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.session_manager import SessionManager
 
+    # Exercise the managed Coding lifecycle on hosts that also support the
+    # direct Product route (for example, Linux CI).
+    monkeypatch.setattr(
+        coding_bootstrap, "_select_direct_coding_product_factory", lambda *args, **kwargs: None
+    )
     events: list[str] = []
     original_reconcile = (
         plugin_lifecycle_module.CodingPluginLifecycle.reconcile_retirements
