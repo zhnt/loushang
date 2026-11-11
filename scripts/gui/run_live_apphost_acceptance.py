@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from secrets import token_hex
 
-from native_tools import native_binary
+from native_tools import gui_binary
 
 from loushang.agent import synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
@@ -72,7 +72,7 @@ from loushang.coding.hosted_session import CodingRealHostedSessionFactoryV1
 from loushang.harness.config.agent import SettingsManager
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_GUI_EXE = native_binary(ROOT / "gui/src-tauri/target/release", "harness-gui")
+DEFAULT_GUI_EXE = gui_binary(ROOT / "gui/src-tauri/target/release")
 GUI_MUX = "gui-desktop-acceptance"
 PEER_MUX = "desktop-acceptance-peer"
 

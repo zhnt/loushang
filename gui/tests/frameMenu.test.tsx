@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { FrameMenu } from "../src/FrameMenu";
+import { appName } from "../src/branding";
 
 beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -59,7 +60,7 @@ it("toggles view state and opens useful help", async () => {
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Help" })).toHaveFocus();
   await user.click(screen.getByRole("button", { name: "Help" }));
-  await user.click(screen.getByRole("menuitem", { name: "About loushang" }));
+  await user.click(screen.getByRole("menuitem", { name: `About ${appName}` }));
   expect(screen.getByRole("dialog")).toHaveTextContent("Offline fixture");
 });
 
@@ -108,10 +109,10 @@ it("groups the reference menu entries and keeps unimplemented actions disabled",
 });
 
 it("connects advertised application shortcuts to existing actions", () => {
-  const create = vi.fn(), close = vi.fn(), dock = vi.fn(), back = vi.fn(), forward = vi.fn();
-  render(<FrameMenu sidebarOpen onToggleSidebar={() => {}} onNewSession={create} onClose={close} onToggleDock={dock} onBack={back} onForward={forward} />);
+  const create = vi.fn(), close = vi.fn(), quit = vi.fn(), dock = vi.fn(), back = vi.fn(), forward = vi.fn();
+  render(<FrameMenu sidebarOpen onToggleSidebar={() => {}} onNewSession={create} onClose={close} onQuit={quit} onToggleDock={dock} onBack={back} onForward={forward} />);
   for (const key of ["n", "j", "[", "]", "w", "q"]) fireEvent.keyDown(window, { key, ctrlKey: true });
-  expect(create).toHaveBeenCalledOnce(); expect(dock).toHaveBeenCalledOnce(); expect(back).toHaveBeenCalledOnce(); expect(forward).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledTimes(2);
+  expect(create).toHaveBeenCalledOnce(); expect(dock).toHaveBeenCalledOnce(); expect(back).toHaveBeenCalledOnce(); expect(forward).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledOnce(); expect(quit).toHaveBeenCalledOnce();
   fireEvent.keyDown(window, { key: "n", ctrlKey: true, isComposing: true });
   expect(create).toHaveBeenCalledOnce();
 });

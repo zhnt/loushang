@@ -1,32 +1,33 @@
 import type { ClientSource } from "./model";
+import { sharedSettings, webRequest } from "./hostApi";
 
 export interface SidebarPreferences {
   readonly pinned: readonly string[];
   readonly recent: readonly string[];
+  readonly selected?: string;
 }
-
+const connections = new Map<string, string>();
+const scopes = new Map<string, string>();
+const cache = new Map<string, SidebarPreferences>();
 export function sidebarPreferencesKey(source: ClientSource): string {
   const scope = source.kind === "live" ? `mux:${source.muxSpaceId}` : "fixture";
-  return `loushang.gui.sidebar.v1:${scope}`;
+  const key = source.kind === "live" && source.connectionId ? `${source.connectionId}/${scope}` : scope;
+  scopes.set(key, scope);
+  if (source.kind === "live" && source.connectionId) connections.set(key, source.connectionId);
+  return key;
 }
-
 export function readSidebarPreferences(key: string): SidebarPreferences {
-  try {
-    const value = JSON.parse(localStorage.getItem(key) ?? "{}");
-    return { pinned: readIds(value?.pinned), recent: readIds(value?.recent) };
-  } catch {
-    return { pinned: [], recent: [] };
-  }
+  return cache.get(key) ?? { pinned: [], recent: [] };
 }
-
-export function saveSidebarPreferences(key: string, preferences: SidebarPreferences): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(preferences));
-  } catch {
-    // The current window keeps its preferences when storage is unavailable.
-  }
-}
-
-function readIds(value: unknown): readonly string[] {
-  return Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === "string" && id.length > 0))] : [];
+// Test clients can use the same view without writing persistent product state.
+export function saveSidebarPreferences(key: string, value: SidebarPreferences): void { cache.set(key, value); }
+export async function updateSidebarPreferences(key: string, action = "read", session = ""): Promise<SidebarPreferences> {
+  if (key === "fixture") return readSidebarPreferences(key);
+  const request = { operation: "preferences", scope: scopes.get(key) ?? key, action, session };
+  const id = connections.get(key);
+  const value = id ? await webRequest<SidebarPreferences>(request, id) : await sharedSettings<SidebarPreferences>(request);
+  if (!value || !Array.isArray(value.pinned) || !Array.isArray(value.recent)
+    || ![...value.pinned, ...value.recent].every((id) => typeof id === "string")) throw new Error("invalid_preferences");
+  cache.set(key, value);
+  return value;
 }

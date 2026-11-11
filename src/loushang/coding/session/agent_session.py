@@ -174,6 +174,10 @@ from loushang.harness.transcript import (
     CompactionPreparation,
     CompactionResult,
 )
+from loushang.harness.transcript.kinds import (
+    MODEL_SELECTION_KIND,
+    THINKING_SELECTION_KIND,
+)
 from loushang.harness.workspace.exec import ExecResult, ExecService, ExecUpdateCallback
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
@@ -759,8 +763,10 @@ class AgentSession(AgentProductSession):
         self._coding_resume_input_commit_claimed = False
         self._coding_resume_input_preflight_claimed = False
         self._coding_resume_preflight_input_digest: str | None = None
-        self._coding_composition_had_entries_at_construction = bool(
-            session_manager.get_entries()
+        # A model can be saved before the session has prepared its first input.
+        self._coding_composition_had_entries_at_construction = any(
+            entry.kind not in {MODEL_SELECTION_KIND, THINKING_SELECTION_KIND}
+            for entry in session_manager.get_entries()
         )
         self._coding_base_owner_retirement_receipts: tuple[
             OwnerGenerationRetirementReceipt,

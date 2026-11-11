@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { UiIcon } from "./UiIcon";
 import { FrameMenu, type FrameActions } from "./FrameMenu";
@@ -49,12 +49,16 @@ export function DesktopFrame({ onBack, onForward, ...actions }: FrameActions & {
     try { await getCurrentWindow()[action](); setError(null); }
     catch { setError("actionFailed"); }
   }
+  async function quit() {
+    try { await invoke("quit_app"); }
+    catch { setError("actionFailed"); }
+  }
   if (!native) return null;
   return <>
     <header className="native-frame" aria-label={t("applicationMenu")}>
       <button className="frame-icon" aria-label={t("back")} title={t("back")} disabled={!onBack} onClick={onBack}><UiIcon name="back" /></button>
       <button className="frame-icon" aria-label={t("forward")} title={t("forward")} disabled={!onForward} onClick={onForward}><UiIcon name="forward" /></button>
-      <FrameMenu {...actions} onBack={onBack} onForward={onForward} onClose={() => { void control("close"); }} />
+      <FrameMenu {...actions} onBack={onBack} onForward={onForward} onClose={() => { void control("close"); }} onQuit={() => { void quit(); }} />
       <div className="window-drag-region" data-tauri-drag-region title={t("dragWindow")} />
       <div className="window-controls">
         <button aria-label={t("minimize")} disabled={!native} onClick={() => void control("minimize")}><WindowIcon action="minimize" /></button>

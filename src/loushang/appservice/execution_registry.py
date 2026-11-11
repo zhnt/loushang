@@ -159,8 +159,8 @@ class ExecutionRegistryV1:
     ) -> ExecutionRecordV1:
         """Caller validates current authority immediately before this no-await cut.
 
-        No Product method is called between deduplication and publication. Task
-        construction failure rolls everything back before any execution effect.
+        Product readiness is checked synchronously before reserving a record.
+        Task construction failure rolls everything back before any execution effect.
         """
         if self._closed or binding.closing:
             raise AppServiceError(AppErrorCodeV1.SERVICE_CLOSED)
@@ -182,6 +182,10 @@ class ExecutionRegistryV1:
             or self.reserved_ledger_bytes + RECORD_RESERVATION_BYTES > self.limits.ledger_bytes
         ):
             raise ExecutionServiceErrorV1(ExecutionErrorCodeV1.LEDGER_FULL)
+        # A readiness rejection must leave the submission key available for retry.
+        require_ready = getattr(binding.port, "require_submission_ready", None)
+        if require_ready is not None:
+            require_ready()
         self._sequence += 1
         execution_id = f"exec-{self._nonce}-{self._sequence}"
         record = ExecutionRecordV1(

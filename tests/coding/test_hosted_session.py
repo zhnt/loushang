@@ -14,13 +14,14 @@ from loushang.agent import synthetic_model_transport
 from loushang.ai.api_registry import get_default_api_registry
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import AssistantMessage, TextPart, Usage
+from loushang.ai.types import AssistantMessage, TextPart, ThinkingPart, ToolCall, Usage
 from loushang.apphost import (
     SessionBindingKeyV1,
     SessionCreateIntentV1,
     SessionCreateRequestV1,
 )
 from loushang.appserver.protocol import (
+    AppServiceError,
     InteractionOutcomeV1,
     SessionEventKindV1,
     SessionScopeV1,
@@ -155,6 +156,60 @@ async def _binding(tmp_path: Path, model: Model | None = None, **kwargs):
     return binding
 
 
+def test_tool_only_rounds_stay_in_history_without_empty_hosted_messages(tmp_path: Path) -> None:
+    progress = "Checking available sources."
+    tool_only = [
+        ThinkingPart(type="thinking", thinking="Inspect the next source"),
+        ToolCall(type="toolCall", id="lookup-2", name="unused_tool", arguments={}),
+    ]
+    content = iter((
+        [
+            TextPart(type="text", text=progress),
+            ToolCall(type="toolCall", id="lookup-1", name="unused_tool", arguments={}),
+        ],
+        tool_only,
+    ))
+
+    @synthetic_model_transport
+    async def stream(model, context, options=None):
+        result = await _stream(model, context, options)
+        parts = next(content, None)
+        if parts is None:
+            return result
+        message = replace(await result.result(), content=parts, stop_reason="toolUse")
+        tool_turn = AssistantMessageEventStream()
+        tool_turn.push({"type": "done", "reason": "toolUse", "message": message})
+        return tool_turn
+
+    async def scenario():
+        binding = await _binding(tmp_path, stream_fn=stream)
+        hosted = CodingHostedExecutionSessionV1(binding)
+        events = []
+        hosted.subscribe(events.append)
+        try:
+            hosted.start_execution(ExecutionRequestV1("lookup", "Check the sources."))
+            outcome = await asyncio.wait_for(hosted.wait_execution("lookup"), timeout=5)
+            assert outcome.status is ExecutionStatusV1.SUCCEEDED
+            expected = ["Check the sources.", progress, "real Coding response"]
+            snapshot = (await hosted.snapshot_execution()).source
+            assert [row.text for row in snapshot.records] == expected
+            assert [event.text for event in events if event.kind is SessionEventKindV1.ASSISTANT_MESSAGE] == expected[1:]
+            path = binding.control.session_manager.session_file
+            assert path is not None
+        finally:
+            await hosted.close()
+
+        history = read_coding_resume_snapshot(path, max_bytes=1024 * 1024)
+        assert any(
+            isinstance(entry.payload, AssistantMessage) and entry.payload.content == tool_only
+            for entry in history.records
+        )
+        restored = CodingHostedHistoryBindingV1(binding.identity, history)
+        assert [row.text for row in restored.project_snapshot().records[:-1]] == expected
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("first_title", ["工作区连接诊断", "标题" * 40])
 def test_gui_title_runs_in_background_and_retries_from_original_prompt(tmp_path, first_title):
     expected = "工作区连接诊断"
@@ -183,13 +238,19 @@ def test_gui_title_runs_in_background_and_retries_from_original_prompt(tmp_path,
         binding = await _binding(tmp_path, continuity_id="gui-new-title-test", stream_fn=stream)
         hosted = CodingHostedExecutionSessionV1(binding)
         try:
+            assert (await hosted.snapshot_execution()).source.title == "New Session"
             hosted.start_execution(ExecutionRequestV1("first", question))
             await asyncio.wait_for(title_started.wait(), timeout=5)
             outcome = await asyncio.wait_for(hosted.wait_execution("first"), timeout=5)
             assert outcome.status is ExecutionStatusV1.SUCCEEDED
             snapshot = (await hosted.snapshot_execution()).source
-            assert snapshot.title == "New Session"
+            assert snapshot.title == question
             assert [row.text for row in snapshot.records] == [question, "real Coding response"]
+            path = binding.control.session_manager.session_file
+            assert path is not None
+            history = read_coding_resume_snapshot(path, max_bytes=1024 * 1024)
+            restored = CodingHostedHistoryBindingV1(binding.identity, history)
+            assert restored.project_snapshot().title == question
 
             hosted.start_execution(ExecutionRequestV1("second", "还有其他原因吗？"))
             finish_title.set()
@@ -203,8 +264,6 @@ def test_gui_title_runs_in_background_and_retries_from_original_prompt(tmp_path,
                 content = context.messages[0].content
                 assert isinstance(content, list) and len(content) == 1
                 assert isinstance(content[0], TextPart) and content[0].text == question
-            path = binding.control.session_manager.session_file
-            assert path is not None
         finally:
             finish_title.set()
             await hosted.close()
@@ -220,6 +279,8 @@ def test_gui_title_and_primary_reply_keep_independent_durable_outcomes(tmp_path:
     from .test_agent_session_model_input import _CodingPreparedAdapter
     from .test_agent_session_model_input import _model as prepared_model
 
+    question = "介绍北京天气\n" + "气候" * 30
+    preview = "介绍北京天气 " + "气候" * 20 + "…"
     primary_started = asyncio.Event()
     finish_primary = asyncio.Event()
     title_published = asyncio.Event()
@@ -250,8 +311,9 @@ def test_gui_title_and_primary_reply_keep_independent_durable_outcomes(tmp_path:
             hosted = CodingHostedExecutionSessionV1(binding)
             hosted.subscribe(lambda event: title_published.set() if event.kind is SessionEventKindV1.STATUS else None)
             try:
-                hosted.start_execution(ExecutionRequestV1("first", "介绍北京天气"))
+                hosted.start_execution(ExecutionRequestV1("first", question))
                 await asyncio.wait_for(primary_started.wait(), timeout=5)
+                assert (await hosted.snapshot_execution()).source.title == preview
                 assert binding._title_task is None
                 assert transport_order == ["main"]
                 finish_primary.set()
@@ -260,7 +322,7 @@ def test_gui_title_and_primary_reply_keep_independent_durable_outcomes(tmp_path:
                 await asyncio.wait_for(title_published.wait(), timeout=5)
                 snapshot = (await hosted.snapshot_execution()).source
                 assert snapshot.title == "北京四季气候"
-                assert [row.text for row in snapshot.records] == ["介绍北京天气", "Beijing has four seasons."]
+                assert [row.text for row in snapshot.records] == [question, "Beijing has four seasons."]
                 entries = binding.control.session_manager.get_entries()
                 assert [row.payload.purpose for row in entries if row.kind == "model.input.prepared"] == [
                     "main", "session_title",
@@ -404,6 +466,11 @@ def test_hosted_history_candidate_transfers_through_original_factory_without_run
                 assert snapshot.identity.session_id == key.session_id
                 assert snapshot.title == "New Session"
                 assert snapshot.records[-1].text == "Historical session is read-only."
+                assert (await hosted.list_models()).current_id is None
+                with pytest.raises(ValueError, match="model_unavailable"):
+                    await hosted.select_model("faux:anthropic-messages:faux-model")
+                with pytest.raises(AppServiceError):
+                    await hosted.start_turn("read-only input")
                 await opened.close()
                 await claimed.close()
                 await candidate.close()

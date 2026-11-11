@@ -2,7 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { HarnessGui } from "../../src/App";
-import { createMockAppClient } from "../../src/client/mockAppClient";
+import { createMockAppClient } from "../support/mockAppClient";
 import type { ClientSnapshot, FixturePlaybackPort } from "../../src/client/model";
 
 function deferred<T>() {

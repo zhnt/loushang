@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type Ref } from "react";
+import { useEffect, useState, type ReactNode, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { LanguageSelect } from "./i18n/LanguageSelect";
 import { AppearanceSetting } from "./AppearanceSetting";
@@ -6,14 +6,16 @@ import { MarkdownThemeSettings } from "./markdown/MarkdownThemeSettings";
 import type { MarkdownPreferences } from "./markdown/preferences";
 import { UiIcon } from "./UiIcon";
 
-export function SettingsDialog({ dialogRef, hostSettings, markdown, onMarkdownChange }: {
+export function SettingsDialog({ dialogRef, hostSettings, hostRequest = 0, markdown, onMarkdownChange }: {
   dialogRef: Ref<HTMLDialogElement>;
   hostSettings?: ReactNode;
+  hostRequest?: number;
   markdown: MarkdownPreferences;
   onMarkdownChange: (next: MarkdownPreferences) => void;
 }) {
   const { t } = useTranslation("shell");
   const [page, setPage] = useState<"general" | "host">("general");
+  useEffect(() => { if (hostRequest > 0) setPage("host"); }, [hostRequest]);
   const hostPage = page === "host" && Boolean(hostSettings);
   return <dialog ref={dialogRef} className="settings-dialog" aria-labelledby="settings-title" onClose={() => setPage("general")}>
     <header className="settings-header">

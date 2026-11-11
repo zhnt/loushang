@@ -16,6 +16,7 @@ CORE = {
     APPHOST / "runtime.py",
 }
 OPTIONAL = {
+    APPHOST / "client_preferences.py",
     APPHOST / "application.py",
     APPHOST / "continuity.py",
     APPHOST / "foreground.py",
@@ -151,6 +152,7 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
         )
     }
     assert apphost_consumers == {
+        Path("src/loushang/coding/client_settings.py"),
         # G1: desktop composition over the existing managed lifecycle owners.
         Path("src/loushang/coding/gui_local_host.py"),
         Path("src/loushang/coding/apphost_canary.py"),

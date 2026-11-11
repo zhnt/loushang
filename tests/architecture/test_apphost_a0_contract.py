@@ -18,6 +18,7 @@ APPHOST_MODULES = {
 }
 APPHOST_OPTIONAL_MODULES = {
     APPHOST_ROOT / "application.py",
+    APPHOST_ROOT / "client_preferences.py",
     APPHOST_ROOT / "continuity.py",
     APPHOST_ROOT / "foreground.py",
     APPHOST_ROOT / "launcher.py",
@@ -359,6 +360,8 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
         if not path.is_relative_to(APPHOST_ROOT) and _imports_apphost(path)
     }
     assert consumers == {
+        # Shared GUI/Web navigation persistence; optional Host-side storage.
+        Path("src/loushang/coding/client_settings.py"),
         # G1: desktop composition over the existing managed lifecycle owners.
         Path("src/loushang/coding/gui_local_host.py"),
         Path("src/loushang/coding/apphost_canary.py"),

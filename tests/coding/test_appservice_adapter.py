@@ -3,7 +3,12 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
+import pytest
+
+from loushang.agent import Agent
+from loushang.ai.model import ModelSelection
 from loushang.apphost import SessionDiscoveryScope, SessionIdentityEnvelopeV1
 from loushang.appserver.protocol import (
     InteractionOutcomeV1,
@@ -23,6 +28,7 @@ from loushang.appservice import AppServiceV1, InProcessAppClientV1
 from loushang.coding.appservice_adapter import (
     CodingHostedEventProjectionV1,
     CodingHostedSessionResolverV1,
+    CodingHostedSessionV1,
     CodingHostedSnapshotProjectionV1,
     coding_hosted_identity_from_envelope,
 )
@@ -31,11 +37,79 @@ from loushang.harness.events import RuntimeEvent
 FINGERPRINT = "c" * 64
 
 
+@pytest.mark.parametrize("catalog_size", [0, 1, 257])
+@pytest.mark.parametrize("fallback", [None, "unknown", "valid"])
+def test_model_catalog_excludes_unconfigured_agent_placeholder(
+    monkeypatch, catalog_size, fallback,
+) -> None:
+    async def scenario() -> None:
+        binding = _Binding(_spec(), "fresh-session")
+        control = binding.control
+        agent = Agent()
+        initial_model = agent.model
+        selected = (
+            ModelSelection("provider", "endpoint", "selected")
+            if fallback == "valid" else agent.model if fallback == "unknown" else None
+        )
+        catalog = [
+            ModelSelection("provider", "endpoint", f"model-{index}")
+            for index in range(catalog_size)
+        ]
+        monkeypatch.setattr(control, "agent", agent, raising=False)
+        monkeypatch.setattr(control, "get_model_selection", lambda: selected, raising=False)
+        monkeypatch.setattr(
+            control, "get_available_model_details", lambda: [*catalog, agent.model],
+            raising=False,
+        )
+        monkeypatch.setattr(control, "thinking_level", "off", raising=False)
+        monkeypatch.setattr(
+            control, "get_available_thinking_levels", lambda: ["off", "high"],
+            raising=False,
+        )
+        hosted = CodingHostedSessionV1(binding)
+        try:
+            result = await hosted.list_models()
+            assert all(choice.provider != "unknown" for choice in result.models)
+            assert len(result.models) == min(catalog_size + (fallback == "valid"), 256)
+            if fallback == "valid":
+                assert result.current_id == "provider:endpoint:selected"
+                assert any(choice.id == result.current_id for choice in result.models)
+            else:
+                assert result.current_id is None
+                assert result.thinking is None
+            assert agent.model is initial_model
+        finally:
+            await hosted.close()
+
+    _run(scenario())
+
+
+def test_model_catalog_preserves_valid_active_model_outside_registry(monkeypatch) -> None:
+    async def scenario() -> None:
+        binding = _Binding(_spec(), "active-session")
+        active = ModelSelection("provider", "endpoint", "active")
+        monkeypatch.setattr(
+            binding.control, "agent", SimpleNamespace(model=active), raising=False,
+        )
+        hosted = CodingHostedSessionV1(binding)
+        try:
+            result = await hosted.list_models()
+            assert result.current_id == "provider:endpoint:active"
+            assert [choice.id for choice in result.models] == [result.current_id]
+        finally:
+            await hosted.close()
+
+    _run(scenario())
+
+
 def _run(coroutine: Awaitable[object]) -> object:
     return asyncio.run(coroutine)
 
 
 class _Control:
+    def get_model_selection(self) -> ModelSelection:
+        return ModelSelection("provider", "endpoint", "model")
+
     def __init__(self, session_id: str) -> None:
         self.session_id = session_id
         self.session_name = "Coding session"

@@ -1,9 +1,13 @@
 #[allow(dead_code)]
 mod app_client;
+mod client_settings;
+mod connection_directory;
 mod connection_lifecycle;
 mod live_bridge;
-mod local_host;
 mod offline_account;
+#[cfg(desktop)]
+mod tray;
+mod web_link;
 // Exit joins run on the blocking pool.
 #[allow(dead_code)]
 mod read_stop;
@@ -13,6 +17,33 @@ mod read_worker;
 use connection_lifecycle::{ConnectionLifecycle, ExitAction};
 use std::sync::Arc;
 use tauri::Manager;
+
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
+fn show_tray_window(app: tauri::AppHandle) {
+    #[cfg(desktop)]
+    tray::show_main_window(&app);
+    #[cfg(not(desktop))]
+    let _ = app;
+}
+
+#[tauri::command]
+async fn sync_tray(app: tauri::AppHandle, projection: serde_json::Value) -> Result<(), String> {
+    #[cfg(desktop)]
+    {
+        let projection = serde_json::from_value(projection).map_err(|error| error.to_string())?;
+        tray::sync_tray(app, projection).await
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, projection);
+        Ok(())
+    }
+}
 
 #[cfg(feature = "fixture-bridge")]
 use serde::Serialize;
@@ -45,15 +76,16 @@ fn fixture_bridge_handshake(app: tauri::AppHandle) -> Result<FixtureBridgeReceip
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
-        .manage(Arc::new(ConnectionLifecycle::default()))
-        .manage(local_host::LocalHostState::default());
+        .manage(Arc::new(ConnectionLifecycle::default()));
     let builder = builder.manage(live_bridge::LiveLaunchState::from_process());
     #[cfg(feature = "fixture-bridge")]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        sync_tray,
+        quit_app,
+        show_tray_window,
         fixture_bridge_handshake,
-        local_host::local_host_environment,
+        client_settings::client_settings,
         offline_account::offline_account,
-        local_host::local_host_action,
         live_bridge::live_readonly_available,
         live_bridge::live_submit_text,
         live_bridge::live_interrupt,
@@ -66,9 +98,11 @@ pub fn run() {
     ]);
     #[cfg(not(feature = "fixture-bridge"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        local_host::local_host_environment,
+        sync_tray,
+        quit_app,
+        show_tray_window,
+        client_settings::client_settings,
         offline_account::offline_account,
-        local_host::local_host_action,
         live_bridge::live_readonly_available,
         live_bridge::live_submit_text,
         live_bridge::live_interrupt,
@@ -80,6 +114,17 @@ pub fn run() {
         live_bridge::stop_live_readonly
     ]);
     builder
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_title(&app.package_info().name)?;
+            }
+            #[cfg(desktop)]
+            if let Err(error) = tray::setup(app) {
+                // A desktop without a tray host must still be able to launch.
+                eprintln!("Unable to create system tray: {error}");
+            }
+            Ok(())
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {

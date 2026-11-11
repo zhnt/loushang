@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { appName } from "../branding";
 import { SettingsSelect } from "../SettingsSelect";
 import { i18n, systemLanguages } from "./index";
 import { languageStorageKey, parsePreference, readPreference, resolveLanguage } from "./language";
@@ -24,7 +25,7 @@ export function LanguageSelect() {
     } finally { setPending(false); }
   }
   return <div className="settings-preference">
-    <SettingsSelect id="interface-language" label={t("language")} description={t("languageDescription")}
+    <SettingsSelect id="interface-language" label={t("language")} description={t("languageDescription", { appName })}
       value={preference} busy={pending} onChange={(value) => { void change(value); }} options={[
         { value: "system", label: t("system") },
         { value: "zh-CN", label: "简体中文", lang: "zh-CN" },
