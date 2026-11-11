@@ -343,7 +343,7 @@ def test_creation_operation_cold_start_and_warm_second_name_use_one_real_child(p
             assert scratch.is_dir()
             if temporary is not None:
                 assert scratch.is_relative_to(temporary)
-                assert not (Path(namespace.platform_home) / "lmux/machines" / namespace.machine_id /
+                assert not (Path(namespace.platform_home) / "hosts/machines" / namespace.machine_id /
                             "servers" / service.service_id / "tmp").exists()
             assert operations[0].connection.application_id == APPLICATION_ID
             await operations[0].close()
@@ -494,8 +494,12 @@ def test_concurrent_start_and_warm_reuse_use_one_production_child(production_own
             if lazy_store:
                 assert not session_root.exists(), "empty Mux startup/reconnect created a Session store"
                 assert not (Path(namespace.platform_home) / "state/session-stores").exists()
-                scope = directory.read(ENDPOINT).scopes[0]
-                query = SessionListV1("coding", scope.scope, scope.fingerprint)
+                from loushang.appserver.protocol import WorkspaceRequestV1
+
+                assert directory.read(ENDPOINT).scopes == ()
+                scope, = (await warm.client.workspace(WorkspaceRequestV1("register", service.host_root))).workspaces
+                assert not session_root.exists()
+                query = SessionListV1("coding", scope.scope, scope.scope_fingerprint)
                 assert warm.discovery_client is not None
                 empty = await warm.discovery_client.list_sessions(query)
                 assert empty.complete and not empty.candidates
@@ -504,7 +508,7 @@ def test_concurrent_start_and_warm_reuse_use_one_production_child(production_own
                 controller = await open_hosted_mux_profile(warm.client, selector=MuxSelectorV1(name="main"))
                 try:
                     view = await controller.open_member(SessionOpenSpecV1(
-                        "coding", "first-manual-session", scope.scope, scope.fingerprint,
+                        "coding", "first-manual-session", scope.scope, scope.scope_fingerprint,
                         title="lazy first Session",
                     ))
                     assert len(view.windows) == 1 and session_root.is_dir()

@@ -147,10 +147,10 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
     assert sum(groups["lmux"].values()) <= (
         1_579 + 13 + managed_composition_allowance + creation_recovery_composition_allowance
         + child_import_boundary_allowance + plc9b_hosted_lmux_allowance
-        + r21_resume_lmux_allowance + 149 + 14  # Host First: catalog and managed wiring
+        + r21_resume_lmux_allowance + 150 + 18  # Host First: catalog and managed wiring
     ), groups["lmux"]
     for path, limit in {
-        "cli/lmux_command.py": 811 + 14,
+        "cli/lmux_command.py": 811 + 17,
         "managed_local.py": 172 + 1,
     }.items():
         assert groups["lmux"][path] <= limit, (path, groups["lmux"][path], limit)

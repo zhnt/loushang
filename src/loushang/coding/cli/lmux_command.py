@@ -167,10 +167,11 @@ class ManagedMuxCommand:
         selected_service = None
         if args.action in (None, "new", "server"):
             selected_service = ManagedServiceKeyV1("coding", self.defaults.namespace.platform_home)
-            if args.action in (None, "new"):
-                self.workspace = Path(getattr(args, "workspace", None) or Path.cwd()).expanduser().resolve(strict=True)
-                if not self.workspace.is_dir():
-                    raise ManagedContractError()
+        workspace = getattr(args, "workspace", None)
+        if args.action in (None, "new") or (args.action == "attach" and workspace is not None):
+            self.workspace = Path(workspace or Path.cwd()).expanduser().resolve(strict=True)
+            if not self.workspace.is_dir():
+                raise ManagedContractError()
         self.namespace = ManagedNamespaceAdmissionV1(
             self.defaults.namespace, runtime_root=str(self.defaults.platform.runtime),
             create_if_missing=args.action in (None, "new", "server"),
@@ -729,18 +730,20 @@ class ManagedMuxCommand:
             from loushang.harnesstui.mux.shell import HostedMuxShellV1
             from loushang.harnesstui.mux.terminal import run_hosted_mux_shell
 
-            if self.workspace is not None:
-                await connection.client.workspace(WorkspaceRequestV1("register", str(self.workspace)))
-                workspaces = (await connection.client.workspace(WorkspaceRequestV1("open", str(self.workspace)))).workspaces
-                scopes = tuple((item.scope, item.scope_fingerprint) for item in workspaces)
-            else:
+            scopes = ()
+            if self.creation is None:
                 mux = await connection.client.read_mux(MuxReadV1(selector))
-                scopes = tuple(dict.fromkeys((member.session.scope, member.session.scope_fingerprint) for member in mux.members))
-                if not scopes:
+                scopes = tuple(dict.fromkeys((m.session.scope, m.session.scope_fingerprint) for m in mux.members))
+            if not scopes:
+                if self.workspace is not None:
+                    path = str(self.workspace)
+                    await connection.client.workspace(WorkspaceRequestV1("register", path))
+                    workspaces = (await connection.client.workspace(WorkspaceRequestV1("open", path))).workspaces
+                else:
                     workspaces = (await connection.client.workspace(WorkspaceRequestV1("list"))).workspaces
-                    if len(workspaces) != 1:
-                        raise ManagedStorageError("unavailable")
-                    scopes = tuple((item.scope, item.scope_fingerprint) for item in workspaces)
+                if len(workspaces) != 1:
+                    raise ManagedStorageError("unavailable")
+                scopes = tuple((item.scope, item.scope_fingerprint) for item in workspaces)
             self.shell = HostedMuxShellV1(
                 connection.client, selector=selector, product_id="coding",
                 scopes=scopes,

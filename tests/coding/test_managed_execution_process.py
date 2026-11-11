@@ -125,7 +125,7 @@ def test_execution_survives_client_process_and_recovers(owners, tmp_path, mode):
             ]
             assert all(item["pid"] == process.pid for item in events)
             assert events[2]["time"] > evidence["a_exited_at"]
-            assert len(list(sessions.glob("*.jsonl"))) == 1
+            assert len(list(sessions.rglob("*.jsonl"))) == 1
             evidence["audit"] = events
             stopper = ManagedServiceStopOperationV1(journal, namespace, service, instance, runtime_root=runtime)
             stopping = asyncio.create_task(stopper.run(deadline=monotonic() + 20))

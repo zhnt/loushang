@@ -24,6 +24,7 @@ def _parser() -> argparse.ArgumentParser:
     creation_status.add_argument("--operation", required=True)
     attach = commands.add_parser("attach", help="reconnect by global name; never start a service")
     attach.add_argument("-t", "--target")
+    attach.add_argument("--workspace", help="workspace for an empty mux")
     listing = commands.add_parser("ls", help="read-only global reservations and recorded state (not liveness)")
     listing.add_argument("--after", help="page after this global name")
     diagnostic = commands.add_parser("status", help="read recorded service state and paths; never start or probe readiness")

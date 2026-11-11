@@ -82,9 +82,11 @@ def test_managed_rust_client_reconnects_without_replay(owners, tmp_path, mode):
             service_id = connection.execution_client.service_instance_id
             selector = MuxSelectorV1(mux_space_id=mux.mux_space_id)
             await connection.client.attach_mux(MuxAttachV1(selector))
-            scope = connection.scopes[0]
+            from loushang.appserver.protocol import WorkspaceRequestV1
+
+            scope, = (await connection.client.workspace(WorkspaceRequestV1("register", str(tmp_path)))).workspaces
             space = await connection.client.open_member(MuxMemberOpenV1(selector, SessionOpenSpecV1(
-                "coding", "gui-stage1d", scope.scope, scope.fingerprint, "GUI managed Session",
+                "coding", "gui-stage1d", scope.scope, scope.scope_fingerprint, "GUI managed Session",
             )))
             session_id = space.members[0].session.session_id
             record_root = creation._coordinator._starter._layout.paths.connection

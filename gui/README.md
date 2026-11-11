@@ -31,7 +31,9 @@ Each Workspace retains its own Sessions. Switching Workspaces or quitting the GU
 does not stop their executions. Use **Stop Host** for a graceful service stop.
 
 On Linux, `lmux server start` starts the same managed Host without a Workspace.
-Its deployment identity is scoped to the local user and Coding product. The
+Use `lmux attach -t NAME --workspace /absolute/path` when an empty Mux needs
+an explicit working context. The Host deployment identity is scoped to the local
+user and Coding product. The
 Host owns canonical Workspace paths; the client may remember the last selection,
 but the preference grants no access. Each Workspace has its own transcript
 store and each Session receives its own working directory and Runtime.

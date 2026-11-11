@@ -100,4 +100,4 @@ def test_explicit_scratch_is_not_a_session_root(deployment, tmp_path):
     value = replace(invocation(deployment, tmp_path), temporary_override=str(tmp_path / "scratch"))
     with pytest.raises(ManagedContractError):
         create_coding_managed_launch(value, application_id="coding.default", endpoint="workspace",
-                                    cwd_sessions=tmp_path / "scratch/lmux/sessions", home_sessions=tmp_path / "home")
+                                    cwd_sessions=tmp_path / "scratch/hosts/sessions", home_sessions=tmp_path / "home")
