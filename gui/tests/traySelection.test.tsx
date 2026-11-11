@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useEffect, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import LocalHostGate from "../src/LocalHostGate";
+import { ProjectNavigation } from "../src/ProjectNavigation";
+import type { ProjectNavigationProps } from "../src/client/projectDirectory";
 const backend = vi.hoisted(() => ({ invoke: vi.fn(), settings: vi.fn(), create: vi.fn(), listeners: new Map<string, (event: any) => void>() }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: backend.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: async (name: string, callback: (event: any) => void) => {
@@ -14,12 +16,13 @@ vi.mock("../src/client/hostApi", () => ({
 }));
 vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: async () => false }));
 vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: backend.create }));
-vi.mock("../src/App", () => ({ default: () => null, HarnessGui: ({ client, hostSettings, hostSettingsRequest, onConnectionChange }: {
+vi.mock("../src/App", () => ({ default: () => null, HarnessGui: ({ client, hostSettings, hostSettingsRequest, onConnectionChange, projectNavigation }: {
+  projectNavigation: ProjectNavigationProps;
   client: { id: string } | null; hostSettings: ReactNode; hostSettingsRequest: number; onConnectionChange: (state: string) => void;
 }) => {
   const [draft, setDraft] = useState("");
-  useEffect(() => onConnectionChange(client ? "connected" : "disconnected"), [client, onConnectionChange]);
-  return <main><p>{client?.id ?? "offline"}</p><textarea aria-label="Draft" value={draft} onChange={(event) => setDraft(event.target.value)} />
+  useEffect(() => onConnectionChange?.(client ? "connected" : "disconnected"), [client, onConnectionChange]);
+  return <main><ProjectNavigation navigation={projectNavigation} selectedId={null} titles={{}} /><p>{client?.id ?? "offline"}</p><textarea aria-label="Draft" value={draft} onChange={(event) => setDraft(event.target.value)} />
     {hostSettingsRequest > 0 ? <section aria-label="Host settings">{hostSettings}</section> : hostSettings}
   </main>;
 } }));
@@ -42,7 +45,7 @@ beforeEach(() => {
     const id = request.connectionId ?? selected;
     const input = request.operation === "host/request" ? request.request : request;
     if (input.operation === "environment") return { supported: true, workspace: `/${id}`, connectionId: id };
-    if (input.operation === "workspace") return { workspaces: [{ path: `/${id}` }] };
+    if (input.operation === "workspace") return { projects: [{ path: `/${id}`, sessions: [{ id, title: id }] }], temporarySessions: [] };
     if (input.operation === "manage") return { state: "running", errorCode: null, workspace: `/${id}`, instanceId: `${id}-instance` };
     throw new Error("Unexpected request");
   });
@@ -64,11 +67,12 @@ describe("tray selection integration", () => {
     backend.settings.mockImplementation(async (request) => {
       const input = request.operation === "host/request" ? request.request : request;
       if (input.operation === "environment") return { supported: true, workspace: "", connectionId: "local" };
-      if (input.operation === "workspace") return { workspaces: [] };
+      if (input.operation === "workspace") return { projects: [], temporarySessions: [] };
       return settings(request);
     });
     render(<LocalHostGate />);
-    expect(await screen.findByRole("combobox", { name: "Workspace" })).toHaveValue("");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add project" })).toBeEnabled());
+    expect(screen.queryByRole("combobox", { name: "Workspace" })).toBeNull();
     expect(backend.create).not.toHaveBeenCalled();
     expect(backend.settings).toHaveBeenCalledWith({ operation: "host/request", connectionId: "local",
       request: { operation: "manage", action: "connect" } });

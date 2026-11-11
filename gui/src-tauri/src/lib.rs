@@ -5,6 +5,7 @@ mod connection_directory;
 mod connection_lifecycle;
 mod live_bridge;
 mod offline_account;
+mod project_folder;
 #[cfg(desktop)]
 mod tray;
 mod web_link;
@@ -83,6 +84,7 @@ pub fn run() {
         sync_tray,
         quit_app,
         show_tray_window,
+        project_folder::pick_project_folder,
         fixture_bridge_handshake,
         client_settings::client_settings,
         offline_account::offline_account,
@@ -101,6 +103,7 @@ pub fn run() {
         sync_tray,
         quit_app,
         show_tray_window,
+        project_folder::pick_project_folder,
         client_settings::client_settings,
         offline_account::offline_account,
         live_bridge::live_readonly_available,

@@ -25,6 +25,24 @@ describe("GUI client state", () => {
     expect(cleared.local.drafts["session-gui"]).toBe("");
   });
 
+  it("keeps each conversation draft when changing the managed Mux", async () => {
+    const fixture = await createMockAppClient().snapshot();
+    const [a, b] = fixture.sessions;
+    const snapshot = (session: typeof a, muxSpaceId: string, connectionId = "local") => ({
+      ...fixture, sessions: [session], selectedSessionId: session.id, connection: "connected" as const,
+      source: { kind: "live" as const, connectionId, muxSpaceId, serviceInstanceId: "host", connectionEpoch: "1" },
+    });
+    let state = guiReducer(emptyGuiState(), { type: "snapshot.installed", snapshot: snapshot(a, "a") });
+    state = guiReducer(state, { type: "draft.changed", sessionId: a.id, value: "unsent in A" });
+    state = guiReducer(state, { type: "snapshot.installed", snapshot: snapshot(b, "b") });
+    state = guiReducer(state, { type: "draft.changed", sessionId: b.id, value: "unsent in B" });
+    state = guiReducer(state, { type: "snapshot.installed", snapshot: snapshot(a, "a") });
+    expect(state.local.drafts[a.id]).toBe("unsent in A");
+    expect(state.local.drafts[b.id]).toBe("unsent in B");
+    state = guiReducer(state, { type: "snapshot.installed", snapshot: snapshot(a, "a", "other-host") });
+    expect(state.local.drafts[a.id]).toBe("");
+  });
+
   it("restores Session dock choices and keeps inspected Tasks independent of progress", async () => {
     const client = createMockAppClient();
     const snapshot = await client.snapshot();

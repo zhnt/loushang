@@ -51,3 +51,4 @@ strip = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
+gtk = "=0.18.2"

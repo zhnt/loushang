@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import App, { HarnessGui } from "./App";
 import { useOfflineAccount } from "./client/offlineAccount";
@@ -9,8 +9,11 @@ import { useSystemTray, type TrayConnection } from "./client/systemTray";
 import { sharedSettings, webRequest } from "./client/hostApi";
 import { createWebLiveClient } from "./client/webLiveClient";
 import { useTrayHosts, selectTrayHost, type HostStatus, type HostAction as Action } from "./client/trayHosts";
+import { TEMPORARY_WORKSPACE, type ProjectChat, type ProjectDirectory } from "./client/projectDirectory";
 import { TrayHostDialog } from "./TrayHostDialog";
 import "./LocalHostGate.css";
+
+const emptyDirectory: ProjectDirectory = { projects: [], temporarySessions: [] };
 
 const states = {
   unknown: "localHost.states.unknown", not_running: "localHost.states.notRunning",
@@ -37,19 +40,19 @@ export default function LocalHostGate() {
   const [legacy, setLegacy] = useState(false);
   const [supported, setSupported] = useState<boolean | null>(null);
   const [workspace, setWorkspace] = useState("");
-  const [workspaces, setWorkspaces] = useState<string[]>([]);
-  const [workspaceInput, setWorkspaceInput] = useState("");
+  const [directory, setDirectory] = useState(emptyDirectory);
+  const [folderInput, setFolderInput] = useState(false);
   const [workspaceError, setWorkspaceError] = useState(false);
+  const [workspacePending, setWorkspacePending] = useState(false);
+  const [selection, setSelection] = useState<{ workspace: string; id: string } | null>(null);
   const workspaceEpoch = useRef(0);
   const workspaceClients = useRef(new Map<string, HarnessClientUiPort>());
+  const workspaceMutation = useRef(false);
+  const folderPicker = useRef(false);
 
-  async function openWorkspace(path: string) {
-    const epoch = ++workspaceEpoch.current;
-    const opened = await webRequest<{ workspaces: { path: string }[] }>({ operation: "workspace", action: "open", path }, connectionId.current);
-    if (epoch !== workspaceEpoch.current) return;
-    setWorkspaceError(false);
-    path = opened.workspaces[0].path;
+  function openConversation(path: string, id?: string) {
     setWorkspace(path);
+    setSelection(id ? { workspace: path, id } : null);
     let selected = workspaceClients.current.get(path);
     if (!selected) {
       selected = createWebLiveClient(path, connectionId.current);
@@ -57,25 +60,67 @@ export default function LocalHostGate() {
     }
     clientRef.current = selected;
     setClient(selected);
+    void webRequest({ operation: "remember-workspace", workspace: path }, connectionId.current).catch(() => {});
   }
 
-  async function loadWorkspaces(preferred = workspace) {
-    const result = await webRequest<{ workspaces: { path: string }[] }>({ operation: "workspace", action: "list" }, connectionId.current);
-    const paths = result.workspaces.map((item) => item.path);
-    setWorkspaces(paths);
-    if (preferred && paths.includes(preferred)) await openWorkspace(preferred);
+  async function refreshDirectory() {
+    const epoch = workspaceEpoch.current;
+    const result = await webRequest<ProjectDirectory>({ operation: "workspace", action: "navigation" }, connectionId.current);
+    if (epoch !== workspaceEpoch.current) return;
+    setDirectory(result);
+    return result;
   }
 
-  async function registerWorkspace() {
-    setBusy(true);
+  async function changeDirectory(request: { action: "register" | "create-chat"; path?: string }) {
+    if (workspaceMutation.current || pending.current || host.state !== "running" || host.errorCode) return false;
+    workspaceMutation.current = true;
+    setWorkspacePending(true);
+    setWorkspaceError(false);
+    const epoch = ++workspaceEpoch.current;
     try {
-      const result = await webRequest<{ workspaces: { path: string }[] }>({ operation: "workspace", action: "register", path: workspaceInput }, connectionId.current);
-      setWorkspaces(result.workspaces.map((item) => item.path));
-      await openWorkspace(workspaceInput);
-      setWorkspaceInput("");
-    } catch { setWorkspaceError(true); }
-    finally { setBusy(false); }
+      const result = await webRequest<{ workspace: string; sessionId: string }>({ operation: "workspace", ...request }, connectionId.current);
+      if (epoch !== workspaceEpoch.current) return false;
+      if (request.action === "register") setFolderInput(false);
+      else openConversation(result.workspace, result.sessionId);
+      await refreshDirectory();
+      return true;
+    } catch {
+      if (epoch === workspaceEpoch.current) setWorkspaceError(true);
+      return false;
+    } finally {
+      workspaceMutation.current = false;
+      setWorkspacePending(false);
+    }
   }
+
+  async function togglePin(chat: ProjectChat) {
+    try {
+      await webRequest({ operation: "preferences", scope: chat.scope, session: chat.id,
+        action: chat.pinned ? "unpin" : "pin" }, connectionId.current);
+      await refreshDirectory();
+    } catch { setWorkspaceError(true); }
+  }
+
+  async function openFolder() {
+    if (folderPicker.current || workspaceMutation.current || pending.current) return;
+    if (!isTauri() || selectedId !== "local") {
+      setFolderInput(true);
+      return;
+    }
+    folderPicker.current = true;
+    const epoch = workspaceEpoch.current;
+    try {
+      const path = await invoke<string | null>("pick_project_folder", {
+        title: t("sidebar.addProject"), accept: t("sidebar.addProject"), cancel: t("localHost.cancel"),
+      });
+      if (path && epoch === workspaceEpoch.current) await changeDirectory({ action: "register", path });
+    } catch {
+      if (epoch === workspaceEpoch.current) setFolderInput(true);
+    } finally {
+      folderPicker.current = false;
+    }
+  }
+
   const [host, setHost] = useState<HostStatus>({ state: "unknown", errorCode: null });
   const [busy, setBusy] = useState(false);
   const [confirmation, setConfirmation] = useState<{ action: "stop" | "restart"; workspace: string; instanceId?: string } | null>(null);
@@ -107,7 +152,13 @@ export default function LocalHostGate() {
       setHost(result);
       if (result.state !== "running" || result.errorCode) setConnection("disconnected");
       if (["connect", "start", "restart"].includes(action) && result.state === "running" && !result.errorCode) {
-        await loadWorkspaces(preferred);
+        const directory = await refreshDirectory().catch(() => { setWorkspaceError(true); });
+        if (serial !== generation.current || !directory) return;
+        const available = preferred === TEMPORARY_WORKSPACE
+          ? directory.temporarySessions.length > 0
+          : directory.projects.some((project) => project.path === preferred && project.sessions.length > 0);
+        if (available) openConversation(preferred);
+        else setConnection("connected");
       }
     } catch (error) {
       if (serial === generation.current) {
@@ -128,8 +179,7 @@ export default function LocalHostGate() {
     setBusy(true);
     clientRef.current = null;
     workspaceEpoch.current++;
-    workspaceClients.current.clear();
-    setWorkspaces([]);
+
     setClient(null);
     setConnection("connecting");
     try {
@@ -141,6 +191,13 @@ export default function LocalHostGate() {
       setConnection(previous.connection);
       pending.current = false; setBusy(false);
       throw error;
+    }
+    if (id !== previous.id) {
+      workspaceClients.current.clear();
+      setDirectory(emptyDirectory);
+      setSelection(null);
+      setFolderInput(false);
+      setWorkspaceError(false);
     }
     connectionId.current = id;
     setSelectedId(id);
@@ -181,6 +238,12 @@ export default function LocalHostGate() {
   useEffect(() => {
     if (host.state !== "running" || !supported) return;
     const timer = window.setInterval(() => { void perform("status"); }, 5000);
+    return () => window.clearInterval(timer);
+  });
+
+  useEffect(() => {
+    if (host.state !== "running" || host.errorCode || busy || workspacePending) return;
+    const timer = window.setInterval(() => { void refreshDirectory().catch(() => {}); }, 3000);
     return () => window.clearInterval(timer);
   });
 
@@ -239,24 +302,23 @@ export default function LocalHostGate() {
     </section>
     {confirmation ? <div className="local-host-confirm" role="alertdialog" aria-modal="true" aria-label={t("localHost.confirmTitle")} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setConfirmation(null); } }}>
       <div><strong>{t("localHost.confirmTitle")}</strong><p>{t("localHost.confirmStop")}</p>
-        <p>{confirmation.workspace}</p>
         <button autoFocus onClick={() => setConfirmation(null)}>{t("localHost.cancel")}</button>
         <button onClick={() => { const selected = confirmation; setConfirmation(null); void perform(selected.action, selected.workspace, selected.instanceId); }}>{t("localHost.confirm")}</button>
       </div>
     </div> : null}
   </>;
-  return <>{host.state === "running" ? <section className="workspace-picker" aria-label={t("localHost.workspace")}>
-    <label>{t("localHost.workspace")}<select value={workspaces.includes(workspace) ? workspace : ""} disabled={busy}
-      onChange={(event) => { if (event.target.value) void openWorkspace(event.target.value).catch(() => setWorkspaceError(true)); }}>
-      <option value="">{t("localHost.selectWorkspace")}</option>
-      {workspaces.map((path) => <option key={path} value={path}>{path}</option>)}
-    </select></label>
-    <input aria-label={t("localHost.pathHint")} placeholder={t("localHost.pathHint")}
-      value={workspaceInput} onChange={(event) => setWorkspaceInput(event.target.value)} />
-    <button disabled={busy || !workspaceInput.trim()} onClick={() => void registerWorkspace()}>{t("localHost.addWorkspace")}</button>
-    {workspaceError ? <span role="alert">{t("localHost.workspaceUnavailable")}</span> : null}
-  </section> : null}<HarnessGui client={client} account={account} hostSettings={hostSettings}
-    hostSettingsRequest={hostSettingsRequest} onConnectionChange={setConnection} />
+  return <><HarnessGui client={client} account={account} hostSettings={hostSettings}
+    hostSettingsRequest={hostSettingsRequest} onConnectionChange={client ? setConnection : undefined}
+    projectNavigation={{
+      directory, available: host.state === "running" && !host.errorCode && !busy,
+      pending: workspacePending, error: workspaceError, folderInput, selection,
+      openFolder: () => { void openFolder(); },
+      closeFolder: () => setFolderInput(false),
+      register: (path) => changeDirectory({ action: "register", path }),
+      create: (path) => { void changeDirectory({ action: "create-chat", ...(path ? { path } : {}) }); },
+      togglePin: (chat) => { void togglePin(chat); },
+      select: openConversation,
+    }} />
     <TrayHostDialog details={trayHosts.details} error={trayHosts.error}
       onClose={() => { trayHosts.closeDetails(); trayHosts.clearError(); }} onConfirm={trayHosts.confirmStop} />
   </>;

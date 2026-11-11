@@ -285,7 +285,12 @@ function installSnapshot(state: GuiState, snapshot: ClientSnapshot): GuiState {
     snapshot.sessions.map((session) => [session.id, session]),
   );
   const sessionIds = snapshot.sessions.map((session) => session.id);
-  const drafts = retainKeys(state.local.drafts, sessionIds, "");
+  const previousSource = state.remote.source;
+  const sameHost = previousSource.kind === "live" && snapshot.source.kind === "live"
+    && previousSource.connectionId === snapshot.source.connectionId;
+  const sameInstance = sameHost && previousSource.serviceInstanceId === snapshot.source.serviceInstanceId;
+  const drafts = sameInstance ? state.local.drafts
+    : retainKeys(previousSource.kind === "live" && snapshot.source.kind === "live" && !sameHost ? {} : state.local.drafts, sessionIds, "");
   const unread: Record<string, boolean> = { ...retainKeys(state.local.unread, sessionIds, false) };
   const expandedWorkspaces = Object.fromEntries(
     workspaceIds.map((workspaceId) => [
@@ -340,7 +345,7 @@ function installSnapshot(state: GuiState, snapshot: ClientSnapshot): GuiState {
     local: {
       ...state.local,
       ...(selectedSession ? sessionView(selectedSession, retainedViews[viewKey(selectedSession)]) : {}),
-      sessionViews: retainedViews,
+      sessionViews: sameInstance ? { ...views, ...retainedViews } : retainedViews,
       selectedSessionId,
       drafts,
       selectedDocuments,

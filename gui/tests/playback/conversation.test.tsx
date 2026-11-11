@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { HarnessGui } from "../../src/App";
 import { createMockAppClient } from "../support/mockAppClient";
-import type { ClientSnapshot, FixturePlaybackPort, SessionModels, ThinkingLevel } from "../../src/client/model";
+import type { ClientSnapshot, FixturePlaybackPort, HarnessClientUiPort, SessionModels, ThinkingLevel } from "../../src/client/model";
 
 const liveModel = {
   id: "test:primary:model",
@@ -26,6 +26,40 @@ function withSnapshot(client: FixturePlaybackPort, snapshot: ClientSnapshot): Fi
 }
 
 describe("GUI-B1 Workspace / Task / Review fixture", () => {
+  it("keeps the composer bound to the selected conversation during a Mux switch", async () => {
+    const fixture = await createMockAppClient().snapshot();
+    const [a, b] = fixture.sessions;
+    const snapshot = (session: typeof a, muxSpaceId: string): ClientSnapshot => ({
+      ...fixture, sessions: [session], selectedSessionId: session.id, connection: "connected",
+      source: { kind: "live", connectionId: "local", muxSpaceId, serviceInstanceId: "host", connectionEpoch: "1" },
+    });
+    const submitText = vi.fn<HarnessClientUiPort["submitText"]>(async ({ submissionId }) => ({ submissionId, accepted: false }));
+    const client = (getSnapshot: HarnessClientUiPort["snapshot"]): HarnessClientUiPort => ({
+      snapshot: getSnapshot, submitText, subscribe: () => () => {}, interrupt: async () => ({ accepted: false }),
+      sessionModels: async () => ({ currentId: liveModel.id, models: [liveModel] }),
+    });
+    let resolveB!: (value: ClientSnapshot) => void;
+    const bSnapshot = new Promise<ClientSnapshot>((resolve) => { resolveB = resolve; });
+    const clientA = client(async () => snapshot(a, "a"));
+    const clientB = client(() => bSnapshot);
+    const { rerender } = render(<HarnessGui client={clientA} />);
+    fireEvent.change(await screen.findByRole("textbox"), { target: { value: "A draft" } });
+
+    rerender(<HarnessGui client={clientB} />);
+    const staleComposer = screen.getByRole("textbox");
+    expect(staleComposer).toBeDisabled();
+    fireEvent.keyDown(staleComposer, { key: "Enter" });
+    expect(submitText).not.toHaveBeenCalled();
+    await act(async () => { resolveB(snapshot(b, "b")); });
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "B message" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await waitFor(() => expect(submitText).toHaveBeenCalledWith(expect.objectContaining({ sessionId: b.id, text: "B message" })));
+
+    rerender(<HarnessGui client={clientA} />);
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("A draft"));
+  });
+
   it("renders assistant Markdown while keeping user text and untrusted markup inert", async () => {
     const fixture = createMockAppClient();
     const snapshot = await fixture.snapshot();

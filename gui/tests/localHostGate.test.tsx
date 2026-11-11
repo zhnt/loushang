@@ -6,6 +6,8 @@ import { AccountMenu } from "../src/AccountMenu";
 import { SettingsDialog } from "../src/SettingsDialog";
 import { readMarkdownPreferences } from "../src/markdown/preferences";
 import LocalHostGate from "../src/LocalHostGate";
+import { ProjectNavigation } from "../src/ProjectNavigation";
+import type { ProjectNavigationProps } from "../src/client/projectDirectory";
 
 const native = vi.hoisted(() => ({
   invoke: vi.fn(), create: vi.fn(() => ({})), listeners: new Map<string, (value: any) => void>(),
@@ -20,10 +22,12 @@ vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: native.crea
 vi.mock("../src/DesktopFrame", () => ({ DesktopFrame: () => <header>Desktop</header> }));
 vi.mock("../src/App", () => ({
   default: () => <p>Fixture</p>,
-  HarnessGui: ({ client, account, hostSettings, hostSettingsRequest = 0 }: { client: unknown; account: OfflineAccount | null; hostSettings: ReactNode; hostSettingsRequest?: number }) => {
+  HarnessGui: ({ client, account, hostSettings, hostSettingsRequest = 0, projectNavigation }: { projectNavigation: ProjectNavigationProps; client: unknown; account: OfflineAccount | null; hostSettings: ReactNode; hostSettingsRequest?: number }) => {
     const dialog = useRef<HTMLDialogElement>(null);
     useEffect(() => { if (hostSettingsRequest) dialog.current?.showModal(); }, [hostSettingsRequest]);
     return <>
+      <button disabled={!projectNavigation.available} onClick={() => projectNavigation.create(null)}>New Session</button>
+      <ProjectNavigation navigation={projectNavigation} selectedId={projectNavigation.selection?.id ?? null} titles={{}} />
       {client ? <textarea aria-label="Draft" /> : <p>Disconnected workspace</p>}
       <AccountMenu account={account} onSettings={() => dialog.current?.showModal()} />
       <SettingsDialog dialogRef={dialog} hostSettings={hostSettings} hostRequest={hostSettingsRequest}
@@ -55,8 +59,12 @@ function installMock(implementation: (command: string, args?: any) => Promise<un
       };
       if (args.request.operation === "host/request") {
         if (args.request.request.operation === "workspace") {
-          return { workspaces: [{ path: "/workspace", scope: "cwd", scopeFingerprint: "a".repeat(64) },
-            { path: "/previous", scope: "cwd", scopeFingerprint: "b".repeat(64) }] };
+          const request = args.request.request;
+          if (request.action !== "navigation") return implementation("workspace", request);
+          return { projects: [
+            { path: "/workspace", sessions: [{ id: "a", title: "Project A chat" }] },
+            { path: "/previous", sessions: [{ id: "b", title: "Project B chat" }] },
+          ], temporarySessions: [{ id: "scratch", title: "Temporary chat" }] };
         }
         return implementation("manage", { request: args.request.request });
       }
@@ -155,6 +163,43 @@ describe("local managed Host presentation", () => {
     expect(native.invoke).toHaveBeenCalledWith("client_settings", management("connect", "/previous"));
     expect(countActions("start")).toBe(0);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps projects visible and uses distinct actions for project and temporary chats", async () => {
+    installMock(async (command, args) => {
+      if (command === "environment") return { supported: true, workspace: "" };
+      if (command === "pick_project_folder") return "/added";
+      if (command === "workspace" && args.action === "create-chat") return args.path
+        ? { workspace: args.path, sessionId: "a" }
+        : { workspace: "@temporary", sessionId: "scratch" };
+      return { state: "running", errorCode: null };
+    });
+    render(<LocalHostGate />);
+    const projects = within(screen.getByRole("region", { name: "Projects" }));
+    const chats = within(screen.getByRole("region", { name: "Chats" }));
+    fireEvent.click(await projects.findByRole("button", { name: "Project B chat" }));
+    expect(native.create).toHaveBeenCalledWith("/previous", "local");
+    expect(projects.getByRole("button", { name: "Project A chat" })).toBeVisible();
+    expect(chats.getByRole("button", { name: "Temporary chat" })).toBeVisible();
+    expect(chats.queryByText("Project B chat")).toBeNull();
+
+    fireEvent.click(projects.getByRole("button", { name: "workspace" }));
+    expect(projects.queryByText("Project A chat")).toBeNull();
+    expect(projects.getByRole("button", { name: "Project B chat" })).toBeVisible();
+    fireEvent.click(projects.getByRole("button", { name: "New chat in workspace" }));
+    await waitFor(() => expect(native.create).toHaveBeenCalledWith("/workspace", "local"));
+    expect(projects.getByRole("button", { name: "Project A chat" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(screen.getByRole("button", { name: "New Session" }));
+    await waitFor(() => expect(native.create).toHaveBeenCalledWith("@temporary", "local"));
+    expect(chats.getByRole("button", { name: "Temporary chat" })).toHaveAttribute("aria-current", "true");
+
+    fireEvent.click(projects.getByRole("button", { name: "Add project" }));
+    await waitFor(() => expect(native.invoke).toHaveBeenCalledWith("client_settings", {
+      request: { operation: "host/request", connectionId: "local",
+        request: { operation: "workspace", action: "register", path: "/added" } },
+    }));
+    expect(countActions("create-chat")).toBe(2);
+    expect(countActions("open")).toBe(0);
   });
 
   it("confirms Host stop and preserves the mounted draft across stop and start", async () => {

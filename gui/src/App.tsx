@@ -9,6 +9,8 @@ import type { OfflineAccount } from "./client/offlineAccount";
 import { ModelPicker } from "./ModelPicker";
 import { MessageMarkdown } from "./markdown/MessageMarkdown";
 import { readMarkdownPreferences } from "./markdown/preferences";
+import { ProjectNavigation } from "./ProjectNavigation";
+import type { ProjectNavigationProps } from "./client/projectDirectory";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { isTauri } from "@tauri-apps/api/core";
@@ -57,6 +59,7 @@ interface HarnessGuiProps {
   readonly client: HarnessClientUiPort | FixturePlaybackPort | null;
   readonly account?: OfflineAccount | null;
   readonly hostSettings?: ReactNode;
+  readonly projectNavigation?: ProjectNavigationProps;
   readonly hostSettingsRequest?: number;
   readonly onConnectionChange?: (connection: ConnectionState | "connecting") => void;
 }
@@ -90,7 +93,7 @@ const dockTabs = [
   { id: "review", label: "panels:changes.review", glyph: "▣" },
 ] as const;
 
-export function HarnessGui({ client: attachedClient, account, hostSettings, hostSettingsRequest = 0, onConnectionChange }: HarnessGuiProps) {
+export function HarnessGui({ client: attachedClient, account, hostSettings, hostSettingsRequest = 0, onConnectionChange, projectNavigation }: HarnessGuiProps) {
   const client = attachedClient ?? offlineClient;
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const fixture = fixturePlayback(client);
@@ -135,6 +138,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
   const [state, dispatch] = useReducer(guiReducer, undefined, emptyGuiState);
   const [notice, setNotice] = useState<Notice>({ key: "notice.loading" });
   const [syncing, setSyncing] = useState(true);
+  const [installedClient, setInstalledClient] = useState<HarnessClientUiPort | null>(null);
   const refreshRef = useRef<(() => void) | null>(null);
   const syncPendingRef = useRef(true);
   const [remainingSteps, setRemainingSteps] = useState(fixture?.remainingFixtureSteps() ?? 0);
@@ -145,12 +149,12 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
   const [createPending, setCreatePending] = useState(false);
   const createdSessionRef = useRef<string | null>(null);
   const controlPendingRef = useRef(false);
-  const [awaitingPublication, setAwaitingPublication] = useState<{
-    readonly sessionId: string;
+  const [publications, setPublications] = useState<Readonly<Record<string, {
+    readonly source: ClientSnapshot["source"];
     readonly cursor: string;
     readonly executionId?: string;
     readonly text: string;
-  } | null>(null);
+  }>>>({});
   const [bridgeProbe, setBridgeProbe] = useState<BridgeProbe>({
     status: "web-mock",
     label: "Web Mock",
@@ -182,6 +186,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
         if (!active) return;
         if (overflow) throw new Error("Snapshot event buffer exceeded its limit.");
         dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(latestSnapshot ?? snapshot) });
+        setInstalledClient(client);
         // The reducer ignores cursors already covered by the snapshot and freezes
         // on any remaining gap. Never infer continuity from arrival timing.
         for (const event of buffered) dispatch({ type: "event.received", event });
@@ -218,6 +223,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
       if (!active) return;
       latestSnapshot = snapshot;
       dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(snapshot) });
+      setInstalledClient(client);
       const createdSessionId = createdSessionRef.current;
       if (createdSessionId && snapshot.sessions.some((session) => session.id === createdSessionId)) {
         createdSessionRef.current = null;
@@ -277,9 +283,29 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     }
   }, [state.local.quickLookDocumentId]);
 
+  const requestedSelection = projectNavigation?.selection;
+  const appliedSelection = useRef<typeof requestedSelection>(null);
+  const [knownTitles, setKnownTitles] = useState<Readonly<Record<string, string>>>({});
+  const directoryHost = state.remote.source.kind === "live" ? state.remote.source.connectionId : undefined;
+  useEffect(() => { setKnownTitles({}); }, [directoryHost]);
+  useEffect(() => {
+    if (!projectNavigation || state.remote.source.kind !== "live") return;
+    const titles = Object.fromEntries(Object.values(state.remote.sessions).map((session) => [session.id, session.title]));
+    setKnownTitles((previous) => Object.entries(titles).every(([id, title]) => previous[id] === title)
+      ? previous : { ...previous, ...titles });
+  }, [Boolean(projectNavigation), state.remote.source.kind, state.remote.sessions]);
+  useLayoutEffect(() => {
+    if (!requestedSelection || appliedSelection.current === requestedSelection || installedClient !== client
+      || !state.remote.sessions[requestedSelection.id]) return;
+    appliedSelection.current = requestedSelection;
+    dispatch({ type: "session.selected", sessionId: requestedSelection.id });
+  }, [client, installedClient, requestedSelection, state.remote.sessions]);
+
   const selectedId = state.local.selectedSessionId;
+  const selectionReady = !requestedSelection || appliedSelection.current === requestedSelection
+    || requestedSelection.id === selectedId;
   const selectionKey = liveSelectionKey(state.remote.source);
-  const connected = state.remote.connection === "connected";
+  const connected = installedClient === client && state.remote.connection === "connected";
   const liveConnecting = Boolean(attachedClient && !fixture && syncing);
   useEffect(() => {
     onConnectionChange?.(liveConnecting ? "connecting" : state.remote.connection);
@@ -329,23 +355,31 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     });
     return () => { active = false; };
   }, [client, selectedId, modelScope, modelQuery, modelRunning]);
+  const awaitingPublication = selectedId ? publications[selectedId] : undefined;
   useEffect(() => {
-    if (!awaitingPublication) return;
-    const session = state.remote.sessions[awaitingPublication.sessionId];
-    if (state.remote.connection !== "connected" || !session) {
-      setAwaitingPublication(null);
-      return;
-    }
-    const execution = session.execution?.id === awaitingPublication.executionId ? session.execution : null;
-    const contentPublished = session.cursor !== awaitingPublication.cursor;
-    const terminal = execution?.status === "succeeded" || execution?.status === "failed" || execution?.status === "interrupted";
-    if (!contentPublished && !terminal) return;
-    if (awaitingPublication.executionId && (contentPublished || execution?.status === "succeeded")) {
-      dispatch({ type: "draft.submitted", sessionId: session.id, expected: awaitingPublication.text });
-    }
-    setAwaitingPublication(null);
-  }, [awaitingPublication, state.remote.connection, state.remote.sessions]);
-  const controlsAllowed = !syncing && !controlPending && (
+    if (!connected || state.remote.source.kind !== "live") return;
+    const source = state.remote.source;
+    const resolved = Object.entries(publications).filter(([id, receipt]) => {
+      const session = state.remote.sessions[id];
+      if (!session) return false;
+      if (receipt.source.kind !== "live" || receipt.source.connectionId !== source.connectionId
+        || receipt.source.serviceInstanceId !== source.serviceInstanceId) return true;
+      const execution = session.execution?.id === receipt.executionId ? session.execution : null;
+      const contentPublished = session.cursor !== receipt.cursor;
+      const terminal = execution?.status === "succeeded" || execution?.status === "failed" || execution?.status === "interrupted";
+      if (!contentPublished && !terminal) return false;
+      if (receipt.executionId && (contentPublished || execution?.status === "succeeded")) {
+        dispatch({ type: "draft.submitted", sessionId: id, expected: receipt.text });
+      }
+      return true;
+    });
+    if (resolved.length) setPublications((current) => {
+      const remaining = { ...current };
+      for (const [id, receipt] of resolved) if (current[id] === receipt) delete remaining[id];
+      return remaining;
+    });
+  }, [connected, publications, state.remote.source, state.remote.sessions]);
+  const controlsAllowed = installedClient === client && selectionReady && !syncing && !controlPending && (
     (state.remote.source.kind === "fixture" && state.remote.connection === "fixture-offline")
     || (state.remote.source.kind === "live" && state.remote.connection === "connected")
   );
@@ -405,7 +439,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
         return;
       }
       if (!receipt.executionId) dispatch({ type: "draft.submitted", sessionId: selected.id, expected: text });
-      if (!fixture) setAwaitingPublication({ sessionId: selected.id, cursor: selected.cursor, executionId: receipt.executionId, text });
+      if (!fixture) setPublications((current) => ({
+        ...current, [selected.id]: { source: state.remote.source, cursor: selected.cursor, executionId: receipt.executionId, text },
+      }));
       setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
       setNotice(fixture
         ? { key: "notice.fixtureAccepted" }
@@ -508,6 +544,11 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     dispatch({ type: "quick-look.closed" });
   }
 
+  const newSessionEnabled = projectNavigation
+    ? projectNavigation.available && !projectNavigation.pending
+    : Boolean(client.createSession) && connected && !createPending;
+  const newSession = projectNavigation ? () => projectNavigation.create(null) : () => { void createSession(); };
+
   return (
     <div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}
       onPointerDownCapture={(event) => { event.currentTarget.dataset.inputModality = "pointer"; }}
@@ -515,7 +556,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
       <DesktopFrame sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((open) => !open)}
         {...history}
         onSettings={openSettings}
-        onNewSession={client.createSession && state.remote.connection === "connected" && !createPending ? () => { void createSession(); } : undefined}
+        onNewSession={newSessionEnabled ? newSession : undefined}
+        onOpenFolder={projectNavigation?.available && !projectNavigation.pending ? projectNavigation.openFolder : undefined}
         onFocusComposer={selected ? () => document.getElementById("message-input")?.focus() : undefined}
         environmentOpen={environmentOpen}
         onToggleEnvironment={selected ? () => { if (!environmentOpen) dispatch({ type: "dock.closed" }); setEnvironmentOpen((open) => !open); } : undefined}
@@ -535,9 +577,11 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
           managedLocal={Boolean(hostSettings)}
           onSelect={(sessionId) => dispatch({ type: "session.selected", sessionId })}
           onToggleWorkspace={(workspaceId) => dispatch({ type: "workspace.toggled", workspaceId })}
-          onNewSession={() => { void createSession(); }}
-          newSessionEnabled={Boolean(client.createSession) && state.remote.connection === "connected"}
-          newSessionPending={createPending}
+          onNewSession={newSession}
+          newSessionEnabled={newSessionEnabled}
+          newSessionPending={projectNavigation?.pending ?? createPending}
+          projectNavigation={projectNavigation}
+          projectTitles={knownTitles}
         />
         <div className="sidebar-resizer" role="separator" aria-label={t("panels:layout.sidebarWidth")} aria-orientation="vertical" tabIndex={0}
           aria-valuemin={200} aria-valuemax={420} aria-valuenow={sidebarWidth}
@@ -654,7 +698,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
                 >
                   <label className="visually-hidden" htmlFor="message-input">{t("session:composer.messageFor", { title: displaySessionTitle(selected) })}</label>
                   <textarea
+                    key={selected.id}
                     id="message-input"
+                    disabled={installedClient !== client || !selectionReady}
                     aria-describedby="message-keyboard-hint"
                     rows={2}
                     value={state.local.drafts[selected.id] ?? ""}
@@ -747,9 +793,11 @@ interface SidebarProps {
   readonly onNewSession: () => void;
   readonly newSessionEnabled: boolean;
   readonly newSessionPending: boolean;
+  readonly projectNavigation?: ProjectNavigationProps;
+  readonly projectTitles: Readonly<Record<string, string>>;
 }
 
-function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar, onSettings }: SidebarProps) {
+function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar, onSettings, projectNavigation, projectTitles }: SidebarProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const { t: shellText } = useTranslation("shell");
   const preferencesKey = sidebarPreferencesKey(state.remote.source);
@@ -775,8 +823,10 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
       </nav>
       {!managedLocal ? <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? t("workspace:sidebar.fixtureBanner") : t("workspace:sidebar.liveBanner")}</div> : null}
 
-      <SessionNavigation key={preferencesKey} preferencesKey={preferencesKey} state={state}
-        onSelect={onSelect} onToggleWorkspace={onToggleWorkspace} />
+      {projectNavigation
+        ? <ProjectNavigation navigation={projectNavigation} selectedId={state.local.selectedSessionId} titles={projectTitles} />
+        : <SessionNavigation key={preferencesKey} preferencesKey={preferencesKey} state={state}
+            onSelect={onSelect} onToggleWorkspace={onToggleWorkspace} />}
 
       </div>
       <AccountMenu account={account} onSettings={onSettings} />

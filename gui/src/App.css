@@ -424,3 +424,19 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 :is(button:enabled, select:enabled, summary, a[href], .sidebar-resizer, .session-row):hover { background-color: var(--control-hover); }
 .session-item:enabled:hover { background-color: transparent; }
 :is(.primary-button, .composer-submit, .session-pin):enabled:hover { color: var(--ink); }
+
+.project-navigation { margin: 12px 0; padding: 0 8px; }
+.project-heading { display: flex; align-items: center; gap: 4px; }
+.project-heading > .section-label { flex: 1; margin: 0; }
+.project-action { flex: 0 0 26px; padding: 0; min-height: 26px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); }
+.project-action:hover:not(:disabled), .project-label:hover, .project-chat:hover:not(:disabled) { background: var(--control-hover); }
+.project-label, .project-chat { border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: left; }
+.project-label { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; padding: 5px 8px; }
+.project-label svg { flex-shrink: 0; }
+.project-label span, .project-chat { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-chat { display: block; width: 100%; padding: 6px 8px; }
+.project-chats { padding-left: 22px; }
+.project-chat[aria-current] { background: var(--line); }
+.project-path { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; }
+.project-path input { flex-basis: 100%; min-width: 0; width: 100%; }
+.project-error { padding: 0 8px; }

@@ -375,7 +375,7 @@ export default interface Resources {
       "addWorkspace": "Register and open",
       "cancel": "Cancel",
       "confirm": "Confirm shutdown",
-      "confirmStop": "Stopping or restarting this Host interrupts all running tasks in this workspace. Session history is retained. Continue?",
+      "confirmStop": "Stopping or restarting this Host interrupts all running tasks across all projects and temporary chats. Session history is retained. Continue?",
       "confirmTitle": "Confirm Host shutdown",
       "connect": "Connect",
       "errors": {
@@ -418,12 +418,14 @@ export default interface Resources {
       "workspaceUnavailable": "The Host could not open this workspace."
     },
     "sidebar": {
+      "addProject": "Add project",
       "chats": "Chats",
       "creating": "Creating…",
       "fixtureBanner": "Fixture data · no backend",
       "live": "Live · AppHost",
       "liveBanner": "Live AppHost · controlled",
       "navigation": "Workspace and Session navigation",
+      "newProjectChat": "New chat in {{project}}",
       "newSession": "New Session",
       "offline": "Offline fixture",
       "pinChat": "Pin {{title}}",
@@ -432,6 +434,7 @@ export default interface Resources {
       "plugins": "Plugins",
       "pluginsHint": "Plugins are unavailable in the offline fixture",
       "prHint": "Pull requests are unavailable in the offline fixture",
+      "projects": "Projects",
       "pullRequests": "Pull requests",
       "scheduleHint": "Scheduling is unavailable in the offline fixture",
       "scheduled": "Scheduled",
