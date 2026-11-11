@@ -590,3 +590,11 @@ Coding 新增104行、删除140行。原 Package Product 新增25行、删除3�
 系统净减14行。四条退休路径复用原收据 IO，解码及 attempt 绑定由同一 owner 执行。
 测试挂点净增1行，另计。当前430份 Coding 源码111840行、1969份系统源码648255行。
 见[A139](coding-responsibility-convergence-progress.md#a139共用windows退休记录读取)。
+
+
+## A140 共用 Windows 退休冲突扫描
+
+Coding 新增29行、删除79行。原 Package Product 新增8行。系统净减42行。
+Package Product 共用借用根目录与枚举，Coding 共用同一套冲突规则。无测试或门禁文件改动。
+当前430份 Coding 源码111790行、Harness 361928行、1969份系统源码648213行。
+相对 Goal 起点分别净减25965行、净增33609行和净增13419行。见[A140](coding-responsibility-convergence-progress.md#a140共用windows退休冲突扫描)。

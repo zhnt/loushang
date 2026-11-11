@@ -29,6 +29,7 @@ from .package_product_worker_windows_recovery_inventory import (
 )
 from .package_product_worker_windows_stage_retirement import (
     CodingWindowsWorkerStageRetirementReceiptV1,
+    _has_other_retirement_artifact,
     _read_attempt_retirement_record,
     _retirement,
     _stage_exists,
@@ -231,24 +232,7 @@ def _remove_remaining_stage(
 def _full_retirement_artifact_present(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> bool:
-    with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-        names = windows_listdir_at(root)
-    return any(
-        name.casefold().startswith(
-            (
-                f"worker-stage-retire-{attempt_id}.json",
-                f"worker-stage-root-delete-{attempt_id}.json",
-                f"worker-stage-retired-{attempt_id}.json",
-                f"worker-unlaunched-stage-retire-{attempt_id}.json",
-                f"worker-unlaunched-stage-root-delete-{attempt_id}.json",
-                f"worker-unlaunched-stage-retired-{attempt_id}.json",
-                f"worker-crash-stage-retire-{attempt_id}.json",
-                f"worker-crash-stage-root-delete-{attempt_id}.json",
-                f"worker-crash-stage-retired-{attempt_id}.json",
-            )
-        )
-        for name in names
-    )
+    return _has_other_retirement_artifact(product, attempt_id, "worker-partial-stage")
 
 
 def _read_start(

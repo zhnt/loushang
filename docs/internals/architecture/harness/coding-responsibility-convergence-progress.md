@@ -35,6 +35,20 @@ START native_revision==2特殊校验在草稿中遗漏。未装Product，生产�
 [A129](key-designs/worker-history-responsibility-convergence.md#a129完整windows退休闭包原型未采用)。
 完整Goal仍active/partial；A129当时仍用A128已接受计量，不以树外原型报减少。
 
+## A140共用Windows退休冲突扫描
+
+完整、部分、未启动和崩溃退休共用原 Package Product 的借用根枚举。描述符释放后，
+Coding 按原顺序匹配其他三类退休的记录前缀，保留大小写折叠、暂存文件冲突和各入口
+原错误。严格库存继续执行原正则与容量检查，收据写入完成后的读回保留独立权限复核。
+
+580 条受控新旧观察逐字节一致，覆盖名称和后缀、短路、枚举和描述符退出失败。
+初版留下的空 import 已删除，最终源码通过 Ruff 与类型检查。102 项既有回归、
+183 项架构检查、依赖图和文档约束通过。Windows 原生运行未覆盖。三项独立评审及
+运行记录存于树外 `a140-retirement-conflict-scan`。
+
+Coding 减50行，Harness 增8行，系统净减42行。当前 Coding 111790行，系统648213行。
+较 Goal 起点分别减少25965行和增加13419行，距15K还差96790行。P1–P4仍在进行。
+
 ## A139共用Windows退休记录读取
 
 完整、崩溃、部分和未启动退休的12个读取入口由一个 Coding 读取配置接入原收据 IO。

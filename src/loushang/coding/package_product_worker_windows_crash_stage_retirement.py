@@ -10,9 +10,6 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
     PackageWindowsRuntimeQuiescenceV1,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    windows_listdir_at,
-)
 
 from .package_legacy_windows_receipt import (
     write_windows_private_receipt,
@@ -35,6 +32,7 @@ from .package_product_worker_windows_recovery_inventory import (
 )
 from .package_product_worker_windows_stage_retirement import (
     CodingWindowsWorkerStageRetirementReceiptV1,
+    _has_other_retirement_artifact,
     _read_attempt_retirement_record,
     _remove_remaining_stage,
     _stage_exists,
@@ -251,24 +249,7 @@ def _require_completed_crash_retirement_under_gc_guard(
 def _require_no_other_retirement(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> None:
-    with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-        names = windows_listdir_at(root)
-    if any(
-        name.casefold().startswith(
-            (
-                f"worker-stage-retire-{attempt_id}.json",
-                f"worker-stage-root-delete-{attempt_id}.json",
-                f"worker-stage-retired-{attempt_id}.json",
-                f"worker-partial-stage-retire-{attempt_id}.json",
-                f"worker-partial-stage-root-delete-{attempt_id}.json",
-                f"worker-partial-stage-retired-{attempt_id}.json",
-                f"worker-unlaunched-stage-retire-{attempt_id}.json",
-                f"worker-unlaunched-stage-root-delete-{attempt_id}.json",
-                f"worker-unlaunched-stage-retired-{attempt_id}.json",
-            )
-        )
-        for name in names
-    ):
+    if _has_other_retirement_artifact(product, attempt_id, "worker-crash-stage"):
         raise ValueError("Windows Worker crash stage retirement conflicts")
 
 

@@ -621,6 +621,14 @@ def require_windows_worker_retirement_root(
             raise error_type(changed_message)
 
 
+def list_windows_worker_state_root_names(
+    product: WindowsLocalWheelProductSessionOwner,
+) -> tuple[str, ...]:
+    with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+        names = windows_listdir_at(root)
+    return names
+
+
 def inspect_windows_product_worker_retirement_ids(
     product: WindowsLocalWheelProductSessionOwner,
     *,

@@ -17,6 +17,7 @@ from loushang.harness.package_product._worker_windows_attempt import (
     IntentT,
     decode_windows_worker_attempt_record,
     inspect_windows_product_worker_retirement_ids,
+    list_windows_worker_state_root_names,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -60,10 +61,17 @@ from .package_product_worker_windows_stage_review import (
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+_RETIREMENT_STEMS = (
+    "worker-stage",
+    "worker-partial-stage",
+    "worker-unlaunched-stage",
+    "worker-crash-stage",
+)
 _RETIREMENT_NAME = re.compile(
     r"(?:worker-stage|worker-partial-stage|worker-unlaunched-stage|worker-crash-stage)-(?:retire|root-delete|retired)-"
     r"([0-9a-f]{32})\.json(?:\.stage)?\Z"
 )
+_RETIREMENT_NAME_PREFIXES = tuple(stem + "-" for stem in _RETIREMENT_STEMS)
 _MAX_REVIEW_BYTES = 32768
 _MAX_RECEIPT_BYTES = 1024
 _READ_CHUNK = 1024 * 1024
@@ -351,27 +359,27 @@ def _stage_exists(root: int, attempt_id: str) -> bool:
     return "worker-payload-" + attempt_id in windows_listdir_at(root)
 
 
-def _partial_retirement_artifact_present(
-    product: WindowsLocalWheelProductSessionOwner, attempt_id: str
+def _has_other_retirement_artifact(
+    product: WindowsLocalWheelProductSessionOwner, attempt_id: str, excluded_stem: str
 ) -> bool:
-    with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-        names = windows_listdir_at(root)
+    names = list_windows_worker_state_root_names(product)
     return any(
         name.casefold().startswith(
-            (
-                f"worker-partial-stage-retire-{attempt_id}.json",
-                f"worker-partial-stage-root-delete-{attempt_id}.json",
-                f"worker-partial-stage-retired-{attempt_id}.json",
-                f"worker-unlaunched-stage-retire-{attempt_id}.json",
-                f"worker-unlaunched-stage-root-delete-{attempt_id}.json",
-                f"worker-unlaunched-stage-retired-{attempt_id}.json",
-                f"worker-crash-stage-retire-{attempt_id}.json",
-                f"worker-crash-stage-root-delete-{attempt_id}.json",
-                f"worker-crash-stage-retired-{attempt_id}.json",
+            tuple(
+                f"{stem}-{phase}-{attempt_id}.json"
+                for stem in _RETIREMENT_STEMS
+                if stem != excluded_stem
+                for phase in ("retire", "root-delete", "retired")
             )
         )
         for name in names
     )
+
+
+def _partial_retirement_artifact_present(
+    product: WindowsLocalWheelProductSessionOwner, attempt_id: str
+) -> bool:
+    return _has_other_retirement_artifact(product, attempt_id, "worker-stage")
 
 
 def _inspect_retirement_attempt_ids_under_gc_guard(
@@ -389,14 +397,7 @@ def _inspect_retirement_attempt_ids_under_gc_guard(
 def _retirement_attempt_ids_from_names(names: tuple[str, ...]) -> frozenset[str]:
     attempts: set[str] = set()
     for name in names:
-        if not name.casefold().startswith(
-            (
-                "worker-stage-",
-                "worker-partial-stage-",
-                "worker-unlaunched-stage-",
-                "worker-crash-stage-",
-            )
-        ):
+        if not name.casefold().startswith(_RETIREMENT_NAME_PREFIXES):
             continue
         match = _RETIREMENT_NAME.fullmatch(name)
         if match is None:

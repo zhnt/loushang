@@ -1,5 +1,6 @@
 # COD-RESP-GOAL-002：Coding 领域化与公共机制职责归一
 
+- A140 四类 Windows 退休共用根枚举与冲突匹配，Coding 减50行、系统减42行。见[A140](coding-responsibility-convergence-progress.md#a140共用windows退休冲突扫描)。
 - A139 四类 Windows 退休共用持久记录读取与 attempt 校验，Coding 减36行、系统减14行。见[A139](coding-responsibility-convergence-progress.md#a139共用windows退休记录读取)。
 
 - A138 五条 Windows 退休及结算路径共用原 Product 根校验，Coding 净0行，系统增15行。见[A138](coding-responsibility-convergence-progress.md#a138统一windows退休根校验)。

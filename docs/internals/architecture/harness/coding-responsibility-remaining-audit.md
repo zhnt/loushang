@@ -1,5 +1,6 @@
 # Coding 全量剩余职责与保留成本复核 A72
 
+- A140 四类 Windows 退休共用根枚举与冲突匹配，Coding 减50行、系统减42行。见[A140](coding-responsibility-convergence-progress.md#a140共用windows退休冲突扫描)。
 - A139 四类 Windows 退休共用持久记录读取与 attempt 校验，Coding 减36行、系统减14行。见[A139](coding-responsibility-convergence-progress.md#a139共用windows退休记录读取)。
 
 - A138 五条 Windows 退休及结算路径共用原 Product 根校验，Coding 净0行，系统增15行。见[A138](coding-responsibility-convergence-progress.md#a138统一windows退休根校验)。
@@ -80,7 +81,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
-数量按A139当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
+数量按A140当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
@@ -91,7 +92,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C04 Continuity | 2/2,956 | P3 | 原Continuity provider/runtime及A68 payload custody已接入；Code来源/导入/恢复桥仍在 | KD003 bytes import未实施；区分纯准入与读取/借用/abort寿命，不提前采用KD011 |
 | C05 Canary及作者验证入口 | 6/3,565 | P1/P3/P4 | 原Worker attempt及托管owner已有接入；Code保真实SDK/CLI验证入口和产品场景 | 存在真实运行消费者，不能按canary/smoke命名删除；剩余协调须随实际场景替代 |
 | C06 其余根入口与策略 | 26/4,460 | P2/P4 | 混合产品配置、模型/工具选择及既有薄绑定 | 逐具体声明/运行路径处置；不整体当领域保留或机械可删 |
-| C07 插件Worker | 112/21,617 | P1 | 五流/Rooted/history/platform/native custody已共享；A118收据事务、A121 live-stage及A122持久base读协调归位，Code保准入与证据关联 | 已共享payload recovery不重计；继续核普通Session选择/停止/重开/结清的剩余政策与协调，尚无整簇完成证明 |
+| C07 插件Worker | 112/21,567 | P1 | 五流/Rooted/history/platform/native custody已共享；A118收据事务、A121 live-stage及A122持久base读协调归位，Code保准入与证据关联 | 已共享payload recovery不重计；继续核普通Session选择/停止/重开/结清的剩余政策与协调，尚无整簇完成证明 |
 | C08 插件私有数据 | 31/6,693 | P4 | 原备份/删除/恢复/过期及A71 lineage已由原Plugin Management/Resources承接 | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
 | C09 兼容迁移与快照证据 | 34/9,523 | P4 | 原capture/epoch/receipt等机制已共享；存量分类、准入与恢复政策仍在 | 逐受支持状态和恢复入口给退出证明；legacy命名与静态无调用都不足以删支持 |
 | C10 包分发及Product管理 | 12/5,427 | P2/P4 | Package Product/Management/Source/Bootstrap已复用；Code仍组装兼容与fenced路线 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |
@@ -113,7 +114,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C26 配置/路径兼容导出 | 2/52 | P4 | 原Config owner已复用 | 保产品路径选择与支持中的导出，退出需合同证据 |
 | C27 版本检查 | 2/50 | P4 | 产品更新选择与原公共机制绑定 | 保必要产品选择，不为50行再建服务 |
 | C28 资源命名空间 | 5/5 | P4 | 支持中的Python布局标记 | 保真实加载/导出路径，空壳不是第二引擎 |
-| 合计 | **430/111,840** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
+| 合计 | **430/111,790** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
 
 ## 保留账：语义、兼容成本与当前实现必须分开
 
