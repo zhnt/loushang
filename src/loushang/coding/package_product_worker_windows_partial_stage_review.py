@@ -14,12 +14,16 @@ from hashlib import sha256
 
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_partial_stage,
+    review_windows_product_worker_offline,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
+    PackageWindowsRuntimeQuiescenceV1,
 )
 from loushang.harness.resources.plugins.locators import (
     canonical_plugin_relative_path,
@@ -181,36 +185,37 @@ def review_coding_windows_product_worker_partial_stage(
         or _ATTEMPT.fullmatch(attempt_id) is None
     ):
         raise OSError("Windows Worker partial-stage review requires a Product owner")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
+
+    def capture(
+        quiescence: PackageWindowsRuntimeQuiescenceV1,
+    ) -> CodingWindowsWorkerPartialStageReviewV1:
+        product.assert_root_gc_authority_current()
+        inventory = _inspect_windows_worker_recovery_inventory_under_gc_guard(product)
+        matches = tuple(item for item in inventory if item.attempt_id == attempt_id)
+        if (
+            len(matches) != 1
+            or matches[0].observed_debts != _PARTIAL_DEBTS
+            or attempt_id in _inspect_retirement_attempt_ids_under_gc_guard(product)
+        ):
             raise CodingWindowsWorkerPartialStageReviewError(
-                "coding_worker_partial_stage_runtime_active"
+                "coding_worker_partial_stage_history_unverified"
             )
-        with product.gc_gate.read_guard():
-            product.assert_root_gc_authority_current()
-            inventory = _inspect_windows_worker_recovery_inventory_under_gc_guard(
-                product
-            )
-            matches = tuple(item for item in inventory if item.attempt_id == attempt_id)
-            if (
-                len(matches) != 1
-                or matches[0].observed_debts != _PARTIAL_DEBTS
-                or attempt_id in _inspect_retirement_attempt_ids_under_gc_guard(product)
-            ):
-                raise CodingWindowsWorkerPartialStageReviewError(
-                    "coding_worker_partial_stage_history_unverified"
-                )
-            review = _review_partial_tree(
-                product,
-                attempt_id=attempt_id,
-                expected_stage=matches[0].payload_directory_identity,
-                lease_owner_revision=quiescence.owner_revision,
-            )
-            product.assert_root_gc_authority_current()
-            return review
+        review = _review_partial_tree(
+            product,
+            attempt_id=attempt_id,
+            expected_stage=matches[0].payload_directory_identity,
+            lease_owner_revision=quiescence.owner_revision,
+        )
+        product.assert_root_gc_authority_current()
+        return review
+
+    return review_windows_product_worker_offline(
+        product,
+        active_error=lambda: CodingWindowsWorkerPartialStageReviewError(
+            "coding_worker_partial_stage_runtime_active"
+        ),
+        review=capture,
+    )
 
 
 def _review_partial_tree(

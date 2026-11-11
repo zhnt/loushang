@@ -14,6 +14,7 @@ from hashlib import sha256
 
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_stage,
+    review_windows_product_worker_offline,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -60,6 +61,14 @@ _RESERVED_DEBTS = (
     "native_unsettled",
     "supervisor_history_missing",
 )
+
+_SETTLED_DEBTS = (
+    "payload_retained",
+    "launch_intent_retained",
+    "supervisor_history_missing",
+)
+_RESERVED_HISTORY_ERROR = "coding_worker_reserved_history_unverified"
+_UNLAUNCHED_HISTORY_ERROR = "coding_worker_unlaunched_history_unverified"
 
 
 class CodingWindowsWorkerReservedReviewError(RuntimeError):
@@ -149,45 +158,43 @@ class CodingWindowsWorkerReservedNoEffectReviewV1(_WindowsStageReviewWireMethods
         ).hexdigest()
 
 
-def _require_reserved_no_effect_candidate(
+def _require_no_effect_candidate(
     attempt: CodingWindowsWorkerRecoveryAttemptV1,
     intent: CodingWindowsWorkerLaunchIntentV1,
+    *,
+    settled: bool,
+    history_error: str,
 ) -> None:
     if (
         type(attempt) is not CodingWindowsWorkerRecoveryAttemptV1
         or type(intent) is not CodingWindowsWorkerLaunchIntentV1
         or attempt.attempt_id != intent.attempt_id
-        or attempt.observed_debts != _RESERVED_DEBTS
+        or attempt.observed_debts != (_SETTLED_DEBTS if settled else _RESERVED_DEBTS)
         or attempt.payload_directory_identity != intent.stage_identity
-        or not no_effect_history_matches(attempt, settled=False)
+        or not no_effect_history_matches(attempt, settled=settled)
         or not native_matches_intent(attempt, intent)
         or not launch_matches_intent(attempt, intent)
         or attempt.launch_stage_identity != intent.stage_identity
     ):
-        raise CodingWindowsWorkerReservedReviewError(
-            "coding_worker_reserved_history_unverified"
-        )
+        raise CodingWindowsWorkerReservedReviewError(history_error)
+
+
+def _require_reserved_no_effect_candidate(
+    attempt: CodingWindowsWorkerRecoveryAttemptV1,
+    intent: CodingWindowsWorkerLaunchIntentV1,
+) -> None:
+    _require_no_effect_candidate(
+        attempt, intent, settled=False, history_error=_RESERVED_HISTORY_ERROR
+    )
 
 
 def _require_settled_no_effect_candidate(
     attempt: CodingWindowsWorkerRecoveryAttemptV1,
     intent: CodingWindowsWorkerLaunchIntentV1,
 ) -> None:
-    if (
-        type(attempt) is not CodingWindowsWorkerRecoveryAttemptV1
-        or type(intent) is not CodingWindowsWorkerLaunchIntentV1
-        or attempt.attempt_id != intent.attempt_id
-        or attempt.observed_debts
-        != ("payload_retained", "launch_intent_retained", "supervisor_history_missing")
-        or attempt.payload_directory_identity != intent.stage_identity
-        or not no_effect_history_matches(attempt, settled=True)
-        or not native_matches_intent(attempt, intent)
-        or not launch_matches_intent(attempt, intent)
-        or attempt.launch_stage_identity != intent.stage_identity
-    ):
-        raise CodingWindowsWorkerReservedReviewError(
-            "coding_worker_unlaunched_history_unverified"
-        )
+    _require_no_effect_candidate(
+        attempt, intent, settled=True, history_error=_UNLAUNCHED_HISTORY_ERROR
+    )
 
 
 def review_coding_windows_product_worker_reserved_no_effect(
@@ -195,28 +202,7 @@ def review_coding_windows_product_worker_reserved_no_effect(
 ) -> CodingWindowsWorkerReservedNoEffectReviewV1:
     """Capture one exact Product stage while all Package runtimes are closed."""
 
-    if (
-        os.name != "nt"
-        or type(product) is not WindowsLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-        or type(attempt_id) is not str
-        or _ATTEMPT.fullmatch(attempt_id) is None
-    ):
-        raise OSError("Windows Worker reserved review requires a Product owner")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise CodingWindowsWorkerReservedReviewError(
-                "coding_worker_reserved_runtime_active"
-            )
-        with product.gc_gate.read_guard():
-            return _review_reserved_under_gc_guard(
-                product,
-                attempt_id=attempt_id,
-                lease_owner_revision=quiescence.owner_revision,
-            )
+    return _review_no_effect(product, attempt_id=attempt_id, settled=False)
 
 
 def review_coding_windows_product_worker_settled_unlaunched(
@@ -224,6 +210,12 @@ def review_coding_windows_product_worker_settled_unlaunched(
 ) -> CodingWindowsWorkerReservedNoEffectReviewV1:
     """Capture a settled reservation with no Supervisor or native effect."""
 
+    return _review_no_effect(product, attempt_id=attempt_id, settled=True)
+
+
+def _review_no_effect(
+    product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str, settled: bool
+) -> CodingWindowsWorkerReservedNoEffectReviewV1:
     if (
         os.name != "nt"
         or type(product) is not WindowsLocalWheelProductSessionOwner
@@ -231,50 +223,22 @@ def review_coding_windows_product_worker_settled_unlaunched(
         or type(attempt_id) is not str
         or _ATTEMPT.fullmatch(attempt_id) is None
     ):
-        raise OSError("Windows Worker unlaunched review requires a Product owner")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise CodingWindowsWorkerReservedReviewError(
-                "coding_worker_unlaunched_runtime_active"
-            )
-        with product.gc_gate.read_guard():
-            return _review_settled_unlaunched_under_gc_guard(
-                product,
-                attempt_id=attempt_id,
-                lease_owner_revision=quiescence.owner_revision,
-            )
-
-
-def _review_settled_unlaunched_under_gc_guard(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    attempt_id: str,
-    lease_owner_revision: int,
-) -> CodingWindowsWorkerReservedNoEffectReviewV1:
-    product.assert_root_gc_authority_current()
-    inventory = _inspect_windows_worker_recovery_inventory_under_gc_guard(product)
-    matches = tuple(item for item in inventory if item.attempt_id == attempt_id)
-    intent = _read_intent_under_gc_guard(product, attempt_id)
-    if (
-        len(matches) != 1
-        or intent is None
-        or attempt_id in _inspect_retirement_attempt_ids_under_gc_guard(product)
-    ):
-        raise CodingWindowsWorkerReservedReviewError(
-            "coding_worker_unlaunched_history_unverified"
-        )
-    _require_settled_no_effect_candidate(matches[0], intent)
-    review = _capture_reserved_stage(
+        role = "unlaunched" if settled else "reserved"
+        raise OSError(f"Windows Worker {role} review requires a Product owner")
+    return review_windows_product_worker_offline(
         product,
-        intent=intent,
-        native_revision=matches[0].native_revision,
-        lease_owner_revision=lease_owner_revision,
+        active_error=lambda: CodingWindowsWorkerReservedReviewError(
+            "coding_worker_unlaunched_runtime_active"
+            if settled
+            else "coding_worker_reserved_runtime_active"
+        ),
+        review=lambda quiescence: _review_no_effect_under_gc_guard(
+            product,
+            attempt_id=attempt_id,
+            lease_owner_revision=quiescence.owner_revision,
+            settled=settled,
+        ),
     )
-    product.assert_root_gc_authority_current()
-    return review
 
 
 def _review_reserved_under_gc_guard(
@@ -283,6 +247,21 @@ def _review_reserved_under_gc_guard(
     attempt_id: str,
     lease_owner_revision: int,
 ) -> CodingWindowsWorkerReservedNoEffectReviewV1:
+    return _review_no_effect_under_gc_guard(
+        product,
+        attempt_id=attempt_id,
+        lease_owner_revision=lease_owner_revision,
+        settled=False,
+    )
+
+
+def _review_no_effect_under_gc_guard(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    lease_owner_revision: int,
+    settled: bool,
+) -> CodingWindowsWorkerReservedNoEffectReviewV1:
     product.assert_root_gc_authority_current()
     inventory = _inspect_windows_worker_recovery_inventory_under_gc_guard(product)
     matches = tuple(item for item in inventory if item.attempt_id == attempt_id)
@@ -293,9 +272,14 @@ def _review_reserved_under_gc_guard(
         or attempt_id in _inspect_retirement_attempt_ids_under_gc_guard(product)
     ):
         raise CodingWindowsWorkerReservedReviewError(
-            "coding_worker_reserved_history_unverified"
+            _UNLAUNCHED_HISTORY_ERROR if settled else _RESERVED_HISTORY_ERROR
         )
-    _require_reserved_no_effect_candidate(matches[0], intent)
+    validate = (
+        _require_settled_no_effect_candidate
+        if settled
+        else _require_reserved_no_effect_candidate
+    )
+    validate(matches[0], intent)
     review = _capture_reserved_stage(
         product,
         intent=intent,

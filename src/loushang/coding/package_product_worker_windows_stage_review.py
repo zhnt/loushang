@@ -19,6 +19,7 @@ from loushang.harness.package_product._worker_windows_attempt import (
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_stage,
     require_windows_worker_retirement_root,
+    review_windows_product_worker_offline,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -174,20 +175,17 @@ def review_coding_windows_product_worker_complete_stage(
         or _ATTEMPT.fullmatch(attempt_id) is None
     ):
         raise OSError("Windows Worker stage review requires a Product owner")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise CodingWindowsWorkerStageReviewError(
-                "coding_worker_stage_review_runtime_active"
-            )
-        with product.gc_gate.read_guard():
-            return _review_complete_stage_under_gc_guard(
-                product,
-                attempt_id=attempt_id,
-                lease_owner_revision=quiescence.owner_revision,
-            )
+    return review_windows_product_worker_offline(
+        product,
+        active_error=lambda: CodingWindowsWorkerStageReviewError(
+            "coding_worker_stage_review_runtime_active"
+        ),
+        review=lambda quiescence: _review_complete_stage_under_gc_guard(
+            product,
+            attempt_id=attempt_id,
+            lease_owner_revision=quiescence.owner_revision,
+        ),
+    )
 
 
 def _review_complete_stage_under_gc_guard(

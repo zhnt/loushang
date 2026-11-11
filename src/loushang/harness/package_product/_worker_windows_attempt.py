@@ -30,6 +30,9 @@ from loushang.harness.resources.packages._private_receipts_windows import (
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeLeaseV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
+    PackageWindowsRuntimeQuiescenceV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     open_windows_directory,
     open_windows_regular_file_at,
@@ -595,6 +598,22 @@ class _ReceiptJournalFactory(Protocol[_ReceiptCo]):
     def __call__(
         self, path: Path, *, scope_id: str
     ) -> _ReceiptJournalReader[_ReceiptCo]: ...
+
+
+def review_windows_product_worker_offline(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    active_error: Callable[[], Exception],
+    review: Callable[[PackageWindowsRuntimeQuiescenceV1], _ReviewT],
+) -> _ReviewT:
+    registry = product.epoch_runtime.registry
+    with registry.exclusive_runtime_quiescence(
+        store_id=registry.store_id
+    ) as quiescence:
+        if quiescence.active_runtime_lease_ids:
+            raise active_error()
+        with product.gc_gate.read_guard():
+            return review(quiescence)
 
 
 def read_windows_product_worker_attempts(

@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import cast
 
+from loushang.harness.package_product._worker_windows_attempt import (
+    review_windows_product_worker_offline,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -170,18 +173,13 @@ def review_coding_windows_product_worker_crash_stage(
         or _ATTEMPT.fullmatch(attempt_id) is None
     ):
         raise ValueError("Windows Worker crash stage requires exact Product")
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise ValueError("Windows Worker crash stage has active leases")
-        with product.gc_gate.read_guard():
-            return _review_crash_stage_under_gc_guard(
-                product,
-                attempt_id=attempt_id,
-                quiescence=quiescence,
-            )
+    return review_windows_product_worker_offline(
+        product,
+        active_error=lambda: ValueError("Windows Worker crash stage has active leases"),
+        review=lambda quiescence: _review_crash_stage_under_gc_guard(
+            product, attempt_id=attempt_id, quiescence=quiescence
+        ),
+    )
 
 
 def _review_crash_stage_under_gc_guard(
