@@ -10,6 +10,7 @@ from typing import cast
 
 import pytest
 
+from loushang.ai.model import ModelSelection
 from loushang.apphost import (
     AdmissionIdentityV1,
     AppHostAdmissionSubjectKind,
@@ -283,6 +284,9 @@ class _CandidateValidator:
 
 
 class _Control:
+    def get_model_selection(self) -> ModelSelection:
+        return ModelSelection("provider", "endpoint", "model")
+
     def __init__(self, session_id: str) -> None:
         self.session_id = session_id
         self.session_name = "Coding hosted"
