@@ -191,8 +191,10 @@ describe("local managed Host presentation", () => {
     expect(chats.getByRole("button", { name: "Temporary chat" })).toBeVisible();
     expect(chats.queryByText("Project B chat")).toBeNull();
 
-    fireEvent.click(projects.getByRole("button", { name: "workspace" }));
-    expect(projects.queryByText("Project A chat")).toBeNull();
+    const project = projects.getByRole("button", { name: "workspace" });
+    fireEvent.click(project);
+    expect(project).toHaveAttribute("aria-expanded", "false");
+    expect(projects.queryByRole("button", { name: "Project A chat" })).toBeNull();
     expect(projects.getByRole("button", { name: "Project B chat" })).toBeVisible();
     fireEvent.click(projects.getByRole("button", { name: "New chat in workspace" }));
     await waitFor(() => expect(native.create).toHaveBeenCalledWith("/workspace", "local"));

@@ -817,7 +817,7 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
           disabled={!newSessionEnabled || newSessionPending}>
           <UiIcon name="new-session" />
           <span>{t(newSessionPending ? "workspace:sidebar.creating" : "workspace:sidebar.newSession")}</span>
-          <span className="sidebar-add-mark" aria-hidden="true">+</span>
+          <span className="sidebar-add-mark" aria-hidden="true" />
         </button>
         <button type="button" disabled title={t("workspace:sidebar.prHint")}><UiIcon name="pull-request" /><span>{t("workspace:sidebar.pullRequests")}</span></button>
         <button type="button" disabled title={t("workspace:sidebar.scheduleHint")}><UiIcon name="scheduled" /><span>{t("workspace:sidebar.scheduled")}</span></button>

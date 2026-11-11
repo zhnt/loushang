@@ -64,7 +64,7 @@ export function ProjectNavigation({ navigation, selectedId, titles }: {
       <div className="project-heading">
         <h2 className="section-label">{t("sidebar.projects")}</h2>
         <button type="button" className="project-action" aria-label={t("sidebar.addProject")}
-          title={t("sidebar.addProject")} disabled={!editable} onClick={navigation.openFolder}><span className="sidebar-add-mark" aria-hidden="true">+</span></button>
+          title={t("sidebar.addProject")} disabled={!editable} onClick={navigation.openFolder}><span className="sidebar-add-mark" aria-hidden="true" /></button>
       </div>
       {navigation.folderInput ? <form className="project-path" onSubmit={(event) => {
         event.preventDefault();
@@ -87,12 +87,14 @@ export function ProjectNavigation({ navigation, selectedId, titles }: {
                 if (expanded) next.add(project.path);
                 else next.delete(project.path);
                 return next;
-              })}><UiIcon name="folder" /><span>{label}</span></button>
+              })}><UiIcon name={expanded ? "folder" : "folder-closed"} /><span>{label}</span></button>
             <button type="button" className="project-action" disabled={!editable}
               aria-label={t("sidebar.newProjectChat", { project: label })} title={t("sidebar.newProjectChat", { project: label })}
-              onClick={() => { setCollapsed((old) => new Set([...old].filter((key) => key !== project.path))); navigation.create(project.path); }}><span className="sidebar-add-mark" aria-hidden="true">+</span></button>
+              onClick={() => { setCollapsed((old) => new Set([...old].filter((key) => key !== project.path))); navigation.create(project.path); }}><span className="sidebar-add-mark" aria-hidden="true" /></button>
           </div>
-          {expanded ? <div className="project-chats">{project.sessions.filter((session) => !session.pinned).map((session) => chat(project.path, session))}</div> : null}
+          <div className="project-chats" aria-hidden={!expanded} inert={!expanded}>
+            <div>{project.sessions.filter((session) => !session.pinned).map((session) => chat(project.path, session))}</div>
+          </div>
         </div>;
       })}
     </section>
