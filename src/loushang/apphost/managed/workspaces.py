@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from secrets import token_hex
 from time import monotonic
 
 from ._files import ManagedStorageError, PrivateManagedDirectory
@@ -31,6 +32,7 @@ class WorkspaceRegistry:
     """
 
     def __init__(self, root: Path):
+        self._temporary_root = root / "temporary"
         self._directory = PrivateManagedDirectory(
             root, create=True, create_parents=True, defer_open=True,
         )
@@ -49,7 +51,29 @@ class WorkspaceRegistry:
 
     def register(self, value: str) -> Path:
         path = canonical_workspace(value)
+        if self.is_temporary(path):
+            raise ValueError("temporary_workspace_reserved")
         self._update(str(path), remove=False)
+        return path
+
+    def is_temporary(self, path: Path) -> bool:
+        return path.is_relative_to(self._temporary_root)
+
+    def allocate_temporary(self) -> Path:
+        with self._directory.lock("workspaces.lock", create=True,
+                                  deadline=monotonic() + 10, wait_for_lock=True):
+            previous, paths = self._read()
+            if len(paths) >= 128:
+                raise ValueError("workspace_limit")
+            path = self._temporary_root / token_hex(16)
+            directory = PrivateManagedDirectory(
+                path, create=True, create_parents=True, exclusive_create=True,
+            )
+            directory.close()
+            updated = sorted([*paths, str(path)])
+            # A failed publication can already have replaced the registry.
+            # Keep the directory in that case so the admitted path stays valid.
+            self._directory.write("workspaces.json", json.dumps(updated).encode(), expected=previous)
         return path
 
     def unregister(self, value: str) -> None:

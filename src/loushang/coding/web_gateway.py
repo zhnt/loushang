@@ -10,8 +10,15 @@ import json
 import sys
 from pathlib import Path
 
-from .client_settings import remember_workspace, settings_request
+from loushang.appserver.local import MAX_LOCAL_APP_CONNECTIONS
+from loushang.appserver.protocol import WorkspaceRequestV1
+
+from .client_settings import TEMPORARY_WORKSPACE, remember_workspace, settings_request
+from .gui_local_host import TEMPORARY_MUX, project_mux_name
 from .web_client import WebHostClient
+
+# The base connection and the short-lived management helper each need a slot.
+MAX_WORKSPACE_CLIENTS = MAX_LOCAL_APP_CONNECTIONS - 2
 
 
 async def operate(request: dict) -> dict:
@@ -60,6 +67,97 @@ class WebGateway:
         await client.start()
         self.host = client
 
+    async def _navigation(self):
+        client = self.host.connection.client
+        projects = await client.workspace(WorkspaceRequestV1("projects"))
+        muxes = {mux.name: mux for mux in (await client.list_muxes()).mux_spaces}
+
+        def project_chats(name):
+            mux = muxes.get(name)
+            if mux is None or not mux.members:
+                return []
+            scope = f"mux:{mux.mux_space_id}"
+            pinned = settings_request({"operation": "preferences", "scope": scope})["pinned"]
+            return sorted(
+                ({
+                    "id": member.session.session_id,
+                    "title": member.title,
+                    "scope": scope,
+                    "pinned": member.session.session_id in pinned,
+                } for member in mux.members),
+                key=lambda chat: not chat["pinned"],
+            )
+
+        def directory():
+            return {
+                "projects": [
+                    {"path": item.path, "sessions": project_chats(project_mux_name(item.path))}
+                    for item in projects.workspaces
+                ],
+                "temporarySessions": project_chats(TEMPORARY_MUX),
+            }
+
+        return await asyncio.to_thread(directory)
+
+    async def _workspace_request(self, action, path=None):
+        result = await self.operate({
+            "action": "workspace", "workspaceAction": action,
+            **({"workspace": path} if path is not None else {}),
+        })
+        if result.get("errorCode"):
+            raise ValueError(result["errorCode"])
+        return result
+
+    async def _open_client(self, workspace, *, prepare_default=False):
+        existing = self.clients.pop(workspace, None)
+        if existing is not None:
+            self.clients[workspace] = existing
+            return workspace, existing
+        if len(self.clients) >= MAX_WORKSPACE_CLIENTS:
+            oldest = next(iter(self.clients))
+            await self.clients[oldest].close()
+            del self.clients[oldest]
+        if workspace == TEMPORARY_WORKSPACE:
+            result = await self._workspace_request("open-temporary")
+            scope = None
+        else:
+            result = await self._workspace_request("open", workspace)
+            workspace = result["workspace"]
+            scope = result["workspaces"][0]
+            if workspace in self.clients:
+                return workspace, self.clients[workspace]
+        client = WebHostClient(Path(result["recordRoot"]), result["muxName"], workspace_scope=scope)
+        await client.start(prepare_default=prepare_default)
+        self.clients[workspace] = client
+        return workspace, client
+
+    async def _create_chat(self, path, title):
+        if type(title) is not str or not title.strip() or len(title) > 256:
+            raise ValueError("invalid_chat_title")
+        workspace, client = await self._open_client(TEMPORARY_WORKSPACE if path is None else path)
+        scope = None
+        if path is None:
+            result = await self.host.connection.client.workspace(WorkspaceRequestV1("allocate-temporary"))
+            allocated, = result.workspaces
+            scope = {"scope": allocated.scope.value, "scopeFingerprint": allocated.scope_fingerprint}
+        async with client.lock:
+            created = await client.create({"title": title}, workspace_scope=scope)
+        return {"workspace": workspace, **created}
+
+    async def _workspace(self, request):
+        action = request.get("action")
+        if action == "navigation":
+            return await self._navigation()
+        path = request.get("path")
+        if action == "create-chat":
+            return await self._create_chat(path, request.get("title", "New Session"))
+        if action == "open":
+            workspace, client = await self._open_client(path, prepare_default=True)
+            await asyncio.to_thread(remember_workspace, workspace)
+            return {"workspaces": [{"path": workspace, **client.workspace_scope}]}
+        result = await self._workspace_request(action, path)
+        return {"workspaces": result["workspaces"]}
+
     async def dispatch(self, request: dict):
         operation = request.get("operation")
         if operation in {"environment", "preferences", "remember-workspace"}:
@@ -80,28 +178,15 @@ class WebGateway:
                 return {key: value for key, value in result.items() if key not in {"recordRoot", "muxName"}}
         if self.host is None:
             raise ValueError("not_connected")
-        if operation == "workspace":
+        if operation in {"workspace", "live"}:
+            # Attachment eviction and reconnect cannot race a request using the old control.
             async with self.management:
-                result = await self.operate({"action": "workspace", "workspaceAction": request.get("action"),
-                    **({"workspace": request["path"]} if request.get("path") is not None else {})})
-                if result.get("errorCode"):
-                    raise ValueError(result["errorCode"])
-                if request.get("action") == "open":
-                    path = result["workspace"]
-                    if path not in self.clients:
-                        if len(self.clients) >= 6:
-                            raise ValueError("connection_limit")
-                        client = WebHostClient(Path(result["recordRoot"]), result["muxName"],
-                                               workspace_scope=result["workspaces"][0])
-                        await client.start()
-                        self.clients[path] = client
-                    await asyncio.to_thread(remember_workspace, path)
-                return {"workspaces": result["workspaces"]}
-        if operation == "live":
-            client = self.clients.get(request.get("workspace"))
-            if client is None:
-                raise ValueError("workspace_not_selected")
-            return await client.call(request["action"], request.get("input", {}))
+                if self.host is None:
+                    raise ValueError("not_connected")
+                if operation == "workspace":
+                    return await self._workspace(request)
+                _, client = await self._open_client(request.get("workspace"))
+                return await client.call(request["action"], request.get("input", {}))
         raise ValueError("unknown_operation")
 
 

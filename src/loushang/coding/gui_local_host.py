@@ -10,6 +10,7 @@ import json
 import os
 import sys
 from contextlib import AsyncExitStack
+from hashlib import sha256
 from pathlib import Path
 from secrets import token_hex
 from time import monotonic
@@ -40,6 +41,12 @@ from loushang.appserver.protocol import AppServiceError, InvalidAppMessageError
 from loushang.hosting.errors import HostingError
 
 from .managed_process import APPLICATION_ID, ENDPOINT, coding_managed_process_request
+
+TEMPORARY_MUX = "gui-temporary"
+
+
+def project_mux_name(path: str) -> str:
+    return "ws-" + sha256(path.encode()).hexdigest()[:60]
 
 
 async def operate(request: dict, *, request_factory=None) -> dict:
@@ -138,26 +145,27 @@ async def operate(request: dict, *, request_factory=None) -> dict:
             reply.update(recordRoot=str(paths.connection))
             if action != "workspace":
                 return reply
-            from hashlib import sha256
-
             from loushang.appserver.protocol import WorkspaceRequestV1
 
             operation = request.get("workspaceAction")
-            result = await connection.client.workspace(WorkspaceRequestV1(operation, request.get("workspace")))
-            reply["workspaces"] = [
-                {"path": item.path, "scope": item.scope.value, "scopeFingerprint": item.scope_fingerprint}
-                for item in result.workspaces
-            ]
-            if operation != "open":
-                return reply
-            workspace = result.workspaces[0].path
-            reply["workspace"] = workspace
+            if operation == "open-temporary":
+                name = TEMPORARY_MUX
+            else:
+                result = await connection.client.workspace(WorkspaceRequestV1(operation, request.get("workspace")))
+                reply["workspaces"] = [
+                    {"path": item.path, "scope": item.scope.value, "scopeFingerprint": item.scope_fingerprint}
+                    for item in result.workspaces
+                ]
+                if operation != "open":
+                    return reply
+                workspace = result.workspaces[0].path
+                reply["workspace"] = workspace
+                name = project_mux_name(workspace)
             stage = "mux"
             snapshot = await _settled_native(lambda: discovery.snapshot_namespace(deadline=deadline, wait_for_lock=True))
             reservations = {item.name: item.reservation for item in snapshot.muxes if item.service == service}
             live = await connection.client.list_muxes()
             available = sorted(item.name for item in live.mux_spaces if item.name in reservations)
-            name = "ws-" + sha256(workspace.encode()).hexdigest()[:60]
             if name not in available:
                 reservation = reservations.get(name)
                 if reservation is None:

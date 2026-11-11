@@ -701,11 +701,11 @@ class WorkspaceRequestV1:
     path: str | None = None
 
     def __post_init__(self) -> None:
-        if self.action not in {"list", "register", "open", "unregister"}:
+        if self.action not in {"list", "projects", "register", "open", "unregister", "allocate-temporary"}:
             raise ValueError("invalid workspace action")
-        if self.action == "list":
+        if self.action in {"list", "projects", "allocate-temporary"}:
             if self.path is not None:
-                raise ValueError("list has no workspace path")
+                raise ValueError("workspace action takes no path")
         elif (type(self.path) is not str or not self.path.startswith("/")
               or len(self.path) > 4096 or "\0" in self.path):
             raise ValueError("invalid workspace path")

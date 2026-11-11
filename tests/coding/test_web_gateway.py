@@ -42,7 +42,7 @@ def test_connections_preserve_server_entries(tmp_path, monkeypatch):
 @pytest.mark.requires_host_runtime
 @pytest.mark.skipif(sys.platform != "linux", reason="managed Host is Linux-only")
 def test_web_gateway_real_host_snapshot_create_and_shared_state(tmp_path, monkeypatch):
-    from loushang.coding.web_gateway import WebGateway
+    from loushang.coding.web_gateway import MAX_WORKSPACE_CLIENTS, WebGateway
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -64,6 +64,48 @@ def test_web_gateway_real_host_snapshot_create_and_shared_state(tmp_path, monkey
             assert status["state"] == "running", status
             assert not status.get("errorCode"), status
             assert "recordRoot" not in status
+            async def navigation():
+                return await gateway.dispatch({"operation": "workspace", "action": "navigation"})
+
+            assert await navigation() == {"projects": [], "temporarySessions": []}
+            other = tmp_path / "other"
+            other.mkdir()
+            for path in (workspace, other):
+                await gateway.dispatch({"operation": "workspace", "action": "register", "path": str(path)})
+            directory = await navigation()
+            assert {p["path"] for p in directory["projects"]} == {str(workspace), str(other)}
+            assert all(not p["sessions"] for p in directory["projects"])
+
+            async def new_chat(path, title=None):
+                request = {"operation": "workspace", "action": "create-chat"}
+                if path is not None:
+                    request["path"] = path
+                if title is not None:
+                    request["title"] = title
+                return await gateway.dispatch(request)
+
+            project = await new_chat(str(workspace))
+            first = await new_chat(None)
+            second = await new_chat(None, "Temporary two")
+            directory = await navigation()
+            temporary_chats = directory["temporarySessions"]
+            assert [(chat["id"], chat["title"]) for chat in temporary_chats] == [
+                (first["sessionId"], "New Session"), (second["sessionId"], "Temporary two"),
+            ]
+            project_chats = next(p["sessions"] for p in directory["projects"] if p["path"] == str(workspace))
+            assert [(chat["id"], chat["title"]) for chat in project_chats] == [(project["sessionId"], "New Session")]
+            await gateway.dispatch({
+                "operation": "preferences", "scope": temporary_chats[1]["scope"],
+                "action": "pin", "session": second["sessionId"],
+            })
+            pinned = (await navigation())["temporarySessions"][0]
+            assert pinned["id"] == second["sessionId"] and pinned["pinned"]
+            temporary = await gateway.dispatch({
+                "operation": "live", "workspace": "@temporary", "action": "snapshot",
+            })
+            scopes = [member["session"]["scopeFingerprint"] for member in temporary["muxSpace"]["members"]]
+            assert len(set(scopes)) == 2
+            assert temporary["serviceInstanceId"] == status["serviceInstanceId"]
             await gateway.dispatch({"operation": "workspace", "action": "register", "path": str(workspace)})
             await gateway.dispatch({"operation": "workspace", "action": "open", "path": str(workspace)})
             snapshot = await gateway.dispatch(
@@ -105,6 +147,18 @@ def test_web_gateway_real_host_snapshot_create_and_shared_state(tmp_path, monkey
                 }
             )
             assert ClientPreferences().apply(key)["pinned"] == [created["sessionId"]]
+            for index in range(MAX_WORKSPACE_CLIENTS):
+                extra = tmp_path / f"workspace-{index}"
+                extra.mkdir()
+                await gateway.dispatch({"operation": "workspace", "action": "register", "path": str(extra)})
+                await new_chat(str(extra))
+            assert (await gateway.dispatch({"operation": "manage", "action": "status"}))["pid"] == status["pid"]
+            assert gateway.clients.get(str(workspace)) is not first_client
+            reopened = await gateway.dispatch({**base, "operation": "live", "action": "snapshot"})
+            assert reopened["serviceInstanceId"] == status["serviceInstanceId"]
+            assert {item["source"]["source"]["identity"]["sessionId"] for item in reopened["sessions"]} == {
+                project["sessionId"], created["sessionId"],
+            }
         finally:
             await gateway.close()
             if status and status.get("instanceId"):
@@ -148,7 +202,8 @@ def test_connection_listing_selection_and_secret_rejection(tmp_path, monkeypatch
 
 @pytest.mark.requires_host_runtime
 @pytest.mark.skipif(sys.platform != "linux", reason="managed Host is Linux-only")
-def test_web_execution_streaming_idempotency_and_interrupt(tmp_path, monkeypatch):
+@pytest.mark.parametrize("temporary", [False, True], ids=["project", "temporary"])
+def test_web_execution_streaming_idempotency_and_interrupt(tmp_path, monkeypatch, temporary):
     from pathlib import Path
 
     from loushang.coding import web_gateway
@@ -200,12 +255,17 @@ def test_web_execution_streaming_idempotency_and_interrupt(tmp_path, monkeypatch
                 {**base, "operation": "manage", "action": "start"}
             )
             assert status["state"] == "running", status
-            await gateway.dispatch({"operation": "workspace", "action": "register", "path": str(workspace)})
-            await gateway.dispatch({"operation": "workspace", "action": "open", "path": str(workspace)})
+            create = {"operation": "workspace", "action": "create-chat"}
+            if not temporary:
+                await gateway.dispatch({"operation": "workspace", "action": "register", "path": str(workspace)})
+                create["path"] = str(workspace)
+            chat = await gateway.dispatch(create)
+            base["workspace"] = chat["workspace"]
             snapshot = await live("snapshot")
             session_id = snapshot["sessions"][0]["source"]["source"]["identity"][
                 "sessionId"
             ]
+            assert session_id == chat["sessionId"]
             request = {
                 "sessionId": session_id,
                 "submissionId": "web-submit-1",

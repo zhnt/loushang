@@ -334,10 +334,19 @@ def test_protocol_schema_vocabulary_is_closed_and_complete() -> None:
         APP_PROTOCOL_VERSION
     )
 
-@pytest.mark.parametrize('action,path', [('list', None), ('register', '/project'), ('open', '/project'), ('unregister', '/project')])
+@pytest.mark.parametrize('action,path', [
+    ('list', None), ('projects', None), ('allocate-temporary', None),
+    ('register', '/project'), ('open', '/project'), ('unregister', '/project'),
+])
 def test_workspace_requests_roundtrip(action, path):
     request = AppRequestV1('request-1', AppOperationV1.WORKSPACE, WorkspaceRequestV1(action, path))
     assert decode_request(encode_request(request)) == request
+
+
+@pytest.mark.parametrize("action", ["projects", "allocate-temporary"])
+def test_workspace_request_rejects_client_paths_for_host_owned_actions(action):
+    with pytest.raises(ValueError):
+        WorkspaceRequestV1(action, "/project")
 
 
 def test_workspace_results_preserve_host_path_and_admitted_scope():

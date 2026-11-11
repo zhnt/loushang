@@ -34,6 +34,9 @@ class CodingWorkspaceCatalog:
 
         if request.action == "register":
             await self.register(request.path)
+        elif request.action == "allocate-temporary":
+            path = await asyncio.to_thread(self.registry.allocate_temporary)
+            self._add(path)
         elif request.action == "open":
             selected = await self.select(request.path)
         elif request.action == "unregister":
@@ -45,7 +48,11 @@ class CodingWorkspaceCatalog:
             self._catalogs.pop(path, None)
         entries = self._catalogs.items()
         if request.action == "open":
-            entries = [(selected.cwd, self._catalogs[selected.cwd])]
+            entries = ((selected.cwd, self._catalogs[selected.cwd]),)
+        elif request.action == "allocate-temporary":
+            entries = ((path, self._catalogs[path]),)
+        elif request.action == "projects":
+            entries = ((root, catalog) for root, catalog in entries if not self.registry.is_temporary(root))
         return WorkspaceResultV1(tuple(
             WorkspaceInfoV1(str(path), catalog.scopes[0].scope, catalog.scopes[0].fingerprint)
             for path, catalog in entries

@@ -14,6 +14,8 @@ from urllib.parse import urlsplit
 from loushang.apphost.client_preferences import ClientPreferences
 from loushang.foundation.platform_paths import resolve_platform_home
 
+TEMPORARY_WORKSPACE = "@temporary"
+
 
 def connections() -> dict:
     path = resolve_platform_home() / "connections.json"
@@ -163,7 +165,7 @@ def settings_request(request: dict):
         path = request["workspace"]
         if (
             not isinstance(path, str)
-            or not Path(path).is_absolute()
+            or (path != TEMPORARY_WORKSPACE and not Path(path).is_absolute())
             or len(path) > 4096
         ):
             raise ValueError("invalid_workspace")

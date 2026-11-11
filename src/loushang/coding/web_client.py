@@ -50,7 +50,7 @@ class WebHostClient:
         self.lock = asyncio.Lock()
         self.epoch = "1"
 
-    async def start(self):
+    async def start(self, *, prepare_default=True):
         try:
             await self.connection.start()
             if self.connection.execution_client is None:
@@ -58,7 +58,7 @@ class WebHostClient:
             if self.selector is None:
                 return
             await self.attach()
-            if not self.attachment.mux_space.members:
+            if prepare_default and not self.attachment.mux_space.members:
                 continuity = (
                     "gui-default-"
                     + hashlib.sha256(
@@ -91,7 +91,7 @@ class WebHostClient:
             member.member_id,
         )
 
-    async def create(self, value, continuity=None):
+    async def create(self, value, continuity=None, *, workspace_scope=None):
         source = value.get("sourceSessionId")
         if source:
             identity = next(
@@ -101,11 +101,12 @@ class WebHostClient:
             )
             scope, fingerprint = identity.scope, identity.scope_fingerprint
         else:
-            if self.workspace_scope is None:
+            workspace_scope = workspace_scope or self.workspace_scope
+            if workspace_scope is None:
                 raise ValueError("workspace_not_selected")
             scope, fingerprint = (
-                SessionScopeV1(self.workspace_scope["scope"]),
-                self.workspace_scope["scopeFingerprint"],
+                SessionScopeV1(workspace_scope["scope"]),
+                workspace_scope["scopeFingerprint"],
             )
         continuity = continuity or "gui-new-" + token_hex(16)
         mux = await self.connection.client.open_member(
