@@ -325,8 +325,23 @@ local Host. Stop running Hosts before replacing or removing this test package.
 Settings and Session data remain outside the installed program directory.
 
 This Ubuntu 26.10 amd64 candidate declares native system-library dependencies.
-It does not require a system Python/uv/Node installation. It does not register
-a systemd unit or start services during installation. Provider credentials and
+It does not require a system Python/uv/Node installation. The package also
+installs `loushang-mux`, `loushang-tui` and the `loushang-host.service` systemd
+user unit. The service uses the user's home directory as its workspace.
+Installation does not start or enable the unit. To use the systemd-managed
+Host from the TUI, run as your desktop user:
+
+```sh
+systemctl --user daemon-reload
+loushang-mux service start
+records="$XDG_RUNTIME_DIR/loushang-host/connections"
+loushang-mux --connection-root "$records" --endpoint workspace create main
+loushang-tui --connection-root "$records" main
+```
+
+Use `systemctl --user enable loushang-host.service` to start the Host with the
+user manager. The desktop launcher's local Host commands still manage the
+existing desktop route separately. Provider credentials and
 optional external tools/Plugin worker runtimes are not included. The opt-in
 checker extracts the actual deb and verifies relocated imports, real Host
 startup, reuse, stop and restart without provider calls or system installation.
