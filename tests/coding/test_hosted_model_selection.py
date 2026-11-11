@@ -24,6 +24,7 @@ from loushang.appserver.protocol import (
     SessionModelSelectV1,
     SessionOpenSpecV1,
     SessionSnapshotRequestV1,
+    WorkspaceRequestV1,
 )
 from loushang.appservice.execution_contract import ExecutionStatusV1
 from loushang.coding.control.settings_store import (
@@ -85,11 +86,13 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
         CodingManagedApplicationLaunchV1(tmp_path, tmp_path / "application", "coding.models", tmp_path / "sessions")
         if managed else _launch(tmp_path)
     )
-    scope = launch.scopes[0]
-    scope.session_dir.mkdir(mode=0o700)
+    scope = None if managed else launch.scopes[0]
+    if scope is not None:
+        scope.session_dir.mkdir(mode=0o700)
 
     @asynccontextmanager
     async def host():
+        nonlocal scope
         if managed:
             attempt = create_coding_managed_attempt(launch, stream_fn=_stream, tools=[])
         else:
@@ -98,6 +101,10 @@ def test_apphost_models_restore_before_input_and_reject_without_consuming_submis
         app.enable_client_scopes()
         client = app.open_client_scope()
         try:
+            if managed:
+                registered = await client.workspace(WorkspaceRequestV1("register", str(tmp_path)))
+                scope, = attempt._request.foreground.sessions.scopes
+                assert registered.workspaces[0].scope_fingerprint == scope.fingerprint
             yield client
         finally:
             await client.close()

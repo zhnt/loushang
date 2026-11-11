@@ -43,9 +43,9 @@ def test_real_alias_start_reuse_cross_cwd_diagnostics_and_stop(managed_cli, tmp_
     other = tmp_path / "other"
     other.mkdir()
     monkeypatch.chdir(other)
-    assert lmux.main(["server", "start", "--name", "build"]) == 1
-    assert commands[-1].starter is None and commands[-1].service is None
-    capsys.readouterr()
+    assert lmux.main(["server", "start", "--name", "build"]) == 0
+    assert json.loads(capsys.readouterr().out) == ready
+    assert commands[-1].starter._starter._process is None
     assert lmux.main(["status", "--server", "build"]) == 0
     status = json.loads(capsys.readouterr().out)
     assert status["serviceId"] == ready["serviceId"] and status["instanceId"] == ready["instanceId"]

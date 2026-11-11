@@ -1,5 +1,4 @@
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from io import StringIO
 from time import monotonic
@@ -17,7 +16,6 @@ from loushang.apphost.managed.registry import ManagedMuxReservationV1
 from loushang.coding.cli import lmux
 from loushang.coding.cli import lmux_command as module
 
-from .test_lmux_command import _failure_diagnostic
 from .test_lmux_command import managed_cli as managed_cli
 
 
@@ -187,10 +185,10 @@ def test_single_candidate_reconnects_without_reading_selection(managed_cli, tmp_
     assert not list(elsewhere.iterdir())
 
 
-def test_only_live_mux_among_multiple_services_attaches_without_selector(managed_cli, tmp_path, monkeypatch):
+def test_only_open_mux_on_the_shared_host_attaches_without_selector(managed_cli, tmp_path, monkeypatch):
     from loushang.harnesstui.mux import terminal
 
-    _, commands = managed_cli
+    module, commands = managed_cli
     attached = []
 
     async def screen(shell, **kwargs):
@@ -200,26 +198,21 @@ def test_only_live_mux_among_multiple_services_attaches_without_selector(managed
 
     monkeypatch.setattr(terminal, "run_hosted_mux_shell", screen)
     assert lmux.main(["new", "-s", "live"]) == 0
-    live_process = commands[-1].creation._coordinator._starter._process
+    first = commands[-1].creation
+    live_process = first._coordinator._starter._process
     other = tmp_path / "other"
     other.mkdir()
-    assert lmux.main(["new", "-s", "stopped", "--workspace", str(other)]) == 0, (
-        _failure_diagnostic(commands[-1])
-    )
-    stopped_process = commands[-1].creation._coordinator._starter._process
-    stopped_service = ManagedServiceKeyV1("coding", str(other)).service_id
-    # This test remains the original Popen parent. Reap its own child while the
-    # unrelated stop operation waits for the real process group to disappear.
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        reaped = pool.submit(stopped_process._process.wait, 20)
-        assert lmux.main(["stop", "--server", stopped_service, "--yes"]) == 0, repr(commands[-1].failure)
-        assert reaped.result(timeout=2) == 0
+    assert lmux.main(["new", "-s", "closed", "--workspace", str(other)]) == 0
+    second = commands[-1].creation
+    assert second.result.instance_id == first.result.instance_id
+    assert second._coordinator._starter._process is None
+    assert lmux.main(["close", "-t", "closed", "--yes"]) == 0
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
-    monkeypatch.setattr(module.ManagedMuxCommand, "_select_probe", lambda *a: pytest.fail("unique live mux opened selector"))
-    monkeypatch.setattr(module.ManagedMuxCommand, "_select_probe", lambda *a: pytest.fail("unique live mux opened selector"))
-    assert lmux.main(["attach"]) == 0, repr(commands[-1].failure)
+    monkeypatch.setattr(module.ManagedMuxCommand, "_select_probe", lambda *a: pytest.fail("unique open mux opened selector"))
+    # Both Workspaces are registered; choose a context only if this Mux is empty.
+    assert lmux.main(["attach", "--workspace", str(tmp_path)]) == 0, repr(commands[-1].failure)
     assert len(attached) == 3
     assert commands[-1].target == "live"
     assert commands[-1].creation is commands[-1].starter is None
