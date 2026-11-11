@@ -111,12 +111,20 @@ def test_rust_web_reconnect_preserves_managed_executions(tmp_path):
                 for index, member in enumerate(first["muxSpace"]["members"]):
                     session = member["session"]["sessionId"]
                     label = f"{path.name}-{index}"
+                    identity = {"sessionId": session, "submissionId": label,
+                                "serviceInstanceId": first["serviceInstanceId"]}
+                    unknown = {"accepted": False, "submissionId": label,
+                               "reason": "submission_outcome_unknown"}
+                    stale = {**identity, "serviceInstanceId": "replaced-instance"}
+                    assert call(endpoint, "live", workspace=str(path), action="submit",
+                                input={**stale, "text": "stale request"}) == unknown
                     reply = call(endpoint, "live", workspace=str(path), action="submit",
-                                 input={"sessionId": session, "submissionId": label, "text": label})
+                                 input={**identity, "text": label})
                     assert reply["accepted"], reply
-                    repeated = call(endpoint, "live", workspace=str(path), action="submit",
-                                    input={"sessionId": session, "submissionId": label, "text": label})
-                    assert repeated == reply
+                    assert call(endpoint, "live", workspace=str(path), action="find-submission",
+                                input=identity) == reply
+                    assert call(endpoint, "live", workspace=str(path), action="find-submission",
+                                input=stale) == unknown
                     executions[path][session] = reply["executionId"]
             directory = call(endpoint, "workspace", action="navigation")
             assert {item["path"] for item in directory["projects"]} == {str(p) for p in workspaces}

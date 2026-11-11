@@ -282,9 +282,18 @@ fn control<T>(
     options: ConnectionOptions<'_>,
     build: impl FnOnce(mpsc::SyncSender<std::result::Result<T, ()>>) -> ControlCommand,
 ) -> Result<T> {
+    control_on(options, None, &mut None, build)
+}
+
+fn control_on<T>(
+    options: ConnectionOptions<'_>,
+    expected_instance: Option<&str>,
+    observed_instance: &mut Option<String>,
+    build: impl FnOnce(mpsc::SyncSender<std::result::Result<T, ()>>) -> ControlCommand,
+) -> Result<T> {
     let (send, receive) = mpsc::channel();
     let (reply, result) = mpsc::sync_channel(1);
-    send.send(build(reply)).map_err(|_| "connection_failed")?;
+    let mut command = Some(build(reply));
     let options = ConnectionOptions {
         control_commands: Some(&receive),
         ..options
@@ -297,7 +306,19 @@ fn control<T>(
         1,
         &mut |_| Ok(()),
         &mut |_| Ok(()),
-        &mut |_| Ok(()),
+        &mut |authority| {
+            if let Some(authority) = authority {
+                let instance = authority.service_instance_id();
+                if expected_instance.is_some_and(|expected| expected != instance) {
+                    return Err(());
+                }
+                if let Some(command) = command.take() {
+                    *observed_instance = Some(instance.to_owned());
+                    send.send(command).map_err(|_| ())?;
+                }
+            }
+            Ok(())
+        },
         &mut || Ok(false),
     );
     result
@@ -403,6 +424,14 @@ fn session_control(options: ConnectionOptions<'_>, action: &str, input: &Value) 
     let session_id = field(input, "sessionId")?.to_owned();
     match action {
         "submit" => submit(options, session_id, input),
+        "find-submission" => {
+            let submission_id = field(input, "submissionId")?;
+            let instance = field(input, "serviceInstanceId")?;
+            Ok(submission_receipt(
+                submission_id,
+                find_submission(options, &session_id, submission_id, instance),
+            ))
+        }
         "interrupt" => {
             let execution_id = field(input, "executionId")?.to_owned();
             let result = control(options, |reply| ControlCommand::Interrupt {
@@ -433,13 +462,39 @@ fn session_control(options: ConnectionOptions<'_>, action: &str, input: &Value) 
 fn submit(options: ConnectionOptions<'_>, session_id: String, input: &Value) -> Result<Value> {
     let submission_id = field(input, "submissionId")?.to_owned();
     let text = field(input, "text")?.to_owned();
-    let result = control(options, |reply| ControlCommand::Submit {
-        session_id,
-        submission_id: submission_id.clone(),
-        text,
-        reply,
+    let expected_instance = input["serviceInstanceId"].as_str();
+    let mut instance = None;
+    let mut result = control_on(options.clone(), expected_instance, &mut instance, |reply| {
+        ControlCommand::Submit {
+            session_id: session_id.clone(),
+            submission_id: submission_id.clone(),
+            text,
+            reply,
+        }
     });
-    Ok(match result {
+    if let (Err(_), Some(instance)) = (&result, instance) {
+        result = find_submission(options, &session_id, &submission_id, &instance);
+    }
+    Ok(submission_receipt(&submission_id, result))
+}
+
+fn find_submission(
+    options: ConnectionOptions<'_>,
+    session_id: &str,
+    submission_id: &str,
+    instance: &str,
+) -> Result<ControlResult> {
+    control_on(options, Some(instance), &mut None, |reply| {
+        ControlCommand::FindSubmission {
+            session_id: session_id.to_owned(),
+            submission_id: submission_id.to_owned(),
+            reply,
+        }
+    })
+}
+
+fn submission_receipt(submission_id: &str, result: Result<ControlResult>) -> Value {
+    match result {
         Ok(ControlResult::Submitted(id)) => {
             json!({"accepted": true, "submissionId": submission_id, "executionId": id})
         }
@@ -449,7 +504,7 @@ fn submit(options: ConnectionOptions<'_>, session_id: String, input: &Value) -> 
         _ => {
             json!({"accepted": false, "submissionId": submission_id, "reason": "submission_outcome_unknown"})
         }
-    })
+    }
 }
 
 fn models(result: ModelControlResult) -> Result<Value> {

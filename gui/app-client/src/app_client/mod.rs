@@ -155,6 +155,7 @@ struct Hello {
 
 /// `publish` must only perform a bounded local handoff. It runs after the full
 /// snapshot membership barrier and before ongoing reads become observable.
+#[derive(Clone)]
 pub struct ConnectionOptions<'a> {
     pub root: &'a Path,
     pub timeout: Duration,
