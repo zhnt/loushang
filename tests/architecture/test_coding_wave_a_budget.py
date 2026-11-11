@@ -150,8 +150,10 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
         + r21_resume_lmux_allowance + 150 + 18  # Host First: catalog and managed wiring
     ), groups["lmux"]
     for path, limit in {
-        "cli/lmux_command.py": 811 + 17,
-        "managed_local.py": 172 + 1,
+        # One line reports the connection root after confirmed Host startup.
+        "cli/lmux_command.py": 811 + 17 + 1,
+        # Nine lines admit and pass through the optional AppHost tunnel credential.
+        "managed_local.py": 172 + 1 + 9,
     }.items():
         assert groups["lmux"][path] <= limit, (path, groups["lmux"][path], limit)
 

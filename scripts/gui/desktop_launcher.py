@@ -35,7 +35,7 @@ def main() -> int:
     def operate(action: str, **fields: object) -> dict:
         result = subprocess.run(
             [sys.executable, "-I", "-m", "loushang.coding.gui_local_host"],
-            input=json.dumps({"action": action, "workspace": str(workspace), **fields}),
+            input=json.dumps({"action": action, **fields}),
             text=True,
             capture_output=True,
             check=True,

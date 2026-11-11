@@ -951,5 +951,7 @@ Both listeners share AppHost readiness, peer limits and shutdown.
 Linux tests exercised a Rust client through a forwarded port, rejected the
 local management credential and remote stop mode, and verified that the same
 OpenSSH forward reconnects after AppHost restarts. The desktop route and
-configuration are covered by the Tauri tests. Windows GUI acceptance and
-Windows native managed service acceptance require separate native runs.
+configuration are covered by the Tauri tests. A Windows 10 x64 native workspace probe built from `bd1c58358` authenticated
+through an SSH reverse forward, registered and opened a Linux Workspace, and
+reconnected after the Linux AppHost restarted. The full graphical run and
+Windows native managed service acceptance remain separate.

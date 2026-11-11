@@ -1,8 +1,4 @@
-"""One bounded desktop management request over existing managed owners.
-
-This short-lived native helper is neither a service nor an Agent Runtime.
-Its private response goes to Rust; record paths never contain credentials.
-"""
+"""One bounded packaged Host lifecycle request over existing managed owners."""
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +7,6 @@ import os
 import sys
 from contextlib import AsyncExitStack
 from pathlib import Path
-from secrets import token_hex
 from time import monotonic
 
 from loushang.apphost.managed._files import ManagedStorageError
@@ -27,17 +22,14 @@ from loushang.apphost.managed.coordinator import ManagedServiceCoordinatorV1
 from loushang.apphost.managed.defaults import resolve_managed_defaults
 from loushang.apphost.managed.discovery import ManagedDiscoveryV1
 from loushang.apphost.managed.lifecycle import ManagedServiceJournalV1
-from loushang.apphost.managed.mux_creation import ManagedMuxCreateOperationV1
 from loushang.apphost.managed.namespace_admission import ManagedNamespaceAdmissionV1
 from loushang.apphost.managed.paths import resolve_managed_service_paths
-from loushang.apphost.managed.registry import ManagedMuxReservationV1
 from loushang.apphost.managed.service_admission import ManagedServiceAdmissionV1
 from loushang.apphost.managed.stopper import ManagedServiceStopOperationV1
 from loushang.appserver.client import AppConnectionClosedError
 from loushang.appserver.local_auth import LocalAuthenticationError
 from loushang.appserver.local_record import LocalRecordError
 from loushang.appserver.protocol import AppServiceError, InvalidAppMessageError
-from loushang.appservice.managed_mux import TEMPORARY_MUX, project_mux_name
 from loushang.hosting.errors import HostingError
 
 from .managed_process import APPLICATION_ID, ENDPOINT, coding_managed_process_request
@@ -56,8 +48,8 @@ async def operate(request: dict, *, request_factory=None) -> dict:
     stage = "inspection"
     try:
         if (type(request) is not dict
-                or set(request) - {"action", "workspace", "workspaceAction", "instanceId"}
-                or request.get("action") not in {"status", "start", "connect", "stop", "restart", "workspace"}):
+                or set(request) - {"action", "instanceId"}
+                or request.get("action") not in {"status", "start", "connect", "stop", "restart"}):
             raise ValueError("invalid request")
         action = request["action"]
         defaults = resolve_managed_defaults()
@@ -137,49 +129,6 @@ async def operate(request: dict, *, request_factory=None) -> dict:
                          serviceInstanceId=connection.execution_client.service_instance_id,
                          pid=None if state.native_identity is None else state.native_identity.pid)
             reply.update(recordRoot=str(paths.connection))
-            if action != "workspace":
-                return reply
-            from loushang.appserver.protocol import WorkspaceRequestV1
-
-            operation = request.get("workspaceAction")
-            if operation == "open-temporary":
-                name = TEMPORARY_MUX
-            else:
-                result = await connection.client.workspace(WorkspaceRequestV1(operation, request.get("workspace")))
-                reply["workspaces"] = [
-                    {"path": item.path, "scope": item.scope.value, "scopeFingerprint": item.scope_fingerprint}
-                    for item in result.workspaces
-                ]
-                if operation != "open":
-                    return reply
-                workspace = result.workspaces[0].path
-                reply["workspace"] = workspace
-                name = project_mux_name(workspace)
-            stage = "mux"
-            snapshot = await _settled_native(lambda: discovery.snapshot_namespace(deadline=deadline, wait_for_lock=True))
-            reservations = {item.name: item.reservation for item in snapshot.muxes if item.service == service}
-            live = await connection.client.list_muxes()
-            available = sorted(item.name for item in live.mux_spaces if item.name in reservations)
-            if name not in available:
-                reservation = reservations.get(name)
-                if reservation is None:
-                    reservation = ManagedMuxReservationV1(name, service, token_hex(16))
-                    try:
-                        await _settled_native(lambda: registry.reserve_mux(reservation, deadline=deadline, wait_for_lock=True))
-                    except ManagedStorageError as error:
-                        if error.code != "conflict":
-                            raise
-                        winner = await _settled_native(lambda: discovery.resolve(name, deadline=deadline, wait_for_lock=True))
-                        if winner is None or winner.service != service:
-                            raise
-                        reservation = winner.reservation
-                creation = ManagedMuxCreateOperationV1(registry, journal, namespace, reservation,
-                    runtime_root=runtime, endpoint=ENDPOINT, application_id=APPLICATION_ID,
-                    request_factory=factory, temporary_override=defaults.temporary_override)
-                owners.push_async_callback(creation.close)
-                created = await creation.run(deadline=deadline)
-                name = created.name
-            reply.update(recordRoot=str(paths.connection), muxName=name)
             return reply
     except InvalidAppMessageError:
         return {**reply, "state": "unknown", "errorCode": "protocol_incompatible"}
