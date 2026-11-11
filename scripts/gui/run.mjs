@@ -101,7 +101,7 @@ function buildWeb() {
 
 function runNative(command, fixtureBridge = false) {
   const webManifest = path.join(guiDir, "web", "Cargo.toml");
-  run(cargo, ["build", "--locked", "--manifest-path", webManifest, ...(command === "build" ? ["--release"] : [])]);
+  if (command === "build") run(cargo, ["build", "--locked", "--manifest-path", webManifest, "--release"]);
   const args = ["exec", "--", "tauri", command];
   if (command === "build") args.push("--no-bundle");
   if (fixtureBridge) args.push("--features", "fixture-bridge");

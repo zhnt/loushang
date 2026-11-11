@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 from tempfile import mkdtemp
 from time import monotonic
-from urllib.request import Request, urlopen
 
 root = Path(__file__).resolve().parents[2]
 evidence = Path(mkdtemp(prefix='loushang-host-first-desktop-'))
@@ -18,33 +17,15 @@ for path in roots:
     path.mkdir(mode=0o700)
     (path / 'marker').write_text(path.name)
 (home / 'host.json').write_text(json.dumps({'web': {'bind': '127.0.0.1', 'port': 0, 'dist': str(root / 'gui/dist')}}))
-shim = evidence / 'python-fixture'
-shim.write_text(f'''#!{sys.executable}
-import asyncio, sys
-sys.path.insert(0, {str(Path(__file__).parent)!r})
-from loushang.coding import web_gateway
-assert sys.argv[1:] == ['-m','loushang.coding.web_gateway']
-async def managed(request):
-    helper = await asyncio.create_subprocess_exec(
-        sys.executable, {str(Path(__file__).with_name("_host_first_manager.py"))!r},
-        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-    )
-    output, _ = await helper.communicate(__import__("json").dumps(request).encode())
-    assert helper.returncode == 0
-    return __import__("json").loads(output)
-web_gateway.operate = managed
-asyncio.run(web_gateway.run_stdio())
-''')
-shim.chmod(0o700)
 env = {**os.environ, 'LOUSHANG_HOME': str(home), 'LOUSHANG_RUNTIME_DIR': str(evidence / 'runtime'),
-       'LOUSHANG_TMPDIR': str(evidence / 'temporary'), 'LOUSHANG_GUI_PYTHON': str(shim),
+       'LOUSHANG_TMPDIR': str(evidence / 'temporary'),
        'LOUSHANG_GUI_WEB': str(root / 'gui/web/target/debug/loushang-web'),
        'XDG_CONFIG_HOME': str(evidence / 'gui-config'), 'XDG_DATA_HOME': str(evidence / 'gui-data'),
        'XDG_CACHE_HOME': str(evidence / 'gui-cache')}
 
 
 def manage(action, **fields):
-    p = subprocess.run([sys.executable, '-m', 'loushang.coding.gui_local_host'],
+    p = subprocess.run([sys.executable, str(Path(__file__).with_name("_host_first_manager.py"))],
         input=json.dumps({'action': action, **fields}), text=True, capture_output=True, env=env,
         timeout=90, check=True)
     return json.loads(p.stdout)
@@ -64,8 +45,12 @@ with (evidence / 'gui.log').open('w') as log:
         record('gui_launched', label=label, pid=process.pid, evidence=str(evidence))
         return process
 
-    gui = launch('A')
+    host = manage('start')
+    assert host['state'] == 'running', host
+    env['LOUSHANG_APP_RECORD_ROOT'] = host['recordRoot']
+    gui = None
     try:
+        gui = launch('A')
         assert gui.wait(timeout=1500) == 0
         entered = [json.loads(line) for line in (home / 'entered.jsonl').read_text().splitlines()]
         assert {row['cwd'] for row in entered} == {str(path) for path in roots}, entered
@@ -82,7 +67,7 @@ with (evidence / 'gui.log').open('w') as log:
             record('workspace_effect', **json.loads(effects[0]))
     finally:
         (home / 'release').touch()
-        if gui.poll() is None:
+        if gui is not None and gui.poll() is None:
             gui.terminate()
             gui.wait(timeout=15)
         state = manage('status')
@@ -90,11 +75,4 @@ with (evidence / 'gui.log').open('w') as log:
             stopped = manage('stop', instanceId=state['instanceId'])
             record('managed_stop', **{k:v for k,v in stopped.items() if k != 'recordRoot'})
             assert stopped.get('cleanlyStopped'), stopped
-        endpoint = home / 'state/web/endpoint.json'
-        if endpoint.exists():
-            value = json.loads(endpoint.read_text())
-            assert value['url'].startswith('http://127.0.0.1:')
-            with urlopen(Request(value['url'] + '/api/loushang', data=b'{"operation":"shutdown-adapter"}',
-                                 headers={'Content-Type': 'application/json', 'X-Loushang-Client': '1'}), timeout=15):
-                pass
-            record('web_adapter_shutdown_requested', pid=value['pid'])
+        assert not (home / 'state/web/endpoint.json').exists()

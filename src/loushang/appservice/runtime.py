@@ -76,6 +76,7 @@ from .execution_registry import (
 )
 from .execution_service import HostedExecutionServiceBindingV1
 from .managed_mux import (
+    TEMPORARY_MUX,
     ManagedMuxAdmissionV1,
     ManagedMuxServiceBindingV1,
     project_mux_name,
@@ -611,12 +612,14 @@ class AppServiceV1:
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         result = await self._workspaces.workspace(request)
         binding = self._managed_mux
-        if request.action == "open" and binding is not None and binding.ensure_named is not None:
+        if request.action in {"open", "allocate-temporary"} and binding is not None and binding.ensure_named is not None:
             if len(result.workspaces) != 1:
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
             try:
                 await binding.ensure_named(
-                    project_mux_name(result.workspaces[0].path), self.create_managed_mux,
+                    (project_mux_name(result.workspaces[0].path)
+                     if request.action == "open" else TEMPORARY_MUX),
+                    self.create_managed_mux,
                 )
             except AppServiceError:
                 raise

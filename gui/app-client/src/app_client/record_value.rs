@@ -92,7 +92,10 @@ impl Record {
             .iter()
             .find(|scope| scope.scope == "cwd")
             .or_else(|| self.scopes.first())?;
-        Some((&self.product_id, &scope.scope, &scope.fingerprint))
+        Some((self.product_id(), &scope.scope, &scope.fingerprint))
+    }
+    pub(crate) fn product_id(&self) -> &str {
+        &self.product_id
     }
     pub fn port(&self) -> u16 {
         self.port

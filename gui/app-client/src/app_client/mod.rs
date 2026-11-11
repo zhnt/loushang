@@ -161,6 +161,7 @@ pub struct ConnectionOptions<'a> {
     pub cancel: Option<Duration>,
     pub attach: bool,
     pub prepare_default_session: bool,
+    pub workspace_scope: Option<&'a WorkspaceInfo>,
     pub mux_name: &'a str,
     pub stop: Option<super::read_stop::ReadStop>,
     pub control_commands: Option<&'a Receiver<ControlCommand>>,
@@ -259,6 +260,7 @@ fn run_attempt(
         cancel,
         attach,
         prepare_default_session,
+        workspace_scope,
         mux_name,
         stop,
         control_commands,
@@ -282,8 +284,14 @@ fn run_attempt(
     let instance = &hello.service_instance_id;
     if attach {
         client.1.set("attachment_unavailable");
-        let mut session =
-            attachment::ReadSession::attach(&mut channel, instance, mux_name, &attempt, &record)?;
+        let mut session = attachment::ReadSession::attach(
+            &mut channel,
+            instance,
+            mux_name,
+            &attempt,
+            &record,
+            workspace_scope,
+        )?;
         let outcome = (|| {
             if prepare_default_session {
                 session.ensure_default(&mut channel, &attempt)?;
@@ -384,13 +392,50 @@ impl AppClient {
         timeout: Duration,
         request: WorkspaceRequest<'_>,
     ) -> Result<WorkspaceResult, ()> {
+        self.request_once(root, timeout, |channel, _| {
+            workspace::workspace_request(channel, request)
+        })
+    }
+
+    pub fn instance(&self, root: &Path, timeout: Duration) -> Result<String, ()> {
+        self.request_once(root, timeout, |_, hello| {
+            Ok(hello.service_instance_id.clone())
+        })
+    }
+
+    pub fn muxes(&self, root: &Path, timeout: Duration) -> Result<Vec<serde_json::Value>, ()> {
+        self.request_once(root, timeout, |channel, _| {
+            let response = attachment::request(channel, "mux/list", "1", serde_json::json!({}))?;
+            if response.result_type != "muxList" {
+                return Err(());
+            }
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct Directory {
+                mux_spaces: Vec<serde_json::Value>,
+            }
+            let directory: Directory =
+                serde_json::from_str(response.result.get()).map_err(|_| ())?;
+            Ok(directory.mux_spaces)
+        })
+    }
+
+    fn request_once<T>(
+        &self,
+        root: &Path,
+        timeout: Duration,
+        operation: impl FnOnce(
+            &mut transport_auth::Channel<DeadlineStream, DeadlineStream>,
+            &Hello,
+        ) -> Result<T, ()>,
+    ) -> Result<T, ()> {
         let deadline = RequestDeadline::new(timeout)?;
         let attempt = self.0.begin()?;
         let (record, profile) = self.load_record(root)?;
-        let (stream, _cancel, mut channel, _) = open_channel(
+        let (stream, _cancel, mut channel, hello) = open_channel(
             self, &record, &profile, &deadline, None, None, &attempt, false,
         )?;
-        let result = workspace::workspace_request(&mut channel, request);
+        let result = operation(&mut channel, &hello);
         let _ = stream.shutdown(Shutdown::Both);
         attempt.apply(|| result)
     }

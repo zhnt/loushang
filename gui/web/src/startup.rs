@@ -44,8 +44,8 @@ async fn probe(root: &Path, client: &reqwest::Client) -> Result<Option<String>> 
     let running = result
         .ok()
         .is_some_and(|response| response.status().is_success());
-    if running && value["implementation"] != "gui-rust/v1" {
-        return Err("restart the old Python Web adapter before using GUI Web".into());
+    if running && value["implementation"] != "gui-app-client/v1" {
+        return Err("stop the incompatible Web listener before starting this binary".into());
     }
     Ok(running.then(|| url.to_owned()))
 }

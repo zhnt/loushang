@@ -75,7 +75,7 @@ function installMock(implementation: (command: string, args?: any) => Promise<un
             { path: "/previous", sessions: [chat("b", "Project B chat", "mux:b")] },
           ], temporarySessions: [chat("scratch", "Temporary chat", "mux:temp")] };
         }
-        return implementation("manage", { request: args.request.request });
+        return { manageable: true, ...await implementation("manage", { request: args.request.request }) as object };
       }
     }
     return implementation(command, args);
@@ -284,11 +284,11 @@ describe("local managed Host presentation", () => {
     expect(screen.queryByRole("button", { name: "Start and connect" })).toBeNull();
   });
 
-  it("shows unsupported platforms without attempting managed effects", async () => {
+  it("shows missing AppServer configuration without contacting a Host", async () => {
     installMock(async () => ({ supported: false, workspace: "/workspace" }));
     render(<LocalHostGate />);
     openHostSettings();
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Linux only"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("No AppServer connection is configured"));
     expect(countActions("connect")).toBe(0);
   });
 });

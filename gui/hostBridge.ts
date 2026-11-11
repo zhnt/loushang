@@ -2,7 +2,6 @@ import type { Plugin } from "vite";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
-import { existsSync } from "node:fs";
 const execute = promisify(execFile);
 
 /** Vite only proxies HTTP; the GUI Rust binary owns the shared listener. */
@@ -17,9 +16,7 @@ export function hostBridge(): Plugin {
         await execute("cargo", ["build", "--locked", "--manifest-path", manifest], { cwd: path.join(root, "gui") });
         binary = path.join(root, "gui/web/target/debug", process.platform === "win32" ? "loushang-web.exe" : "loushang-web");
       }
-      const python = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-      const env = { ...process.env, ...(existsSync(python) ? { LOUSHANG_GUI_PYTHON: process.env.LOUSHANG_GUI_PYTHON ?? python } : {}) };
-      const { stdout } = await execute(binary, ["--ensure"], { cwd: root, env });
+      const { stdout } = await execute(binary, ["--ensure"], { cwd: root });
       const endpoint = new URL(stdout.trim());
       server.middlewares.use("/api/loushang", async (request, response) => {
         response.setHeader("Content-Type", "application/json");

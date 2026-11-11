@@ -19,41 +19,29 @@ records. Run its unit tests with
 `cargo test --locked --manifest-path gui/app-client/Cargo.toml`. To verify it
 against a real local AppHost with a deterministic model, run
 `uv run python scripts/gui/check_apphost_integration.py` from the repository root.
-The regular desktop and browser routes described below still use the Web adapter.
+Tauri handles local requests in process. The browser sends the same requests
+to the standalone Rust Web server, which calls the shared AppServer client.
+Both connect to an independently started AppHost.
 
-## Shared local storage and browser access
+## Connect to a local AppHost
 
-`npm --prefix gui run dev` starts Vite in desktop mode and opens the Tauri
-window. Rust reads the saved connections and talks to the selected HTTP endpoint.
-For the local target, Rust ensures the Web adapter is running; the adapter needs
-the installed Python project and uses the existing managed Host entrypoint.
-Selecting the local target does not start the Coding AppHost until requested.
+On Linux, run `uv run lmux server start`. Use the absolute directory in the
+`recordRoot` output as `LOUSHANG_APP_RECORD_ROOT` when starting either frontend.
+You can also set `appServer.recordRoot` in `$LOUSHANG_HOME/host.json`:
 
-`npm --prefix gui run dev:web` starts the browser development surface with its
-Rust Web service (`gui/web`). Vite proxies requests to its HTTP endpoint.
-The GUI Rust code owns the listener and static assets; Coding only handles Host
-requests through a private stdio adapter. One Rust Web process is shared per user directory.
-Open Settings → Host to start or connect the local AppHost. The Host can be
-running with an empty Workspace list. After connecting, enter an absolute path
-on the Host and choose **Register and open**, or select a registered Workspace.
-Each Workspace retains its own Sessions. Switching Workspaces or quitting the GUI
-does not stop their executions. Use **Stop Host** for a graceful service stop.
+```json
+{"appServer":{"recordRoot":"/absolute/path/to/connection"}}
+```
 
-On Linux, `lmux server start` starts the same managed Host without a Workspace.
-Use `lmux attach -t NAME --workspace /absolute/path` when an empty Mux needs
-an explicit working context. The Host deployment identity is scoped to the local
-user and Coding product. The
-Host owns canonical Workspace paths; the client may remember the last selection,
-but the preference grants no access. Each Workspace has its own transcript
-store and each Session receives its own working directory and Runtime.
-The AppService and Execution Registry are shared across Workspaces. Active
-execution recovery is limited to the same running Host instance.
-Both surfaces show the same shell and initial panel layout (native window controls
-remain desktop-only). The development API accepts only same-origin loopback
-requests with the client header. Stopping Vite closes its proxy; the Rust Web service and managed Hosts continue
-running so other clients remain connected. The browser development proxy needs
-the installed Python project dependencies. `LOUSHANG_GUI_PYTHON` selects its
-interpreter.
+Run `npm --prefix gui run dev` to start Tauri or
+`npm --prefix gui run dev:web` to open the browser development surface. Use
+**Register and open** with a path on the Host, or select a registered Workspace.
+AppHost allocates and owns its Mux. Each Workspace keeps its own Sessions.
+Run `lmux stop --all --yes` to stop the managed Host when you are done.
+
+Both development surfaces use the same frontend. Vite proxies browser requests
+to the Rust Web listener on loopback. Tauri does not start this listener.
+AppHost keeps accepted executions when either frontend exits.
 
 Storage below `LOUSHANG_HOME` (default `~/.loushang`) follows existing ownership:
 
@@ -62,10 +50,10 @@ Storage below `LOUSHANG_HOME` (default `~/.loushang`) follows existing ownership
 | `models/*.json` | Existing user model registry; unchanged |
 | `auth/<provider>-auth.json` | Existing model OAuth credentials; unchanged |
 | `coding/settings.json` | Existing Coding settings; unchanged |
-| `connections.json` | Client connection targets and last local workspace |
-| `host.json` | Standalone Web listener configuration |
+| `connections.json` | Saved desktop connection targets |
+| `host.json` | Local AppServer and standalone Web listener configuration |
 | `state/web/` | Shared adapter discovery, ownership locks and logs |
-| `data/client-preferences.sqlite3` | Host-side pins, recent visits and selected-session recovery, scoped by mux |
+| `data/client-preferences.sqlite3` | Shared frontend pins and last Workspace |
 | `data/`, `state/`, `lmux/` | Existing business, internal and managed-service storage |
 
 Language, appearance and Markdown theme remain independent localStorage
@@ -579,14 +567,10 @@ validation scope and native limitations.
 ### Rust Web listener development
 
 `gui/web` is a headless GUI Rust crate, independent of the Tauri window loop.
-`loushang-web --ensure` starts or reuses the local service. The desktop uses the
-same startup code; `LOUSHANG_GUI_WEB` can select an explicit binary for development.
-The default remains loopback port 1422 without login. The old Python Web listener
-has been removed; stop an already-running old adapter before starting this version.
-Existing `connections.json`, `host.json`, navigation data and Host sessions remain.
+`loushang-web --ensure` starts or reuses the loopback Web listener.
+`LOUSHANG_GUI_WEB` can select a binary for browser development. The default
+listener is port 1422. Set the AppServer record directory as shown above.
 
-For focused checks, run `cargo test --locked --manifest-path gui/web/Cargo.toml`
-(with the installed project interpreter in `LOUSHANG_GUI_PYTHON`) and
-`cargo clippy --locked --manifest-path gui/web/Cargo.toml --all-targets -- -D warnings`.
-The standalone GUI package includes `bin/loushang-web` and `web/` assets; invoke
-`loushang-gui web`. A Host-only package no longer owns a Web listener.
+Run `cargo test --locked --manifest-path gui/web/Cargo.toml` for listener tests.
+The standalone GUI package includes `bin/loushang-web` and `web/` assets. Invoke
+`loushang-gui web` to run them. The Host is packaged separately.

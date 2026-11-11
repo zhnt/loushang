@@ -3,17 +3,17 @@
 Status: implemented; Host First updates and integration validation below.
 Scope: browser/native connection adapters and Host-owned client navigation state.
 
-The ordinary desktop and Vite browser entrypoints share one persistent GUI Rust
-Web service (`gui/web`) per `LOUSHANG_HOME`. AppHost permits one controller attachment per mux;
-the adapter owns that attachment and fans out authoritative snapshots to clients.
-It delegates execution and lifecycle to existing AppClient/ExecutionClient and
-managed Host APIs. It never owns a second Product execution runtime.
+Tauri dispatches local requests in process. The standalone Rust Web listener
+accepts browser requests on loopback. Both use `gui/app-client` to open the
+existing authenticated AppServer connection. AppHost owns Workspace paths,
+Mux provisioning and Session execution. Host start and stop belong to the
+independent service manager.
 
 ## Tray integration contract
 
 TypeScript entry: `sharedSettings<T>(request)` from `gui/src/client/hostApi.ts`.
 Native entry: `invoke("client_settings", { request })`. Rust owner:
-`gui/src-tauri/src/client_settings.rs`; it uses the GUI Rust Web service.
+`gui/src-tauri/src/client_settings.rs`; it uses the shared Rust AppServer client for local targets.
 No result includes provider credentials. Local Web access requires no login token.
 
 ### List saved connections
@@ -50,12 +50,10 @@ For lifecycle operations:
 {"operation":"host/request","connectionId":"office","request":{"operation":"manage","action":"status"}}
 ```
 
-Actions: `status`, `connect`, `start`, `stop`, `restart`. Stop/restart require
-`instanceId` from the last status response; do not invent or reuse a stale ID.
-Result: existing `gui-local-host/v1` public fields (`state`, `errorCode`,
-`instanceId`, `serviceInstanceId`, `pid`, etc.). Private record paths
-and mux authentication never leave the adapter. `status` may start the adapter,
-but never starts a managed execution Host. Remote deployment and account authentication are deferred.
+The local adapter handles `status` and `connect` by probing the configured
+AppServer connection. The response carries the service instance and its
+availability. Private record paths and credentials stay in Rust. The
+independent Host service manager owns start, stop and restart.
 
 ### Normal selected connection
 
@@ -150,8 +148,7 @@ accepts local operation only; remote/account scope remains an open design topic.
 
 `gui/web` owns HTTP parsing, limits, origin checks, static assets, listener startup,
 endpoint discovery and lifetime. It is Rust code and runs without a desktop window.
-`coding.web_gateway` remains a private stdio Host adapter; it has no HTTP listener
-or Web subprocess startup. `coding.web_server` and `coding.web_endpoint` were removed.
+The Web listener and Tauri share the Rust request adapter and authenticated AppServer transport.
 The existing AppHost/AppServer contracts still own sessions and execution.
 This scope covers local Web only and adds no account or remote deployment design.
 

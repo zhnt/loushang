@@ -17,6 +17,8 @@ from loushang.appserver.managed_mux import ManagedMuxCreatedV1, ManagedMuxCreate
 from .continuity import require_application_id
 from .managed_mux_close import ManagedMuxCloseBindingV1
 
+TEMPORARY_MUX = "gui-temporary"
+
 
 def project_mux_name(path: str) -> str:
     return "ws-" + sha256(path.encode()).hexdigest()[:60]

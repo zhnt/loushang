@@ -283,12 +283,12 @@ export default function LocalHostGate() {
       <div className="local-host-card">
         <div className="local-host-actions">
           <button disabled={busy || !supported} onClick={() => void perform("status")}>{t("localHost.refresh")}</button>
-          {host.state === "not_running" || (isTauri() && selectedId === "local" && host.state === "unknown" && !host.errorCode) ?
+          {host.manageable && host.state === "not_running" ?
             <button disabled={busy || !supported} onClick={() => void perform("start", workspace.trim())}>{t("localHost.start")}</button> : null}
           {host.state === "running" ? <>
             <button disabled={busy} onClick={() => void perform("connect")}>{t(client ? "localHost.reconnect" : "localHost.connect")}</button>
-            <button disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>
-            <button disabled={busy} onClick={() => stop("restart")}>{t("localHost.restart")}</button>
+            {host.manageable && <><button disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>
+            <button disabled={busy} onClick={() => stop("restart")}>{t("localHost.restart")}</button></>}
           </> : null}
         </div>
       </div>

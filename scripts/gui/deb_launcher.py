@@ -18,7 +18,7 @@ def main() -> int:
     actions.add_argument("--status", action="store_true")
     actions.add_argument("--stop", action="store_true")
     args = parser.parse_args()
-    from loushang.coding.client_settings import connections, remember_workspace
+    from loushang.coding.client_settings import connections
 
     workspace = (
         (args.workspace or Path(connections().get("defaultWorkspace") or Path.home()))
@@ -31,7 +31,6 @@ def main() -> int:
     environment = dict(os.environ)
     environment.pop("PYTHONPATH", None)
     environment.pop("PYTHONHOME", None)
-    environment["LOUSHANG_GUI_PYTHON"] = sys.executable
 
     def operate(action: str, **fields: object) -> dict:
         result = subprocess.run(
@@ -66,9 +65,7 @@ def main() -> int:
     if args.start_only:
         print(json.dumps(host))
         return 0
-    remember_workspace(str(workspace))
-    # Let the current GUI connection/tray flow attach through the shared settings;
-    # explicit connection arguments would enable its legacy connection mode.
+    environment["LOUSHANG_APP_RECORD_ROOT"] = host["recordRoot"]
     return subprocess.call(
         [str(package / "bin/harness-gui")], cwd=workspace, env=environment
     )

@@ -58,27 +58,6 @@ pub fn root() -> Result<PathBuf> {
 pub fn source_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
-pub fn python() -> PathBuf {
-    std::env::var_os("LOUSHANG_GUI_PYTHON")
-        .map(PathBuf::from)
-        .or_else(bundled_python)
-        .or_else(source_python)
-        .unwrap_or_else(|| PathBuf::from(if cfg!(windows) { "python" } else { "python3" }))
-}
-fn source_python() -> Option<PathBuf> {
-    let path = source_root().join(if cfg!(windows) {
-        ".venv/Scripts/python.exe"
-    } else {
-        ".venv/bin/python"
-    });
-    path.is_file().then_some(path)
-}
-pub fn bundled_python() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let bundled = exe.parent()?.join("../runtime/bin/python3");
-    bundled.is_file().then_some(bundled)
-}
-
 pub fn state(root: &Path) -> Result<PathBuf> {
     let path = root.join("state/web");
     let mut builder = std::fs::DirBuilder::new();

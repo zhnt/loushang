@@ -413,7 +413,7 @@ export default interface Resources {
       },
       "stop": "Stop Host",
       "title": "Local AppHost",
-      "unsupported": "Local managed Host is currently supported on Linux only.",
+      "unsupported": "No AppServer connection is configured.",
       "workspace": "Workspace",
       "workspaceUnavailable": "Unable to open this workspace."
     },

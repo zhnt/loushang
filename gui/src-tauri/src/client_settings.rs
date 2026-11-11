@@ -160,16 +160,18 @@ async fn dispatch(routed: Routed) -> Result<Value> {
             body,
             selected,
         } => {
-            let endpoint = match destination {
-                Destination::Local(root) => Url::parse(
-                    &loushang_web::ensure(root)
+            let mut value = match destination {
+                Destination::Local(root) => {
+                    use loushang_app_client::frontend::Backend;
+                    static BACKEND: OnceLock<Backend> = OnceLock::new();
+                    let backend = BACKEND.get_or_init(|| Backend::new(root));
+                    tauri::async_runtime::spawn_blocking(move || backend.call(body))
                         .await
-                        .map_err(|_| "web_start_failed")?,
-                )
-                .map_err(|_| SETTINGS_ERROR)?,
-                Destination::Remote(endpoint) => endpoint,
+                        .map_err(|_| SETTINGS_ERROR)?
+                        .map_err(|_| "connection_failed")?
+                }
+                Destination::Remote(endpoint) => send(endpoint, body).await?,
             };
-            let mut value = send(endpoint, body).await?;
             if let Some(id) = selected {
                 let fields = value.as_object_mut().ok_or(SETTINGS_ERROR)?;
                 fields.insert("connectionId".into(), json!(id));
@@ -193,6 +195,16 @@ mod tests {
     use super::*;
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
+
+    #[test]
+    fn local_environment_does_not_start_a_web_listener() {
+        let home = tempfile::tempdir().unwrap();
+        let routed = route(home.path(), Request::Environment).unwrap();
+        let result = tauri::async_runtime::block_on(dispatch(routed)).unwrap();
+        assert_eq!(result["connectionId"], "local");
+        assert_eq!(result["manageable"], false);
+        assert!(!home.path().join("state/web").exists());
+    }
 
     fn http_peer(
         status: &str,

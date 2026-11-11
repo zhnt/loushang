@@ -1,5 +1,7 @@
 //! Rust client for the existing authenticated AppServer protocol.
 mod app_client;
+#[cfg(feature = "frontend")]
+pub mod frontend;
 pub mod read_stop;
 
 pub use app_client::{

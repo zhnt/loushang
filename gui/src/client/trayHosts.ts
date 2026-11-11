@@ -6,7 +6,7 @@ export type HostState = "unknown" | "not_running" | "starting" | "running" | "st
 export type HostAction = "status" | "start" | "connect" | "stop" | "restart";
 export interface HostStatus {
   state: HostState; errorCode: string | null; workspace?: string;
-  instanceId?: string; serviceInstanceId?: string; pid?: number;
+  manageable?: boolean; instanceId?: string; serviceInstanceId?: string; pid?: number;
 }
 export interface SavedHost {
   id: string; name: string; kind: "local" | "remote"; selected: boolean;
@@ -97,7 +97,7 @@ export function useTrayHosts(options: {
     return { id: entry.id, name: entry.kind === "local" ? options.localName : entry.name,
       selected: entry.selected, connection: state.connection, service: service(state.host.state),
       busy: switching || workingIds.includes(entry.id) || (entry.selected && options.busy),
-      manageable: state.supported, canEnable: !options.busy && !switching,
+      manageable: state.host.manageable === true, canEnable: !options.busy && !switching,
       configureStart: false,
       canStop: Boolean(state.host.instanceId), webUrl: entry.webUrl ?? undefined };
   });

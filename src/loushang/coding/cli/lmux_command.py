@@ -692,7 +692,8 @@ class ManagedMuxCommand:
                 if ready.application_id != APPLICATION_ID:
                     raise ManagedStorageError("conflict")
                 result: dict[str, object] = {"status": "service_ready", "serviceId": ready.instance.service_id,
-                                             "instanceId": ready.instance.instance_id}
+                                             "instanceId": ready.instance.instance_id,
+                                             "recordRoot": str(ready.record_root)}
                 if self.trace_deadline_ms is not None:
                     trace_result: dict[str, object] = {
                         "deadlineMs": self.trace_deadline_ms,

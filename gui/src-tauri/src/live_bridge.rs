@@ -176,6 +176,7 @@ pub(crate) fn start_live_connection(app: tauri::AppHandle) -> Result<(), String>
                 let outcome = client.run_stream(
                     ConnectionOptions {
                         prepare_default_session: true,
+                        workspace_scope: None,
                         root: &launch.record_root,
                         timeout: Duration::from_secs(5),
                         cancel: None,

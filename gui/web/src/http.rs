@@ -1,9 +1,10 @@
-use crate::{backend::Backend, policy};
+use crate::policy;
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::{
     body::{Bytes, Incoming},
     Method, Request, Response, StatusCode,
 };
+use loushang_app_client::frontend::Backend;
 use std::{convert::Infallible, net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::sync::watch;
 
@@ -67,17 +68,17 @@ impl Service {
             let _ = self.stop.send(true);
             return response(StatusCode::OK, "{\"result\":{}}", "application/json");
         }
-        match self.backend.call(value.into()).await {
-            Ok(reply) => response(
-                if reply.get("error").is_some() {
-                    StatusCode::SERVICE_UNAVAILABLE
-                } else {
-                    StatusCode::OK
-                },
-                reply.to_string(),
+        let backend = self.backend.clone();
+        let reply = tokio::task::spawn_blocking(move || backend.call(value.into()))
+            .await
+            .unwrap_or_else(|_| Err("host_unavailable".into()));
+        match reply {
+            Ok(result) => response(
+                StatusCode::OK,
+                serde_json::json!({"result": result}).to_string(),
                 "application/json",
             ),
-            Err(_) => failure(StatusCode::SERVICE_UNAVAILABLE, "host_request_failed"),
+            Err(error) => failure(StatusCode::SERVICE_UNAVAILABLE, &error),
         }
     }
     async fn asset(&self, path: &str) -> Response<Full<Bytes>> {

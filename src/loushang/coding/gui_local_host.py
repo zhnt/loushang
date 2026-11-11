@@ -37,12 +37,10 @@ from loushang.appserver.client import AppConnectionClosedError
 from loushang.appserver.local_auth import LocalAuthenticationError
 from loushang.appserver.local_record import LocalRecordError
 from loushang.appserver.protocol import AppServiceError, InvalidAppMessageError
-from loushang.appservice.managed_mux import project_mux_name
+from loushang.appservice.managed_mux import TEMPORARY_MUX, project_mux_name
 from loushang.hosting.errors import HostingError
 
 from .managed_process import APPLICATION_ID, ENDPOINT, coding_managed_process_request
-
-TEMPORARY_MUX = "gui-temporary"
 
 
 async def operate(request: dict, *, request_factory=None) -> dict:

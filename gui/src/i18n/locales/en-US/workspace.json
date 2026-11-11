@@ -67,7 +67,7 @@
     "title": "Local AppHost",
     "workspace": "Workspace",
     "pathHint": "Absolute local directory",
-    "unsupported": "Local managed Host is currently supported on Linux only.",
+    "unsupported": "No AppServer connection is configured.",
     "refresh": "Check status",
     "start": "Start and connect",
     "connect": "Connect",

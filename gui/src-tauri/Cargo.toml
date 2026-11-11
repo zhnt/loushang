@@ -22,8 +22,7 @@ fixture-bridge = []
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-loushang-app-client = { path = "../app-client" }
-loushang-web = { path = "../web" }
+loushang-app-client = { path = "../app-client", features = ["frontend"] }
 tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }

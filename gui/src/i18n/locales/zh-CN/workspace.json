@@ -67,7 +67,7 @@
     "title": "本地 AppHost",
     "workspace": "工作空间",
     "pathHint": "本地目录的绝对路径",
-    "unsupported": "本地 managed Host 管理目前仅支持 Linux。",
+    "unsupported": "尚未配置 AppServer 连接。",
     "refresh": "查看状态",
     "start": "启动并连接",
     "connect": "连接",

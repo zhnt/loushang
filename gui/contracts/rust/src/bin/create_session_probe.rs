@@ -28,6 +28,7 @@ fn main() {
         let first = app_client::AppClient::default().run_stream(
             app_client::ConnectionOptions {
                 prepare_default_session: false,
+                workspace_scope: None,
                 root: &root,
                 timeout: std::time::Duration::from_millis(timeout),
                 cancel: None,
@@ -74,6 +75,7 @@ fn main() {
         app_client::AppClient::default().run(
             app_client::ConnectionOptions {
                 prepare_default_session: false,
+                workspace_scope: None,
                 root: &root,
                 timeout: std::time::Duration::from_millis(timeout),
                 cancel: None,

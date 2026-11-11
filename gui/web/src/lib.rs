@@ -1,4 +1,4 @@
-mod backend;
+use loushang_app_client::frontend::Backend;
 pub mod config;
 mod http;
 pub mod policy;
@@ -25,12 +25,11 @@ pub async fn serve(root: PathBuf, dist: Option<PathBuf>) -> Result<()> {
     let service = Arc::new(http::Service {
         address,
         dist: assets,
-        backend: backend::Backend::spawn()?,
+        backend: Backend::new(root),
         stop,
     });
     publish(&state, address)?;
     accept(listener, stopped, service.clone()).await?;
-    service.backend.close().await;
     Ok(())
 }
 
@@ -76,7 +75,7 @@ fn assets(selected: Option<PathBuf>) -> Result<Option<PathBuf>> {
     Ok(path.map(std::fs::canonicalize).transpose()?)
 }
 fn publish(state: &std::path::Path, address: std::net::SocketAddr) -> Result<()> {
-    let endpoint = serde_json::json!({"url":format!("http://{address}"), "pid":std::process::id(), "implementation":"gui-rust/v1"});
+    let endpoint = serde_json::json!({"url":format!("http://{address}"), "pid":std::process::id(), "implementation":"gui-app-client/v1"});
     std::fs::write(state.join("endpoint.tmp"), endpoint.to_string())?;
     std::fs::rename(state.join("endpoint.tmp"), state.join("endpoint.json"))?;
     println!("Loushang: http://{address}");

@@ -104,6 +104,11 @@ class ManagedConnectionLeaseV1:
         return self._instance
 
     @property
+    def record_root(self) -> Path:
+        self._require_connection()
+        return self._root
+
+    @property
     def cleanup_pending(self) -> bool:
         return not self._settled
 

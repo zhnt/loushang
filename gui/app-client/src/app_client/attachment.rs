@@ -287,6 +287,7 @@ impl ReadSession {
         mux_name: &str,
         attempt: &super::connection_epoch::Attempt,
         record: &super::transport_auth::record_value::Record,
+        workspace_scope: Option<&super::WorkspaceInfo>,
     ) -> Result<Self, ()> {
         let response = request(
             channel,
@@ -305,8 +306,19 @@ impl ReadSession {
             next_id: 2,
             readers: None,
             closed: false,
-            default_template: record
-                .creation_context()
+            default_template: workspace_scope
+                .map(|workspace| {
+                    let scope = match workspace.scope {
+                        super::WorkspaceScope::Cwd => "cwd",
+                        super::WorkspaceScope::UserHome => "user_home",
+                    };
+                    (
+                        record.product_id(),
+                        scope,
+                        workspace.scope_fingerprint.as_str(),
+                    )
+                })
+                .or_else(|| record.creation_context())
                 .map(|(product, scope, fingerprint)| SessionTemplate {
                     product_id: product.to_owned(),
                     scope: scope.to_owned(),

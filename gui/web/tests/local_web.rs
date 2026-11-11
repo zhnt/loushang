@@ -15,6 +15,7 @@ async fn start(root: &Path) -> (Process, String) {
     let mut child = Process(
         Command::new(env!("CARGO_BIN_EXE_loushang-web"))
             .env("LOUSHANG_HOME", root)
+            .env("LOUSHANG_GUI_PYTHON", root.join("missing-python"))
             .stdout(Stdio::null())
             .stderr(Stdio::inherit())
             .spawn()
