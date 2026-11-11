@@ -18,6 +18,18 @@ def run(*args: str, cwd: Path = ROOT) -> str:
     return subprocess.check_output(args, cwd=cwd, text=True).strip()
 
 
+def install_command(stage: Path, package: Path, name: str, python_args: str) -> None:
+    launcher = package / name
+    launcher.write_text(
+        '#!/bin/sh\nset -eu\n'
+        'launcher=$(/usr/bin/readlink -f -- "$0")\n'
+        'package=${launcher%/*}\n'
+        f'exec "$package/runtime/bin/python3" -I {python_args} "$@"\n'
+    )
+    launcher.chmod(0o755)
+    (stage / "usr/bin" / name).symlink_to(f"../../opt/loushang/{name}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "dist/deb")
@@ -50,6 +62,9 @@ def main() -> None:
         shutil.copy2(
             ROOT / "scripts/gui/deb_launcher.py", package / "desktop_launcher.py"
         )
+        shutil.copy2(
+            ROOT / "scripts/gui/tui_appclient_entry.py", package / "tui_appclient_entry.py"
+        )
         # The portable GUI already contains the Rust Web binary and web/ assets.
         manifest_file = package / "manifest.json"
         manifest = json.loads(manifest_file.read_text())
@@ -69,12 +84,19 @@ def main() -> None:
             "loushang --workspace PATH --status / --stop manage the same local Host.\n"
             "GUI close/quit leaves the Host running. Stop it before replacing/removing\n"
             "this test package. Existing settings and Session data remain in user storage.\n"
-            "No systemd integration or installation-time service startup.\n"
+            "loushang-tui attaches to a named Mux on an already running Host.\n"
+            "loushang-mux service controls the installed systemd user unit.\n"
+            "Installation leaves the user service disabled and stopped.\n"
             "Ubuntu 26.10 amd64 candidate; other distributions have not been validated.\n"
             "Provider credentials and optional external tools are not included.\n"
         )
         (stage / "usr/bin").mkdir(parents=True)
         (stage / "usr/bin/loushang").symlink_to("../../opt/loushang/loushang")
+        install_command(stage, package, "loushang-tui", '"$package/tui_appclient_entry.py"')
+        install_command(stage, package, "loushang-mux", "-m loushang.coding.cli.mux")
+        unit = stage / "usr/lib/systemd/user/loushang-host.service"
+        unit.parent.mkdir(parents=True)
+        shutil.copy2(ROOT / "scripts/gui/loushang-host.service", unit)
         desktop = stage / "usr/share/applications/ai.loushang.desktop"
         desktop.parent.mkdir(parents=True)
         desktop.write_text(
@@ -130,8 +152,8 @@ def main() -> None:
             f"Package: loushang\nVersion: {version}\nArchitecture: amd64\n"
             "Maintainer: Loushang Contributors <noreply@loushang.ai>\n"
             f"Depends: {depends}\nInstalled-Size: {size}\nSection: devel\nPriority: optional\n"
-            "Description: Loushang desktop with bundled Python and AppHost backend\n"
-            " Includes the desktop client, local backend, Web assets and Python runtime.\n"
+            "Description: Loushang desktop, terminal, Web and AppHost backend\n"
+            " Includes a Python runtime and a systemd user unit for AppHost.\n"
         )
         run("desktop-file-validate", str(desktop))
         run("dpkg-deb", "--root-owner-group", "--build", str(stage), str(target))

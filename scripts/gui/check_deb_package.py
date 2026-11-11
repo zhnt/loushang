@@ -65,24 +65,38 @@ def main() -> None:
         assert all(Path(path).is_relative_to(package) for path in locations), locations
         assert (package / "web/index.html").is_file()
         assert (package / "bin/harness-gui").read_bytes()[:4] == b"\x7fELF"
+        assert (package / "bin/loushang-web").read_bytes()[:4] == b"\x7fELF"
+        for name, flags, expected in (
+            ("loushang-mux", ("service", "--help"), "restart"),
+            ("loushang-tui", ("--help",), "--connection-root"),
+        ):
+            entry = root / "extracted/usr/bin" / name
+            assert entry.resolve() == package / name
+            help_text = subprocess.check_output(
+                [str(entry), *flags], cwd=root, env=env, text=True, timeout=15
+            )
+            assert expected in help_text
+        unit = root / "extracted/usr/lib/systemd/user/loushang-host.service"
+        assert "ExecStart=/usr/bin/loushang-mux " in unit.read_text()
         state_before = call("--status")
         assert state_before["state"] == "not_running"
         try:
             started = call("--start-only")
-            assert started["state"] == "running" and started["muxName"]
+            assert started["state"] == "running" and started["recordRoot"]
             assert call("--status")["instanceId"] == started["instanceId"]
             reused = call("--start-only")
             assert reused["instanceId"] == started["instanceId"]
-            assert reused["muxName"] == started["muxName"]
+            assert reused["recordRoot"] == started["recordRoot"]
             stopped = call("--stop")
             assert stopped["state"] == "not_running" and stopped["cleanlyStopped"]
             assert call("--status")["state"] == "not_running"
             restarted = call("--start-only")
             assert restarted["instanceId"] != started["instanceId"]
-            assert restarted["muxName"] == started["muxName"]
+            assert restarted["recordRoot"] == started["recordRoot"]
             print(
                 "PASS: actual deb payload; bundled imports; native launcher symlink; "
-                "Web assets; authenticated Host startup/status/reuse/stop/restart; retained mux"
+                "Web assets; TUI/mux launchers and systemd unit; "
+                "authenticated Host startup/status/reuse/stop/restart"
             )
         finally:
             stopped = call("--stop")

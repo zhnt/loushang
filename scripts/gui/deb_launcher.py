@@ -61,11 +61,7 @@ def main() -> int:
             [str(package / "bin/harness-gui")], cwd=workspace, env=environment
         )
     host = operate("start")
-    if (
-        host.get("state") != "running"
-        or not host.get("recordRoot")
-        or not host.get("muxName")
-    ):
+    if host.get("state") != "running" or not host.get("recordRoot"):
         raise RuntimeError("Host did not become ready")
     if args.start_only:
         print(json.dumps(host))
