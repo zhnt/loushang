@@ -20,12 +20,14 @@ Host's HTTP endpoint. The desktop executable and its development entry require
 no Python interpreter. Start the Host's Web endpoint separately for local use.
 
 `npm --prefix gui run dev:web` starts the browser development surface with its
-Python proxy. The proxy reuses or starts one shared adapter per user directory.
+Rust Web service (`gui/web`). Vite proxies requests to its HTTP endpoint.
+The GUI Rust code owns the listener and static assets; Coding only handles Host
+requests through a private stdio adapter. One Rust Web process is shared per user directory.
 Open Settings → Host to select a workspace and explicitly start/connect its Host
 through the running adapter.
 Both surfaces show the same shell and initial panel layout (native window controls
 remain desktop-only). The development API accepts only same-origin loopback
-requests with the client header. Stopping Vite closes its proxy; the shared adapter and managed Hosts continue
+requests with the client header. Stopping Vite closes its proxy; the Rust Web service and managed Hosts continue
 running so other clients remain connected. The browser development proxy needs
 the installed Python project dependencies. `LOUSHANG_GUI_PYTHON` selects its
 interpreter.
@@ -56,7 +58,7 @@ Build the Web assets, then run the server without a desktop:
 
 ```sh
 npm --prefix gui run build:web
-uv run python -m loushang.coding.web_server --dist gui/dist
+cargo run --locked --manifest-path gui/web/Cargo.toml -- --dist gui/dist
 ```
 
 The default listener is `127.0.0.1:1422`, accessible only from this machine.
@@ -535,3 +537,18 @@ arrives; it does not maintain a duplicate translation dictionary.
 
 See [i18n delivery evidence](tests/playback/i18n-acceptance.md) for the observed
 validation scope and native limitations.
+
+### Rust Web listener development
+
+`gui/web` is a headless GUI Rust crate, independent of the Tauri window loop.
+`loushang-web --ensure` starts or reuses the local service. The desktop uses the
+same startup code; `LOUSHANG_GUI_WEB` can select an explicit binary for development.
+The default remains loopback port 1422 without login. The old Python Web listener
+has been removed; stop an already-running old adapter before starting this version.
+Existing `connections.json`, `host.json`, navigation data and Host sessions remain.
+
+For focused checks, run `cargo test --locked --manifest-path gui/web/Cargo.toml`
+(with the installed project interpreter in `LOUSHANG_GUI_PYTHON`) and
+`cargo clippy --locked --manifest-path gui/web/Cargo.toml --all-targets -- -D warnings`.
+The standalone GUI package includes `bin/loushang-web` and `web/` assets; invoke
+`loushang-gui web`. A Host-only package no longer owns a Web listener.

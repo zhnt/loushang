@@ -75,6 +75,8 @@ def main() -> None:
             raise RuntimeError(f"external symlink in portable runtime: {entry}")
     (package / "bin").mkdir()
     shutil.copy2(native, package / "bin/harness-gui")
+    shutil.copy2(native.with_name("loushang-web"), package / "bin/loushang-web")
+    shutil.copytree(ROOT / "gui/dist", package / "web")
     shutil.copy2(
         ROOT / "scripts/gui/desktop_launcher.py", package / "desktop_launcher.py"
     )

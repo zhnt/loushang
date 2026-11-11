@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -100,10 +100,18 @@ function buildWeb() {
 }
 
 function runNative(command, fixtureBridge = false) {
+  const webManifest = path.join(guiDir, "web", "Cargo.toml");
+  run(cargo, ["build", "--locked", "--manifest-path", webManifest, ...(command === "build" ? ["--release"] : [])]);
   const args = ["exec", "--", "tauri", command];
   if (command === "build") args.push("--no-bundle");
   if (fixtureBridge) args.push("--features", "fixture-bridge");
   runNpm(args);
+  if (command === "build") {
+    const name = process.platform === "win32" ? "loushang-web.exe" : "loushang-web";
+    const destination = path.join(guiDir, "src-tauri", "target", "release");
+    mkdirSync(destination, { recursive: true });
+    copyFileSync(path.join(guiDir, "web", "target", "release", name), path.join(destination, name));
+  }
 }
 
 function check() {

@@ -63,7 +63,7 @@ def main() -> None:
             text=True,
         ).splitlines()
         assert all(Path(path).is_relative_to(package) for path in locations), locations
-        assert (package / "runtime/lib/python3.11/gui/dist/index.html").is_file()
+        assert (package / "web/index.html").is_file()
         assert (package / "bin/harness-gui").read_bytes()[:4] == b"\x7fELF"
         state_before = call("--status")
         assert state_before["state"] == "not_running"

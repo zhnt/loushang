@@ -88,64 +88,6 @@ def write_connections(value: dict) -> None:
         Path(name).unlink(missing_ok=True)
 
 
-def selected_server() -> dict | None:
-    value = connections()
-    selected = value.get("defaultConnection")
-    if not selected:
-        return None
-    server = next(
-        (entry for entry in value["servers"] if entry.get("id") == selected), None
-    )
-    if server is None:
-        raise ValueError("unknown_connection")
-    return server
-
-
-def remote_request(request: dict, connection_id: str | None = None):
-    import httpx
-
-    if connection_id == "local":
-        server = None
-    elif connection_id is not None:
-        server = next(
-            (
-                item
-                for item in connections()["servers"]
-                if item.get("id") == connection_id
-            ),
-            None,
-        )
-        if server is None:
-            raise ValueError("unknown_connection")
-    else:
-        server = selected_server()
-    if server is None:
-        from .web_endpoint import local_endpoint
-
-        url = local_endpoint()
-    else:
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", server["id"]):
-            raise ValueError("invalid_connection")
-        url = server["url"].rstrip("/")
-    with httpx.Client(timeout=80, follow_redirects=False, trust_env=False) as client:
-        with client.stream(
-            "POST",
-            url + "/api/loushang",
-            json=request,
-            headers={"X-Loushang-Client": "1"},
-        ) as response:
-            response.raise_for_status()
-            payload = bytearray()
-            for chunk in response.iter_bytes():
-                payload.extend(chunk)
-                if len(payload) > 16_777_216:
-                    raise ValueError("response_too_large")
-            value = json.loads(payload)
-    if "result" not in value:
-        raise ValueError("remote_request_failed")
-    return value["result"]
-
-
 def connection_list() -> dict:
     home = resolve_platform_home()
     value = connections()
@@ -197,7 +139,7 @@ def connection_list() -> dict:
     return {"selectedId": selected, "connections": entries}
 
 
-def settings_request(request: dict, *, local: bool = False):
+def settings_request(request: dict):
     if request.get("operation") == "connections/list":
         return connection_list()
     if request.get("operation") == "connections/select":
@@ -213,19 +155,6 @@ def settings_request(request: dict, *, local: bool = False):
 
         mutate_connections(select)
         return connection_list()
-    if request.get("operation") == "host/request":
-        if local:
-            raise ValueError("proxy_not_available")
-        return remote_request(request["request"], request["connectionId"])
-    if not local and request.get("operation") == "remote-call":
-        return remote_request(request["request"])
-    if not local:
-        selected = connections().get("defaultConnection") or "local"
-        value = remote_request(request, selected)
-        if request.get("operation") == "environment":
-            value["remote"] = True
-            value["connectionId"] = selected
-        return value
     if request.get("operation") == "environment":
         return {
             "supported": sys.platform == "linux",
@@ -247,18 +176,3 @@ def settings_request(request: dict, *, local: bool = False):
             request["scope"], request.get("action", "read"), request.get("session", "")
         )
     raise ValueError("unknown_operation")
-
-
-def main():
-    try:
-        raw = sys.stdin.buffer.read(1_000_001)
-        if len(raw) > 1_000_000:
-            raise ValueError("request_too_large")
-        result = settings_request(json.loads(raw))
-        print(json.dumps({"result": result}))
-    except Exception:
-        print(json.dumps({"error": "settings_unavailable"}))
-
-
-if __name__ == "__main__":
-    main()

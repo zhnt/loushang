@@ -85,7 +85,7 @@ class WebGateway:
     async def dispatch(self, request: dict):
         operation = request.get("operation")
         if operation in {"environment", "preferences", "remember-workspace"}:
-            return await asyncio.to_thread(settings_request, request, local=True)
+            return await asyncio.to_thread(settings_request, request)
         if operation == "account":
             import getpass
 
@@ -159,8 +159,9 @@ class WebGateway:
         raise ValueError("unknown_operation")
 
 
-async def run_stdio():
+async def run_stdio(external_host: ExternalHost | None = None):
     tasks = set()
+    gateway = WebGateway(external_host)
 
     async def handle(raw):
         identifier = None
@@ -168,7 +169,7 @@ async def run_stdio():
             request = json.loads(raw)
             identifier = request["id"]
             async with asyncio.timeout(75):
-                result = await asyncio.to_thread(settings_request, request["request"])
+                result = await gateway.dispatch(request["request"])
             reply = {"id": identifier, "result": result}
         except Exception as error:
             # Never disclose paths, provider secrets, request text or raw exceptions.
@@ -185,10 +186,19 @@ async def run_stdio():
             task.add_done_callback(tasks.discard)
     finally:
         await asyncio.gather(*tasks, return_exceptions=True)
+        await gateway.close()
 
 
 if __name__ == "__main__":
+    import argparse
     from contextlib import suppress
 
+    parser = argparse.ArgumentParser(description="Private GUI Host request adapter")
+    parser.add_argument("--external-host", nargs=3)
+    args = parser.parse_args()
+    external = None
+    if args.external_host:
+        workspace, record_root, mux = args.external_host
+        external = ExternalHost(Path(workspace).resolve(), Path(record_root).resolve(), mux)
     with suppress(KeyboardInterrupt):
-        asyncio.run(run_stdio())
+        asyncio.run(run_stdio(external))

@@ -25,9 +25,8 @@ _HOST = (
 case ${1:-} in
   start) shift; exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.lmux server start "$@" ;;
   status|stop) exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.lmux "$@" ;;
-  web) shift; exec "$directory/runtime/bin/python3" -I -m loushang.coding.web_server "$@" ;;
-  -h|--help) printf '%s\n' 'Usage: loushang-host {start|status|stop|web} [arguments]'; exit 0 ;;
-  *) printf '%s\n' 'Usage: loushang-host {start|status|stop|web} [arguments]' >&2; exit 2 ;;
+  -h|--help) printf '%s\n' 'Usage: loushang-host {start|status|stop} [arguments]'; exit 0 ;;
+  *) printf '%s\n' 'Usage: loushang-host {start|status|stop} [arguments]' >&2; exit 2 ;;
 esac
 """
 )
@@ -37,6 +36,10 @@ _GUI = (
     + r"""
 unset PYTHONPATH PYTHONHOME
 export LOUSHANG_GUI_PYTHON="$directory/runtime/bin/python3"
+if [ "${1:-}" = web ]; then
+  shift
+  exec "$directory/bin/loushang-web" --dist "$directory/web" "$@"
+fi
 exec "$directory/bin/harness-gui" "$@"
 """
 )
@@ -114,6 +117,8 @@ def main() -> None:
         if args.native:
             (package / "bin").mkdir()
             shutil.copy2(args.native.resolve(strict=True), package / "bin/harness-gui")
+            shutil.copy2(args.native.resolve(strict=True).with_name("loushang-web"), package / "bin/loushang-web")
+            shutil.copytree(ROOT / "gui/dist", package / "web")
         for name in ("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"):
             shutil.copy2(ROOT / name, package / name)
         package.rename(output)

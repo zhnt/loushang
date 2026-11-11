@@ -3,8 +3,8 @@
 Status: implemented on `feature/gui-web-host`; integration validation below.
 Scope: browser/native connection adapters and Host-owned client navigation state.
 
-The ordinary desktop and Vite browser entrypoints share one persistent Web
-adapter per `LOUSHANG_HOME`. AppHost permits one controller attachment per mux;
+The ordinary desktop and Vite browser entrypoints share one persistent GUI Rust
+Web service (`gui/web`) per `LOUSHANG_HOME`. AppHost permits one controller attachment per mux;
 the adapter owns that attachment and fans out authoritative snapshots to clients.
 It delegates execution and lifecycle to existing AppClient/ExecutionClient and
 managed Host APIs. It never owns a second Product execution runtime.
@@ -12,8 +12,8 @@ managed Host APIs. It never owns a second Product execution runtime.
 ## Tray integration contract
 
 TypeScript entry: `sharedSettings<T>(request)` from `gui/src/client/hostApi.ts`.
-Native entry: `invoke("client_settings", { request })`. Python owner:
-`loushang.coding.client_settings.settings_request`.
+Native entry: `invoke("client_settings", { request })`. Rust owner:
+`gui/src-tauri/src/client_settings.rs`; it uses the GUI Rust Web service.
 No result includes provider credentials. Local Web access requires no login token.
 
 ### List saved connections
@@ -75,7 +75,7 @@ hosted browser uses its same-origin server and can omit the ID. Unsubscribe old
 clients before switching; already accepted executions remain owned by their Host.
 
 `webRequest` transports `manage` and `live` to the selected connection. Native
-calls use the Python helper; browser requests use the same-origin Vite proxy or
+calls use the Rust transport; browser requests use the same-origin Vite proxy or
 local standalone server directly, without a login page or access token.
 
 ## Storage
@@ -135,3 +135,12 @@ process serving a page without credentials, persisting navigation through HTTP,
 and retaining it across adapter restart without creating authentication files.
 Source dependency facts, Ruff and documentation checks passed. This follow-up
 accepts local operation only; remote/account scope remains an open design topic.
+
+## Listener ownership (2026-11-11)
+
+`gui/web` owns HTTP parsing, limits, origin checks, static assets, listener startup,
+endpoint discovery and lifetime. It is Rust code and runs without a desktop window.
+`coding.web_gateway` remains a private stdio Host adapter; it has no HTTP listener
+or Web subprocess startup. `coding.web_server` and `coding.web_endpoint` were removed.
+The existing AppHost/AppServer contracts still own sessions and execution.
+This scope covers local Web only and adds no account or remote deployment design.

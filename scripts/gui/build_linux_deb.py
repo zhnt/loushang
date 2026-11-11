@@ -50,9 +50,7 @@ def main() -> None:
         shutil.copy2(
             ROOT / "scripts/gui/deb_launcher.py", package / "desktop_launcher.py"
         )
-        # Preserve the web server's installed default resource lookup, as well as
-        # the frontend embedded in Tauri. Browser opening needs these actual files.
-        shutil.copytree(ROOT / "gui/dist", package / "runtime/lib/python3.11/gui/dist")
+        # The portable GUI already contains the Rust Web binary and web/ assets.
         manifest_file = package / "manifest.json"
         manifest = json.loads(manifest_file.read_text())
         manifest.update(

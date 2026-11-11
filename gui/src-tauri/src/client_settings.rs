@@ -34,10 +34,15 @@ pub(crate) enum Request {
     Environment,
 }
 
+enum Destination {
+    Local(PathBuf),
+    Remote(Url),
+}
+
 enum Routed {
     Local(Value),
     Http {
-        endpoint: Url,
+        destination: Destination,
         body: Value,
         selected: Option<String>,
     },
@@ -47,16 +52,16 @@ fn route(root: &Path, request: Request) -> Result<Routed> {
     match request {
         Request::List => Directory::read(root).map(|directory| Routed::Local(directory.listing())),
         Request::Select { id } => Directory::select(root, &id).map(Routed::Local),
-        Request::ToHost { id, request } => {
-            Directory::read(root).and_then(|directory| forward(&directory, &id, request, false))
-        }
+        Request::ToHost { id, request } => Directory::read(root)
+            .and_then(|directory| forward(root, &directory, &id, request, false)),
         Request::ToSelected { request } => {
             let directory = Directory::read(root)?;
-            forward(&directory, directory.selected(), request, false)
+            forward(root, &directory, directory.selected(), request, false)
         }
         Request::Environment => {
             let directory = Directory::read(root)?;
             forward(
+                root,
                 &directory,
                 directory.selected(),
                 json!({ "operation": "environment" }),
@@ -66,9 +71,19 @@ fn route(root: &Path, request: Request) -> Result<Routed> {
     }
 }
 
-fn forward(directory: &Directory, id: &str, body: Value, environment: bool) -> Result<Routed> {
+fn forward(
+    root: &Path,
+    directory: &Directory,
+    id: &str,
+    body: Value,
+    environment: bool,
+) -> Result<Routed> {
     Ok(Routed::Http {
-        endpoint: directory.endpoint(id)?,
+        destination: if id == "local" {
+            Destination::Local(root.to_path_buf())
+        } else {
+            Destination::Remote(directory.endpoint(id)?)
+        },
         body,
         selected: environment.then(|| id.to_owned()),
     })
@@ -141,10 +156,19 @@ async fn dispatch(routed: Routed) -> Result<Value> {
     match routed {
         Routed::Local(value) => Ok(value),
         Routed::Http {
-            endpoint,
+            destination,
             body,
             selected,
         } => {
+            let endpoint = match destination {
+                Destination::Local(root) => Url::parse(
+                    &loushang_web::ensure(root)
+                        .await
+                        .map_err(|_| "web_start_failed")?,
+                )
+                .map_err(|_| SETTINGS_ERROR)?,
+                Destination::Remote(endpoint) => endpoint,
+            };
             let mut value = send(endpoint, body).await?;
             if let Some(id) = selected {
                 let fields = value.as_object_mut().ok_or(SETTINGS_ERROR)?;
