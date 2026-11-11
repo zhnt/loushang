@@ -162,8 +162,11 @@ class _PluginSessionLifecycle(Generic[RootsT, EventT, FamilyT, LeaseT]):
 
         self._recover_inactive_session_families()
         self.security.reconcile(self.instances)
+        intents = self.management_retirement_intents()
+        if not intents:
+            return
         runtime = self.instances.snapshot()
-        for intent in self.management_retirement_intents():
+        for intent in intents:
             instance = runtime.instance(intent.instance_revision_ref)
             if instance is None or instance.state in {"REVOKING", "RETIRED"}:
                 continue
