@@ -317,7 +317,9 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # Hosted execution plus redacted, session-local model control remain
         # isolated in the Coding AppService adapter.
         # Optional reasoning adds 28 lines to project and validate Coding levels.
-        "coding-adapter": 470 + 28,
+        # Confirmed-model validation, serialized selection and persistence
+        # failure handling add 12 lines. Reviewed in the AppServer overview.
+        "coding-adapter": 470 + 28 + 12,
         # Stable execution recovery and explicit profile wiring from main.
         "harnesstui-mux": 688,
     }

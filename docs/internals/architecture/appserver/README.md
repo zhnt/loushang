@@ -1,5 +1,18 @@
 # Loushang AppServer Architecture
 
+## GUI integration review (2026-11-11)
+
+Codex, acting as the implementation agent for PR #885, reviewed the GUI
+integration at `1a8c7b840` and accepts the following bounded architecture updates.
+The Coding adapter remains the owner of model validation and serialized model
+selection. Its 12 additional lines reject unconfirmed models and persistence
+failures, bringing the reviewed adapter budget to 510 lines without moving code
+out of the measured group. The Web gateway uses AppServer local connection and
+record APIs to probe an externally managed Host and releases the probe in
+`finally`. It does not acquire Host lifecycle ownership. The architecture
+consumer list now includes this explicit gateway dependency. Focused model,
+gateway, hosted-application and architecture regressions validate these seams.
+
 [Architecture](../README.md) ·
 [AppHost](../apphost/README.md) ·
 [G11 In-Process Hosted Application](hosted-application-g11.md) ·
