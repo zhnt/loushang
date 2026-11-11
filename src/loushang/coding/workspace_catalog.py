@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 from pathlib import Path
 
 from loushang.apphost.managed.workspaces import WorkspaceRegistry
+from loushang.harness.transcript.store_admission import TranscriptStoreAdmission
 
 from .hosted_catalog import _MAX_TRANSCRIPT_BYTES
 from .managed_catalog import CodingManagedSessionCatalogV1
@@ -81,9 +83,14 @@ class CodingWorkspaceCatalog:
             raise ValueError("workspace_catalog_closed")
         if path not in self._catalogs:
             leaf = hashlib.sha256(str(path).encode()).hexdigest()
+            previous = self._root / leaf
+            witness = TranscriptStoreAdmission(previous, state_root=self._state).witness_root
+            # Preserve existing identities and surface missing-store errors
+            # when an admission witness survives. New stores get their own
+            # family parent, separate from the flat Coding transcripts.
+            root = previous if os.path.lexists(previous) or os.path.lexists(witness) else self._root / "workspaces" / leaf
             self._catalogs[path] = CodingManagedSessionCatalogV1(
-                session_root=self._root / leaf, workspace=path,
-                store_state_root=self._state,
+                session_root=root, workspace=path, store_state_root=self._state,
             )
         return self._catalogs[path]
 

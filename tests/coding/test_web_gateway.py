@@ -53,6 +53,16 @@ def test_web_gateway_real_host_snapshot_create_and_shared_state(tmp_path, monkey
     ):
         monkeypatch.setenv(name, str(tmp_path / leaf))
 
+    # Existing installations already have transcripts in the default store.
+    home = tmp_path / "home"
+    data = home / "data"
+    legacy = data / "sessions"
+    for directory in (home, data, legacy):
+        directory.mkdir(mode=0o700)
+    old_transcript = legacy / "previous.jsonl"
+    original = b'{"type":"session","id":"previous"}\n'
+    old_transcript.write_bytes(original)
+
     async def run():
         gateway = WebGateway()
         status = None
@@ -86,6 +96,7 @@ def test_web_gateway_real_host_snapshot_create_and_shared_state(tmp_path, monkey
 
             project = await new_chat(str(workspace))
             first = await new_chat(None)
+            assert old_transcript.read_bytes() == original
             second = await new_chat(None, "Temporary two")
             directory = await navigation()
             temporary_chats = directory["temporarySessions"]

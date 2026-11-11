@@ -538,3 +538,37 @@ def test_two_workspaces_route_real_transcripts_without_runtime_or_cwd_switch(tmp
         finally:
             await catalog.close()
     asyncio.run(scenario())
+
+
+def test_workspace_catalog_reopens_previous_project_store(tmp_path):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    session_root = tmp_path / "sessions"
+    state_root = tmp_path / "stores"
+    previous_root = session_root / hashlib.sha256(str(workspace).encode()).hexdigest()
+
+    async def scenario():
+        previous = CodingManagedSessionCatalogV1(
+            session_root=previous_root, workspace=workspace, store_state_root=state_root,
+        )
+        scope = previous.scopes[0]
+        candidate = await previous.create_candidate(_intent(scope))
+        await candidate.close()
+        old_rows = await previous.list_identities((scope.discovery_scope,), limit=2)
+        await previous.close()
+
+        registry = WorkspaceRegistry(tmp_path / "registry")
+        catalog = CodingWorkspaceCatalog(registry, session_root, state_root)
+        await catalog.load()
+        try:
+            await catalog.register(str(workspace))
+            selected = await catalog.select(str(workspace))
+            assert selected.fingerprint == scope.fingerprint
+            rows = await catalog.workspace_identities(selected.fingerprint, selected.discovery_scope, limit=2)
+            assert [row.reference for row in rows] == [row.reference for row in old_rows]
+            candidate = await catalog.open_candidate(rows[0].reference)
+            await candidate.close()
+        finally:
+            await catalog.close()
+
+    asyncio.run(scenario())
