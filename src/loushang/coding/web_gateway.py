@@ -8,79 +8,57 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.appserver.local import LocalAppClientConnectionV1
-from loushang.appserver.local_record import (
-    LocalConnectionDirectoryV1,
-    LocalRecordError,
-    LocalRecordErrorCodeV1,
-)
-
 from .client_settings import remember_workspace, settings_request
-from .gui_local_host import operate
 from .web_client import WebHostClient
 
 
-@dataclass(frozen=True)
-class ExternalHost:
-    workspace: Path
-    record_root: Path
-    mux_name: str
-
-    async def operate(self, request: dict) -> dict:
-        reply = {
-            "version": "gui-local-host/v1",
-            "supported": True,
-            "workspace": request["workspace"],
-            "state": "not_running",
-            "errorCode": None,
-        }
-        if request["workspace"] != str(self.workspace):
-            return {**reply, "errorCode": "workspace_not_configured"}
-        if request["action"] not in {"status", "connect"}:
-            return {**reply, "errorCode": "external_service_managed"}
-        directory = LocalConnectionDirectoryV1(self.record_root)
-        connection = LocalAppClientConnectionV1(
-            directory, "workspace", expected_product_id="coding"
-        )
-        try:
-            await connection.start()
-            execution = connection.execution_client
-            if execution is None:
-                return {**reply, "errorCode": "protocol_incompatible"}
-            instance = execution.service_instance_id
-            return {
-                **reply,
-                "state": "running",
-                "instanceId": instance,
-                "serviceInstanceId": instance,
-                "recordRoot": str(self.record_root),
-                "muxName": self.mux_name,
-            }
-        except LocalRecordError as error:
-            if error.code is not LocalRecordErrorCodeV1.NOT_FOUND:
-                raise
-            return reply
-        finally:
-            try:
-                await connection.close()
-            finally:
-                directory.close()
+async def operate(request: dict) -> dict:
+    # The managed launcher outlives neither the request nor its caller's exit.
+    # Keeping it inside the Web adapter leaves a stopped Host as its zombie child.
+    helper = await asyncio.create_subprocess_exec(
+        sys.executable, "-m", "loushang.coding.gui_local_host",
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+    )
+    try:
+        output, _ = await helper.communicate(json.dumps(request).encode())
+    except BaseException:
+        if helper.returncode is None:
+            helper.terminate()
+        await helper.wait()
+        raise
+    if helper.returncode != 0:
+        raise ValueError("management_failed")
+    return json.loads(output)
 
 
 class WebGateway:
-    def __init__(self, external_host: ExternalHost | None = None):
+    def __init__(self):
         self.clients: dict[str, WebHostClient] = {}
         self.management = asyncio.Lock()
-        self.operate = external_host.operate if external_host is not None else operate
+        self.operate = operate
+        self.host: WebHostClient | None = None
 
     async def close(self):
-        for client in self.clients.values():
-            async with client.lock:
-                await client.close()
+        clients = [*self.clients.values(), *([self.host] if self.host else [])]
+        results = await asyncio.gather(*(client.close() for client in clients), return_exceptions=True)
+        failures = [result for result in results if isinstance(result, BaseException)]
+        if failures:
+            raise BaseExceptionGroup("client_cleanup_incomplete", failures)
         self.clients.clear()
+        self.host = None
+
+    async def _connect_host(self, result):
+        if self.host is not None:
+            execution = self.host.connection.execution_client
+            if execution is not None and execution.service_instance_id == result["serviceInstanceId"]:
+                await self.host.connection.client.list_muxes()
+                return
+            await self.close()
+        client = WebHostClient(Path(result["recordRoot"]))
+        await client.start()
+        self.host = client
 
     async def dispatch(self, request: dict):
         operation = request.get("operation")
@@ -88,80 +66,48 @@ class WebGateway:
             return await asyncio.to_thread(settings_request, request)
         if operation == "account":
             import getpass
-
             return {"name": getpass.getuser(), "id": None}
-        workspace = request.get("workspace")
-        if not isinstance(workspace, str) or not Path(workspace).is_absolute():
-            raise ValueError("invalid_workspace")
-        workspace = str(Path(workspace).resolve())
         if operation == "manage":
             async with self.management:
                 action = request.get("action")
-                result = await self.operate(
-                    {
-                        "action": action,
-                        "workspace": workspace,
-                        **(
-                            {"instanceId": request["instanceId"]}
-                            if request.get("instanceId")
-                            else {}
-                        ),
-                    }
-                )
-                if (
-                    action in {"connect", "start", "restart"}
-                    and result.get("state") == "running"
-                    and not result.get("errorCode")
-                ):
-                    if workspace not in self.clients and len(self.clients) >= 6:
-                        raise ValueError("connection_limit")
-                    previous = self.clients.get(workspace)
-                    previous_execution = (
-                        previous.connection.execution_client if previous is not None else None
-                    )
-                    healthy = False
-                    if (
-                        previous is not None
-                        and previous_execution is not None
-                        and previous_execution.service_instance_id == result["serviceInstanceId"]
-                    ):
-                        try:
-                            await previous.call("snapshot", {})
-                            healthy = True
-                        except Exception:
-                            pass
-                    if not healthy:
-                        self.clients.pop(workspace, None)
-                        if previous:
-                            async with previous.lock:
-                                await previous.close()
-                        client = WebHostClient(
-                            Path(result["recordRoot"]), result["muxName"]
-                        )
+                result = await self.operate({"action": action, **(
+                    {"instanceId": request["instanceId"]} if request.get("instanceId") else {})})
+                if not result.get("errorCode"):
+                    if action in {"stop", "restart"}:
+                        await self.close()
+                    if action in {"connect", "start", "restart"} and result.get("state") == "running":
+                        await self._connect_host(result)
+                return {key: value for key, value in result.items() if key not in {"recordRoot", "muxName"}}
+        if self.host is None:
+            raise ValueError("not_connected")
+        if operation == "workspace":
+            async with self.management:
+                result = await self.operate({"action": "workspace", "workspaceAction": request.get("action"),
+                    **({"workspace": request["path"]} if request.get("path") is not None else {})})
+                if result.get("errorCode"):
+                    raise ValueError(result["errorCode"])
+                if request.get("action") == "open":
+                    path = result["workspace"]
+                    if path not in self.clients:
+                        if len(self.clients) >= 6:
+                            raise ValueError("connection_limit")
+                        client = WebHostClient(Path(result["recordRoot"]), result["muxName"],
+                                               workspace_scope=result["workspaces"][0])
                         await client.start()
-                        self.clients[workspace] = client
-                    await asyncio.to_thread(remember_workspace, workspace)
-                if action == "stop" and result.get("state") == "not_running":
-                    previous = self.clients.pop(workspace, None)
-                    if previous:
-                        async with previous.lock:
-                            await previous.close()
-                return {
-                    key: value
-                    for key, value in result.items()
-                    if key not in {"recordRoot", "muxName"}
-                }
+                        self.clients[path] = client
+                    await asyncio.to_thread(remember_workspace, path)
+                return {"workspaces": result["workspaces"]}
         if operation == "live":
-            client = self.clients.get(workspace)
-            if not client:
-                raise ValueError("not_connected")
+            client = self.clients.get(request.get("workspace"))
+            if client is None:
+                raise ValueError("workspace_not_selected")
             return await client.call(request["action"], request.get("input", {}))
         raise ValueError("unknown_operation")
 
 
-async def run_stdio(external_host: ExternalHost | None = None):
+async def run_stdio():
     tasks = set()
-    gateway = WebGateway(external_host)
+    gateway = WebGateway()
 
     async def handle(raw):
         identifier = None
@@ -190,15 +136,7 @@ async def run_stdio(external_host: ExternalHost | None = None):
 
 
 if __name__ == "__main__":
-    import argparse
     from contextlib import suppress
 
-    parser = argparse.ArgumentParser(description="Private GUI Host request adapter")
-    parser.add_argument("--external-host", nargs=3)
-    args = parser.parse_args()
-    external = None
-    if args.external_host:
-        workspace, record_root, mux = args.external_host
-        external = ExternalHost(Path(workspace).resolve(), Path(record_root).resolve(), mux)
     with suppress(KeyboardInterrupt):
-        asyncio.run(run_stdio(external))
+        asyncio.run(run_stdio())

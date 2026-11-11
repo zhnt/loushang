@@ -220,7 +220,7 @@ pub(crate) struct ReadSession {
     next_id: u64,
     readers: Option<Vec<EventReader>>,
     closed: bool,
-    default_template: SessionTemplate,
+    default_template: Option<SessionTemplate>,
 }
 
 #[derive(Clone)]
@@ -231,7 +231,7 @@ pub(crate) struct ControlAuthority {
     mux_name: String,
     members: BTreeMap<String, String>,
     session_templates: BTreeMap<String, SessionTemplate>,
-    default_template: SessionTemplate,
+    default_template: Option<SessionTemplate>,
 }
 
 #[derive(Clone)]
@@ -299,18 +299,19 @@ impl ReadSession {
         }
         let attachment: Attachment = serde_json::from_str(response.result.get()).map_err(|_| ())?;
         attempt.apply(|| attachment.validate(mux_name))?;
-        let (product, scope, fingerprint) = record.creation_context();
         Ok(Self {
             attachment,
             instance: instance.to_owned(),
             next_id: 2,
             readers: None,
             closed: false,
-            default_template: SessionTemplate {
-                product_id: product.to_owned(),
-                scope: scope.to_owned(),
-                scope_fingerprint: fingerprint.to_owned(),
-            },
+            default_template: record
+                .creation_context()
+                .map(|(product, scope, fingerprint)| SessionTemplate {
+                    product_id: product.to_owned(),
+                    scope: scope.to_owned(),
+                    scope_fingerprint: fingerprint.to_owned(),
+                }),
         })
     }
 
@@ -630,7 +631,14 @@ impl ControlAuthority {
         }
         let template = match source_session_id {
             Some(id) => self.session_templates.get(id).ok_or(())?,
-            None => &self.default_template,
+            None => match &self.default_template {
+                Some(template) => template,
+                None => {
+                    return Ok(CreateSessionResult::Rejected(
+                        "workspace_not_selected".to_owned(),
+                    ))
+                }
+            },
         };
         let response = request(
             channel,

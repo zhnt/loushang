@@ -15,16 +15,28 @@ React uses the same validated snapshot projection as the native bridge.
 ## Shared local storage and browser access
 
 `npm --prefix gui run dev` starts Vite in desktop mode and opens the Tauri
-window. Rust reads the saved connections and talks directly to the selected
-Host's HTTP endpoint. The desktop executable and its development entry require
-no Python interpreter. Start the Host's Web endpoint separately for local use.
+window. Rust reads the saved connections and talks to the selected HTTP endpoint.
+For the local target, Rust ensures the Web adapter is running; the adapter needs
+the installed Python project and uses the existing managed Host entrypoint.
+Selecting the local target does not start the Coding AppHost until requested.
 
 `npm --prefix gui run dev:web` starts the browser development surface with its
 Rust Web service (`gui/web`). Vite proxies requests to its HTTP endpoint.
 The GUI Rust code owns the listener and static assets; Coding only handles Host
 requests through a private stdio adapter. One Rust Web process is shared per user directory.
-Open Settings → Host to select a workspace and explicitly start/connect its Host
-through the running adapter.
+Open Settings → Host to start or connect the local AppHost. The Host can be
+running with an empty Workspace list. After connecting, enter an absolute path
+on the Host and choose **Register and open**, or select a registered Workspace.
+Each Workspace retains its own Sessions. Switching Workspaces or quitting the GUI
+does not stop their executions. Use **Stop Host** for a graceful service stop.
+
+On Linux, `lmux server start` starts the same managed Host without a Workspace.
+Its deployment identity is scoped to the local user and Coding product. The
+Host owns canonical Workspace paths; the client may remember the last selection,
+but the preference grants no access. Each Workspace has its own transcript
+store and each Session receives its own working directory and Runtime.
+The AppService and Execution Registry are shared across Workspaces. Active
+execution recovery is limited to the same running Host instance.
 Both surfaces show the same shell and initial panel layout (native window controls
 remain desktop-only). The development API accepts only same-origin loopback
 requests with the client header. Stopping Vite closes its proxy; the Rust Web service and managed Hosts continue

@@ -372,6 +372,7 @@ export default interface Resources {
       "service": "Service"
     },
     "localHost": {
+      "addWorkspace": "Register and open",
       "cancel": "Cancel",
       "confirm": "Confirm shutdown",
       "confirmStop": "Stopping or restarting this Host interrupts all running tasks in this workspace. Session history is retained. Continue?",
@@ -399,6 +400,7 @@ export default interface Resources {
       "reconnect": "Reconnect",
       "refresh": "Check status",
       "restart": "Restart Host",
+      "selectWorkspace": "Select a workspace",
       "serviceInstanceId": "Service instance ID",
       "start": "Start and connect",
       "states": {
@@ -412,7 +414,8 @@ export default interface Resources {
       "stop": "Stop Host",
       "title": "Local AppHost",
       "unsupported": "Local managed Host is currently supported on Linux only.",
-      "workspace": "Workspace"
+      "workspace": "Workspace",
+      "workspaceUnavailable": "The Host could not open this workspace."
     },
     "sidebar": {
       "chats": "Chats",

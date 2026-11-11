@@ -1,6 +1,6 @@
 # GUI / Web shared Host adapter
 
-Status: implemented on `feature/gui-web-host`; integration validation below.
+Status: implemented; Host First updates and integration validation below.
 Scope: browser/native connection adapters and Host-owned client navigation state.
 
 The ordinary desktop and Vite browser entrypoints share one persistent GUI Rust
@@ -23,13 +23,12 @@ Request: `{"operation":"connections/list"}`.
 Response:
 
 ```json
-{"selectedId":"local","connections":[{"id":"local","name":"Local","kind":"local","selected":true,"webUrl":"http://127.0.0.1:1422","workspace":"/workspace"},{"id":"office","name":"Office","kind":"remote","selected":false,"webUrl":"https://host.example","workspace":""}]}
+{"selectedId":"local","connections":[{"id":"local","name":"Local","kind":"local","selected":true,"webUrl":"http://127.0.0.1:1422"},{"id":"office","name":"Office","kind":"remote","selected":false,"webUrl":"https://host.example"}]}
 ```
 
 `local` is reserved. It always represents this machine. Listing does not start a
 Host or adapter. A configured dynamic local port can have `webUrl: null` until
-adapter startup publishes `state/web/endpoint.json`. A saved workspace is not
-proof of current connectivity. Tray code should localize the local display name.
+adapter startup publishes `state/web/endpoint.json`. Tray code should localize the local display name.
 
 ### Select a connection
 
@@ -48,13 +47,13 @@ The environment response includes `supported`, `workspace`, and `connections`.
 For lifecycle operations:
 
 ```json
-{"operation":"host/request","connectionId":"office","request":{"operation":"manage","action":"status","workspace":"/server/workspace"}}
+{"operation":"host/request","connectionId":"office","request":{"operation":"manage","action":"status"}}
 ```
 
 Actions: `status`, `connect`, `start`, `stop`, `restart`. Stop/restart require
 `instanceId` from the last status response; do not invent or reuse a stale ID.
 Result: existing `gui-local-host/v1` public fields (`state`, `errorCode`,
-`workspace`, `instanceId`, `serviceInstanceId`, `pid`, etc.). Private record paths
+`instanceId`, `serviceInstanceId`, `pid`, etc.). Private record paths
 and mux authentication never leave the adapter. `status` may start the adapter,
 but never starts a managed execution Host. Remote deployment and account authentication are deferred.
 
@@ -74,9 +73,19 @@ metadata carries that ID so navigation writes use the same Host. A directly
 hosted browser uses its same-origin server and can omit the ID. Unsubscribe old
 clients before switching; already accepted executions remain owned by their Host.
 
-`webRequest` transports `manage` and `live` to the selected connection. Native
+`webRequest` transports `manage`, `workspace`, and `live` to the selected connection. Native
 calls use the Rust transport; browser requests use the same-origin Vite proxy or
 local standalone server directly, without a login page or access token.
+
+### Workspace selection after connecting
+
+Start/connect first, then send `{"operation":"workspace","action":"list"}`.
+Use `register` with an absolute Host path to add a Workspace; `open` returns
+its canonical path and scope and attaches its admitted Mux for the Web client.
+The AppService supports `unregister` only after relevant Session ownership
+settles; unregistering keeps transcript data. The GUI connection directory
+does not confer Workspace access. Selecting a Workspace does not spawn a Host
+and does not detach or cancel accepted work in another Workspace.
 
 ## Storage
 
@@ -84,7 +93,8 @@ Existing `models/`, model `auth/*-auth.json`, `coding/settings.json`, `data/`,
 `state/`, and `lmux/` retain their owners. New files:
 
 - `connections.json`: version 1, `servers`, optional `defaultConnection` and
-  `defaultWorkspace`; no inline credentials.
+  `lastWorkspace`; no inline credentials. The workspace is a navigation preference,
+  independent of the connection entries.
 - `host.json`: optional `web` listener settings.
 - `data/client-preferences.sqlite3`: atomic pin/unpin/visit operations per mux.
 - `state/web/`: adapter discovery, startup/owner locks and service log.
@@ -144,3 +154,22 @@ endpoint discovery and lifetime. It is Rust code and runs without a desktop wind
 or Web subprocess startup. `coding.web_server` and `coding.web_endpoint` were removed.
 The existing AppHost/AppServer contracts still own sessions and execution.
 This scope covers local Web only and adds no account or remote deployment design.
+
+
+## Host First review (2026-11-11)
+
+Implementing agent reviewed the managed Host, AppService and GUI composition
+on `feature/gui-host-first` against GUI base `c53c59f98` and backend revision
+`b7b3e3afc`. Accepted scope: one Linux managed Coding Host for the local user,
+one AppService and Execution Registry, Host-owned canonical membership and
+per-Session Product Runtime. The GUI Web adapter uses the existing short-lived
+managed helper for lifecycle actions. Session restoration reads only the
+owning Workspace. Old managed deployment data is left untouched; it is not
+automatically imported into the new Host's `hosts/` layout.
+
+Verified with two real Tauri processes, one Host, two workspaces and a
+deterministic test provider/tool. Both tasks were running before GUI A exited,
+then finished once each; the operator confirmed both original replies in GUI B.
+The observer confirmed a clean managed stop and adapter exit. Separate process
+tests cover four concurrent sessions and matching Host, Session and Execution
+identities. This records Linux acceptance; no Windows, macOS or remote claim.

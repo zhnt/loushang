@@ -174,6 +174,10 @@ class WebHostClient:
                 return await self.create(value)
             control = self.control(value["sessionId"])
             execution = self.connection.execution_client
+            if action == "find":
+                record = await execution.find_execution_by_submission(
+                    control, execution.service_instance_id, value["submissionId"])
+                return None if record is None else execution_value(record)
             if action == "submit":
                 try:
                     record = await execution.submit_execution(

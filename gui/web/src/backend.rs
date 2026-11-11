@@ -23,11 +23,10 @@ pub struct Backend {
     next: AtomicU64,
 }
 impl Backend {
-    pub fn spawn(external: &[String]) -> Result<Self> {
+    pub fn spawn() -> Result<Self> {
         let mut command = Command::new(config::python());
         command
             .args(["-m", "loushang.coding.web_gateway"])
-            .args(external)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())

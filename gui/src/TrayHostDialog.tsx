@@ -18,7 +18,6 @@ export function TrayHostDialog({ details, error, onClose, onConfirm }: {
     <h2 id="tray-host-title">{details?.confirm ? t("localHost.confirmTitle") : t("localHost.identity")}{name ? ` · ${name}` : ""}</h2>
     {details?.confirm ? <p>{t("localHost.confirmStop")}</p> : null}
     {details ? <dl className="detail-list">
-      <div><dt>{t("localHost.workspace")}</dt><dd>{details.probe.workspace}</dd></div>
       <div><dt>{t("shell:tray.service")}</dt><dd>{state?.state === "exited" ? t("localHost.states.exited")
         : t(`shell:tray.${state?.state === "not_running" ? "stopped" : state?.state ?? "unknown"}`)}</dd></div>
       {state?.pid != null ? <div><dt>{t("localHost.pid")}</dt><dd>{state.pid}</dd></div> : null}

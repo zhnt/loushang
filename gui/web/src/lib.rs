@@ -15,7 +15,7 @@ use tokio::{
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub async fn serve(root: PathBuf, dist: Option<PathBuf>, external: &[String]) -> Result<()> {
+pub async fn serve(root: PathBuf, dist: Option<PathBuf>) -> Result<()> {
     let (state, _lease) = owner(&root)?;
     let config = config::Config::read(&root)?;
     let listener = TcpListener::bind(config.address()).await?;
@@ -25,7 +25,7 @@ pub async fn serve(root: PathBuf, dist: Option<PathBuf>, external: &[String]) ->
     let service = Arc::new(http::Service {
         address,
         dist: assets,
-        backend: backend::Backend::spawn(external)?,
+        backend: backend::Backend::spawn()?,
         stop,
     });
     publish(&state, address)?;

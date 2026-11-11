@@ -53,15 +53,21 @@ function installMock(implementation: (command: string, args?: any) => Promise<un
       if (args.request.operation === "environment") return {
         ...await implementation("environment", args) as object, connectionId: "local",
       };
-      if (args.request.operation === "host/request") return implementation("manage", { request: args.request.request });
+      if (args.request.operation === "host/request") {
+        if (args.request.request.operation === "workspace") {
+          return { workspaces: [{ path: "/workspace", scope: "cwd", scopeFingerprint: "a".repeat(64) },
+            { path: "/previous", scope: "cwd", scopeFingerprint: "b".repeat(64) }] };
+        }
+        return implementation("manage", { request: args.request.request });
+      }
     }
     return implementation(command, args);
   });
 }
 
-function management(action: string, workspace = "/workspace", instanceId?: string) {
+function management(action: string, _workspace = "/workspace", instanceId?: string) {
   return { request: { operation: "host/request", connectionId: "local",
-    request: { operation: "manage", action, workspace, ...(instanceId ? { instanceId } : {}) } } };
+    request: { operation: "manage", action, ...(instanceId ? { instanceId } : {}) } } };
 }
 
 function countActions(action: string) {
@@ -123,7 +129,7 @@ describe("local managed Host presentation", () => {
     expect(settings.getByRole("combobox", { name: "Interface language" })).toBeVisible();
     expect(settings.queryByRole("textbox", { name: "Workspace" })).not.toBeInTheDocument();
     fireEvent.click(settings.getByRole("button", { name: "Host" }));
-    expect(settings.getByRole("textbox", { name: "Workspace" })).toBeVisible();
+    expect(settings.queryByRole("textbox", { name: "Workspace" })).toBeNull();
     expect(settings.queryByRole("combobox", { name: "Interface language" })).not.toBeInTheDocument();
     const start = await settings.findByRole("button", { name: "Start and connect" });
     expect(native.invoke).toHaveBeenCalledWith("client_settings", management("connect"));

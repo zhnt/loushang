@@ -12,7 +12,9 @@ from loushang.coding.managed_process import coding_managed_process_request
 
 def factory(invocation, descriptor):
     original = coding_managed_process_request(invocation, descriptor, executable=sys.executable, environment=os.environ)
-    return replace(original, argv=(sys.executable, str(Path(__file__).with_name('_host_first_execution_host.py')), *original.argv[3:]))
+    fixture = '_managed_execution_host.py' if sys.argv[1:] == ['stage1'] else '_host_first_execution_host.py'
+    return replace(original, argv=(sys.executable, str(Path(__file__).with_name(fixture)), *original.argv[3:]))
 
 
-print(json.dumps(asyncio.run(operate(json.load(sys.stdin), request_factory=factory))))
+if __name__ == "__main__":
+    print(json.dumps(asyncio.run(operate(json.load(sys.stdin), request_factory=factory))))

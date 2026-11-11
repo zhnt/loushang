@@ -62,18 +62,19 @@ fn main() {
                             let result = receive
                                 .recv_timeout(std::time::Duration::from_secs(6))
                                 .map_err(|_| ())??;
-                            let (accepted, reason) = match result {
-                                app_client::ControlResult::Accepted => (true, None),
+                            let (accepted, reason, execution_id) = match result {
+                                app_client::ControlResult::Accepted => (true, None, None),
+                                app_client::ControlResult::Submitted(id) => (true, None, Some(id)),
                                 app_client::ControlResult::Missing => {
-                                    (false, Some("missing".to_owned()))
+                                    (false, Some("missing".to_owned()), None)
                                 }
                                 app_client::ControlResult::Rejected(reason) => {
-                                    (false, Some(reason))
+                                    (false, Some(reason), None)
                                 }
                             };
                             println!(
                                 "{}",
-                                serde_json::json!({"type":"control","accepted":accepted,"reason":reason})
+                                serde_json::json!({"type":"control","accepted":accepted,"reason":reason,"executionId":execution_id})
                             );
                             std::io::stdout().flush().map_err(|_| ())?;
 

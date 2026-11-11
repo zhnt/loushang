@@ -101,6 +101,9 @@
     },
     "confirmTitle": "确认关闭 Host",
     "cancel": "取消",
-    "confirm": "确认关闭"
+    "confirm": "确认关闭",
+    "selectWorkspace": "选择工作空间",
+    "addWorkspace": "登记并打开",
+    "workspaceUnavailable": "Host 无法打开此工作空间。"
   }
 }

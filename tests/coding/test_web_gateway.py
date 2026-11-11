@@ -36,7 +36,7 @@ def test_connections_preserve_server_entries(tmp_path, monkeypatch):
     value = {"version": 1, "servers": [{"id": "remote", "url": "https://example.test"}]}
     (tmp_path / "connections.json").write_text(json.dumps(value))
     remember_workspace("/workspace")
-    assert connections() == {**value, "defaultWorkspace": "/workspace"}
+    assert connections() == {**value, "lastWorkspace": "/workspace"}
 
 
 @pytest.mark.requires_host_runtime
@@ -64,6 +64,8 @@ def test_web_gateway_real_host_snapshot_create_and_shared_state(tmp_path, monkey
             assert status["state"] == "running", status
             assert not status.get("errorCode"), status
             assert "recordRoot" not in status
+            await gateway.dispatch({"operation": "workspace", "action": "register", "path": str(workspace)})
+            await gateway.dispatch({"operation": "workspace", "action": "open", "path": str(workspace)})
             snapshot = await gateway.dispatch(
                 {**base, "operation": "live", "action": "snapshot"}
             )
@@ -106,11 +108,10 @@ def test_web_gateway_real_host_snapshot_create_and_shared_state(tmp_path, monkey
         finally:
             await gateway.close()
             if status and status.get("instanceId"):
-                from loushang.coding.gui_local_host import operate
-
-                await operate(
-                    {**base, "action": "stop", "instanceId": status["instanceId"]}
+                stopped = await gateway.dispatch(
+                    {"operation": "manage", "action": "stop", "instanceId": status["instanceId"]}
                 )
+                assert stopped.get("cleanlyStopped"), stopped
 
     asyncio.run(run())
 
@@ -148,17 +149,15 @@ def test_connection_listing_selection_and_secret_rejection(tmp_path, monkeypatch
 @pytest.mark.requires_host_runtime
 @pytest.mark.skipif(sys.platform != "linux", reason="managed Host is Linux-only")
 def test_web_execution_streaming_idempotency_and_interrupt(tmp_path, monkeypatch):
-    import os
-    from dataclasses import replace
     from pathlib import Path
 
     from loushang.coding import web_gateway
-    from loushang.coding.gui_local_host import operate
-    from loushang.coding.managed_process import coding_managed_process_request
 
     workspace = tmp_path / "workspace"
     workspace.mkdir(mode=0o700)
-    (workspace / "desktop-scenario-v2").touch()
+    home = tmp_path / "home"
+    home.mkdir(mode=0o700)
+    (home / "desktop-scenario-v2").touch()
     for name, leaf in (
         ("LOUSHANG_HOME", "home"),
         ("LOUSHANG_RUNTIME_DIR", "runtime"),
@@ -166,21 +165,15 @@ def test_web_execution_streaming_idempotency_and_interrupt(tmp_path, monkeypatch
     ):
         monkeypatch.setenv(name, str(tmp_path / leaf))
 
-    def factory(invocation, descriptor):
-        original = coding_managed_process_request(
-            invocation, descriptor, executable=sys.executable, environment=os.environ
-        )
-        return replace(
-            original,
-            argv=(
-                sys.executable,
-                str(Path(__file__).with_name("_managed_execution_host.py")),
-                *original.argv[3:],
-            ),
-        )
-
     async def managed(request):
-        return await operate(request, request_factory=factory)
+        helper = await asyncio.create_subprocess_exec(
+            sys.executable, str(Path(__file__).with_name("_host_first_manager.py")),
+            "stage1",
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+        )
+        output, _ = await helper.communicate(json.dumps(request).encode())
+        assert helper.returncode == 0
+        return json.loads(output)
 
     monkeypatch.setattr(web_gateway, "operate", managed)
 
@@ -207,6 +200,8 @@ def test_web_execution_streaming_idempotency_and_interrupt(tmp_path, monkeypatch
                 {**base, "operation": "manage", "action": "start"}
             )
             assert status["state"] == "running", status
+            await gateway.dispatch({"operation": "workspace", "action": "register", "path": str(workspace)})
+            await gateway.dispatch({"operation": "workspace", "action": "open", "path": str(workspace)})
             snapshot = await live("snapshot")
             session_id = snapshot["sessions"][0]["source"]["source"]["identity"][
                 "sessionId"
@@ -240,9 +235,8 @@ def test_web_execution_streaming_idempotency_and_interrupt(tmp_path, monkeypatch
         finally:
             await gateway.close()
             if status and status.get("instanceId"):
-                await managed(
-                    {**base, "action": "stop", "instanceId": status["instanceId"]}
-                )
+                stopped = await managed({"action": "stop", "instanceId": status["instanceId"]})
+                assert stopped.get("cleanlyStopped"), stopped
 
     asyncio.run(run())
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { isTauri } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import App, { HarnessGui } from "./App";
 import { useOfflineAccount } from "./client/offlineAccount";
@@ -37,6 +37,45 @@ export default function LocalHostGate() {
   const [legacy, setLegacy] = useState(false);
   const [supported, setSupported] = useState<boolean | null>(null);
   const [workspace, setWorkspace] = useState("");
+  const [workspaces, setWorkspaces] = useState<string[]>([]);
+  const [workspaceInput, setWorkspaceInput] = useState("");
+  const [workspaceError, setWorkspaceError] = useState(false);
+  const workspaceEpoch = useRef(0);
+  const workspaceClients = useRef(new Map<string, HarnessClientUiPort>());
+
+  async function openWorkspace(path: string) {
+    const epoch = ++workspaceEpoch.current;
+    const opened = await webRequest<{ workspaces: { path: string }[] }>({ operation: "workspace", action: "open", path }, connectionId.current);
+    if (epoch !== workspaceEpoch.current) return;
+    setWorkspaceError(false);
+    path = opened.workspaces[0].path;
+    setWorkspace(path);
+    let selected = workspaceClients.current.get(path);
+    if (!selected) {
+      selected = createWebLiveClient(path, connectionId.current);
+      workspaceClients.current.set(path, selected);
+    }
+    clientRef.current = selected;
+    setClient(selected);
+  }
+
+  async function loadWorkspaces(preferred = workspace) {
+    const result = await webRequest<{ workspaces: { path: string }[] }>({ operation: "workspace", action: "list" }, connectionId.current);
+    const paths = result.workspaces.map((item) => item.path);
+    setWorkspaces(paths);
+    if (preferred && paths.includes(preferred)) await openWorkspace(preferred);
+  }
+
+  async function registerWorkspace() {
+    setBusy(true);
+    try {
+      const result = await webRequest<{ workspaces: { path: string }[] }>({ operation: "workspace", action: "register", path: workspaceInput }, connectionId.current);
+      setWorkspaces(result.workspaces.map((item) => item.path));
+      await openWorkspace(workspaceInput);
+      setWorkspaceInput("");
+    } catch { setWorkspaceError(true); }
+    finally { setBusy(false); }
+  }
   const [host, setHost] = useState<HostStatus>({ state: "unknown", errorCode: null });
   const [busy, setBusy] = useState(false);
   const [confirmation, setConfirmation] = useState<{ action: "stop" | "restart"; workspace: string; instanceId?: string } | null>(null);
@@ -51,8 +90,8 @@ export default function LocalHostGate() {
   const pendingAction = useRef<Action>("status");
   const connectionId = useRef<string | undefined>(undefined);
 
-  async function perform(action: Action, path = workspace, expected: string | null | undefined = host.instanceId) {
-    if (!path || (pending.current && (action === "status" || pendingAction.current !== "status"))) return;
+  async function perform(action: Action, preferred = workspace, expected: string | null | undefined = host.instanceId) {
+    if ((pending.current && (action === "status" || pendingAction.current !== "status"))) return;
     const serial = ++generation.current;
     pending.current = true;
     pendingAction.current = action;
@@ -61,16 +100,14 @@ export default function LocalHostGate() {
     if (action === "start" || action === "restart") setHost((current) => ({ ...current, state: "starting", errorCode: null }));
     if (action === "stop") setHost((current) => ({ ...current, state: "stopping", errorCode: null }));
     try {
-      const request = { operation: "manage", action, workspace: path, ...(expected ? { instanceId: expected } : {}) };
+      const request = { operation: "manage", action, ...(expected ? { instanceId: expected } : {}) };
       const result = await webRequest<HostStatus>(request, connectionId.current);
       if (serial !== generation.current) return;
       if (!(result.state in states)) throw new Error("management_response_invalid");
       setHost(result);
       if (result.state !== "running" || result.errorCode) setConnection("disconnected");
-      if (result.workspace) setWorkspace(result.workspace);
       if (["connect", "start", "restart"].includes(action) && result.state === "running" && !result.errorCode) {
-        clientRef.current ??= createWebLiveClient(path, connectionId.current);
-        setClient(clientRef.current);
+        await loadWorkspaces(preferred);
       }
     } catch (error) {
       if (serial === generation.current) {
@@ -90,6 +127,9 @@ export default function LocalHostGate() {
     pendingAction.current = "connect";
     setBusy(true);
     clientRef.current = null;
+    workspaceEpoch.current++;
+    workspaceClients.current.clear();
+    setWorkspaces([]);
     setClient(null);
     setConnection("connecting");
     try {
@@ -139,7 +179,7 @@ export default function LocalHostGate() {
   }, []);
 
   useEffect(() => {
-    if (!client || !supported) return;
+    if (host.state !== "running" || !supported) return;
     const timer = window.setInterval(() => { void perform("status"); }, 5000);
     return () => window.clearInterval(timer);
   });
@@ -151,10 +191,6 @@ export default function LocalHostGate() {
     enabled: !legacy, selectedId, localName: i18n.t("shell:tray.localHost"),
     workspace, host, supported: supported === true, busy, connection: trayConnection,
     onSelect: (id) => activateHost(id),
-    onConfigureStart: () => {
-      requestHostSettings((value) => value + 1);
-      void invoke("show_tray_window").catch(() => {});
-    },
     onManage: (action, path, instanceId) => action === "connect" && connectionId.current
       ? activateHost(connectionId.current, false) : perform(action, path, instanceId),
   });
@@ -179,17 +215,10 @@ export default function LocalHostGate() {
         </span>
       </div>
       <div className="local-host-card">
-        <label>{t("localHost.workspace")}
-          <input value={workspace} disabled={!!client || busy} onChange={(event) => {
-            setWorkspace(event.target.value);
-            setHost({ state: "unknown", errorCode: null });
-            setConnection("disconnected");
-          }} placeholder={t("localHost.pathHint")} />
-        </label>
         <div className="local-host-actions">
-          <button disabled={busy || !supported || !workspace} onClick={() => void perform("status")}>{t("localHost.refresh")}</button>
+          <button disabled={busy || !supported} onClick={() => void perform("status")}>{t("localHost.refresh")}</button>
           {host.state === "not_running" || (isTauri() && selectedId === "local" && host.state === "unknown" && !host.errorCode) ?
-            <button disabled={busy || !supported || !workspace.trim()} onClick={() => void perform("start", workspace.trim())}>{t("localHost.start")}</button> : null}
+            <button disabled={busy || !supported} onClick={() => void perform("start", workspace.trim())}>{t("localHost.start")}</button> : null}
           {host.state === "running" ? <>
             <button disabled={busy} onClick={() => void perform("connect")}>{t(client ? "localHost.reconnect" : "localHost.connect")}</button>
             <button disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>
@@ -216,7 +245,17 @@ export default function LocalHostGate() {
       </div>
     </div> : null}
   </>;
-  return <><HarnessGui client={client} account={account} hostSettings={hostSettings}
+  return <>{host.state === "running" ? <section className="workspace-picker" aria-label={t("localHost.workspace")}>
+    <label>{t("localHost.workspace")}<select value={workspaces.includes(workspace) ? workspace : ""} disabled={busy}
+      onChange={(event) => { if (event.target.value) void openWorkspace(event.target.value).catch(() => setWorkspaceError(true)); }}>
+      <option value="">{t("localHost.selectWorkspace")}</option>
+      {workspaces.map((path) => <option key={path} value={path}>{path}</option>)}
+    </select></label>
+    <input aria-label={t("localHost.pathHint")} placeholder={t("localHost.pathHint")}
+      value={workspaceInput} onChange={(event) => setWorkspaceInput(event.target.value)} />
+    <button disabled={busy || !workspaceInput.trim()} onClick={() => void registerWorkspace()}>{t("localHost.addWorkspace")}</button>
+    {workspaceError ? <span role="alert">{t("localHost.workspaceUnavailable")}</span> : null}
+  </section> : null}<HarnessGui client={client} account={account} hostSettings={hostSettings}
     hostSettingsRequest={hostSettingsRequest} onConnectionChange={setConnection} />
     <TrayHostDialog details={trayHosts.details} error={trayHosts.error}
       onClose={() => { trayHosts.closeDetails(); trayHosts.clearError(); }} onConfirm={trayHosts.confirmStop} />

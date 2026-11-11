@@ -18,7 +18,7 @@ from loushang.foundation.platform_paths import resolve_platform_home
 def connections() -> dict:
     path = resolve_platform_home() / "connections.json"
     if not path.exists():
-        return {"version": 1, "defaultWorkspace": "", "servers": []}
+        return {"version": 1, "lastWorkspace": "", "servers": []}
     value = json.loads(path.read_text())
     if not isinstance(value, dict) or value.get("version") != 1:
         raise ValueError("invalid_connections")
@@ -59,7 +59,7 @@ def connections() -> dict:
 def remember_workspace(workspace: str) -> None:
     home = resolve_platform_home()
     home.mkdir(mode=0o700, parents=True, exist_ok=True)
-    mutate_connections(lambda value: value.update(defaultWorkspace=workspace))
+    mutate_connections(lambda value: value.update(lastWorkspace=workspace))
 
 
 def mutate_connections(change) -> None:
@@ -122,7 +122,6 @@ def connection_list() -> dict:
             "kind": "local",
             "selected": selected == "local",
             "webUrl": web_url,
-            "workspace": value.get("defaultWorkspace", ""),
         }
     ]
     entries.extend(
@@ -132,7 +131,6 @@ def connection_list() -> dict:
             "kind": "remote",
             "selected": item["id"] == selected,
             "webUrl": item["url"],
-            "workspace": item.get("workspace", ""),
         }
         for item in value["servers"]
     )
@@ -158,7 +156,7 @@ def settings_request(request: dict):
     if request.get("operation") == "environment":
         return {
             "supported": sys.platform == "linux",
-            "workspace": connections().get("defaultWorkspace") or str(Path.cwd()),
+            "workspace": connections().get("lastWorkspace", ""),
             "connections": connection_list()["connections"],
         }
     if request.get("operation") == "remember-workspace":

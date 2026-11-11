@@ -23,7 +23,7 @@ async def probe(call, context):
     label = call.arguments['label']
     with (home / 'entered.jsonl').open('a') as output:
         output.write(json.dumps({'pid': os.getpid(), 'cwd': str(cwd), 'label': label}) + '\n')
-    deadline = monotonic() + 60
+    deadline = monotonic() + (1200 if (home / "desktop-acceptance").exists() else 60)
     while not (home / 'release').exists():
         assert monotonic() < deadline, 'Host First model gate expired'
         await asyncio.sleep(.01)

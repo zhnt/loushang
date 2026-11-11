@@ -21,3 +21,7 @@
 .local-host-confirm { position: fixed; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--dialog-backdrop); }
 .local-host-confirm > div { max-width: 480px; margin: 24px; padding: 24px; border-radius: 12px; background: var(--paper); overflow-wrap: anywhere; }
 .local-host-confirm button { margin-right: 12px; }
+
+.workspace-picker { display:flex; align-items:center; gap:8px; padding:8px 16px; border-bottom:1px solid var(--border-color, #ddd); }
+.workspace-picker label { display:flex; align-items:center; gap:8px; }
+.workspace-picker input, .workspace-picker select { max-width:32vw; padding:6px; }

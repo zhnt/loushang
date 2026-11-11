@@ -20,8 +20,6 @@ type Result<T> = std::result::Result<T, &'static str>;
 #[serde(rename_all = "camelCase")]
 struct SavedDirectory {
     version: u8,
-    #[serde(default)]
-    default_workspace: String,
     default_connection: Option<String>,
     servers: Vec<SavedServer>,
 }
@@ -31,8 +29,6 @@ struct SavedServer {
     id: String,
     url: String,
     name: Option<String>,
-    #[serde(default)]
-    workspace: String,
 }
 
 #[derive(Serialize)]
@@ -43,7 +39,6 @@ struct Entry {
     kind: &'static str,
     selected: bool,
     web_url: Option<Url>,
-    workspace: String,
 }
 
 pub(crate) struct Directory {
@@ -71,7 +66,6 @@ impl Directory {
             kind: LOCAL,
             selected: selected == LOCAL,
             web_url: local_url(root),
-            workspace: saved.default_workspace,
         }];
         let mut ids = HashSet::new();
         for server in saved.servers {
@@ -85,7 +79,6 @@ impl Directory {
                 id: server.id,
                 kind: "remote",
                 web_url: Some(url),
-                workspace: server.workspace,
             });
         }
         let directory = Self { selected, entries };
