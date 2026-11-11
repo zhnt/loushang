@@ -24,6 +24,11 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 from loushang.harness.resources.plugins.locators import (
     canonical_plugin_relative_path,
 )
+from loushang.harness.worker.history._windows_semantic_contracts import (
+    launch_matches_intent,
+    native_matches_intent,
+    no_effect_history_matches,
+)
 from loushang.harness.worker.history._windows_stage_review_wire import (
     _WindowsStageReviewWireMethods,
 )
@@ -154,19 +159,9 @@ def _require_reserved_no_effect_candidate(
         or attempt.attempt_id != intent.attempt_id
         or attempt.observed_debts != _RESERVED_DEBTS
         or attempt.payload_directory_identity != intent.stage_identity
-        or attempt.native_phase != "reserved"
-        or attempt.native_revision != 1
-        or attempt.native_phase_history != ("reserved",)
-        or attempt.native_witness_present_history != (False,)
-        or attempt.supervisor_phase is not None
-        or attempt.supervisor_revision is not None
-        or attempt.supervisor_process_settled is not None
-        or attempt.supervisor_identity_fingerprint is not None
-        or attempt.native_worker_request_fingerprint != intent.request_fingerprint
-        or attempt.native_receipt_fingerprint != intent.receipt_fingerprint
-        or attempt.launch_request_fingerprint != intent.request_fingerprint
-        or attempt.launch_receipt_fingerprint != intent.receipt_fingerprint
-        or attempt.launch_identity_fingerprint != intent.identity_fingerprint
+        or not no_effect_history_matches(attempt, settled=False)
+        or not native_matches_intent(attempt, intent)
+        or not launch_matches_intent(attempt, intent)
         or attempt.launch_stage_identity != intent.stage_identity
     ):
         raise CodingWindowsWorkerReservedReviewError(
@@ -185,19 +180,9 @@ def _require_settled_no_effect_candidate(
         or attempt.observed_debts
         != ("payload_retained", "launch_intent_retained", "supervisor_history_missing")
         or attempt.payload_directory_identity != intent.stage_identity
-        or attempt.native_phase != "settled"
-        or attempt.native_revision != 2
-        or attempt.native_phase_history != ("reserved", "settled")
-        or attempt.native_witness_present_history != (False, False)
-        or attempt.supervisor_phase is not None
-        or attempt.supervisor_revision is not None
-        or attempt.supervisor_process_settled is not None
-        or attempt.supervisor_identity_fingerprint is not None
-        or attempt.native_worker_request_fingerprint != intent.request_fingerprint
-        or attempt.native_receipt_fingerprint != intent.receipt_fingerprint
-        or attempt.launch_request_fingerprint != intent.request_fingerprint
-        or attempt.launch_receipt_fingerprint != intent.receipt_fingerprint
-        or attempt.launch_identity_fingerprint != intent.identity_fingerprint
+        or not no_effect_history_matches(attempt, settled=True)
+        or not native_matches_intent(attempt, intent)
+        or not launch_matches_intent(attempt, intent)
         or attempt.launch_stage_identity != intent.stage_identity
     ):
         raise CodingWindowsWorkerReservedReviewError(

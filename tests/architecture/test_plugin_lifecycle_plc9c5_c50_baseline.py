@@ -937,7 +937,37 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
             "loushang.harness.worker.history._publication.HistoryPublication",
         }
     }
-    assert coding_worker_consumers - optional_initial_seal == {
+    history_proofs = "loushang.harness.worker.history._windows_semantic_contracts"
+    optional_retirement_proofs = {
+        path
+        for path in coding_worker_consumers
+        if path.name in {
+            "package_product_worker_windows_crash_stage_retirement.py",
+            "package_product_worker_windows_unlaunched_stage_retirement.py",
+        }
+        and path.parent == CODING_ROOT
+        and not any(
+            isinstance(node, ast.Import)
+            and any(alias.name == history_proofs for alias in node.names)
+            for node in ast.walk(ast.parse(_read(path), filename=str(path)))
+        )
+        and {
+            imported
+            for imported in resolved_imports(path)
+            if imported.startswith("loushang.harness.worker")
+        }
+        <= {
+            history_proofs,
+            history_proofs + ".native_matches_intent",
+            history_proofs + ".launch_matches_intent",
+            *(
+                {history_proofs + ".no_effect_history_matches"}
+                if path.name == "package_product_worker_windows_unlaunched_stage_retirement.py"
+                else ()
+            ),
+        }
+    }
+    assert coding_worker_consumers - optional_initial_seal - optional_retirement_proofs == {
         CODING_CANARY,
         CODING_APPHOST_PRODUCT,
         CODING_APPHOST_CANARY,

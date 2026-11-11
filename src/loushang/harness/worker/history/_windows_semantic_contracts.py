@@ -80,3 +80,44 @@ class _RecoveryFacts(Protocol):
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
+
+
+def native_matches_intent(
+    attempt: WindowsRecoveryAttemptV1, intent: _LaunchIntentFacts
+) -> bool:
+    if (
+        attempt.native_worker_request_fingerprint != intent.request_fingerprint
+        or attempt.native_receipt_fingerprint != intent.receipt_fingerprint
+    ):
+        return False
+    return True
+
+
+def launch_matches_intent(
+    attempt: WindowsRecoveryAttemptV1, intent: _LaunchIntentFacts
+) -> bool:
+    if (
+        attempt.launch_request_fingerprint != intent.request_fingerprint
+        or attempt.launch_receipt_fingerprint != intent.receipt_fingerprint
+        or attempt.launch_identity_fingerprint != intent.identity_fingerprint
+    ):
+        return False
+    return True
+
+
+def no_effect_history_matches(
+    attempt: WindowsRecoveryAttemptV1, *, settled: bool
+) -> bool:
+    phases = ("reserved", "settled") if settled else ("reserved",)
+    if (
+        attempt.native_phase != phases[-1]
+        or attempt.native_revision != len(phases)
+        or attempt.native_phase_history != phases
+        or attempt.native_witness_present_history != (False,) * len(phases)
+        or attempt.supervisor_phase is not None
+        or attempt.supervisor_revision is not None
+        or attempt.supervisor_process_settled is not None
+        or attempt.supervisor_identity_fingerprint is not None
+    ):
+        return False
+    return True

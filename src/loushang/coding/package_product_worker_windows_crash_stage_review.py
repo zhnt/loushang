@@ -24,6 +24,9 @@ from loushang.harness.resources.plugins.locators import canonical_plugin_relativ
 from loushang.harness.worker._native_profile_bridge import (
     _rebuild_windows_lpac_cleanup_spec,
 )
+from loushang.harness.worker.history._windows_semantic_contracts import (
+    launch_matches_intent,
+)
 from loushang.harness.worker.history._windows_stage_review_wire import (
     _WindowsStageReviewWireMethods,
 )
@@ -200,12 +203,7 @@ def _review_crash_stage_under_gc_guard(
         quiescence, runtime_id=receipt.receipt.policy.product_runtime_id
     )
     intent = _read_intent_under_gc_guard(product, attempt_id)
-    if (
-        intent is None
-        or attempt.launch_request_fingerprint != intent.request_fingerprint
-        or attempt.launch_receipt_fingerprint != intent.receipt_fingerprint
-        or attempt.launch_identity_fingerprint != intent.identity_fingerprint
-    ):
+    if intent is None or not launch_matches_intent(attempt, intent):
         raise ValueError("Windows Worker crash stage launch intent changed")
     native = tuple(
         item

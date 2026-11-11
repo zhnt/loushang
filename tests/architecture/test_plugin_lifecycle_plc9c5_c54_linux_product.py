@@ -484,7 +484,41 @@ def test_c54_has_one_product_root_and_one_way_dependencies() -> None:
             "loushang.harness.worker.history._publication.HistoryPublication",
         }
     }
-    assert worker_consumers - optional_initial_seal == {
+    history_proofs = "loushang.harness.worker.history._windows_semantic_contracts"
+    fingerprints = {"native_matches_intent", "launch_matches_intent"}
+    no_effect = fingerprints | {"no_effect_history_matches"}
+    proof_members = {
+        CODING_ROOT / "package_product_worker_windows_crash_stage_review.py": {"launch_matches_intent"},
+        CODING_ROOT / "package_product_worker_windows_crash_stage_retirement.py": fingerprints,
+        CODING_ROOT / "package_product_worker_windows_reserved_review.py": no_effect,
+        CODING_ROOT / "package_product_worker_windows_stage_retirement.py": fingerprints,
+        CODING_ROOT / "package_product_worker_windows_unlaunched_stage_retirement.py": no_effect,
+    }
+    optional_retirement_proofs = {
+        path
+        for path, names in proof_members.items()
+        if path in worker_consumers
+        and not any(
+            isinstance(node, ast.Import)
+            and any(alias.name == history_proofs for alias in node.names)
+            for node in ast.walk(ast.parse(_read(path), filename=str(path)))
+        )
+        and {
+            imported
+            for imported in resolved_imports(path)
+            if imported == history_proofs or imported.startswith(history_proofs + ".")
+        }
+        <= {history_proofs, *(history_proofs + "." + name for name in names)}
+    }
+    optional_retirement_consumers = {
+        path for path in optional_retirement_proofs
+        if path not in PRODUCT_WORKER_BOUNDED_IMPORTS
+        and {
+            imported for imported in _imports(path)
+            if imported.startswith("loushang.harness.worker")
+        } == {history_proofs}
+    }
+    assert worker_consumers - optional_initial_seal - optional_retirement_consumers == {
         CANARY,
         APPHOST_PRODUCT,
         APPHOST_CANARY,
@@ -510,6 +544,8 @@ def test_c54_has_one_product_root_and_one_way_dependencies() -> None:
             == {receipt_values, receipt_values + ".latest_receipt_record"}
         ):
             optional_receipt_selector = {receipt_values}
+        if path in optional_retirement_proofs:
+            actual.discard(history_proofs)
         assert actual - optional_receipt_selector == allowed
     assert not any(
         imported.startswith("loushang.hosting") for imported in _imports(CANARY)

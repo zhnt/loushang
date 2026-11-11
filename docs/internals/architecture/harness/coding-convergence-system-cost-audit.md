@@ -615,3 +615,11 @@ Coding 新增23行、删除30行。原 Package Product 新增14行。系统净�
 记录组件执行。两处既有测试挂点更新，测试净0行。当前430份 Coding 源码111648行、
 Harness 362033行、1969份系统源码648176行。相对 Goal 起点分别净减26107行、
 净增33714行和净增13382行。见[A142](coding-responsibility-convergence-progress.md#a142共用windows根删除意图)。
+
+
+## A143 共用 Windows Worker 历史身份校验
+
+Coding 新增40行、删除73行。原 Worker History 新增43行、删除3行。系统净增7行。
+20处重复判断改用三个共享校验。依赖检查仅放行指定路径与函数，测试代码净增66行，
+单独计量。当前430份 Coding 源码111615行、Harness 362073行、1969份系统源码648183行。
+相对 Goal 起点分别净减26140行、净增33754行和净增13389行。见[A143](coding-responsibility-convergence-progress.md#a143共用windows-worker历史身份校验)。

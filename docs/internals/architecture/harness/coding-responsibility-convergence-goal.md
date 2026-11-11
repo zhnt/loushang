@@ -1,5 +1,6 @@
 # COD-RESP-GOAL-002：Coding 领域化与公共机制职责归一
 
+- A143 Windows Worker 历史身份与无副作用阶段校验归原 Worker History，Coding 减33行、系统增7行。见[A143](coding-responsibility-convergence-progress.md#a143共用windows-worker历史身份校验)。
 - A142 四类 Windows 退休共用根删除意图写入和回读，Coding 减7行、系统增7行。见[A142](coding-responsibility-convergence-progress.md#a142共用windows根删除意图)。
 - A141 四类 Windows 退休共用持久记录路径、读取与完成收据发布，Coding 减135行、系统减44行。见[A141](coding-responsibility-convergence-progress.md#a141共用windows退休记录与完成收据发布)。
 - A140 四类 Windows 退休共用根枚举与冲突匹配，Coding 减50行、系统减42行。见[A140](coding-responsibility-convergence-progress.md#a140共用windows退休冲突扫描)。

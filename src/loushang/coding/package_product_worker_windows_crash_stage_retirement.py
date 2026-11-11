@@ -10,6 +10,10 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
     PackageWindowsRuntimeQuiescenceV1,
 )
+from loushang.harness.worker.history._windows_semantic_contracts import (
+    launch_matches_intent,
+    native_matches_intent,
+)
 
 from .package_legacy_windows_receipt import (
     write_windows_private_receipt,
@@ -179,11 +183,8 @@ def _require_crash_history(
             and attempt.supervisor_process_settled is not True
         )
         or intent.fingerprint != review.intent_fingerprint
-        or attempt.launch_request_fingerprint != intent.request_fingerprint
-        or attempt.launch_receipt_fingerprint != intent.receipt_fingerprint
-        or attempt.launch_identity_fingerprint != intent.identity_fingerprint
-        or attempt.native_worker_request_fingerprint != intent.request_fingerprint
-        or attempt.native_receipt_fingerprint != intent.receipt_fingerprint
+        or not launch_matches_intent(attempt, intent)
+        or not native_matches_intent(attempt, intent)
         or (
             review.supervisor_revision is not None
             and attempt.supervisor_identity_fingerprint != intent.identity_fingerprint

@@ -11,6 +11,11 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     windows_listdir_at,
 )
+from loushang.harness.worker.history._windows_semantic_contracts import (
+    launch_matches_intent,
+    native_matches_intent,
+    no_effect_history_matches,
+)
 
 from .package_legacy_windows_receipt import (
     write_windows_private_receipt,
@@ -167,14 +172,7 @@ def _require_history(
     intent = _require_intent(product, review)
     if (
         len(matches) != 1
-        or matches[0].native_phase != "settled"
-        or matches[0].native_revision != 2
-        or matches[0].native_phase_history != ("reserved", "settled")
-        or matches[0].native_witness_present_history != (False, False)
-        or matches[0].supervisor_phase is not None
-        or matches[0].supervisor_revision is not None
-        or matches[0].supervisor_process_settled is not None
-        or matches[0].supervisor_identity_fingerprint is not None
+        or not no_effect_history_matches(matches[0], settled=True)
         or matches[0].observed_debts
         != (
             (
@@ -189,11 +187,8 @@ def _require_history(
             stage_present
             and matches[0].payload_directory_identity != review.stage_identity[:2]
         )
-        or matches[0].native_worker_request_fingerprint != intent.request_fingerprint
-        or matches[0].native_receipt_fingerprint != intent.receipt_fingerprint
-        or matches[0].launch_request_fingerprint != intent.request_fingerprint
-        or matches[0].launch_receipt_fingerprint != intent.receipt_fingerprint
-        or matches[0].launch_identity_fingerprint != intent.identity_fingerprint
+        or not native_matches_intent(matches[0], intent)
+        or not launch_matches_intent(matches[0], intent)
         or matches[0].launch_stage_identity != intent.stage_identity
         or _other_retirement_artifact_present(product, review.attempt_id)
     ):
@@ -217,14 +212,7 @@ def _require_completed_unlaunched_retirement_under_gc_guard(
         or completed.review_fingerprint != review.fingerprint
         or completed.stage_identity != review.stage_identity[:2]
         or attempt.observed_debts != _RETIRED_DEBTS
-        or attempt.native_phase != "settled"
-        or attempt.native_revision != 2
-        or attempt.native_phase_history != ("reserved", "settled")
-        or attempt.native_witness_present_history != (False, False)
-        or attempt.supervisor_phase is not None
-        or attempt.supervisor_revision is not None
-        or attempt.supervisor_process_settled is not None
-        or attempt.supervisor_identity_fingerprint is not None
+        or not no_effect_history_matches(attempt, settled=True)
         or _other_retirement_artifact_present(product, attempt.attempt_id)
     ):
         raise CodingWindowsWorkerUnlaunchedRetirementError(
@@ -233,11 +221,8 @@ def _require_completed_unlaunched_retirement_under_gc_guard(
     intent = _require_intent(product, review)
     if (
         intent.stage_identity != completed.stage_identity
-        or attempt.native_worker_request_fingerprint != intent.request_fingerprint
-        or attempt.native_receipt_fingerprint != intent.receipt_fingerprint
-        or attempt.launch_request_fingerprint != intent.request_fingerprint
-        or attempt.launch_receipt_fingerprint != intent.receipt_fingerprint
-        or attempt.launch_identity_fingerprint != intent.identity_fingerprint
+        or not native_matches_intent(attempt, intent)
+        or not launch_matches_intent(attempt, intent)
         or attempt.launch_stage_identity != intent.stage_identity
     ):
         raise CodingWindowsWorkerUnlaunchedRetirementError(

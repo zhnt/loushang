@@ -16,6 +16,7 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
     _LaunchIntentFacts,
     _RecoveryFacts,
     _SourceFacts,
+    launch_matches_intent,
 )
 
 
@@ -98,9 +99,7 @@ class _WindowsLaunchIntentBaseMethods(_SourceBoundBaseWireMethods):
             attempt = recovery_attempts.get(intent.attempt_id)
             if (
                 attempt is None
-                or attempt.launch_request_fingerprint != intent.request_fingerprint
-                or attempt.launch_receipt_fingerprint != intent.receipt_fingerprint
-                or attempt.launch_identity_fingerprint != intent.identity_fingerprint
+                or not launch_matches_intent(attempt, intent)
                 or attempt.launch_stage_identity != intent.stage_identity
             ):
                 raise ValueError(

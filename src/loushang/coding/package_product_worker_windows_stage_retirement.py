@@ -32,6 +32,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
     windows_listdir_at,
 )
 from loushang.harness.worker.history._base_codec import _BaseWireMethods, _unchanged
+from loushang.harness.worker.history._windows_semantic_contracts import (
+    launch_matches_intent,
+    native_matches_intent,
+)
 from loushang.harness.worker.payload._windows_stage_retirement import (
     CompleteStageProof as _CompleteStageProof,
 )
@@ -259,11 +263,8 @@ def _require_retirement_history(
         )
         or matches[0].native_revision != review.native_revision
         or matches[0].supervisor_revision != review.supervisor_revision
-        or matches[0].launch_request_fingerprint != intent.request_fingerprint
-        or matches[0].launch_receipt_fingerprint != intent.receipt_fingerprint
-        or matches[0].launch_identity_fingerprint != intent.identity_fingerprint
-        or matches[0].native_worker_request_fingerprint != intent.request_fingerprint
-        or matches[0].native_receipt_fingerprint != intent.receipt_fingerprint
+        or not launch_matches_intent(matches[0], intent)
+        or not native_matches_intent(matches[0], intent)
         or matches[0].supervisor_identity_fingerprint != intent.identity_fingerprint
         or _partial_retirement_artifact_present(product, review.attempt_id)
         or (
@@ -302,12 +303,9 @@ def _require_completed_retirement_under_gc_guard(
         or attempt.supervisor_process_settled is not True
         or attempt.native_revision != review.native_revision
         or attempt.supervisor_revision != review.supervisor_revision
-        or attempt.native_worker_request_fingerprint != intent.request_fingerprint
-        or attempt.native_receipt_fingerprint != intent.receipt_fingerprint
+        or not native_matches_intent(attempt, intent)
         or attempt.supervisor_identity_fingerprint != intent.identity_fingerprint
-        or attempt.launch_request_fingerprint != intent.request_fingerprint
-        or attempt.launch_receipt_fingerprint != intent.receipt_fingerprint
-        or attempt.launch_identity_fingerprint != intent.identity_fingerprint
+        or not launch_matches_intent(attempt, intent)
         or attempt.launch_stage_identity != intent.stage_identity
         or _partial_retirement_artifact_present(product, attempt.attempt_id)
     ):
