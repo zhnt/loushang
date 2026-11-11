@@ -50,7 +50,7 @@ class WindowsPrivateDirectoryAcl:
         self._crt = import_module("msvcrt")
         self._bind()
         self._descriptor = C.c_void_p()
-        self._user_sid = self._current_user_sid()
+        self._user_sid = self.process_user_sid(self._kernel.GetCurrentProcess())
         admitted = sorted({self._user_sid, _SYSTEM_SID})
         sddl = (
             "O:"
@@ -187,11 +187,12 @@ class WindowsPrivateDirectoryAcl:
     def __exit__(self, *_args: object) -> None:
         self.close()
 
-    def _current_user_sid(self) -> str:
+    def process_user_sid(self, process: int) -> str:
+        """Read TokenUser from an already retained process handle."""
         token = W.HANDLE()
         self._check(
             self._security.OpenProcessToken(
-                self._kernel.GetCurrentProcess(), 0x8, C.byref(token)
+                process, 0x8, C.byref(token)
             )
         )
         try:
