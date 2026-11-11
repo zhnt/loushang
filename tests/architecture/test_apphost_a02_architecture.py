@@ -151,7 +151,19 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
             for item in _imports(path)
         )
     }
-    assert apphost_consumers == {
+    execution_work = "loushang.apphost.integrations.session_control"
+    optional_execution_consumers = {
+        path for path in apphost_consumers
+        if path in {
+            Path("src/loushang/coding/_hosted_execution_work.py"),
+            Path("src/loushang/coding/hosted_resume.py"),
+        }
+        and {
+            imported for imported in resolved_imports(path)
+            if imported == "loushang.apphost" or imported.startswith("loushang.apphost.")
+        } <= {execution_work, execution_work + "._HostedAgentExecutionWork"}
+    }
+    assert apphost_consumers - optional_execution_consumers == {
         Path("src/loushang/coding/client_settings.py"),
         # G1: desktop composition over the existing managed lifecycle owners.
         Path("src/loushang/coding/gui_local_host.py"),

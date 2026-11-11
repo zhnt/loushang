@@ -6,6 +6,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 
@@ -682,7 +683,6 @@ def test_clipboard_image_persists_through_transcript_and_continuity_preview(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     session_dir = tmp_path / "data" / "sessions"
     project = tmp_path / "project"
     session_dir.parent.mkdir(mode=0o700)
@@ -732,7 +732,11 @@ def test_clipboard_image_persists_through_transcript_and_continuity_preview(
         assert store.read_bytes(store.records[0]) == clipboard_bytes
         await shutdown_coding_continuity(reader)
 
-    asyncio.run(scenario())
+    # Native platform state needs private ancestors. Keep transcript data and
+    # managed RunLease storage unchanged; use the existing runtime-test pattern.
+    with TemporaryDirectory(prefix="loushang-runtime-platform-") as platform_home:
+        monkeypatch.setenv("LOUSHANG_HOME", platform_home)
+        asyncio.run(scenario())
 
 
 def test_coding_resume_reports_unsafe_discovery_source(tmp_path: Path) -> None:

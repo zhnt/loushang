@@ -1,0 +1,984 @@
+{
+  "posix": {
+    "empty": {
+      "outcome": {
+        "backups": []
+      },
+      "trace": [
+        "mapping",
+        "private-base",
+        [
+          "open",
+          "/private",
+          "/package/backups/installation"
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "close",
+          17
+        ]
+      ]
+    },
+    "valid": {
+      "outcome": {
+        "backups": [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "trace": [
+        "mapping",
+        "private-base",
+        [
+          "open",
+          "/private",
+          "/package/backups/installation"
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "read",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "verify",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "close",
+          17
+        ]
+      ]
+    },
+    "staging": {
+      "outcome": {
+        "backups": [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "trace": [
+        "mapping",
+        "private-base",
+        [
+          "open",
+          "/private",
+          "/package/backups/installation"
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "read",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "verify",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "close",
+          17
+        ]
+      ]
+    },
+    "tombstone": {
+      "outcome": {
+        "backups": [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "trace": [
+        "mapping",
+        "private-base",
+        [
+          "open",
+          "/private",
+          "/package/backups/installation"
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "read",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "verify",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "close",
+          17
+        ]
+      ]
+    },
+    "unexpected": {
+      "outcome": {
+        "error": "ValueError",
+        "message": "Coding Arch backup member is unexpected",
+        "context": null,
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        "private-base",
+        [
+          "open",
+          "/private",
+          "/package/backups/installation"
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "close",
+          17
+        ]
+      ]
+    },
+    "missing_parent": {
+      "outcome": {
+        "backups": []
+      },
+      "trace": [
+        "mapping",
+        "private-base",
+        [
+          "open",
+          "/private",
+          "/package/backups/installation"
+        ]
+      ]
+    },
+    "read_failure": {
+      "outcome": {
+        "error": "OSError",
+        "message": "read interrupted",
+        "context": null,
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        "private-base",
+        [
+          "open",
+          "/private",
+          "/package/backups/installation"
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "read",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "close",
+          17
+        ]
+      ]
+    },
+    "close_failure": {
+      "outcome": {
+        "error": "OSError",
+        "message": "close interrupted",
+        "context": null,
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        "private-base",
+        [
+          "open",
+          "/private",
+          "/package/backups/installation"
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "read",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "verify",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "close",
+          17
+        ]
+      ]
+    },
+    "read_and_close_failure": {
+      "outcome": {
+        "error": "OSError",
+        "message": "close interrupted",
+        "context": [
+          "OSError",
+          "read interrupted"
+        ],
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        "private-base",
+        [
+          "open",
+          "/private",
+          "/package/backups/installation"
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "read",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "close",
+          17
+        ]
+      ]
+    }
+  },
+  "windows": {
+    "empty": {
+      "outcome": {
+        "backups": []
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        "acl-enter",
+        [
+          "open",
+          "/package/backups/installation",
+          {
+            "share_delete": false,
+            "read_control": true
+          }
+        ],
+        [
+          "acl",
+          17
+        ],
+        [
+          "identity",
+          17
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "close",
+          17
+        ],
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "acl-exit",
+          null
+        ]
+      ]
+    },
+    "valid": {
+      "outcome": {
+        "backups": [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        "acl-enter",
+        [
+          "open",
+          "/package/backups/installation",
+          {
+            "share_delete": false,
+            "read_control": true
+          }
+        ],
+        [
+          "acl",
+          17
+        ],
+        [
+          "identity",
+          17
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "read",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "verify",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "close",
+          17
+        ],
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "acl-exit",
+          null
+        ]
+      ]
+    },
+    "duplicate": {
+      "outcome": {
+        "error": "ValueError",
+        "message": "Coding Arch backup members repeat",
+        "context": null,
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        "acl-enter",
+        [
+          "open",
+          "/package/backups/installation",
+          {
+            "share_delete": false,
+            "read_control": true
+          }
+        ],
+        [
+          "acl",
+          17
+        ],
+        [
+          "identity",
+          17
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "close",
+          17
+        ],
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "acl-exit",
+          "ValueError"
+        ]
+      ]
+    },
+    "unexpected": {
+      "outcome": {
+        "error": "ValueError",
+        "message": "Coding Arch backup member is unexpected",
+        "context": null,
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        "acl-enter",
+        [
+          "open",
+          "/package/backups/installation",
+          {
+            "share_delete": false,
+            "read_control": true
+          }
+        ],
+        [
+          "acl",
+          17
+        ],
+        [
+          "identity",
+          17
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "close",
+          17
+        ],
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "acl-exit",
+          "ValueError"
+        ]
+      ]
+    },
+    "tombstone": {
+      "outcome": {
+        "backups": [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        "acl-enter",
+        [
+          "open",
+          "/package/backups/installation",
+          {
+            "share_delete": false,
+            "read_control": true
+          }
+        ],
+        [
+          "acl",
+          17
+        ],
+        [
+          "identity",
+          17
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "read",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "verify",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "close",
+          17
+        ],
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "acl-exit",
+          null
+        ]
+      ]
+    },
+    "collision": {
+      "outcome": {
+        "error": "ValueError",
+        "message": "Coding Arch backup expiry tombstone collides",
+        "context": null,
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        "acl-enter",
+        [
+          "open",
+          "/package/backups/installation",
+          {
+            "share_delete": false,
+            "read_control": true
+          }
+        ],
+        [
+          "acl",
+          17
+        ],
+        [
+          "identity",
+          17
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "close",
+          17
+        ],
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "acl-exit",
+          "ValueError"
+        ]
+      ]
+    },
+    "missing_parent": {
+      "outcome": {
+        "backups": []
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "inspect",
+          "/package/backups"
+        ],
+        [
+          "lstat",
+          "/package/backups/installation"
+        ]
+      ]
+    },
+    "missing_base": {
+      "outcome": {
+        "backups": []
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "inspect",
+          "/package/backups"
+        ],
+        [
+          "lstat",
+          "/package/backups"
+        ],
+        "package-root",
+        [
+          "inspect",
+          "/package"
+        ]
+      ]
+    },
+    "unsafe_parent": {
+      "outcome": {
+        "error": "ValueError",
+        "message": "Coding Arch backup parent is unsafe",
+        "context": [
+          "FileNotFoundError",
+          "missing private directory"
+        ],
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "inspect",
+          "/package/backups"
+        ],
+        [
+          "lstat",
+          "/package/backups/installation"
+        ]
+      ]
+    },
+    "unsafe_base": {
+      "outcome": {
+        "error": "ValueError",
+        "message": "Coding Arch backup base is unsafe",
+        "context": [
+          "FileNotFoundError",
+          "missing private directory"
+        ],
+        "suppress_context": true
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "inspect",
+          "/package/backups"
+        ],
+        [
+          "lstat",
+          "/package/backups"
+        ]
+      ]
+    },
+    "held_changed": {
+      "outcome": {
+        "error": "ValueError",
+        "message": "Coding Arch backup parent changed",
+        "context": null,
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        "acl-enter",
+        [
+          "open",
+          "/package/backups/installation",
+          {
+            "share_delete": false,
+            "read_control": true
+          }
+        ],
+        [
+          "acl",
+          17
+        ],
+        [
+          "identity",
+          17
+        ],
+        [
+          "close",
+          17
+        ],
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "acl-exit",
+          "ValueError"
+        ]
+      ]
+    },
+    "post_changed": {
+      "outcome": {
+        "error": "ValueError",
+        "message": "Coding Arch backup parent changed",
+        "context": null,
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        "acl-enter",
+        [
+          "open",
+          "/package/backups/installation",
+          {
+            "share_delete": false,
+            "read_control": true
+          }
+        ],
+        [
+          "acl",
+          17
+        ],
+        [
+          "identity",
+          17
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "read",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "verify",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "close",
+          17
+        ],
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "acl-exit",
+          "ValueError"
+        ]
+      ]
+    },
+    "read_failure": {
+      "outcome": {
+        "error": "OSError",
+        "message": "read interrupted",
+        "context": null,
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        "acl-enter",
+        [
+          "open",
+          "/package/backups/installation",
+          {
+            "share_delete": false,
+            "read_control": true
+          }
+        ],
+        [
+          "acl",
+          17
+        ],
+        [
+          "identity",
+          17
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "read",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "close",
+          17
+        ],
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "acl-exit",
+          "OSError"
+        ]
+      ]
+    },
+    "read_and_post_failure": {
+      "outcome": {
+        "error": "ValueError",
+        "message": "Coding Arch backup parent changed",
+        "context": [
+          "OSError",
+          "read interrupted"
+        ],
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        "acl-enter",
+        [
+          "open",
+          "/package/backups/installation",
+          {
+            "share_delete": false,
+            "read_control": true
+          }
+        ],
+        [
+          "acl",
+          17
+        ],
+        [
+          "identity",
+          17
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "read",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "close",
+          17
+        ],
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        [
+          "acl-exit",
+          "ValueError"
+        ]
+      ]
+    },
+    "close_failure": {
+      "outcome": {
+        "error": "OSError",
+        "message": "close interrupted",
+        "context": null,
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        "acl-enter",
+        [
+          "open",
+          "/package/backups/installation",
+          {
+            "share_delete": false,
+            "read_control": true
+          }
+        ],
+        [
+          "acl",
+          17
+        ],
+        [
+          "identity",
+          17
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "read",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "verify",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "close",
+          17
+        ],
+        [
+          "acl-exit",
+          "OSError"
+        ]
+      ]
+    },
+    "read_and_close_failure": {
+      "outcome": {
+        "error": "OSError",
+        "message": "close interrupted",
+        "context": [
+          "OSError",
+          "read interrupted"
+        ],
+        "suppress_context": false
+      },
+      "trace": [
+        "mapping",
+        [
+          "inspect",
+          "/package/backups/installation"
+        ],
+        "acl-enter",
+        [
+          "open",
+          "/package/backups/installation",
+          {
+            "share_delete": false,
+            "read_control": true
+          }
+        ],
+        [
+          "acl",
+          17
+        ],
+        [
+          "identity",
+          17
+        ],
+        [
+          "list",
+          17
+        ],
+        [
+          "read",
+          17,
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "close",
+          17
+        ],
+        [
+          "acl-exit",
+          "OSError"
+        ]
+      ]
+    }
+  }
+}

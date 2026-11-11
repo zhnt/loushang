@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-import loushang.coding.package_private_data_deletion_owner as deletion_module
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
@@ -41,6 +40,7 @@ from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionCoordinator,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.resources.packages._private_tree_posix import PrivatePosixTreeIO
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX private-data owner")
@@ -290,8 +290,8 @@ def test_product_arch_deletion_recovers_exact_started_target(
             raise RuntimeError("injected deletion interruption")
 
         if interruption in {"after_rename", "tampered_tombstone"}:
-            original = deletion_module._remove_members
-            monkeypatch.setattr(deletion_module, "_remove_members", interrupt)
+            original = PrivatePosixTreeIO.remove_members
+            monkeypatch.setattr(PrivatePosixTreeIO, "remove_members", interrupt)
         else:
             original = CodingArchPrivateDataDeletionJournal.record_completion
             monkeypatch.setattr(
@@ -300,7 +300,7 @@ def test_product_arch_deletion_recovers_exact_started_target(
         with pytest.raises(RuntimeError, match="injected deletion interruption"):
             coordinator.delete(plan, confirmation)
         if interruption in {"after_rename", "tampered_tombstone"}:
-            monkeypatch.setattr(deletion_module, "_remove_members", original)
+            monkeypatch.setattr(PrivatePosixTreeIO, "remove_members", original)
         else:
             monkeypatch.setattr(
                 CodingArchPrivateDataDeletionJournal, "record_completion", original

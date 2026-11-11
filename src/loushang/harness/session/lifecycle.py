@@ -7,8 +7,11 @@ import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Generic, Literal, Protocol, TypeVar
+from typing import Generic, Literal, Protocol, TypeVar, cast
 
+from loushang.foundation._owned_tasks import (
+    _observe_task_result,
+)
 from loushang.harness.runtime import (
     CancelledSessionOperation,
     FileCopy,
@@ -98,6 +101,17 @@ class SessionLifecyclePreparationCancelledError(RuntimeError):
     """Raised when a lifecycle hook rejects a requested staged candidate."""
 
 
+class _RetainedPreparationResult(Protocol):
+    async def abort(self) -> None: ...
+
+
+class _RetryablePreparationDebt(Protocol):
+    async def retry_cleanup(self) -> None: ...
+
+
+_RetainedResultT = TypeVar("_RetainedResultT", bound=_RetainedPreparationResult)
+
+
 class PreparedSessionLifecycleOperation(Generic[SessionT, PayloadT]):
     """Own one unpublished session candidate until commit or abort."""
 
@@ -173,12 +187,7 @@ class PreparedSessionLifecycleOperation(Generic[SessionT, PayloadT]):
             await _maybe_await(self._candidate.rollback())
         self._state = "closed"
 
-    @staticmethod
-    def _observe_abort(task: asyncio.Task[None]) -> None:
-        # Retrieve failures even if every waiter was cancelled; the retained
-        # task still carries the error for the next explicit close/retry.
-        if not task.cancelled():
-            task.exception()
+    _observe_abort = staticmethod(_observe_task_result)
 
     async def close(self) -> None:
         await self.abort()
@@ -337,6 +346,17 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
             dispose=self._dispose_session,
         )
         self._operations = SessionOperationCoordinator(self._host)
+        # Explicit retained-preparation users share this original runtime.
+        # Ordinary prepare_restore/import/dispose keep their existing behavior.
+        self._retained_preparation_tasks: set[asyncio.Task[_RetainedPreparationResult]] = set()
+        self._retained_delivery_tasks: dict[
+            PreparedSessionLifecycleOperation[SessionT, PayloadT],
+            asyncio.Task[SessionOperationResult[SessionT, PayloadT | None]],
+        ] = {}
+        self._retained_prepared_operations: set[PreparedSessionLifecycleOperation[SessionT, PayloadT]] = set()
+        self._retained_preparation_debts: list[_RetryablePreparationDebt] = []
+        self._retained_preparation_loop: asyncio.AbstractEventLoop | None = None
+
 
     @property
     def current_session(self) -> SessionT | None:
@@ -423,6 +443,144 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
                 missing_cwd=missing_cwd,
             ),
         )
+
+    def require_retained_preparation_idle(self, *, error_prefix: str = "session") -> None:
+        """Bind the original loop, prune consumed operations, then require idle."""
+        loop = asyncio.get_running_loop()
+        if self._retained_preparation_loop is None:
+            self._retained_preparation_loop = loop
+        elif self._retained_preparation_loop is not loop:
+            raise RuntimeError(f"{error_prefix}_activation_loop_changed")
+        self._retained_prepared_operations = {
+            operation for operation in self._retained_prepared_operations if not operation.consumed
+        }
+        if self._retained_preparation_tasks or self._retained_prepared_operations or self._retained_preparation_debts:
+            raise RuntimeError(f"{error_prefix}_activation_pending")
+
+    async def prepare_retained_candidate(
+        self,
+        transition: Callable[[], SessionLifecycleTransition],
+        build: Callable[[SessionT | None], Awaitable[SessionT]],
+        *,
+        cleanup_error_type: type[BaseException],
+        bind_operation: Callable[[PreparedSessionLifecycleOperation[SessionT, PayloadT]], None],
+        result_factory: Callable[[PreparedSessionLifecycleOperation[SessionT, PayloadT]], _RetainedResultT],
+    ) -> _RetainedResultT:
+        """Retain preparation through cancellation and native candidate cleanup.
+
+        The cleanup exception type must expose retry_cleanup(); its original
+        object remains the debt. Binding and result construction are value-only
+        adapters around the original operation insertion, not execution ports.
+        The transition value factory runs at its original point inside the task.
+        Domain admission/idle checks remain at their original caller boundary.
+        """
+        async def prepare() -> _RetainedResultT:
+            try:
+                operation = await self._prepare_candidate(transition(), build)
+            except cleanup_error_type as debt:
+                self._retained_preparation_debts.append(cast(_RetryablePreparationDebt, debt))
+                raise
+            bind_operation(operation)
+            self._retained_prepared_operations.add(operation)
+            return result_factory(operation)
+
+        task = asyncio.create_task(prepare())
+        retained = cast("asyncio.Task[_RetainedPreparationResult]", task)
+        self._retained_preparation_tasks.add(retained)
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            task.cancel()
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    continue
+                except BaseException:
+                    break
+            if not task.cancelled() and task.exception() is None:
+                await task.result().abort()
+            raise
+        finally:
+            self._retained_preparation_tasks.discard(retained)
+
+    async def consume_retained_preparation(
+        self,
+        operation: PreparedSessionLifecycleOperation[SessionT, PayloadT],
+        *,
+        error_prefix: str = "session",
+    ) -> SessionOperationResult[SessionT, PayloadT | None]:
+        """Deliver an owned operation while retaining its original task."""
+        if operation not in self._retained_prepared_operations:
+            raise RuntimeError(f"{error_prefix}_preparation_not_owned")
+        if operation in self._retained_delivery_tasks:
+            raise RuntimeError(f"{error_prefix}_delivery_pending")
+        task = asyncio.create_task(operation.consume())
+        self._retained_delivery_tasks[operation] = task
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            task.cancel()
+            await self._settle_cancelled_preparation_task(task)
+            raise
+        finally:
+            self._retained_delivery_tasks.pop(operation, None)
+
+    @staticmethod
+    async def _settle_cancelled_preparation_task(task: asyncio.Task[object]) -> None:
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+            except BaseException:
+                break
+        if not task.cancelled():
+            task.exception()
+
+    async def abort_retained_preparation(
+        self, operation: PreparedSessionLifecycleOperation[SessionT, PayloadT],
+    ) -> None:
+        """Abort even during close; original operation owns state and retries."""
+        task = self._retained_delivery_tasks.get(operation)
+        if task is not None:
+            task.cancel()
+            await self._settle_cancelled_preparation_task(task)
+        await operation.abort()
+        self._retained_prepared_operations.discard(operation)
+
+    async def drain_retained_preparations(self, *, error_prefix: str = "session") -> None:
+        """Cancel all retained tasks, join, then abort candidates and retry debts.
+
+        This is explicitly invoked by the dependent owner. It is not added to
+        the ordinary lifecycle dispose path or operation state machine.
+        """
+        if self._retained_preparation_loop is not None and self._retained_preparation_loop is not asyncio.get_running_loop():
+            raise RuntimeError(f"{error_prefix}_activation_loop_changed")
+        tasks = tuple(self._retained_preparation_tasks)
+        deliveries = tuple(self._retained_delivery_tasks.items())
+        for task in tasks:
+            task.cancel()
+        for _, delivery in deliveries:
+            delivery.cancel()
+        for task in tasks:
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                if not task.done():
+                    raise
+            except Exception:
+                pass  # Preparation caller and retained debt own the failure.
+            self._retained_preparation_tasks.discard(task)
+        for operation, delivery in deliveries:
+            await self._settle_cancelled_preparation_task(delivery)
+            self._retained_delivery_tasks.pop(operation, None)
+        for operation in tuple(self._retained_prepared_operations):
+            await operation.abort()
+            self._retained_prepared_operations.discard(operation)
+        for debt in tuple(self._retained_preparation_debts):
+            await debt.retry_cleanup()
+            self._retained_preparation_debts.remove(debt)
 
     async def prepare_restore(
         self,

@@ -286,11 +286,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             "Coding Product fence belongs to another cutover"
                         )
             owner = PackageProductPosixFencedRuntimeOwner.open(
-                authority_root=epoch.authority_root,
-                control_root=epoch.control_root,
-                store_id=epoch.store_id,
-                epochs_root_name=epoch.epochs_root_name,
-                read_only=True,
+                **epoch.fenced_runtime_open_kwargs(), read_only=True
             )
             try:
                 removed_review = review_coding_first_b_removed_local(
@@ -340,11 +336,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             "Coding Product fence belongs to another cutover"
                         )
             owner = PackageProductPosixFencedRuntimeOwner.open(
-                authority_root=epoch.authority_root,
-                control_root=epoch.control_root,
-                store_id=epoch.store_id,
-                epochs_root_name=epoch.epochs_root_name,
-                read_only=True,
+                **epoch.fenced_runtime_open_kwargs(), read_only=True
             )
             try:
                 builtin_review = review_coding_first_b_builtin_only(
@@ -358,11 +350,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.review_legacy_local_plugin:
             owner = PackageProductPosixFencedRuntimeOwner.open(
-                authority_root=epoch.authority_root,
-                control_root=epoch.control_root,
-                store_id=epoch.store_id,
-                epochs_root_name=epoch.epochs_root_name,
-                read_only=True,
+                **epoch.fenced_runtime_open_kwargs(), read_only=True
             )
             try:
                 local_review = review_coding_legacy_installed_local_source(
@@ -432,11 +420,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "Coding Product fence belongs to another cutover"
                     )
             owner = PackageProductPosixFencedRuntimeOwner.open(
-                authority_root=epoch.authority_root,
-                control_root=epoch.control_root,
-                store_id=epoch.store_id,
-                epochs_root_name=epoch.epochs_root_name,
-                read_only=True,
+                **epoch.fenced_runtime_open_kwargs(), read_only=True
             )
             try:
                 require_coding_fenced_single_legacy_data(
@@ -492,11 +476,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             "Coding Product fence belongs to another cutover"
                         )
             owner = PackageProductPosixFencedRuntimeOwner.open(
-                authority_root=epoch.authority_root,
-                control_root=epoch.control_root,
-                store_id=epoch.store_id,
-                epochs_root_name=epoch.epochs_root_name,
-                read_only=True,
+                **epoch.fenced_runtime_open_kwargs(), read_only=True
             )
             try:
                 review = review_coding_first_b_disabled_only(
@@ -651,11 +631,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ):
                 raise RuntimeError("Coding Product fence belongs to another cutover")
             read_owner = PackageProductPosixFencedRuntimeOwner.open(
-                authority_root=epoch.authority_root,
-                control_root=epoch.control_root,
-                store_id=epoch.store_id,
-                epochs_root_name=epoch.epochs_root_name,
-                read_only=True,
+                **epoch.fenced_runtime_open_kwargs(), read_only=True
             )
             try:
                 legacy_inventory = read_coding_legacy_installation_inventory(
@@ -887,10 +863,7 @@ def _run_windows_builtin_candidate(
             ):
                 raise RuntimeError("Coding Product fence belongs to another cutover")
     owner = PackageProductWindowsFencedRuntimeOwner.open(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
+        **epoch.fenced_runtime_open_kwargs()
     )
     try:
         review = review_coding_first_b_builtin_only(
@@ -944,10 +917,7 @@ def _run_windows_fresh_candidate(
         ):
             raise RuntimeError("Coding Product fence belongs to another cutover")
         first_b = PackageProductWindowsFencedRuntimeOwner.open(
-            authority_root=epoch.authority_root,
-            control_root=epoch.control_root,
-            store_id=epoch.store_id,
-            epochs_root_name=epoch.epochs_root_name,
+            **epoch.fenced_runtime_open_kwargs()
         )
         try:
             if not is_coding_fresh_first_b_snapshot(lifecycle, first_b):

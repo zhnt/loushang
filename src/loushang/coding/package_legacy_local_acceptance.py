@@ -20,6 +20,7 @@ from loushang.harness.journal import (
     JournalCodecError,
     JournalLoadPolicy,
     decode_jsonl,
+    encode_jsonl_record,
 )
 from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
 from loushang.harness.plugin_management.ledger import (
@@ -145,8 +146,7 @@ class CodingLegacyLocalAcceptanceV1:
             ):
                 resource_kind = "prompt"
             elif (
-                value["acceptanceVersion"] == 3
-                and value.get("resourceKind") == "theme"
+                value["acceptanceVersion"] == 3 and value.get("resourceKind") == "theme"
             ):
                 resource_kind = "theme"
             else:
@@ -204,8 +204,7 @@ def accept_coding_legacy_installed_local_review(
     try:
         before = os.fstat(descriptor)
         _require_private_parent(state_root, before)
-        file_io = RootedFileIO(state_root, descriptor)
-        try:
+        with RootedFileIO(state_root, descriptor) as file_io:
             with file_io.bind(path) as target:
                 target.acquire_lock(exclusive=True, suffix=".lock")
                 epoch_runtime.assert_current()
@@ -252,22 +251,15 @@ def accept_coding_legacy_installed_local_review(
                         raise CodingLegacyLocalAcceptanceError(
                             "Coding legacy local review changed before acceptance"
                         )
-                    payload = (
-                        json.dumps(
-                            _CODEC.encode_record(proposed),
-                            ensure_ascii=SORTED_UNICODE_JSONL_FORMAT.ensure_ascii,
-                            sort_keys=SORTED_UNICODE_JSONL_FORMAT.sort_keys,
-                            separators=SORTED_UNICODE_JSONL_FORMAT.separators,
-                            allow_nan=False,
-                        )
-                        + SORTED_UNICODE_JSONL_FORMAT.newline
-                    ).encode(SORTED_UNICODE_JSONL_FORMAT.encoding)
+                    payload = encode_jsonl_record(
+                        proposed,
+                        record_codec=_CODEC,
+                        format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                    )
                     target.atomic_write(payload, exclusive=True)
                     epoch_runtime.assert_current()
             _require_private_parent_after(state_root, descriptor, before)
             return proposed
-        finally:
-            file_io.cleanup()
     finally:
         os.close(descriptor)
 
@@ -303,16 +295,13 @@ def reopen_coding_legacy_installed_local_acceptance(
     try:
         before = os.fstat(descriptor)
         _require_private_parent(state_root, before)
-        file_io = RootedFileIO(state_root, descriptor)
-        try:
+        with RootedFileIO(state_root, descriptor) as file_io:
             with file_io.bind(path) as target:
                 try:
                     raw = target.read_bytes(max_bytes=_MAX_ACCEPTANCE_BYTES)
                 except FileNotFoundError:
                     raw = None
             _require_private_parent_after(state_root, descriptor, before)
-        finally:
-            file_io.cleanup()
     finally:
         os.close(descriptor)
     if raw is None:

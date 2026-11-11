@@ -1,0 +1,63 @@
+{
+  "source_baseline": "8ad6b6098f1c24c8cfb6f4d9d290e99bc74d618d",
+  "purpose": "static codec/hash compatibility only; synthetic identities are never filesystem authority",
+  "source": {
+    "members": [
+      {
+        "contentSha256": null,
+        "identity": [
+          1,
+          2,
+          16832,
+          0,
+          3
+        ],
+        "kind": "directory",
+        "relativePath": "empty"
+      },
+      {
+        "contentSha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        "identity": [
+          1,
+          3,
+          33152,
+          3,
+          4
+        ],
+        "kind": "file",
+        "relativePath": "file"
+      }
+    ],
+    "rootIdentity": [
+      1,
+      1,
+      16832,
+      0,
+      2
+    ],
+    "rootPathDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "target_id": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+  "absent": {
+    "members": [],
+    "rootIdentity": null,
+    "rootPathDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "absent_target_id": "absent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "receipt": {
+    "backupId": "b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38",
+    "byteCount": 3,
+    "fileCount": 1,
+    "installationKey": {
+      "installationScope": "workspace",
+      "pluginId": "coding.arch.default",
+      "productId": "coding",
+      "schemaVersion": 1,
+      "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "receiptId": "arch-backup:b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38",
+    "receiptVersion": 1,
+    "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+  },
+  "manifest_utf8": "{\"receipt\":{\"backupId\":\"b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38\",\"byteCount\":3,\"fileCount\":1,\"installationKey\":{\"installationScope\":\"workspace\",\"pluginId\":\"coding.arch.default\",\"productId\":\"coding\",\"schemaVersion\":1,\"scopeId\":\"workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"},\"receiptId\":\"arch-backup:b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38\",\"receiptVersion\":1,\"sourceTargetId\":\"present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393\"},\"source\":{\"members\":[{\"contentSha256\":null,\"identity\":[1,2,16832,0,3],\"kind\":\"directory\",\"relativePath\":\"empty\"},{\"contentSha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\",\"identity\":[1,3,33152,3,4],\"kind\":\"file\",\"relativePath\":\"file\"}],\"rootIdentity\":[1,1,16832,0,2],\"rootPathDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}\n"
+}

@@ -10,13 +10,19 @@ from typing import Any, Generic, Literal, Protocol, TypeVar, cast
 
 from loushang.ai.types import (
     AssistantMessage,
+    ImagePart,
     Message,
     TextPart,
     ToolCall,
     ToolResultMessage,
     UserMessage,
 )
-from loushang.harness.multiagent.context import SubagentContextPlan
+from loushang.harness.multiagent.context import (
+    MappedHistoryMessage,
+    SubagentContextFactory,
+    SubagentContextPlan,
+    TranscriptWatermark,
+)
 from loushang.harness.multiagent.control import MultiAgentControl
 from loushang.harness.multiagent.run_handle import (
     HandleCloseResult,
@@ -44,7 +50,12 @@ from loushang.harness.multiagent.types import (
 from loushang.harness.runtime.execution import HostRuntime
 from loushang.harness.runtime.input_queue import HostInputQueue
 from loushang.harness.tools.multiagent import MultiAgentToolPack
-from loushang.harness.transcript.types import ApplicationMessage
+from loushang.harness.transcript.profile import (
+    AgentTranscriptProfile,
+    context_item_to_model_message,
+)
+from loushang.harness.transcript.session_images import hydrate_session_message_images
+from loushang.harness.transcript.types import ApplicationMessage, SessionImagePart
 
 PayloadT = TypeVar("PayloadT")
 SessionT = TypeVar("SessionT")
@@ -1006,7 +1017,84 @@ def compose_multiagent_before_release(
     return before_release
 
 
+class AgentSessionHistorySource:
+    def __init__(self, manager, blobs, *, detach_message, error_type=ValueError):
+        self.manager, self.blobs = manager, blobs
+        self.error_type = error_type
+        self.detach_message = detach_message
+
+    def records_to(self, record_id):
+        records = self.manager.get_branch(record_id)
+        if not records or records[-1].record_id != record_id:
+            raise self.error_type("inherited history watermark unavailable")
+        profile = AgentTranscriptProfile.default()
+        if any(
+            (r.kind, r.payload_version) not in profile.payload_codecs.registered_keys
+            for r in records
+        ):
+            raise self.error_type("unsupported inherited Transcript record")
+        projection = profile.replay_projection(records)
+        selected = []
+        for item in projection.items:
+            hydrated = hydrate_session_message_images(item, self.blobs)
+            content = getattr(item, "content", None)
+            if isinstance(content, list):
+                after = getattr(hydrated, "content", ())
+                if any(
+                    isinstance(part, SessionImagePart)
+                    and not isinstance(after[index], ImagePart)
+                    for index, part in enumerate(content)
+                ):
+                    raise self.error_type("inherited image could not be preserved")
+            message = context_item_to_model_message(hydrated)
+            if message is None:
+                raise self.error_type("unsupported inherited context message")
+            # Original codecs detach nested mutable tool arguments/content too.
+            detached = self.detach_message(message)
+            selected.append(
+                MappedHistoryMessage(detached, isinstance(detached, UserMessage))
+            )
+        return tuple(selected)
+
+
+def build_agent_context_plan(
+    *,
+    session,
+    blobs,
+    choice,
+    system_prompt,
+    allowed_tools,
+    detach_message,
+    watermark=None,
+    error_type=ValueError,
+):
+    """Read the exact parent history through the existing fork/context factory."""
+    manager = session.session_manager
+    if manager.header.conversation_id != session.session_id:
+        raise error_type("parent history Session identity mismatch")
+    if choice.mode == "inherit":
+        watermark = watermark or manager.get_leaf_id()
+        if not watermark:
+            raise error_type("inherit requires a committed parent watermark")
+    else:
+        watermark = None
+    plan = SubagentContextFactory(
+        source=AgentSessionHistorySource(
+            manager, blobs, error_type=error_type, detach_message=detach_message
+        ),
+        mapper=lambda value: (value,),
+    ).build(
+        tier=choice.tier,
+        watermark=TranscriptWatermark(watermark) if watermark else None,
+        system_prompt=system_prompt,
+        allowed_tools=allowed_tools,
+    )
+    return plan, watermark
+
+
 __all__ = [
+    "AgentSessionHistorySource",
+    "build_agent_context_plan",
     "AgentInputActivity",
     "AgentInputActivityPort",
     "AgentInputFacade",

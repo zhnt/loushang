@@ -22,6 +22,21 @@ from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     BoundedAcquisitionReceiptV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _exact_dict as _exact_dict,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _nonempty_string as _wire_string,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_bool as _wire_bool,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_int as _wire_int,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_list as _wire_list,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
     canonicalize_source_identity,
 )
@@ -1222,48 +1237,10 @@ def _fingerprint(value: object) -> str:
     return sha256(canonical_json_bytes(value)).hexdigest()
 
 
-def _exact_dict(
-    value: object,
-    *,
-    fields: set[str],
-    name: str,
-) -> dict[str, object]:
-    if not isinstance(value, Mapping):
-        raise TypeError(f"{name} must be an object")
-    document = dict(value)
-    if set(document) != fields:
-        raise ValueError(f"{name} fields do not match the versioned schema")
-    return cast(dict[str, object], document)
-
-
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise TypeError(f"{name} must be a non-empty string")
-    return value
-
-
 def _wire_optional_string(value: object, *, name: str) -> str | None:
     if value is None:
         return None
     return _wire_string(value, name=name)
-
-
-def _wire_bool(value: object, *, name: str) -> bool:
-    if type(value) is not bool:
-        raise TypeError(f"{name} must be boolean")
-    return value
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an integer")
-    return value
-
-
-def _wire_list(value: object, *, name: str) -> list[object]:
-    if not isinstance(value, list):
-        raise TypeError(f"{name} must be an array")
-    return value
 
 
 __all__ = [

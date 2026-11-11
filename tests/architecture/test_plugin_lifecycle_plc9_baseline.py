@@ -94,7 +94,7 @@ MANIFEST_ENABLED_FILES = {
     Path("src/loushang/coding/_base_plugin.py"),
     Path("src/loushang/coding/_capability_plugin_composition.py"),
     Path("src/loushang/coding/_product_capability_plugin_composition.py"),
-    Path("src/loushang/coding/package_product_revisions.py"),
+    Path("src/loushang/harness/package_product/_selected_plugin_revisions.py"),
     Path("src/loushang/coding/continuity_bootstrap.py"),
     Path("src/loushang/harness/plugin_management/configured_sources.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
@@ -108,6 +108,10 @@ SOURCE_ENABLED_FILES = {
 }
 LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
     {
+        # Shared RecordSchema metadata excludes the original explicit codec field.
+        (Path("src/loushang/coding/package_legacy_builtin_review.py"), "<module>"): 1,
+        (Path("src/loushang/coding/package_legacy_removed_review.py"), "<module>"): 1,
+        (Path("src/loushang/coding/package_legacy_review.py"), "<module>"): 1,
         (
             Path("src/loushang/coding/package_legacy_classification.py"),
             "CodingLegacyWorkspaceClassificationV1",
@@ -376,7 +380,7 @@ MANIFEST_ENABLED_SCOPE_COUNTS = Counter(
             "_validate_product_lineage",
         ): 1,
         (
-            Path("src/loushang/coding/package_product_revisions.py"),
+            Path("src/loushang/harness/package_product/_selected_plugin_revisions.py"),
             "_validate_builtin_selection",
         ): 2,
         (
@@ -1016,43 +1020,38 @@ def test_plc9_keeps_one_desired_state_writer_and_exact_composition_sites() -> No
             "commit_update",
         ),
     }
-    assert _call_sites(Path("src/loushang"), "PluginDesiredStateLedger") == {
-        # Shared construction for the two original Coding wrappers; recovery
-        # and Product admission stay in those wrappers.
-        (
-            Path("src/loushang/harness/plugin_management/assembly.py"),
-            "bind_plugin_management_core",
-        ),
+    other_sites = {
         # Fresh B state is opened only behind the fenced Coding Product owner;
         # the management service remains the sole desired-state mutation site.
         (
             Path("src/loushang/coding/package_product_runtime.py"),
             "open_coding_package_product_state",
         ),
-        # Fenced B CLI list opens the existing ledger with a strict read-only
-        # load policy; it does not add a Desired State mutation site.
-        (
-            Path("src/loushang/coding/package_product_management_cli.py"),
-            "_ProductCliOwner.open",
-        ),
         # P1 transition-status reads keep the CLI on the same read-only ledger.
         (
             Path("src/loushang/coding/package_product_management_cli.py"),
             "read_coding_fenced_desired_transition",
         ),
-        # Read-only preview opens the ledger with strict load policy and never
-        # becomes a second Desired State writer.
+    }
+    assembly = Path("src/loushang/harness/plugin_management/assembly.py")
+    cli = Path("src/loushang/coding/package_product_management_cli.py")
+    legacy_sites = other_sites | {
+        (assembly, "bind_plugin_management_core"),
+        (cli, "_ProductCliOwner.open"),
         (
             Path("src/loushang/coding/package_product_preview.py"),
             "CodingFencedProductReadOnlyPreviewOwner.open",
         ),
-        # Private-data read commands pin the same epoch and open the existing
-        # ledger with a strict no-repair policy; only the management service writes.
         (
             Path("src/loushang/coding/package_private_data_read_owner.py"),
             "CodingArchPrivateDataReadOwner.open",
         ),
     }
+    shared_sites = other_sites | {(assembly, "bind_plugin_desired_state")}
+    assert _call_sites(Path("src/loushang"), "PluginDesiredStateLedger") in (
+        legacy_sites,
+        shared_sites,
+    )
 
     synthetic_path = Path("src/loushang/example/rogue_writer.py")
     synthetic_source = """

@@ -31,6 +31,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.commit_records import 
     PluginRevisionRefV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _bool_checked_integer as _wire_int,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.staging import (
@@ -1244,12 +1247,6 @@ def _exact_dict(
 def _wire_string(value: object, *, name: str) -> str:
     if not isinstance(value, str):
         raise TypeError(f"{name} must be text")
-    return value
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise TypeError(f"{name} must be an integer")
     return value
 
 

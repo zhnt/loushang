@@ -1,0 +1,1784 @@
+{
+  "data:publish:success": {
+    "error": null,
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:publish:existing_same": {
+    "error": null,
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:publish:existing_different": {
+    "error": null,
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 9,
+        "mode": 384,
+        "digest": "9d6f965ac832e40a5df6c06afe983e3b449c07b843ff51ce76204de05c690d11"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:publish:stale_stage": {
+    "error": null,
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:publish:unsafe_directory": {
+    "error": [
+      "CodingExternalDataWheelError",
+      "External data Wheel root is unsafe"
+    ],
+    "trace": [
+      "open:parent",
+      "close:parent"
+    ],
+    "files": {},
+    "live_owned_fds": []
+  },
+  "data:publish:short_write": {
+    "error": null,
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "write:12",
+      "write:9",
+      "write:6",
+      "write:3",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:publish:no_progress": {
+    "error": [
+      "OSError",
+      "External data Wheel write made no progress"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "close:stage",
+      "close:parent"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:publish:write_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected write failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "close:stage",
+      "close:parent"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:publish:file_sync_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected sync failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "close:parent"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:publish:link_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected link failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "unlink",
+      "sync:parent",
+      "close:parent"
+    ],
+    "files": {},
+    "live_owned_fds": []
+  },
+  "data:publish:directory_sync_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected sync failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:publish:cleanup_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected cleanup failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "close:parent"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      },
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:publish:write_and_cleanup_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected write failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "close:stage",
+      "close:parent"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:publish:verification_failure": {
+    "error": [
+      "RuntimeError",
+      "injected verification failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:read:success": {
+    "error": null,
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:read:digest_mismatch": {
+    "error": [
+      "CodingExternalDataWheelError",
+      "External data Wheel bytes changed"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:read:unsafe_mode": {
+    "error": [
+      "CodingExternalDataWheelError",
+      "External data Wheel bytes are unsafe"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 420,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:read:hardlink": {
+    "error": [
+      "CodingExternalDataWheelError",
+      "External data Wheel bytes are unsafe"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat"
+    ],
+    "files": {
+      "other": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      },
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:read:oversize": {
+    "error": [
+      "CodingExternalDataWheelError",
+      "External data Wheel bytes are unsafe"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 2097153,
+        "mode": 384,
+        "digest": "4a941d55b090ddf91b18d31639273849be19ac3aa688e33ade34fb753735a180"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:read:changed_after_read": {
+    "error": [
+      "CodingExternalDataWheelError",
+      "External data Wheel bytes changed"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "data:read:missing": {
+    "error": [
+      "FileNotFoundError",
+      "[Errno 2] No such file or directory: 'sample-1.0-py3-none-any.whl'"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "close:ancestor"
+    ],
+    "files": {},
+    "live_owned_fds": []
+  },
+  "data:read:directory": {
+    "error": [
+      "OSError",
+      "Local Package Source is not a regular file"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor"
+    ],
+    "files": {},
+    "live_owned_fds": []
+  },
+  "data:read:metadata_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected metadata failure"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:publish:success": {
+    "error": null,
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:ancestor",
+      "unlink",
+      "sync:ancestor",
+      "close:ancestor",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:publish:existing_same": {
+    "error": null,
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:ancestor",
+      "unlink",
+      "sync:ancestor",
+      "close:ancestor",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:publish:existing_different": {
+    "error": null,
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:ancestor",
+      "unlink",
+      "sync:ancestor",
+      "close:ancestor",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 9,
+        "mode": 384,
+        "digest": "9d6f965ac832e40a5df6c06afe983e3b449c07b843ff51ce76204de05c690d11"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:publish:stale_stage": {
+    "error": null,
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:ancestor",
+      "unlink",
+      "sync:ancestor",
+      "close:ancestor",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:publish:unsafe_directory": {
+    "error": [
+      "CodingExternalDependencyWheelError",
+      "Dependency Wheel directory is unsafe"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "close:ancestor"
+    ],
+    "files": {},
+    "live_owned_fds": []
+  },
+  "dependency:publish:short_write": {
+    "error": null,
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "write:12",
+      "write:9",
+      "write:6",
+      "write:3",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:ancestor",
+      "unlink",
+      "sync:ancestor",
+      "close:ancestor",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:publish:no_progress": {
+    "error": [
+      "OSError",
+      "Dependency Wheel write made no progress"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "close:stage",
+      "close:ancestor"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:publish:write_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected write failure"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "close:stage",
+      "close:ancestor"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:publish:file_sync_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected sync failure"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "close:ancestor"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:publish:link_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected link failure"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "unlink",
+      "sync:ancestor",
+      "close:ancestor"
+    ],
+    "files": {},
+    "live_owned_fds": []
+  },
+  "dependency:publish:directory_sync_failure": {
+    "error": null,
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:ancestor",
+      "unlink",
+      "sync:ancestor",
+      "close:ancestor",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:publish:cleanup_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected cleanup failure"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:ancestor",
+      "unlink",
+      "close:ancestor"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      },
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:publish:write_and_cleanup_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected write failure"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "close:stage",
+      "close:ancestor"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:publish:verification_failure": {
+    "error": [
+      "RuntimeError",
+      "injected verification failure"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:ancestor",
+      "unlink",
+      "sync:ancestor",
+      "close:ancestor",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:read:success": {
+    "error": null,
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat",
+      "target_stat",
+      "verify_wheel_metadata"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:read:digest_mismatch": {
+    "error": [
+      "CodingExternalDependencyWheelError",
+      "Dependency Wheel bytes changed"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:read:unsafe_mode": {
+    "error": [
+      "CodingExternalDependencyWheelError",
+      "Dependency Wheel bytes are unsafe"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 420,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:read:hardlink": {
+    "error": [
+      "CodingExternalDependencyWheelError",
+      "Dependency Wheel bytes are unsafe"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat"
+    ],
+    "files": {
+      "other": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      },
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:read:oversize": {
+    "error": [
+      "CodingExternalDependencyWheelError",
+      "Dependency Wheel bytes are unsafe"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 2097153,
+        "mode": 384,
+        "digest": "4a941d55b090ddf91b18d31639273849be19ac3aa688e33ade34fb753735a180"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:read:changed_after_read": {
+    "error": [
+      "CodingExternalDependencyWheelError",
+      "Dependency Wheel bytes changed"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "dependency:read:missing": {
+    "error": [
+      "FileNotFoundError",
+      "[Errno 2] No such file or directory: 'sample-1.0-py3-none-any.whl'"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "close:ancestor"
+    ],
+    "files": {},
+    "live_owned_fds": []
+  },
+  "dependency:read:directory": {
+    "error": [
+      "OSError",
+      "Local Package Source is not a regular file"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor"
+    ],
+    "files": {},
+    "live_owned_fds": []
+  },
+  "dependency:read:metadata_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected metadata failure"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:publish:success": {
+    "error": null,
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:publish:existing_same": {
+    "error": null,
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:publish:existing_different": {
+    "error": null,
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 9,
+        "mode": 384,
+        "digest": "9d6f965ac832e40a5df6c06afe983e3b449c07b843ff51ce76204de05c690d11"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:publish:stale_stage": {
+    "error": null,
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:publish:unsafe_directory": {
+    "error": [
+      "CodingExternalWorkerWheelError",
+      "External Worker root is unsafe"
+    ],
+    "trace": [
+      "open:parent",
+      "close:parent"
+    ],
+    "files": {},
+    "live_owned_fds": []
+  },
+  "worker:publish:short_write": {
+    "error": null,
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "write:12",
+      "write:9",
+      "write:6",
+      "write:3",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:publish:no_progress": {
+    "error": [
+      "OSError",
+      "External Worker write made no progress"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "close:stage",
+      "close:parent"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:publish:write_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected write failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "close:stage",
+      "close:parent"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:publish:file_sync_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected sync failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "close:parent"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:publish:link_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected link failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "unlink",
+      "sync:parent",
+      "close:parent"
+    ],
+    "files": {},
+    "live_owned_fds": []
+  },
+  "worker:publish:directory_sync_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected sync failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:publish:cleanup_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected cleanup failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "close:parent"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      },
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:publish:write_and_cleanup_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected write failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "close:stage",
+      "close:parent"
+    ],
+    "files": {
+      ".sample-1.0-py3-none-any.whl.staging": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:publish:verification_failure": {
+    "error": [
+      "RuntimeError",
+      "injected verification failure"
+    ],
+    "trace": [
+      "open:parent",
+      "unlink",
+      "open:stage",
+      "write:15",
+      "sync:stage",
+      "close:stage",
+      "link",
+      "sync:parent",
+      "unlink",
+      "sync:parent",
+      "close:parent",
+      "verify"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:read:success": {
+    "error": null,
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:read:digest_mismatch": {
+    "error": [
+      "CodingExternalWorkerWheelError",
+      "External Worker bytes changed"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:read:unsafe_mode": {
+    "error": [
+      "CodingExternalWorkerWheelError",
+      "External Worker bytes are unsafe"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 420,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:read:hardlink": {
+    "error": [
+      "CodingExternalWorkerWheelError",
+      "External Worker bytes are unsafe"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat"
+    ],
+    "files": {
+      "other": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      },
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:read:oversize": {
+    "error": [
+      "CodingExternalWorkerWheelError",
+      "External Worker bytes are unsafe"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 2097153,
+        "mode": 384,
+        "digest": "4a941d55b090ddf91b18d31639273849be19ac3aa688e33ade34fb753735a180"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:read:changed_after_read": {
+    "error": [
+      "CodingExternalWorkerWheelError",
+      "External Worker bytes changed"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor",
+      "target_stat",
+      "target_stat"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  },
+  "worker:read:missing": {
+    "error": [
+      "FileNotFoundError",
+      "[Errno 2] No such file or directory: 'sample-1.0-py3-none-any.whl'"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "close:ancestor"
+    ],
+    "files": {},
+    "live_owned_fds": []
+  },
+  "worker:read:directory": {
+    "error": [
+      "OSError",
+      "Local Package Source is not a regular file"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor"
+    ],
+    "files": {},
+    "live_owned_fds": []
+  },
+  "worker:read:metadata_failure": {
+    "error": [
+      "OSError",
+      "[Errno 5] injected metadata failure"
+    ],
+    "trace": [
+      "open:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:ancestor",
+      "close:ancestor",
+      "open:target",
+      "target_stat",
+      "close:ancestor"
+    ],
+    "files": {
+      "sample-1.0-py3-none-any.whl": {
+        "size": 15,
+        "mode": 384,
+        "digest": "6a9e56c47b1b51f59fe5185cbf39bfc45d5c4f65365718e085731d92df09750a"
+      }
+    },
+    "live_owned_fds": []
+  }
+}

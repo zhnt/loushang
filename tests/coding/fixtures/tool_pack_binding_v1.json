@@ -1,0 +1,325 @@
+{
+  "lsp:on_demand": {
+    "calls": [
+      {
+        "name": "document_outline",
+        "owner_kind": "product",
+        "owner_id": "coding.tools",
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "enabled": false,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        },
+        "source_equals_clone": true,
+        "source_projection": {
+          "path": "",
+          "source": "filesystem",
+          "scope": "project",
+          "origin": "top-level",
+          "baseDir": null
+        }
+      },
+      {
+        "name": "inspect_symbol",
+        "owner_kind": "product",
+        "owner_id": "coding.tools",
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "enabled": false,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        },
+        "source_equals_clone": true,
+        "source_projection": {
+          "path": "",
+          "source": "filesystem",
+          "scope": "project",
+          "origin": "top-level",
+          "baseDir": null
+        }
+      }
+    ],
+    "prepared_receipt": {
+      "contributionIds": [
+        "coding-lsp-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools",
+      "retirementHandle": "registration-scope:8df5c5459cb953591b29c730e861112b1202f2b938e5dc2a7d74b8928c195255"
+    },
+    "committed_receipt": {
+      "contributionIds": [
+        "coding-lsp-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools",
+      "retirementHandle": "registration-scope:8df5c5459cb953591b29c730e861112b1202f2b938e5dc2a7d74b8928c195255"
+    },
+    "events": [
+      "stage:document_outline",
+      "stage:inspect_symbol",
+      "activate:document_outline",
+      "activate:inspect_symbol",
+      "deactivate:inspect_symbol",
+      "deactivate:document_outline",
+      "activate:document_outline",
+      "activate:inspect_symbol",
+      "dispose:inspect_symbol",
+      "dispose:document_outline"
+    ]
+  },
+  "lsp:always": {
+    "calls": [
+      {
+        "name": "document_outline",
+        "owner_kind": "product",
+        "owner_id": "coding.tools",
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "enabled": true,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        },
+        "source_equals_clone": true,
+        "source_projection": {
+          "path": "",
+          "source": "filesystem",
+          "scope": "project",
+          "origin": "top-level",
+          "baseDir": null
+        }
+      },
+      {
+        "name": "inspect_symbol",
+        "owner_kind": "product",
+        "owner_id": "coding.tools",
+        "runtime_id": "workspace:sample:coding.lsp.default:coding-lsp-tools",
+        "generation": 7,
+        "enabled": true,
+        "source_fields": {
+          "plugin_id": "coding.lsp.default",
+          "contribution_id": "coding-lsp-tools",
+          "admission_fingerprint": "e6377975bbb39c83bad5b918155090d226defc376a5ffd55ee7b7c2606862311"
+        },
+        "source_equals_clone": true,
+        "source_projection": {
+          "path": "",
+          "source": "filesystem",
+          "scope": "project",
+          "origin": "top-level",
+          "baseDir": null
+        }
+      }
+    ],
+    "prepared_receipt": {
+      "contributionIds": [
+        "coding-lsp-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools",
+      "retirementHandle": "registration-scope:8df5c5459cb953591b29c730e861112b1202f2b938e5dc2a7d74b8928c195255"
+    },
+    "committed_receipt": {
+      "contributionIds": [
+        "coding-lsp-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.lsp.default:coding-lsp-tools",
+      "retirementHandle": "registration-scope:8df5c5459cb953591b29c730e861112b1202f2b938e5dc2a7d74b8928c195255"
+    },
+    "events": [
+      "stage:document_outline",
+      "stage:inspect_symbol",
+      "activate:document_outline",
+      "activate:inspect_symbol",
+      "deactivate:inspect_symbol",
+      "deactivate:document_outline",
+      "activate:document_outline",
+      "activate:inspect_symbol",
+      "dispose:inspect_symbol",
+      "dispose:document_outline"
+    ]
+  },
+  "lsp:retry": {
+    "first_error": {
+      "type": "loushang.coding.lsp._plugin_tool_owner.CodingLspToolOwnerError",
+      "message": "Coding LSP Tool generation disposal remains incomplete.",
+      "code": "coding_lsp_tool_generation_disposal_failed"
+    },
+    "retry_scope_state": "failed_retryable",
+    "same_scope_after_retry": true,
+    "final_scope_state": "disposed",
+    "events": [
+      "stage:document_outline",
+      "stage:inspect_symbol",
+      "activate:document_outline",
+      "activate:inspect_symbol",
+      "dispose:inspect_symbol",
+      "dispose:document_outline",
+      "dispose:inspect_symbol"
+    ]
+  },
+  "arch:on_demand": {
+    "calls": [
+      {
+        "name": "inspect_import_graph",
+        "owner_kind": "product",
+        "owner_id": "coding.tools",
+        "runtime_id": "workspace:sample:coding.arch.default:coding-arch-tools",
+        "generation": 7,
+        "enabled": false,
+        "source_fields": {
+          "plugin_id": "coding.arch.default",
+          "contribution_id": "coding-arch-tools",
+          "admission_fingerprint": "f7f5308ccd0fa6381a711e7e0d0d0dd88c5f81c3bc955f6a55105138e493512b"
+        },
+        "source_equals_clone": true,
+        "source_projection": {
+          "path": "",
+          "source": "filesystem",
+          "scope": "project",
+          "origin": "top-level",
+          "baseDir": null
+        }
+      }
+    ],
+    "prepared_receipt": {
+      "contributionIds": [
+        "coding-arch-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools",
+      "retirementHandle": "registration-scope:8db86da04d43b509d110c3176642cf5754550b4c29bac1c1b0c308678565fd83"
+    },
+    "committed_receipt": {
+      "contributionIds": [
+        "coding-arch-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools",
+      "retirementHandle": "registration-scope:8db86da04d43b509d110c3176642cf5754550b4c29bac1c1b0c308678565fd83"
+    },
+    "events": [
+      "stage:inspect_import_graph",
+      "activate:inspect_import_graph",
+      "deactivate:inspect_import_graph",
+      "activate:inspect_import_graph",
+      "dispose:inspect_import_graph"
+    ]
+  },
+  "arch:always": {
+    "calls": [
+      {
+        "name": "inspect_import_graph",
+        "owner_kind": "product",
+        "owner_id": "coding.tools",
+        "runtime_id": "workspace:sample:coding.arch.default:coding-arch-tools",
+        "generation": 7,
+        "enabled": true,
+        "source_fields": {
+          "plugin_id": "coding.arch.default",
+          "contribution_id": "coding-arch-tools",
+          "admission_fingerprint": "f7f5308ccd0fa6381a711e7e0d0d0dd88c5f81c3bc955f6a55105138e493512b"
+        },
+        "source_equals_clone": true,
+        "source_projection": {
+          "path": "",
+          "source": "filesystem",
+          "scope": "project",
+          "origin": "top-level",
+          "baseDir": null
+        }
+      }
+    ],
+    "prepared_receipt": {
+      "contributionIds": [
+        "coding-arch-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools",
+      "retirementHandle": "registration-scope:8db86da04d43b509d110c3176642cf5754550b4c29bac1c1b0c308678565fd83"
+    },
+    "committed_receipt": {
+      "contributionIds": [
+        "coding-arch-tools"
+      ],
+      "ownerGenerationReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools:generation:7",
+      "ownerReference": "registration-owner:product:coding.tools:workspace:sample:coding.arch.default:coding-arch-tools",
+      "retirementHandle": "registration-scope:8db86da04d43b509d110c3176642cf5754550b4c29bac1c1b0c308678565fd83"
+    },
+    "events": [
+      "stage:inspect_import_graph",
+      "activate:inspect_import_graph",
+      "deactivate:inspect_import_graph",
+      "activate:inspect_import_graph",
+      "dispose:inspect_import_graph"
+    ]
+  },
+  "arch:retry": {
+    "first_error": {
+      "type": "loushang.coding.arch._plugin_tool_owner.CodingArchToolOwnerError",
+      "message": "Coding Arch Tool generation disposal remains incomplete.",
+      "code": "coding_arch_tool_generation_disposal_failed"
+    },
+    "retry_scope_state": "failed_retryable",
+    "same_scope_after_retry": true,
+    "final_scope_state": "disposed",
+    "events": [
+      "stage:inspect_import_graph",
+      "activate:inspect_import_graph",
+      "dispose:inspect_import_graph",
+      "dispose:inspect_import_graph"
+    ]
+  },
+  "families": {
+    "lsp:same_family_other_scope": "accepted",
+    "lsp:cross_family:commit": {
+      "type": "builtins.TypeError",
+      "message": "Coding Arch Tool owner received a foreign generation",
+      "code": null
+    },
+    "lsp:cross_family:rollback_commit": {
+      "type": "builtins.TypeError",
+      "message": "Coding Arch Tool owner received a foreign generation",
+      "code": null
+    },
+    "lsp:cross_family:retirement_receipt": {
+      "type": "builtins.TypeError",
+      "message": "Coding Arch Tool owner received a foreign generation",
+      "code": null
+    },
+    "lsp:cross_family:dispose": {
+      "type": "builtins.TypeError",
+      "message": "Coding Arch Tool owner received a foreign generation",
+      "code": null
+    },
+    "arch:same_family_other_scope": "accepted",
+    "arch:cross_family:commit": {
+      "type": "builtins.TypeError",
+      "message": "Coding LSP Tool owner received a foreign generation",
+      "code": null
+    },
+    "arch:cross_family:rollback_commit": {
+      "type": "builtins.TypeError",
+      "message": "Coding LSP Tool owner received a foreign generation",
+      "code": null
+    },
+    "arch:cross_family:retirement_receipt": {
+      "type": "builtins.TypeError",
+      "message": "Coding LSP Tool owner received a foreign generation",
+      "code": null
+    },
+    "arch:cross_family:dispose": {
+      "type": "builtins.TypeError",
+      "message": "Coding LSP Tool owner received a foreign generation",
+      "code": null
+    }
+  }
+}

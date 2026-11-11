@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, cast
+from functools import partial
+from typing import Literal
 
-from loushang.foundation.json import JsonValueError, require_json_mapping
 from loushang.harness.journal import FunctionalJournalRecordCodec, JournalCodecError
 from loushang.harness.plugin_management.records import (
     PluginDesiredStateMutationV1,
     PluginDesiredStateTransitionV1,
     PluginLifecycleCodecError,
+    _record_document,
+    _require_positive_integer,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
 )
 
 PLUGIN_MANAGEMENT_COMMAND_VERSION = 1
@@ -105,15 +111,12 @@ class PluginManagementCommandV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginManagementCommandV1:
-        document = _wire_object(value, name="Plugin management command")
-        _wire_exact_fields(
-            document,
-            keys={"action", "commandVersion", "mutation"},
+        document = _decode_document(
+            value,
             name="Plugin management command",
-        )
-        _wire_version(
-            document.get("commandVersion"),
-            expected=PLUGIN_MANAGEMENT_COMMAND_VERSION,
+            schema=_PLUGINMANAGEMENTCOMMAND_SCHEMA,
+            version=PLUGIN_MANAGEMENT_COMMAND_VERSION,
+            version_field="commandVersion",
         )
         try:
             action = _wire_string(
@@ -122,11 +125,8 @@ class PluginManagementCommandV1:
             )
             if action not in _ACTIONS:
                 raise ValueError("Unsupported Plugin management action")
-            return cls(
-                action=cast(PluginManagementAction, action),
-                mutation=PluginDesiredStateMutationV1.from_dict(document["mutation"]),
-                command_version=PLUGIN_MANAGEMENT_COMMAND_VERSION,
-            )
+            document["action"] = action
+            return _PLUGINMANAGEMENTCOMMAND_SCHEMA.decode(cls, document)
         except PluginManagementRecordCodecError:
             raise
         except (PluginLifecycleCodecError, TypeError, ValueError) as exc:
@@ -192,15 +192,12 @@ class PluginManagementOperationResultV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginManagementOperationResultV1:
-        document = _wire_object(value, name="Plugin management operation result")
-        _wire_exact_fields(
-            document,
-            keys={"disposition", "errorCode", "resultVersion", "transition"},
+        document = _decode_document(
+            value,
             name="Plugin management operation result",
-        )
-        _wire_version(
-            document.get("resultVersion"),
-            expected=PLUGIN_MANAGEMENT_OPERATION_RESULT_VERSION,
+            schema=_PLUGINMANAGEMENTOPERATIONRESULT_SCHEMA,
+            version=PLUGIN_MANAGEMENT_OPERATION_RESULT_VERSION,
+            version_field="resultVersion",
         )
         try:
             disposition = _wire_string(
@@ -218,15 +215,10 @@ class PluginManagementOperationResultV1:
                 document["errorCode"],
                 name="Plugin management error code",
             )
-            return cls(
-                disposition=cast(
-                    PluginManagementResultDisposition,
-                    disposition,
-                ),
-                transition=transition,
-                error_code=error_code,
-                result_version=PLUGIN_MANAGEMENT_OPERATION_RESULT_VERSION,
-            )
+            document["disposition"] = disposition
+            document["transition"] = transition
+            document["errorCode"] = error_code
+            return _PLUGINMANAGEMENTOPERATIONRESULT_SCHEMA.decode(cls, document)
         except PluginManagementRecordCodecError:
             raise
         except (PluginLifecycleCodecError, TypeError, ValueError) as exc:
@@ -360,24 +352,12 @@ class PluginManagementOperationEventV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginManagementOperationEventV1:
-        document = _wire_object(value, name="Plugin management operation event")
-        _wire_exact_fields(
-            document,
-            keys={
-                "command",
-                "compensationState",
-                "journalRevision",
-                "operationRevision",
-                "progressCode",
-                "recordVersion",
-                "result",
-                "status",
-            },
+        document = _decode_document(
+            value,
             name="Plugin management operation event",
-        )
-        _wire_version(
-            document.get("recordVersion"),
-            expected=PLUGIN_MANAGEMENT_OPERATION_EVENT_VERSION,
+            schema=_PLUGINMANAGEMENTOPERATIONEVENT_SCHEMA,
+            version=PLUGIN_MANAGEMENT_OPERATION_EVENT_VERSION,
+            version_field="recordVersion",
         )
         try:
             status = _wire_string(
@@ -398,29 +378,10 @@ class PluginManagementOperationEventV1:
                 raise ValueError("Unsupported Plugin management progress code")
             if compensation != "not_required":
                 raise ValueError("Unsupported PLC2-2 compensation state")
-            return cls(
-                journal_revision=_wire_integer(
-                    document["journalRevision"],
-                    name="journal revision",
-                ),
-                operation_revision=_wire_integer(
-                    document["operationRevision"],
-                    name="operation revision",
-                ),
-                command=PluginManagementCommandV1.from_dict(document["command"]),
-                status=cast(PluginManagementOperationStatus, status),
-                progress_code=cast(PluginManagementProgressCode, progress),
-                compensation_state=cast(
-                    PluginManagementCompensationState,
-                    compensation,
-                ),
-                result=(
-                    None
-                    if document["result"] is None
-                    else PluginManagementOperationResultV1.from_dict(document["result"])
-                ),
-                record_version=PLUGIN_MANAGEMENT_OPERATION_EVENT_VERSION,
-            )
+            document["status"] = status
+            document["progressCode"] = progress
+            document["compensationState"] = compensation
+            return _PLUGINMANAGEMENTOPERATIONEVENT_SCHEMA.decode(cls, document)
         except PluginManagementRecordCodecError:
             raise
         except (PluginLifecycleCodecError, TypeError, ValueError) as exc:
@@ -431,36 +392,6 @@ PLUGIN_MANAGEMENT_OPERATION_EVENT_CODEC = FunctionalJournalRecordCodec(
     encoder=PluginManagementOperationEventV1.to_dict,
     decoder=PluginManagementOperationEventV1.from_dict,
 )
-
-
-def _wire_object(value: object, *, name: str) -> dict[str, object]:
-    try:
-        return cast(dict[str, object], require_json_mapping(value, name=name))
-    except JsonValueError as exc:
-        raise _invalid_record(str(exc)) from exc
-
-
-def _wire_exact_fields(
-    value: dict[str, object],
-    *,
-    keys: set[str],
-    name: str,
-) -> None:
-    actual = set(value)
-    if actual != keys:
-        missing = sorted(keys - actual)
-        unknown = sorted(actual - keys)
-        raise _invalid_record(
-            f"{name} fields do not match; missing={missing!r}, unknown={unknown!r}"
-        )
-
-
-def _wire_version(value: object, *, expected: int) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value != expected:
-        raise PluginManagementRecordCodecError(
-            "Unsupported Plugin management record version",
-            code="unsupported_plugin_management_record_version",
-        )
 
 
 def _wire_string(value: object, *, name: str) -> str:
@@ -479,16 +410,6 @@ def _wire_integer(value: object, *, name: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise _invalid_record(f"{name} must be an integer")
     return value
-
-
-def _require_nonempty(value: str, *, name: str) -> None:
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{name} must be a non-empty string")
-
-
-def _require_positive_integer(value: int, *, name: str) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        raise ValueError(f"{name} must be a positive integer")
 
 
 def _require_version(value: int, *, expected: int) -> None:
@@ -519,3 +440,56 @@ __all__ = [
     "PluginManagementRecordCodecError",
     "PluginManagementResultDisposition",
 ]
+
+
+_PLUGINMANAGEMENTCOMMAND_SCHEMA = RecordSchema.for_dataclass(
+    PluginManagementCommandV1,
+    _wire_string,
+    RecordField("action", decoder=lambda value: value),
+    RecordField("mutation", decoder=PluginDesiredStateMutationV1.from_dict),
+    RecordField("command_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINMANAGEMENTOPERATIONRESULT_SCHEMA = RecordSchema.for_dataclass(
+    PluginManagementOperationResultV1,
+    _wire_string,
+    RecordField("disposition", decoder=lambda value: value),
+    RecordField("transition", decoder=lambda value: value),
+    RecordField("error_code", decoder=lambda value: value),
+    RecordField("result_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINMANAGEMENTOPERATIONEVENT_SCHEMA = RecordSchema.for_dataclass(
+    PluginManagementOperationEventV1,
+    _wire_string,
+    RecordField("journal_revision", "journal revision", _wire_integer),
+    RecordField("operation_revision", "operation revision", _wire_integer),
+    RecordField("command", decoder=PluginManagementCommandV1.from_dict),
+    RecordField("status", decoder=lambda value: value),
+    RecordField("progress_code", decoder=lambda value: value),
+    RecordField("compensation_state", decoder=lambda value: value),
+    RecordField(
+        "result",
+        decoder=lambda value: (
+            None
+            if value is None
+            else PluginManagementOperationResultV1.from_dict(value)
+        ),
+    ),
+    RecordField("record_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_decode_document = partial(
+    _record_document,
+    invalid_record=_invalid_record,
+    unsupported_version=lambda: PluginManagementRecordCodecError(
+        "Unsupported Plugin management record version",
+        code="unsupported_plugin_management_record_version",
+    ),
+)

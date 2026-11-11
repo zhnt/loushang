@@ -1,0 +1,4163 @@
+{
+  "observations": {
+    "abort": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": null,
+          "label": "abort",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "abort-fail-once": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "candidate dispose failed once",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "label": "abort",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "aborting"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "dispose",
+          "session-1",
+          2
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "bind-error": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "",
+            "notes": [],
+            "suppress": false,
+            "type": "AssertionError"
+          },
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "bypassed",
+              false
+            ]
+          ]
+        ]
+      ]
+    },
+    "busy-before-admit": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "coding_resume_activation_pending",
+            "notes": [],
+            "suppress": false,
+            "type": "RuntimeError"
+          },
+          "label": "prepare-invalid-admit",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "set-replaced",
+          true
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "cancel-delivery": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "",
+            "notes": [],
+            "suppress": false,
+            "type": "CancelledError"
+          },
+          "label": "delivery-waiter",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "closed"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "factory",
+          "consume"
+        ],
+        [
+          "prepare-session",
+          "session-1"
+        ],
+        [
+          "delivery-held",
+          {
+            "current": null,
+            "debts": [],
+            "deliveries": [
+              [
+                "op-1",
+                false,
+                false
+              ]
+            ],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "consuming"
+              ]
+            ],
+            "tasks": []
+          }
+        ],
+        [
+          "delivery-cancel"
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "cancel-late-abort-fails": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": {
+              "cause": null,
+              "context": null,
+              "id": 1,
+              "message": "",
+              "notes": [],
+              "suppress": false,
+              "type": "CancelledError"
+            },
+            "id": 0,
+            "message": "candidate dispose failed once",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "label": "prepare-waiter",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "aborting"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "before-cancel",
+          {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": [
+              {
+                "cancelled": false,
+                "cancelling": 0,
+                "done": false
+              }
+            ]
+          }
+        ],
+        [
+          "domain-cancel"
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "dispose",
+          "session-1",
+          2
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "cancel-late-success": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "",
+            "notes": [],
+            "suppress": false,
+            "type": "CancelledError"
+          },
+          "label": "prepare-waiter",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "before-cancel",
+          {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": [
+              {
+                "cancelled": false,
+                "cancelling": 0,
+                "done": false
+              }
+            ]
+          }
+        ],
+        [
+          "domain-cancel"
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "cancel-prepare": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "",
+            "notes": [],
+            "suppress": false,
+            "type": "CancelledError"
+          },
+          "label": "prepare-waiter",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "before-cancel",
+          {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": [
+              {
+                "cancelled": false,
+                "cancelling": 0,
+                "done": false
+              }
+            ]
+          }
+        ],
+        [
+          "domain-cancel"
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    },
+    "cancel-prepare-debt": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "",
+            "notes": [],
+            "suppress": false,
+            "type": "CancelledError"
+          },
+          "label": "prepare-waiter",
+          "state": {
+            "current": null,
+            "debts": [
+              {
+                "error": "native preparation failed",
+                "owner": "native-debt-owner",
+                "same": true
+              }
+            ],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "before-cancel",
+          {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": [
+              {
+                "cancelled": false,
+                "cancelling": 0,
+                "done": false
+              }
+            ]
+          }
+        ],
+        [
+          "domain-cancel"
+        ],
+        [
+          "debt-retry",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    },
+    "closed-consume": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "coding_resume_root_closed",
+            "notes": [],
+            "suppress": false,
+            "type": "RuntimeError"
+          },
+          "label": "consume",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "abort",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "closed-prepare": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": false,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "coding_resume_root_closed",
+            "notes": [],
+            "suppress": false,
+            "type": "RuntimeError"
+          },
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": false,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    },
+    "completed-factory": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": null,
+          "label": "abort",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "completed-factory-failure": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "native prepare rejected",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    },
+    "consume": {
+      "final": {
+        "current": "session-1",
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": null,
+          "label": "consume",
+          "state": {
+            "current": "session-1",
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                true,
+                "consumed"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "cancelled": false,
+            "current": "session-1",
+            "payload": null,
+            "previous": null
+          }
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": "session-1",
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "factory",
+          "consume"
+        ],
+        [
+          "prepare-session",
+          "session-1"
+        ],
+        [
+          "activate",
+          "session-1"
+        ],
+        [
+          "after",
+          "session-1"
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              false
+            ]
+          ]
+        ]
+      ]
+    },
+    "debt": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "Coding Resume continuation cleanup remains pending",
+            "notes": [],
+            "suppress": false,
+            "type": "CodingResumeContinuationCleanupFailure"
+          },
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [
+              {
+                "error": "native preparation failed",
+                "owner": "native-debt-owner",
+                "same": true
+              }
+            ],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "debt-retry",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    },
+    "debt-fail-once": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "Coding Resume continuation cleanup remains pending",
+            "notes": [],
+            "suppress": false,
+            "type": "CodingResumeContinuationCleanupFailure"
+          },
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [
+              {
+                "error": "native preparation failed",
+                "owner": "native-debt-owner",
+                "same": true
+              }
+            ],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "original debt retry failed",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "label": "first-drain",
+          "state": {
+            "current": null,
+            "debts": [
+              {
+                "error": "native preparation failed",
+                "owner": "native-debt-owner",
+                "same": true
+              }
+            ],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "debt-retry",
+          1
+        ],
+        [
+          "debt-retry",
+          2
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    },
+    "delivery-postcommit-fail": {
+      "final": {
+        "current": "session-1",
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "activation failed after delivery",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "label": "consume",
+          "state": {
+            "current": "session-1",
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                true,
+                "consumed"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": "session-1",
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "factory",
+          "consume"
+        ],
+        [
+          "prepare-session",
+          "session-1"
+        ],
+        [
+          "activate",
+          "session-1"
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              false
+            ]
+          ]
+        ]
+      ]
+    },
+    "delivery-rejected": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "native activation denied",
+            "notes": [],
+            "suppress": false,
+            "type": "PermissionError"
+          },
+          "label": "consume",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "closed"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "factory",
+          "consume"
+        ],
+        [
+          "prepare-session",
+          "session-1"
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "double-cancel-delivery": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "",
+            "notes": [],
+            "suppress": false,
+            "type": "CancelledError"
+          },
+          "label": "delivery-waiter",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "closed"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "factory",
+          "consume"
+        ],
+        [
+          "prepare-session",
+          "session-1"
+        ],
+        [
+          "delivery-held",
+          {
+            "current": null,
+            "debts": [],
+            "deliveries": [
+              [
+                "op-1",
+                false,
+                false
+              ]
+            ],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "consuming"
+              ]
+            ],
+            "tasks": []
+          }
+        ],
+        [
+          "delivery-cancel"
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "double-cancel-prepare": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "",
+            "notes": [],
+            "suppress": false,
+            "type": "CancelledError"
+          },
+          "label": "prepare-waiter",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "before-cancel",
+          {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": [
+              {
+                "cancelled": false,
+                "cancelling": 0,
+                "done": false
+              }
+            ]
+          }
+        ],
+        [
+          "domain-cancel"
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    },
+    "drain-cancel-prepare": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "",
+            "notes": [],
+            "suppress": false,
+            "type": "CancelledError"
+          },
+          "label": "first-drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": [
+              {
+                "cancelled": false,
+                "cancelling": 1,
+                "done": false
+              }
+            ]
+          },
+          "value": null
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "",
+            "notes": [],
+            "suppress": false,
+            "type": "CancelledError"
+          },
+          "label": "prepare-waiter",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "second-drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "domain-cancel"
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    },
+    "drain-debt-failure": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "Coding Resume continuation cleanup remains pending",
+            "notes": [],
+            "suppress": false,
+            "type": "CodingResumeContinuationCleanupFailure"
+          },
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [
+              {
+                "error": "native preparation failed",
+                "owner": "native-debt-owner",
+                "same": true
+              }
+            ],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "original debt retry failed",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "label": "first-drain",
+          "state": {
+            "current": null,
+            "debts": [
+              {
+                "error": "native preparation failed",
+                "owner": "native-debt-owner",
+                "same": true
+              }
+            ],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "debt-retry",
+          1
+        ],
+        [
+          "debt-retry",
+          2
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    },
+    "drain-error-preparation": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": {
+              "cause": null,
+              "context": null,
+              "id": 1,
+              "message": "",
+              "notes": [],
+              "suppress": false,
+              "type": "CancelledError"
+            },
+            "id": 0,
+            "message": "native preparation failed during drain",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "label": "prepare-waiter",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "first-drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "second-drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "domain-cancel"
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    },
+    "drain-operation-failure": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "candidate dispose failed once",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "label": "first-drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "aborting"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "dispose",
+          "session-1",
+          2
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "drain-prepare-delivery": {
+      "final": {
+        "current": "session-1",
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": "session-1",
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "",
+            "notes": [],
+            "suppress": false,
+            "type": "CancelledError"
+          },
+          "label": "delivery-waiter",
+          "state": {
+            "current": "session-1",
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "",
+            "notes": [],
+            "suppress": false,
+            "type": "CancelledError"
+          },
+          "label": "prepare-waiter",
+          "state": {
+            "current": "session-1",
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": "session-1",
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "factory",
+          "consume"
+        ],
+        [
+          "prepare-session",
+          "session-1"
+        ],
+        [
+          "activate",
+          "session-1"
+        ],
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "both-held",
+          {
+            "current": "session-1",
+            "debts": [],
+            "deliveries": [
+              [
+                "op-1",
+                false,
+                false
+              ]
+            ],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": [
+              {
+                "cancelled": false,
+                "cancelling": 0,
+                "done": false
+              }
+            ]
+          }
+        ],
+        [
+          "delivery-cancel"
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              false
+            ]
+          ]
+        ]
+      ]
+    },
+    "duplicate-delivery": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "coding_resume_delivery_pending",
+            "notes": [],
+            "suppress": false,
+            "type": "RuntimeError"
+          },
+          "label": "second-consume",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [
+              [
+                "op-1",
+                false,
+                false
+              ]
+            ],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "consuming"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "",
+            "notes": [],
+            "suppress": false,
+            "type": "CancelledError"
+          },
+          "label": "delivery-waiter",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "closed"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "factory",
+          "consume"
+        ],
+        [
+          "prepare-session",
+          "session-1"
+        ],
+        [
+          "delivery-held",
+          {
+            "current": null,
+            "debts": [],
+            "deliveries": [
+              [
+                "op-1",
+                false,
+                false
+              ]
+            ],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "consuming"
+              ]
+            ],
+            "tasks": []
+          }
+        ],
+        [
+          "delivery-cancel"
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "factory-delivery": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "task factory rejected consume",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "label": "consume",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "factory",
+          "consume"
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          [
+            false
+          ]
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "factory-prepare": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "task factory rejected prepare",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "rejected-coroutines-closed",
+          [
+            false
+          ]
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    },
+    "foreign-operation-abort": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": null,
+          "label": "foreign-abort",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "dispose",
+          "foreign",
+          1
+        ],
+        [
+          "dispose",
+          "session-1",
+          2
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ],
+            [
+              "foreign",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "foreign-root": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "coding_resume_preparation_not_owned",
+            "notes": [],
+            "suppress": false,
+            "type": "RuntimeError"
+          },
+          "label": "foreign-consume",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "coding_resume_preparation_not_owned",
+            "notes": [],
+            "suppress": false,
+            "type": "RuntimeError"
+          },
+          "label": "foreign-abort",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "host-bind-fail": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "host binding rejected",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "prepare-fail": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "native prepare rejected",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    },
+    "prune-before-admit": {
+      "final": {
+        "current": "session-1",
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": null,
+          "label": "consume",
+          "state": {
+            "current": "session-1",
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                true,
+                "consumed"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "cancelled": false,
+            "current": "session-1",
+            "payload": null,
+            "previous": null
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "Coding Resume requires synchronous current owner checks",
+            "notes": [],
+            "suppress": false,
+            "type": "TypeError"
+          },
+          "label": "prepare-invalid-admit",
+          "state": {
+            "current": "session-1",
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": "session-1",
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "factory",
+          "consume"
+        ],
+        [
+          "prepare-session",
+          "session-1"
+        ],
+        [
+          "activate",
+          "session-1"
+        ],
+        [
+          "after",
+          "session-1"
+        ],
+        [
+          "set-replaced",
+          true
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              false
+            ]
+          ]
+        ]
+      ]
+    },
+    "stale": {
+      "final": {
+        "current": "successor",
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": null,
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": {
+            "consumed": false,
+            "continuation": true,
+            "operation": "op-1",
+            "root": true,
+            "wrapper": true
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "active session changed after the candidate was prepared",
+            "notes": [],
+            "suppress": false,
+            "type": "PreparedSessionOperationStateError"
+          },
+          "label": "consume",
+          "state": {
+            "current": "successor",
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "closed"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": "successor",
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "factory",
+          "consume"
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ],
+            [
+              "successor",
+              false
+            ]
+          ]
+        ]
+      ]
+    },
+    "transition-error": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "transition value failed",
+            "notes": [],
+            "suppress": false,
+            "type": "OSError"
+          },
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "transition-error"
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    },
+    "wrapper-error": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": true,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "wrapper construction failed",
+            "notes": [],
+            "suppress": false,
+            "type": "ValueError"
+          },
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [
+              [
+                "op-1",
+                false,
+                "prepared"
+              ]
+            ],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": null,
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": true,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "factory",
+          "prepare"
+        ],
+        [
+          "before",
+          null,
+          "resume"
+        ],
+        [
+          "domain",
+          1
+        ],
+        [
+          "admit",
+          true
+        ],
+        [
+          "host-bind",
+          "session-1",
+          true
+        ],
+        [
+          "wrapper-error"
+        ],
+        [
+          "dispose",
+          "session-1",
+          1
+        ],
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          [
+            [
+              "session-1",
+              true
+            ]
+          ]
+        ]
+      ]
+    },
+    "wrong-loop": {
+      "final": {
+        "current": null,
+        "debts": [],
+        "deliveries": [],
+        "loop_bound": false,
+        "operations": [],
+        "tasks": []
+      },
+      "outputs": [
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "coding_resume_activation_loop_changed",
+            "notes": [],
+            "suppress": false,
+            "type": "RuntimeError"
+          },
+          "label": "prepare",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": false,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 0,
+            "message": "coding_resume_activation_loop_changed",
+            "notes": [],
+            "suppress": false,
+            "type": "RuntimeError"
+          },
+          "label": "drain",
+          "state": {
+            "current": null,
+            "debts": [],
+            "deliveries": [],
+            "loop_bound": false,
+            "operations": [],
+            "tasks": []
+          },
+          "value": null
+        }
+      ],
+      "trace": [
+        [
+          "rejected-coroutines-closed",
+          []
+        ],
+        [
+          "sessions",
+          []
+        ]
+      ]
+    }
+  },
+  "observer_sha256": "4ab8a4fff01ffeb1f97083b4a2debd02625482d068048fcc83879f6e042b4160",
+  "source_commit": "20033880e9033a4174c907d53e4a0c21fc071c4f",
+  "source_sha256": {
+    "cleanup.py": "03dd4945aceb1c001ab93af05ec87b3469159d0313520732ec79c672ca4b269d",
+    "coding.py": "bb545ecdb45d2f24b389bf106b4f89e9f7bd3f243382a4fd7e8a234b324dad88",
+    "lifecycle.py": "90249dde715713c3c0bf4eecf52d43cf101cb2a78923ac9fe0b04ea3a76a6fa9"
+  }
+}

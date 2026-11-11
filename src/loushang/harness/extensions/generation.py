@@ -6,6 +6,9 @@ import asyncio
 from dataclasses import dataclass
 from typing import TypeVar
 
+from loushang.foundation._owned_tasks import (
+    _join_failure_first,
+)
 from loushang.harness.runtime.registration import (
     RegistrationIdentity,
     RegistrationLease,
@@ -132,20 +135,7 @@ async def dispose_extension_generation_registrations(
     return await _join_cleanup(asyncio.create_task(dispose_all()))
 
 
-async def _join_cleanup(task: asyncio.Task[T]) -> T:
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as exc:
-            if caller is None or caller.cancelling() == 0:
-                return task.result()
-            cancellation = exc
-    result = task.result()
-    if cancellation is not None:
-        raise cancellation
-    return result
+_join_cleanup = _join_failure_first
 
 
 __all__ = [

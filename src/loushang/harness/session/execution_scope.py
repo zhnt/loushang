@@ -10,6 +10,10 @@ from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
+from loushang.foundation._owned_tasks import (
+    _observe_task_result,
+    _task_failed_or_cancelled,
+)
 from loushang.harness.session.execution_admission import (
     SessionExecutionAdmission,
     SessionExecutionUnavailable,
@@ -150,9 +154,7 @@ class SessionExecutionScope:
             self._parent_resources_released = True
         await self.finalize()
 
-    @staticmethod
-    def _failed(task: asyncio.Task) -> bool:
-        return task.done() and (task.cancelled() or task.exception() is not None)
+    _failed = staticmethod(_task_failed_or_cancelled)
 
     @staticmethod
     def _owned_task(operation: Coroutine[Any, Any, None], name: str) -> asyncio.Task:
@@ -160,10 +162,7 @@ class SessionExecutionScope:
         task.add_done_callback(SessionExecutionScope._observe)
         return task
 
-    @staticmethod
-    def _observe(task: asyncio.Task) -> None:
-        if not task.cancelled():
-            task.exception()
+    _observe = staticmethod(_observe_task_result)
 
 
 class ExecutionObservations:

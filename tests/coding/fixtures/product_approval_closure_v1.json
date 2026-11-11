@@ -1,0 +1,4075 @@
+{
+  "observations": {
+    "activation-bind-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected bind",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {
+        "activation-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "bind",
+          {
+            "synthetic.semantic": "000000000000000000000000000000000000000000000001"
+          }
+        ]
+      ],
+      "value": null
+    },
+    "activation-denied": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_activation_denied",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability Plugin activation was not approved.",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingCapabilityPluginCompositionError"
+      },
+      "files": {
+        "activation-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a202244454e494544222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a202264656e696564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "DENIED",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "denied",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ]
+      ],
+      "value": null
+    },
+    "activation-different-record": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_activation_approval_mismatch",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability activation approval does not match its Subject.",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingCapabilityPluginCompositionError"
+      },
+      "files": {
+        "activation-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ]
+      ],
+      "value": null
+    },
+    "activation-distribution-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected distribution",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ]
+      ],
+      "value": null
+    },
+    "activation-issuer-cancel": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected approval cancellation",
+        "notes": [],
+        "suppress": false,
+        "type": "KeyboardInterrupt"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ]
+      ],
+      "value": null
+    },
+    "activation-journal-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected journal constructor",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ]
+      ],
+      "value": null
+    },
+    "activation-late-error": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_activation_approval_mismatch",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability activation approval does not match its Subject.",
+        "notes": [],
+        "suppress": false,
+        "type": "LateError"
+      },
+      "files": {
+        "activation-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ]
+      ],
+      "value": null
+    },
+    "activation-one": {
+      "error": null,
+      "files": {
+        "activation-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "bind",
+          {
+            "synthetic.semantic": "000000000000000000000000000000000000000000000001"
+          }
+        ]
+      ],
+      "value": {
+        "host_identity": true,
+        "inputs_identity": true
+      }
+    },
+    "activation-owner-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected owner",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ]
+      ],
+      "value": null
+    },
+    "activation-owner-missing": {
+      "error": {
+        "cause": {
+          "cause": null,
+          "context": null,
+          "id": 1,
+          "message": "'synthetic.semantic'",
+          "notes": [],
+          "suppress": false,
+          "type": "KeyError"
+        },
+        "code": null,
+        "context": {
+          "ref": 1
+        },
+        "id": 0,
+        "message": "Coding owner reader received another Capability",
+        "notes": [],
+        "suppress": true,
+        "type": "ValueError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ]
+      ],
+      "value": null
+    },
+    "activation-product-changed": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding policy reader received another Product scope",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ]
+      ],
+      "value": null
+    },
+    "activation-raw-resume-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected raw Resume snapshot",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {
+        "activation-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          [
+            "harness.plugin-activation.resume-context/v1"
+          ]
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "resume-leaf",
+          "activation"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ]
+      ],
+      "value": null
+    },
+    "activation-raw-snapshot-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected raw snapshot",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {
+        "activation-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ]
+      ],
+      "value": null
+    },
+    "activation-realm-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected realm",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ]
+      ],
+      "value": null
+    },
+    "activation-recovery-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected constructor recovery",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ]
+      ],
+      "value": null
+    },
+    "activation-resume-leaf-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected Resume leaf",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          [
+            "harness.plugin-activation.resume-context/v1"
+          ]
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "resume-leaf",
+          "activation"
+        ]
+      ],
+      "value": null
+    },
+    "activation-revoked": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_activation_not_available",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability Plugin activation decision is not available.",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingCapabilityPluginCompositionError"
+      },
+      "files": {
+        "activation-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d7d7d0a7b226576656e744b696e64223a20226465636973696f6e5f7265766f6b6564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20312c20226a6f75726e616c5265766973696f6e223a20322c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226163746f724964223a20226f70657261746f723a74657374222c20226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a20225245564f4b4544222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20322c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d2c2022736f75726365223a202266697865642d7265766f6b65227d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ]
+      ],
+      "value": null
+    },
+    "activation-scope-changed": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding policy reader received another Product scope",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ]
+      ],
+      "value": null
+    },
+    "activation-second-issuer-cancel": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected approval cancellation",
+        "notes": [],
+        "suppress": false,
+        "type": "KeyboardInterrupt"
+      },
+      "files": {
+        "activation-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "subject",
+          "synthetic.semantic.second",
+          2
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          2,
+          "2f3d956b2ed5fb12c78cf909b4230e195427c8de150b88e2d9743e097a47ca90"
+        ]
+      ],
+      "value": null
+    },
+    "activation-second-issuer-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected issuer",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {
+        "activation-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "subject",
+          "synthetic.semantic.second",
+          2
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          2,
+          "2f3d956b2ed5fb12c78cf909b4230e195427c8de150b88e2d9743e097a47ca90"
+        ]
+      ],
+      "value": null
+    },
+    "activation-second-subject-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected activation subject",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {
+        "activation-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "subject",
+          "synthetic.semantic.second",
+          2
+        ]
+      ],
+      "value": null
+    },
+    "activation-subject-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected activation subject",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ]
+      ],
+      "value": null
+    },
+    "activation-trust-duplicate": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding trust reader requires one exact snapshot",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ]
+      ],
+      "value": null
+    },
+    "activation-trust-missing": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding trust reader requires one exact snapshot",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ]
+      ],
+      "value": null
+    },
+    "activation-two": {
+      "error": null,
+      "files": {
+        "activation-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d7d7d0a7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20312c20226a6f75726e616c5265766973696f6e223a20322c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303032222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232663364393536623265643566623132633738636639303962343233306531393534323763386465313530623838653264393734336530393761343763613930227d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        },
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000002",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2f3d956b2ed5fb12c78cf909b4230e195427c8de150b88e2d9743e097a47ca90"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "subject",
+          "synthetic.semantic.second",
+          2
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          2,
+          "2f3d956b2ed5fb12c78cf909b4230e195427c8de150b88e2d9743e097a47ca90"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "bind",
+          {
+            "synthetic.semantic": "000000000000000000000000000000000000000000000001",
+            "synthetic.semantic.second": "000000000000000000000000000000000000000000000002"
+          }
+        ]
+      ],
+      "value": {
+        "host_identity": true,
+        "inputs_identity": true
+      }
+    },
+    "activation-unrecorded": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_activation_approval_mismatch",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability activation approval does not match its Subject.",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingCapabilityPluginCompositionError"
+      },
+      "files": {},
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ]
+      ],
+      "value": null
+    },
+    "activation-wrong-subject": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_activation_approval_mismatch",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability activation approval does not match its Subject.",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingCapabilityPluginCompositionError"
+      },
+      "files": {
+        "activation-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20226f636375727265644174556e69784d73223a203135302c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d656441637469766174696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c20226465636973696f6e56657273696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c20226973737565644174556e69784d73223a203134302c202273636f70654964223a202273657373696f6e3a74657374222c20227375626a656374223a207b2261646d697373696f6e46696e6765727072696e74223a202262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c202262696e64696e675370656346696e6765727072696e74223a202263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c202263616e64696461746546696e6765727072696e74223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c20226361706162696c6974794964223a202273796e7468657469632e73656d616e746963222c2022636f6e747269627574696f6e4964223a202273656d616e7469632d70726f7669646572222c2022646570656e64656e63794c6f636b446967657374223a202265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2022656666656374697665417574686f726974696573223a205b5d2c2022656666656374697665466163657473223a205b227175657279225d2c2022657865637574696f6e4d6f64656c223a2022696e5f70726f63657373222c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022666f756e646174696f6e2d73616d706c6540776f726b73706163653a74657374222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c20227265766973696f6e223a20317d2c20226f776e65724964223a202273796e746865746963222c20226f776e6572506f6c6963795265766973696f6e223a20226f776e65722d706f6c6963792d31222c20227061636b616765436f6e74656e74446967657374223a202264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2022706c7567696e4964223a2022666f756e646174696f6e2d73616d706c65222c202270726f647563744964223a2022636f64696e67222c202270726f64756374506f6c6963795265766973696f6e223a2022706f6c6963792d31222c202270726f76696465724964223a20226f72672e6c6f757368616e672e73796e7468657469632f64656661756c74222c20227265766f636174696f6e45706f6368223a20332c202273636f70654964223a202273657373696f6e3a74657374222c2022736f757263655472757374436c617373223a2022686f73742d6571756976616c656e742d6c6f63616c222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a65637456657273696f6e223a20317d2c20227375626a656374446967657374223a202232323230623964393563346339626131363636346133336636353464343835663837303835643566383964306133323434393031316131613361646662353734227d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedActivationUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "decisionVersion": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "issuedAtUnixMs": 140,
+          "scopeId": "session:test",
+          "subject": {
+            "admissionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bindingSpecFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "candidateFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "capabilityId": "synthetic.semantic",
+            "contributionId": "semantic-provider",
+            "dependencyLockDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "effectiveAuthorities": [],
+            "effectiveFacets": [
+              "query"
+            ],
+            "executionModel": "in_process",
+            "instanceRevisionRef": {
+              "instanceId": "foundation-sample@workspace:test",
+              "pluginId": "foundation-sample",
+              "revision": 1
+            },
+            "ownerId": "synthetic",
+            "ownerPolicyRevision": "owner-policy-1",
+            "packageContentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "pluginId": "foundation-sample",
+            "productId": "coding",
+            "productPolicyRevision": "policy-1",
+            "providerId": "org.loushang.synthetic/default",
+            "revocationEpoch": 3,
+            "scopeId": "session:test",
+            "sourceTrustClass": "host-equivalent-local",
+            "sourceTrustPolicyRevision": "trust-1",
+            "subjectVersion": 1
+          },
+          "subjectDigest": "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ],
+        [
+          "snapshot",
+          "activation",
+          {}
+        ]
+      ],
+      "value": null
+    },
+    "activation-wrong-type": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability Activation Approval owner returned invalid evidence",
+        "notes": [],
+        "suppress": false,
+        "type": "TypeError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "subject",
+          "synthetic.semantic",
+          1
+        ],
+        [
+          "owner-snapshot"
+        ],
+        [
+          "issuer",
+          "activation",
+          1,
+          "2220b9d95c4c9ba16664a33f654d485f87085d5f89d0a32449011a1a3adfb574"
+        ]
+      ],
+      "value": null
+    },
+    "activation-zero": {
+      "error": null,
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "activation",
+          "<ROOT>/activation-decisions.jsonl",
+          null,
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "component-host",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "recover"
+        ],
+        [
+          "bind",
+          {}
+        ]
+      ],
+      "value": {
+        "host_identity": true,
+        "inputs_identity": true
+      }
+    },
+    "definition-direct": {
+      "error": null,
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ]
+      ],
+      "value": {
+        "selection_identity": true
+      }
+    },
+    "definition-distribution-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected distribution",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ]
+      ],
+      "value": null
+    },
+    "definition-empty-pending": {
+      "error": null,
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "resolve",
+          2,
+          [],
+          [],
+          true
+        ]
+      ],
+      "value": {
+        "selection_identity": true
+      }
+    },
+    "definition-evaluator-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected evaluator",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ]
+      ],
+      "value": null
+    },
+    "definition-first-denied": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_definition_denied",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability Plugin Definition was not approved.",
+        "notes": [
+          "Plugin preflight coding.lsp: denied-test"
+        ],
+        "suppress": false,
+        "type": "CodingCapabilityPluginCompositionError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ]
+      ],
+      "value": null
+    },
+    "definition-first-rejected": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_definition_rejected",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability Plugin Definition was not approved.",
+        "notes": [
+          "Plugin preflight coding.lsp: denied-test",
+          "Plugin preflight <plan>: plan-test"
+        ],
+        "suppress": false,
+        "type": "CodingCapabilityPluginCompositionError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ]
+      ],
+      "value": null
+    },
+    "definition-first-resolve-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected resolve",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ]
+      ],
+      "value": null
+    },
+    "definition-host-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected host",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ]
+      ],
+      "value": null
+    },
+    "definition-invalid-parent": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding Resume requires original Plugin parent lookups",
+        "notes": [],
+        "suppress": false,
+        "type": "TypeError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [],
+      "value": null
+    },
+    "definition-issuer-cancel": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected approval cancellation",
+        "notes": [],
+        "suppress": false,
+        "type": "KeyboardInterrupt"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ]
+      ],
+      "value": null
+    },
+    "definition-issuer-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected issuer",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ]
+      ],
+      "value": null
+    },
+    "definition-journal-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected journal constructor",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ]
+      ],
+      "value": null
+    },
+    "definition-late-error": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_definition_approval_mismatch",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability Definition approval does not match its Subject.",
+        "notes": [],
+        "suppress": false,
+        "type": "LateError"
+      },
+      "files": {
+        "definition-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d6564457865637574696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022636f64696e672e6c73704070726f64756374222c2022706c7567696e4964223a2022636f64696e672e6c7370222c20227265766973696f6e223a20317d2c20226973737565644174556e69784d73223a203134302c2022706c7567696e4964223a2022636f64696e672e6c7370222c2022706f6c6963795265766973696f6e223a2022706f6c6963792d31222c20227265636f726456657273696f6e223a20312c20227265766f636174696f6e45706f6368223a20302c202273636f70654964223a202273657373696f6e3a74657374222c202273636f70654b696e64223a2022776f726b7370616365222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a656374446967657374223a202238376437613265366465353639303265333566343733663862303863353136663466336134643134326163326532353537626264653431363131373639653137222c20227375626a6563744b696e64223a2022706c7567696e5f6465636c61726174696f6e5f657865637574696f6e222c20227375626a656374536368656d6156657273696f6e223a20327d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedExecutionUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "instanceRevisionRef": {
+            "instanceId": "coding.lsp@product",
+            "pluginId": "coding.lsp",
+            "revision": 1
+          },
+          "issuedAtUnixMs": 140,
+          "pluginId": "coding.lsp",
+          "policyRevision": "policy-1",
+          "recordVersion": 1,
+          "revocationEpoch": 0,
+          "scopeId": "session:test",
+          "scopeKind": "workspace",
+          "sourceTrustPolicyRevision": "trust-1",
+          "subjectDigest": "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17",
+          "subjectKind": "plugin_declaration_execution",
+          "subjectSchemaVersion": 2
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ],
+        [
+          "snapshot",
+          "definition",
+          {}
+        ]
+      ],
+      "value": null
+    },
+    "definition-pending": {
+      "error": null,
+      "files": {
+        "definition-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d6564457865637574696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022636f64696e672e6c73704070726f64756374222c2022706c7567696e4964223a2022636f64696e672e6c7370222c20227265766973696f6e223a20317d2c20226973737565644174556e69784d73223a203134302c2022706c7567696e4964223a2022636f64696e672e6c7370222c2022706f6c6963795265766973696f6e223a2022706f6c6963792d31222c20227265636f726456657273696f6e223a20312c20227265766f636174696f6e45706f6368223a20302c202273636f70654964223a202273657373696f6e3a74657374222c202273636f70654b696e64223a2022776f726b7370616365222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a656374446967657374223a202238376437613265366465353639303265333566343733663862303863353136663466336134643134326163326532353537626264653431363131373639653137222c20227375626a6563744b696e64223a2022706c7567696e5f6465636c61726174696f6e5f657865637574696f6e222c20227375626a656374536368656d6156657273696f6e223a20327d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedExecutionUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "instanceRevisionRef": {
+            "instanceId": "coding.lsp@product",
+            "pluginId": "coding.lsp",
+            "revision": 1
+          },
+          "issuedAtUnixMs": 140,
+          "pluginId": "coding.lsp",
+          "policyRevision": "policy-1",
+          "recordVersion": 1,
+          "revocationEpoch": 0,
+          "scopeId": "session:test",
+          "scopeKind": "workspace",
+          "sourceTrustPolicyRevision": "trust-1",
+          "subjectDigest": "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17",
+          "subjectKind": "plugin_declaration_execution",
+          "subjectSchemaVersion": 2
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ],
+        [
+          "snapshot",
+          "definition",
+          {}
+        ],
+        [
+          "resolve",
+          2,
+          [],
+          [],
+          true
+        ]
+      ],
+      "value": {
+        "selection_identity": true
+      }
+    },
+    "definition-realm-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected realm",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ]
+      ],
+      "value": null
+    },
+    "definition-resume-guard-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected Resume guard",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "resume-guard",
+          "test",
+          "<ROOT>"
+        ]
+      ],
+      "value": null
+    },
+    "definition-resume-leaf-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected Resume leaf",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "resume-guard",
+          "test",
+          "<ROOT>"
+        ],
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          [
+            "harness.plugin-execution.resume-context/v1"
+          ]
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "resume-leaf",
+          "definition"
+        ]
+      ],
+      "value": null
+    },
+    "definition-second-denied": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_definition_denied",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability Plugin Definition was not approved.",
+        "notes": [
+          "Plugin preflight coding.lsp: denied-test"
+        ],
+        "suppress": false,
+        "type": "CodingCapabilityPluginCompositionError"
+      },
+      "files": {
+        "definition-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d6564457865637574696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022636f64696e672e6c73704070726f64756374222c2022706c7567696e4964223a2022636f64696e672e6c7370222c20227265766973696f6e223a20317d2c20226973737565644174556e69784d73223a203134302c2022706c7567696e4964223a2022636f64696e672e6c7370222c2022706f6c6963795265766973696f6e223a2022706f6c6963792d31222c20227265636f726456657273696f6e223a20312c20227265766f636174696f6e45706f6368223a20302c202273636f70654964223a202273657373696f6e3a74657374222c202273636f70654b696e64223a2022776f726b7370616365222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a656374446967657374223a202238376437613265366465353639303265333566343733663862303863353136663466336134643134326163326532353537626264653431363131373639653137222c20227375626a6563744b696e64223a2022706c7567696e5f6465636c61726174696f6e5f657865637574696f6e222c20227375626a656374536368656d6156657273696f6e223a20327d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedExecutionUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "instanceRevisionRef": {
+            "instanceId": "coding.lsp@product",
+            "pluginId": "coding.lsp",
+            "revision": 1
+          },
+          "issuedAtUnixMs": 140,
+          "pluginId": "coding.lsp",
+          "policyRevision": "policy-1",
+          "recordVersion": 1,
+          "revocationEpoch": 0,
+          "scopeId": "session:test",
+          "scopeKind": "workspace",
+          "sourceTrustPolicyRevision": "trust-1",
+          "subjectDigest": "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17",
+          "subjectKind": "plugin_declaration_execution",
+          "subjectSchemaVersion": 2
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ],
+        [
+          "snapshot",
+          "definition",
+          {}
+        ],
+        [
+          "resolve",
+          2,
+          [],
+          [],
+          true
+        ]
+      ],
+      "value": null
+    },
+    "definition-second-issuer-cancel": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected approval cancellation",
+        "notes": [],
+        "suppress": false,
+        "type": "KeyboardInterrupt"
+      },
+      "files": {
+        "definition-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d6564457865637574696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022636f64696e672e6c73704070726f64756374222c2022706c7567696e4964223a2022636f64696e672e6c7370222c20227265766973696f6e223a20317d2c20226973737565644174556e69784d73223a203134302c2022706c7567696e4964223a2022636f64696e672e6c7370222c2022706f6c6963795265766973696f6e223a2022706f6c6963792d31222c20227265636f726456657273696f6e223a20312c20227265766f636174696f6e45706f6368223a20302c202273636f70654964223a202273657373696f6e3a74657374222c202273636f70654b696e64223a2022776f726b7370616365222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a656374446967657374223a202238376437613265366465353639303265333566343733663862303863353136663466336134643134326163326532353537626264653431363131373639653137222c20227375626a6563744b696e64223a2022706c7567696e5f6465636c61726174696f6e5f657865637574696f6e222c20227375626a656374536368656d6156657273696f6e223a20327d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedExecutionUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "instanceRevisionRef": {
+            "instanceId": "coding.lsp@product",
+            "pluginId": "coding.lsp",
+            "revision": 1
+          },
+          "issuedAtUnixMs": 140,
+          "pluginId": "coding.lsp",
+          "policyRevision": "policy-1",
+          "recordVersion": 1,
+          "revocationEpoch": 0,
+          "scopeId": "session:test",
+          "scopeKind": "workspace",
+          "sourceTrustPolicyRevision": "trust-1",
+          "subjectDigest": "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17",
+          "subjectKind": "plugin_declaration_execution",
+          "subjectSchemaVersion": 2
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ],
+        [
+          "snapshot",
+          "definition",
+          {}
+        ],
+        [
+          "issuer",
+          "definition",
+          2,
+          "d49a1d34001d226daf36b3cd9ad8ce2b3e7ff237fc27d97bdd5250de9a43c5b3"
+        ]
+      ],
+      "value": null
+    },
+    "definition-second-issuer-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected issuer",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {
+        "definition-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d6564457865637574696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022636f64696e672e6c73704070726f64756374222c2022706c7567696e4964223a2022636f64696e672e6c7370222c20227265766973696f6e223a20317d2c20226973737565644174556e69784d73223a203134302c2022706c7567696e4964223a2022636f64696e672e6c7370222c2022706f6c6963795265766973696f6e223a2022706f6c6963792d31222c20227265636f726456657273696f6e223a20312c20227265766f636174696f6e45706f6368223a20302c202273636f70654964223a202273657373696f6e3a74657374222c202273636f70654b696e64223a2022776f726b7370616365222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a656374446967657374223a202238376437613265366465353639303265333566343733663862303863353136663466336134643134326163326532353537626264653431363131373639653137222c20227375626a6563744b696e64223a2022706c7567696e5f6465636c61726174696f6e5f657865637574696f6e222c20227375626a656374536368656d6156657273696f6e223a20327d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedExecutionUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "instanceRevisionRef": {
+            "instanceId": "coding.lsp@product",
+            "pluginId": "coding.lsp",
+            "revision": 1
+          },
+          "issuedAtUnixMs": 140,
+          "pluginId": "coding.lsp",
+          "policyRevision": "policy-1",
+          "recordVersion": 1,
+          "revocationEpoch": 0,
+          "scopeId": "session:test",
+          "scopeKind": "workspace",
+          "sourceTrustPolicyRevision": "trust-1",
+          "subjectDigest": "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17",
+          "subjectKind": "plugin_declaration_execution",
+          "subjectSchemaVersion": 2
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ],
+        [
+          "snapshot",
+          "definition",
+          {}
+        ],
+        [
+          "issuer",
+          "definition",
+          2,
+          "d49a1d34001d226daf36b3cd9ad8ce2b3e7ff237fc27d97bdd5250de9a43c5b3"
+        ]
+      ],
+      "value": null
+    },
+    "definition-second-rejected": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_definition_rejected",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability Plugin Definition was not approved.",
+        "notes": [
+          "Plugin preflight coding.lsp: denied-test",
+          "Plugin preflight <plan>: plan-test"
+        ],
+        "suppress": false,
+        "type": "CodingCapabilityPluginCompositionError"
+      },
+      "files": {
+        "definition-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d6564457865637574696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022636f64696e672e6c73704070726f64756374222c2022706c7567696e4964223a2022636f64696e672e6c7370222c20227265766973696f6e223a20317d2c20226973737565644174556e69784d73223a203134302c2022706c7567696e4964223a2022636f64696e672e6c7370222c2022706f6c6963795265766973696f6e223a2022706f6c6963792d31222c20227265636f726456657273696f6e223a20312c20227265766f636174696f6e45706f6368223a20302c202273636f70654964223a202273657373696f6e3a74657374222c202273636f70654b696e64223a2022776f726b7370616365222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a656374446967657374223a202238376437613265366465353639303265333566343733663862303863353136663466336134643134326163326532353537626264653431363131373639653137222c20227375626a6563744b696e64223a2022706c7567696e5f6465636c61726174696f6e5f657865637574696f6e222c20227375626a656374536368656d6156657273696f6e223a20327d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedExecutionUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "instanceRevisionRef": {
+            "instanceId": "coding.lsp@product",
+            "pluginId": "coding.lsp",
+            "revision": 1
+          },
+          "issuedAtUnixMs": 140,
+          "pluginId": "coding.lsp",
+          "policyRevision": "policy-1",
+          "recordVersion": 1,
+          "revocationEpoch": 0,
+          "scopeId": "session:test",
+          "scopeKind": "workspace",
+          "sourceTrustPolicyRevision": "trust-1",
+          "subjectDigest": "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17",
+          "subjectKind": "plugin_declaration_execution",
+          "subjectSchemaVersion": 2
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ],
+        [
+          "snapshot",
+          "definition",
+          {}
+        ],
+        [
+          "resolve",
+          2,
+          [],
+          [],
+          true
+        ]
+      ],
+      "value": null
+    },
+    "definition-second-resolve-error": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected resolve",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "files": {
+        "definition-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d6564457865637574696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022636f64696e672e6c73704070726f64756374222c2022706c7567696e4964223a2022636f64696e672e6c7370222c20227265766973696f6e223a20317d2c20226973737565644174556e69784d73223a203134302c2022706c7567696e4964223a2022636f64696e672e6c7370222c2022706f6c6963795265766973696f6e223a2022706f6c6963792d31222c20227265636f726456657273696f6e223a20312c20227265766f636174696f6e45706f6368223a20302c202273636f70654964223a202273657373696f6e3a74657374222c202273636f70654b696e64223a2022776f726b7370616365222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a656374446967657374223a202238376437613265366465353639303265333566343733663862303863353136663466336134643134326163326532353537626264653431363131373639653137222c20227375626a6563744b696e64223a2022706c7567696e5f6465636c61726174696f6e5f657865637574696f6e222c20227375626a656374536368656d6156657273696f6e223a20327d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedExecutionUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "instanceRevisionRef": {
+            "instanceId": "coding.lsp@product",
+            "pluginId": "coding.lsp",
+            "revision": 1
+          },
+          "issuedAtUnixMs": 140,
+          "pluginId": "coding.lsp",
+          "policyRevision": "policy-1",
+          "recordVersion": 1,
+          "revocationEpoch": 0,
+          "scopeId": "session:test",
+          "scopeKind": "workspace",
+          "sourceTrustPolicyRevision": "trust-1",
+          "subjectDigest": "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17",
+          "subjectKind": "plugin_declaration_execution",
+          "subjectSchemaVersion": 2
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ],
+        [
+          "snapshot",
+          "definition",
+          {}
+        ],
+        [
+          "resolve",
+          2,
+          [],
+          [],
+          true
+        ]
+      ],
+      "value": null
+    },
+    "definition-still-pending": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_definition_pending_approval",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability Plugin Definition was not approved.",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingCapabilityPluginCompositionError"
+      },
+      "files": {
+        "definition-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d6564457865637574696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022636f64696e672e6c73704070726f64756374222c2022706c7567696e4964223a2022636f64696e672e6c7370222c20227265766973696f6e223a20317d2c20226973737565644174556e69784d73223a203134302c2022706c7567696e4964223a2022636f64696e672e6c7370222c2022706f6c6963795265766973696f6e223a2022706f6c6963792d31222c20227265636f726456657273696f6e223a20312c20227265766f636174696f6e45706f6368223a20302c202273636f70654964223a202273657373696f6e3a74657374222c202273636f70654b696e64223a2022776f726b7370616365222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a656374446967657374223a202238376437613265366465353639303265333566343733663862303863353136663466336134643134326163326532353537626264653431363131373639653137222c20227375626a6563744b696e64223a2022706c7567696e5f6465636c61726174696f6e5f657865637574696f6e222c20227375626a656374536368656d6156657273696f6e223a20327d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedExecutionUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "instanceRevisionRef": {
+            "instanceId": "coding.lsp@product",
+            "pluginId": "coding.lsp",
+            "revision": 1
+          },
+          "issuedAtUnixMs": 140,
+          "pluginId": "coding.lsp",
+          "policyRevision": "policy-1",
+          "recordVersion": 1,
+          "revocationEpoch": 0,
+          "scopeId": "session:test",
+          "scopeKind": "workspace",
+          "sourceTrustPolicyRevision": "trust-1",
+          "subjectDigest": "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17",
+          "subjectKind": "plugin_declaration_execution",
+          "subjectSchemaVersion": 2
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ],
+        [
+          "snapshot",
+          "definition",
+          {}
+        ],
+        [
+          "resolve",
+          2,
+          [],
+          [],
+          true
+        ]
+      ],
+      "value": null
+    },
+    "definition-two": {
+      "error": null,
+      "files": {
+        "definition-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d6564457865637574696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022636f64696e672e6c73704070726f64756374222c2022706c7567696e4964223a2022636f64696e672e6c7370222c20227265766973696f6e223a20317d2c20226973737565644174556e69784d73223a203134302c2022706c7567696e4964223a2022636f64696e672e6c7370222c2022706f6c6963795265766973696f6e223a2022706f6c6963792d31222c20227265636f726456657273696f6e223a20312c20227265766f636174696f6e45706f6368223a20302c202273636f70654964223a202273657373696f6e3a74657374222c202273636f70654b696e64223a2022776f726b7370616365222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a656374446967657374223a202238376437613265366465353639303265333566343733663862303863353136663466336134643134326163326532353537626264653431363131373639653137222c20227375626a6563744b696e64223a2022706c7567696e5f6465636c61726174696f6e5f657865637574696f6e222c20227375626a656374536368656d6156657273696f6e223a20327d7d7d0a7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20312c20226a6f75726e616c5265766973696f6e223a20322c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d6564457865637574696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303032222c20226465636973696f6e5265766973696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022636f64696e672e6c73704070726f64756374222c2022706c7567696e4964223a2022636f64696e672e6c7370222c20227265766973696f6e223a20317d2c20226973737565644174556e69784d73223a203134302c2022706c7567696e4964223a2022636f64696e672e6c7370222c2022706f6c6963795265766973696f6e223a2022706f6c6963792d31222c20227265636f726456657273696f6e223a20312c20227265766f636174696f6e45706f6368223a20302c202273636f70654964223a202273657373696f6e3a74657374222c202273636f70654b696e64223a2022776f726b7370616365222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a656374446967657374223a202264343961316433343030316432323664616633366233636439616438636532623365376666323337666332376439376264643532353064653961343363356233222c20227375626a6563744b696e64223a2022706c7567696e5f6465636c61726174696f6e5f657865637574696f6e222c20227375626a656374536368656d6156657273696f6e223a20327d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedExecutionUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "instanceRevisionRef": {
+            "instanceId": "coding.lsp@product",
+            "pluginId": "coding.lsp",
+            "revision": 1
+          },
+          "issuedAtUnixMs": 140,
+          "pluginId": "coding.lsp",
+          "policyRevision": "policy-1",
+          "recordVersion": 1,
+          "revocationEpoch": 0,
+          "scopeId": "session:test",
+          "scopeKind": "workspace",
+          "sourceTrustPolicyRevision": "trust-1",
+          "subjectDigest": "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17",
+          "subjectKind": "plugin_declaration_execution",
+          "subjectSchemaVersion": 2
+        },
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedExecutionUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000002",
+          "decisionRevision": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "instanceRevisionRef": {
+            "instanceId": "coding.lsp@product",
+            "pluginId": "coding.lsp",
+            "revision": 1
+          },
+          "issuedAtUnixMs": 140,
+          "pluginId": "coding.lsp",
+          "policyRevision": "policy-1",
+          "recordVersion": 1,
+          "revocationEpoch": 0,
+          "scopeId": "session:test",
+          "scopeKind": "workspace",
+          "sourceTrustPolicyRevision": "trust-1",
+          "subjectDigest": "d49a1d34001d226daf36b3cd9ad8ce2b3e7ff237fc27d97bdd5250de9a43c5b3",
+          "subjectKind": "plugin_declaration_execution",
+          "subjectSchemaVersion": 2
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ],
+        [
+          "snapshot",
+          "definition",
+          {}
+        ],
+        [
+          "issuer",
+          "definition",
+          2,
+          "d49a1d34001d226daf36b3cd9ad8ce2b3e7ff237fc27d97bdd5250de9a43c5b3"
+        ],
+        [
+          "snapshot",
+          "definition",
+          {}
+        ],
+        [
+          "resolve",
+          2,
+          [],
+          [],
+          true
+        ]
+      ],
+      "value": {
+        "selection_identity": true
+      }
+    },
+    "definition-unrecorded": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_definition_denied",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability Plugin Definition was not approved.",
+        "notes": [
+          "Plugin preflight coding.lsp: denied-test"
+        ],
+        "suppress": false,
+        "type": "CodingCapabilityPluginCompositionError"
+      },
+      "files": {},
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedExecutionUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "instanceRevisionRef": {
+            "instanceId": "coding.lsp@product",
+            "pluginId": "coding.lsp",
+            "revision": 1
+          },
+          "issuedAtUnixMs": 140,
+          "pluginId": "coding.lsp",
+          "policyRevision": "policy-1",
+          "recordVersion": 1,
+          "revocationEpoch": 0,
+          "scopeId": "session:test",
+          "scopeKind": "workspace",
+          "sourceTrustPolicyRevision": "trust-1",
+          "subjectDigest": "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17",
+          "subjectKind": "plugin_declaration_execution",
+          "subjectSchemaVersion": 2
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ],
+        [
+          "snapshot",
+          "definition",
+          {}
+        ],
+        [
+          "resolve",
+          2,
+          [],
+          [],
+          true
+        ]
+      ],
+      "value": null
+    },
+    "definition-wrong-subject": {
+      "error": {
+        "cause": null,
+        "code": "coding_capability_plugin_definition_approval_mismatch",
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability Definition approval does not match its Subject.",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingCapabilityPluginCompositionError"
+      },
+      "files": {
+        "definition-decisions.jsonl": "7b226576656e744b696e64223a20226465636973696f6e5f697373756564222c20226576656e7456657273696f6e223a20312c202265787065637465644a6f75726e616c5265766973696f6e223a20302c20226a6f75726e616c5265766973696f6e223a20312c20227061796c6f6164223a207b226465636973696f6e223a207b22617574686f72697a6174696f6e223a207b226163746f724964223a20226f70657261746f723a74657374222c2022617574686f72697a6174696f6e4b696e64223a2022646972656374222c2022617574686f72697a6174696f6e56657273696f6e223a20312c2022736f75726365223a202266697865642d70726f647563742d617070726f76616c227d2c2022636f6e73756d6564457865637574696f6e5573654964223a206e756c6c2c2022636f6e73756d7074696f6e5374617465223a2022415641494c41424c45222c20226465636973696f6e4964223a2022303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c20226465636973696f6e5265766973696f6e223a20312c2022646973706f736974696f6e223a2022617070726f766564222c2022657870697265734174556e69784d73223a203330302c2022696e7374616e63655265766973696f6e526566223a207b22696e7374616e63654964223a2022636f64696e672e6c73704070726f64756374222c2022706c7567696e4964223a2022636f64696e672e6c7370222c20227265766973696f6e223a20317d2c20226973737565644174556e69784d73223a203134302c2022706c7567696e4964223a2022636f64696e672e6c7370222c2022706f6c6963795265766973696f6e223a2022706f6c6963792d31222c20227265636f726456657273696f6e223a20312c20227265766f636174696f6e45706f6368223a20302c202273636f70654964223a202273657373696f6e3a74657374222c202273636f70654b696e64223a2022776f726b7370616365222c2022736f757263655472757374506f6c6963795265766973696f6e223a202274727573742d31222c20227375626a656374446967657374223a202238376437613265366465353639303265333566343733663862303863353136663466336134643134326163326532353537626264653431363131373639653137222c20227375626a6563744b696e64223a2022706c7567696e5f6465636c61726174696f6e5f657865637574696f6e222c20227375626a656374536368656d6156657273696f6e223a20327d7d7d0a"
+      },
+      "issued": [
+        {
+          "authorization": {
+            "actorId": "operator:test",
+            "authorizationKind": "direct",
+            "authorizationVersion": 1,
+            "source": "fixed-product-approval"
+          },
+          "consumedExecutionUseId": null,
+          "consumptionState": "AVAILABLE",
+          "decisionId": "000000000000000000000000000000000000000000000001",
+          "decisionRevision": 1,
+          "disposition": "approved",
+          "expiresAtUnixMs": 300,
+          "instanceRevisionRef": {
+            "instanceId": "coding.lsp@product",
+            "pluginId": "coding.lsp",
+            "revision": 1
+          },
+          "issuedAtUnixMs": 140,
+          "pluginId": "coding.lsp",
+          "policyRevision": "policy-1",
+          "recordVersion": 1,
+          "revocationEpoch": 0,
+          "scopeId": "session:test",
+          "scopeKind": "workspace",
+          "sourceTrustPolicyRevision": "trust-1",
+          "subjectDigest": "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17",
+          "subjectKind": "plugin_declaration_execution",
+          "subjectSchemaVersion": 2
+        }
+      ],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ],
+        [
+          "snapshot",
+          "definition",
+          {}
+        ]
+      ],
+      "value": null
+    },
+    "definition-wrong-type": {
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Coding Capability Definition Approval owner returned invalid evidence",
+        "notes": [],
+        "suppress": false,
+        "type": "TypeError"
+      },
+      "files": {},
+      "issued": [],
+      "trace": [
+        [
+          "journal",
+          "definition",
+          "<ROOT>/definition-decisions.jsonl",
+          "workspace",
+          "session:test",
+          []
+        ],
+        [
+          "realm"
+        ],
+        [
+          "distribution"
+        ],
+        [
+          "evaluator",
+          "controlled-distribution",
+          null
+        ],
+        [
+          "declaration-host"
+        ],
+        [
+          "resolve",
+          1,
+          [],
+          [],
+          true
+        ],
+        [
+          "issuer",
+          "definition",
+          1,
+          "87d7a2e6de56902e35f473f8b08c516f4f3a4d142ac2e2557bbde41611769e17"
+        ]
+      ],
+      "value": null
+    }
+  },
+  "source_commit": "2dfe75fee12a9bcf04f2160577fccdcd7348ed6a",
+  "source_sha256": {
+    "assembly.py": "03bc672587f962e9ee24cfea3ecf420d4553088dba0eae0005e0b9b6d2a7afd7",
+    "coding.py": "591945a458a2db29355c2bc0487a7666ffb4639836f76ed882acee244698addc",
+    "component_host.py": "7b08bfb188c03773fea254c5394147f7e212557a82b8ab35347bcea205b6e339",
+    "host.py": "1b53275f12cd893e2d388dfc0f644605a8d0b9ae0c2c17fcc97b1a42872b50cc"
+  }
+}

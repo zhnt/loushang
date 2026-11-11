@@ -216,11 +216,7 @@ class CodingArchPrivateDataBackupClientV1:
             raise ValueError("Coding Arch backup Product route is unavailable")
         layout = resolve_coding_package_epoch_layout(self.layout)
         epoch = PackageProductPosixFencedRuntimeOwner.open(
-            authority_root=layout.authority_root,
-            control_root=layout.control_root,
-            store_id=layout.store_id,
-            epochs_root_name=layout.epochs_root_name,
-            read_only=True,
+            **layout.fenced_runtime_open_kwargs(), read_only=True
         )
         try:
             self._assert_workspace_identity()

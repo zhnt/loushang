@@ -3321,6 +3321,7 @@ def test_goal_cold_journal_close_failure_returns_original_owner(
 ):
     from types import SimpleNamespace
 
+    import loushang.harnesswork.integrations.goal_store as core_source_module
     from loushang.coding.adapters import _goal_work_sources as module
     from loushang.coding.adapters._goal_store import GoalJournal
     from loushang.coding.adapters.goal import GoalWorkSourceCleanupError
@@ -3336,7 +3337,7 @@ def test_goal_cold_journal_close_failure_returns_original_owner(
     # Real journal/lease, with only the unrelated Goal history and source read
     # replaced so each error path reaches the same owned cleanup boundary.
     history = SimpleNamespace(goal=lambda _: object(), batches=())
-    monkeypatch.setattr(module, "replay", lambda *_: history)
+    monkeypatch.setattr(core_source_module, "replay", lambda *_: history)
     read_error = (
         OSError("source unavailable")
         if outcome == "failure"
@@ -3350,7 +3351,7 @@ def test_goal_cold_journal_close_failure_returns_original_owner(
             raise read_error
         return (), False
 
-    monkeypatch.setattr(module, "_goal_work_facts", facts)
+    monkeypatch.setattr(core_source_module, "_goal_work_facts", facts)
     original_close = GoalJournal.close
     failed_owners = []
 

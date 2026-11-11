@@ -378,10 +378,10 @@ class PluginPackageGcResultJournal:
                 record_codec=_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
-                load_policy=self._load_policy,
+                load_policy=replace(self._load_policy, collect_duplicate_keys=True),
             )
             records = loaded.records
-            _assert_no_duplicate_json_keys(self._path)
+            loaded.require_unique_keys('Package GC result has a duplicate JSON key')
             operations: set[str] = set()
             keys: set[str] = set()
             settled: set[tuple[str, str]] = set()
@@ -465,22 +465,6 @@ def _sha256(value: object) -> bool:
         and len(value) == 64
         and all(character in "0123456789abcdef" for character in value)
     )
-
-
-def _assert_no_duplicate_json_keys(path: Path) -> None:
-    with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            if line.strip():
-                json.loads(line, object_pairs_hook=_unique_json_object)
-
-
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    document: dict[str, object] = {}
-    for key, value in pairs:
-        if key in document:
-            raise ValueError("Package GC result has a duplicate JSON key")
-        document[key] = value
-    return document
 
 
 __all__ = [

@@ -1,0 +1,1321 @@
+{
+  "restore:success": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "latest_deletion",
+      "verify",
+      "close",
+      "inspect_post",
+      "target_stage",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": {
+      "plan": {
+        "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "deletionReceiptId": "deleted:receipt",
+        "desiredInventoryRevision": 7,
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        },
+        "planVersion": 1,
+        "sourceTargetId": "present:source",
+        "targetState": "absent"
+      },
+      "fingerprint": "2081e3501f4b5431d13a25f1753ca4049e655ca9d05a9a544b8ba71b3162ddea"
+    },
+    "error": null,
+    "unclosed": []
+  },
+  "restore:invalid_id": {
+    "trace": [],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch restore backup ID is invalid",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:unremoved": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch restore requires Product removal",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:inspect": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "inspect",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:open": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "open",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:parent_acl": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "parent_acl",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:identity": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup parent changed",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:listdir": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "listdir",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:stage": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup stage needs recovery",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:manifest": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "manifest",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:binding": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup Installation changed",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:deletion_missing": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "latest_deletion",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch restore lacks deletion",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:verify": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "latest_deletion",
+      "verify",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "verify",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:close": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "latest_deletion",
+      "verify",
+      "close",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "OSError",
+        "close",
+        false
+      ]
+    ],
+    "unclosed": [
+      10
+    ]
+  },
+  "restore:post": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "latest_deletion",
+      "verify",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup parent changed",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:manifest_post": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup parent changed",
+        false
+      ],
+      [
+        "RuntimeError",
+        "manifest",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:manifest_close": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "OSError",
+        "close",
+        false
+      ],
+      [
+        "RuntimeError",
+        "manifest",
+        false
+      ]
+    ],
+    "unclosed": [
+      10
+    ]
+  },
+  "restore:identity_post": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup parent changed",
+        false
+      ],
+      [
+        "ValueError",
+        "Windows Coding Arch backup parent changed",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:acl_exit": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "latest_deletion",
+      "verify",
+      "close",
+      "inspect_post",
+      "target_stage",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_exit",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:manifest_acl_exit": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_exit",
+        false
+      ],
+      [
+        "RuntimeError",
+        "manifest",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:root_present": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "latest_deletion",
+      "verify",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch restore target is present",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "restore:archive_missing": {
+    "trace": [
+      "offline:enter",
+      "acl:enter",
+      "state:enter",
+      "acl:20",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "state:exit",
+      "inspect",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "latest_deletion",
+      "verify",
+      "close",
+      "inspect_post",
+      "target_stage",
+      "acl_exit",
+      "offline:exit"
+    ],
+    "value": {
+      "plan": {
+        "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "deletionReceiptId": "deleted:receipt",
+        "desiredInventoryRevision": 7,
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        },
+        "planVersion": 1,
+        "sourceTargetId": "present:source",
+        "targetState": "absent"
+      },
+      "fingerprint": "2081e3501f4b5431d13a25f1753ca4049e655ca9d05a9a544b8ba71b3162ddea"
+    },
+    "error": null,
+    "unclosed": []
+  },
+  "expiry:success": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "latest_deletion",
+      "restore:revision",
+      "restore:confirmation",
+      "restore:completed",
+      "capture_archive",
+      "restore:confirmation",
+      "restore_tx:exit"
+    ],
+    "value": {
+      "plan": {
+        "archiveRootIdentity": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "archiveTargetId": "present:archive",
+        "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "backupReceiptId": "arch-backup:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "confirmationId": "arch-restore-confirm:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "desiredInventoryRevision": 7,
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        },
+        "planVersion": 1,
+        "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "restoredTargetId": "present:restored",
+        "sourceTargetId": "present:source"
+      },
+      "fingerprint": "cde6d3cdc201af00adade859a7d1b8eb1a62d853767b80251f01fa5454bec50c"
+    },
+    "error": null,
+    "unclosed": []
+  },
+  "expiry:invalid_id": {
+    "trace": [
+      "restore_tx:enter",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup expiry request is invalid",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:unremoved": {
+    "trace": [
+      "restore_tx:enter",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup expiry requires removal",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:inspect": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "inspect",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:open": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "open",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:parent_acl": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "parent_acl",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:identity": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup parent changed",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:listdir": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "listdir",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:stage": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup parent changed",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:manifest": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "manifest",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:binding": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup Installation changed",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:deletion_missing": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "latest_deletion",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup expiry lacks deletion",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:verify": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "latest_deletion",
+      "restore:revision",
+      "restore:confirmation",
+      "restore:completed",
+      "capture_archive",
+      "restore:confirmation",
+      "restore_tx:exit"
+    ],
+    "value": {
+      "plan": {
+        "archiveRootIdentity": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "archiveTargetId": "present:archive",
+        "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "backupReceiptId": "arch-backup:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "confirmationId": "arch-restore-confirm:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "desiredInventoryRevision": 7,
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        },
+        "planVersion": 1,
+        "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "restoredTargetId": "present:restored",
+        "sourceTargetId": "present:source"
+      },
+      "fingerprint": "cde6d3cdc201af00adade859a7d1b8eb1a62d853767b80251f01fa5454bec50c"
+    },
+    "error": null,
+    "unclosed": []
+  },
+  "expiry:close": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "OSError",
+        "close",
+        false
+      ]
+    ],
+    "unclosed": [
+      10
+    ]
+  },
+  "expiry:post": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup parent changed",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:manifest_post": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup parent changed",
+        false
+      ],
+      [
+        "RuntimeError",
+        "manifest",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:manifest_close": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "OSError",
+        "close",
+        false
+      ],
+      [
+        "RuntimeError",
+        "manifest",
+        false
+      ]
+    ],
+    "unclosed": [
+      10
+    ]
+  },
+  "expiry:identity_post": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup parent changed",
+        false
+      ],
+      [
+        "ValueError",
+        "Windows Coding Arch backup parent changed",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:acl_exit": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_exit",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:manifest_acl_exit": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_exit",
+        false
+      ],
+      [
+        "RuntimeError",
+        "manifest",
+        false
+      ]
+    ],
+    "unclosed": []
+  },
+  "expiry:root_present": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "latest_deletion",
+      "restore:revision",
+      "restore:confirmation",
+      "restore:completed",
+      "capture_archive",
+      "restore:confirmation",
+      "restore_tx:exit"
+    ],
+    "value": {
+      "plan": {
+        "archiveRootIdentity": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "archiveTargetId": "present:archive",
+        "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "backupReceiptId": "arch-backup:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "confirmationId": "arch-restore-confirm:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "desiredInventoryRevision": 7,
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "scope"
+        },
+        "planVersion": 1,
+        "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "restoredTargetId": "present:restored",
+        "sourceTargetId": "present:source"
+      },
+      "fingerprint": "cde6d3cdc201af00adade859a7d1b8eb1a62d853767b80251f01fa5454bec50c"
+    },
+    "error": null,
+    "unclosed": []
+  },
+  "expiry:archive_missing": {
+    "trace": [
+      "restore_tx:enter",
+      "inspect",
+      "acl:enter",
+      "open",
+      "acl:10",
+      "identity",
+      "listdir",
+      "manifest",
+      "close",
+      "inspect_post",
+      "acl_exit",
+      "deletion:init",
+      "deletion:events",
+      "deletion:close",
+      "latest_deletion",
+      "restore:revision",
+      "restore:confirmation",
+      "restore:completed",
+      "capture_archive",
+      "restore_tx:exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "ValueError",
+        "Windows Coding Arch backup archive disappeared",
+        false
+      ]
+    ],
+    "unclosed": []
+  }
+}

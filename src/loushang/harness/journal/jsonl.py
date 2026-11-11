@@ -177,9 +177,7 @@ def journal_file_read_lock(
             except FileNotFoundError:
                 yield
                 return
-    with journal_file_lock(
-        path, mode, lock_suffix=lock_suffix, create=create_lock
-    ):
+    with journal_file_lock(path, mode, lock_suffix=lock_suffix, create=create_lock):
         yield
 
 
@@ -282,6 +280,29 @@ def read_journal_file_at(
             return ""
     if os.name != "posix" or os.open not in os.supports_dir_fd:
         raise OSError("Descriptor-relative journal reads are unavailable")
+    return _read_private_regular_text_at(
+        directory_fd,
+        name,
+        encoding=encoding,
+        private_file_error=lambda: OSError(
+            "Journal file is not a private regular file"
+        ),
+    )
+
+
+def _read_private_regular_text_at(
+    directory_fd: int,
+    name: str,
+    *,
+    encoding: str,
+    private_file_error: Callable[[], BaseException],
+) -> str:
+    """Read an already caller-validated child, retaining original FD custody.
+
+    Public Journal and compatibility capture retain their distinct name and
+    platform admission. The only projection hook constructs the metadata error;
+    open/read/Unicode/native failures propagate without a catch-all conversion.
+    """
     flags = (
         os.O_RDONLY
         | getattr(os, "O_CLOEXEC", 0)
@@ -300,7 +321,7 @@ def read_journal_file_at(
             or opened.st_mode & 0o077
             or (callable(getuid) and opened.st_uid != getuid())
         ):
-            raise OSError("Journal file is not a private regular file")
+            raise private_file_error()
         return handle.read()
 
 
@@ -373,7 +394,9 @@ def append_jsonl_records(
         bound_file=bound_file,
     ) as rooted:
         if rooted is not None:
-            rooted.append_bytes(payload.encode(format_profile.encoding), fsync=durability.fsync)
+            rooted.append_bytes(
+                payload.encode(format_profile.encoding), fsync=durability.fsync
+            )
             return
         create_private_directory_chain(target.parent)
         existed = target.exists()
@@ -473,7 +496,8 @@ def load_jsonl(
         bound_file=bound_file,
     ) as rooted:
         raw = (
-            rooted.read_bytes().decode(format_profile.encoding) if rooted is not None
+            rooted.read_bytes().decode(format_profile.encoding)
+            if rooted is not None
             else target.read_text(encoding=format_profile.encoding)
         )
         snapshot = _decode_jsonl(
@@ -553,13 +577,20 @@ def _decode_jsonl(
         raise ValueError("header_codec is required by the load policy")
 
     diagnostics: list[JournalDiagnostic] = []
+    duplicate_lines: list[int] | None = (
+        [] if load_policy.collect_duplicate_keys else None
+    )
     header: H | None = None
     record_lines = numbered_lines
     if load_policy.header == "required":
         line_number, line = numbered_lines[0]
         try:
             value = _load_mapping(
-                line, path=target, line_number=line_number, kind="header"
+                line,
+                path=target,
+                line_number=line_number,
+                kind="header",
+                duplicate_lines=duplicate_lines,
             )
             header = cast(JournalHeaderCodec[H], header_codec).decode_header(value)
         except JournalFileError:
@@ -610,7 +641,11 @@ def _decode_jsonl(
             continue
         try:
             value = _load_mapping(
-                line, path=target, line_number=line_number, kind="record"
+                line,
+                path=target,
+                line_number=line_number,
+                kind="record",
+                duplicate_lines=duplicate_lines,
             )
             record = record_codec.decode_record(value)
             if is_partial_tail:
@@ -668,6 +703,7 @@ def _decode_jsonl(
         header=header,
         records=tuple(records),
         diagnostics=tuple(diagnostics),
+        duplicate_key_line=duplicate_lines[0] if duplicate_lines else None,
     )
 
 
@@ -712,7 +748,9 @@ class JsonlJournal(Generic[H, R]):
         if file_io is not None and lock_factory is not None:
             raise ValueError("rooted Journal cannot use a pathname lock factory")
         self.file_io = file_io
-        if bound_file is not None and (file_io is not None or lock_factory is not None or durability.locking):
+        if bound_file is not None and (
+            file_io is not None or lock_factory is not None or durability.locking
+        ):
             raise ValueError("bound Journal requires its existing unlocked transaction")
         self.bound_file = bound_file
 
@@ -754,14 +792,16 @@ class JsonlJournal(Generic[H, R]):
             bound_file=self.bound_file,
         )
 
-    def load(self) -> JsonlSnapshot[H, R]:
+    def load(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> JsonlSnapshot[H, R]:
         return load_jsonl(
             self.path,
             record_codec=self.record_codec,
             header_codec=self.header_codec,
             format_profile=self.format_profile,
             durability=self.durability,
-            load_policy=self.load_policy,
+            load_policy=self.load_policy if load_policy is None else load_policy,
             lock_factory=self.lock_factory,
             file_io=self.file_io,
             bound_file=self.bound_file,
@@ -795,11 +835,20 @@ def _lock_context(
 
 @contextmanager
 def _rooted_context(
-    file_io: RootedFileIO, path: Path, mode: LockMode, durability: JournalDurabilityProfile,
+    file_io: RootedFileIO,
+    path: Path,
+    mode: LockMode,
+    durability: JournalDurabilityProfile,
 ) -> Iterator[RootedFile]:
-    with file_io.bind(path, create_parent=durability.locking or mode == "exclusive", durable=durability.fsync) as rooted:
+    with file_io.bind(
+        path,
+        create_parent=durability.locking or mode == "exclusive",
+        durable=durability.fsync,
+    ) as rooted:
         if durability.locking:
-            rooted.acquire_lock(exclusive=mode == "exclusive", suffix=durability.lock_suffix)
+            rooted.acquire_lock(
+                exclusive=mode == "exclusive", suffix=durability.lock_suffix
+            )
         yield rooted
 
 
@@ -810,8 +859,29 @@ def _dump_mapping(
     if not isinstance(value, Mapping):
         raise TypeError("journal codecs must encode mappings")
     payload = require_json_mapping(dict(value), name="journal_record")
+    return _format_mapping(payload, profile)
+
+
+def encode_jsonl_record(
+    record: R,
+    *,
+    record_codec: JournalRecordCodec[R],
+    format_profile: JournalFormatProfile = DEFAULT_JSONL_FORMAT,
+) -> bytes:
+    """Format one codec-owned record for an existing immutable publication.
+
+    This is only encoding: codec admission, locking and publication stay with
+    the caller. Journal's stronger Mapping validation remains in _dump_mapping.
+    """
+    return (
+        _format_mapping(record_codec.encode_record(record), format_profile)
+        + format_profile.newline
+    ).encode(format_profile.encoding)
+
+
+def _format_mapping(value: Mapping[str, object], profile: JournalFormatProfile) -> str:
     return json.dumps(
-        payload,
+        value,
         ensure_ascii=profile.ensure_ascii,
         sort_keys=profile.sort_keys,
         separators=profile.separators,
@@ -825,9 +895,24 @@ def _load_mapping(
     path: Path,
     line_number: int,
     kind: Literal["header", "record"],
+    duplicate_lines: list[int] | None = None,
 ) -> Mapping[str, object]:
     try:
-        value = json.loads(line, parse_constant=_reject_json_constant)
+        if duplicate_lines is None:
+            value = json.loads(line, parse_constant=_reject_json_constant)
+        else:
+
+            def observe(pairs: list[tuple[str, object]]) -> dict[str, object]:
+                result: dict[str, object] = {}
+                for key, member in pairs:
+                    if key in result and not duplicate_lines:
+                        duplicate_lines.append(line_number)
+                    result[key] = member
+                return result
+
+            value = json.loads(
+                line, parse_constant=_reject_json_constant, object_pairs_hook=observe
+            )
     except ValueError as exc:
         raise JournalFileError(
             f"Journal {kind} is not valid JSON",
@@ -1276,6 +1361,7 @@ __all__ = [
     "append_jsonl_record",
     "append_jsonl_records",
     "decode_jsonl",
+    "encode_jsonl_record",
     "journal_file_lock",
     "journal_file_read_lock",
     "journal_file_lock_at",

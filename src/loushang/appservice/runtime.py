@@ -47,6 +47,9 @@ from loushang.appserver.protocol import (
     TurnInterruptV1,
     TurnTextV1,
 )
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _observe_managed_close,
+)
 
 from .continuity import (
     APPLICATION_CONTINUITY_VERSION,
@@ -1650,11 +1653,6 @@ class AppServiceV1:
     def _require_mux_open(mux: _MuxOwner) -> None:
         if mux.closed:
             raise _error(AppErrorCodeV1.NOT_FOUND)
-
-
-def _observe_managed_close(task: asyncio.Task[None]) -> None:
-    if not task.cancelled():
-        task.exception()
 
 
 _ContinuityResult = TypeVar("_ContinuityResult")

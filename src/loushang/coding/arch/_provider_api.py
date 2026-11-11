@@ -6,10 +6,10 @@ does not expose the future public Plugin author SDK.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Never, Protocol, cast
+from typing import Never, cast
 
 from loushang.coding.arch.cache import ImportFactCache
 from loushang.coding.arch.import_graph import project_import_provider_scan
@@ -28,6 +28,9 @@ from loushang.coding.arch.tool import (
     BoundaryRuleInput,
     project_import_graph_inspection_result,
     validate_import_graph_inspection_request,
+)
+from loushang.coding.arch.tool import (
+    ImportGraphInspectionRuntime as CodingArchToolRuntimePort,
 )
 from loushang.coding.capabilities import CODING_ARCH_CAPABILITY
 from loushang.coding.package_arch_private_cache import (
@@ -124,7 +127,10 @@ class CodingArchPluginConfigV1:
     def __post_init__(self) -> None:
         if self.config_version != CODING_ARCH_PLUGIN_CONFIG_VERSION:
             _reject("Coding Arch Plugin configuration version is unsupported")
-        if self.private_state_schema_version != CODING_ARCH_PRIVATE_STATE_SCHEMA_VERSION:
+        if (
+            self.private_state_schema_version
+            != CODING_ARCH_PRIVATE_STATE_SCHEMA_VERSION
+        ):
             _reject("Coding Arch private-state schema version is unsupported")
         workspace_root = _absolute_path(
             self.workspace_root,
@@ -204,29 +210,6 @@ class CodingArchPluginConfigV1:
             "privateStateSchemaVersion": self.private_state_schema_version,
             "workspaceRoot": str(self.workspace_root),
         }
-
-
-class CodingArchToolRuntimePort(Protocol):
-    """Narrow synchronous Tool view retained by the exact generation."""
-
-    def inspect(
-        self,
-        *,
-        workspace: str | Path,
-        root: str = ".",
-        package_prefix: str | None = None,
-        language: str = "auto",
-        granularity: str = "module",
-        imports: str = "eager",
-        query: str = "summary",
-        source: str | None = None,
-        target: str | None = None,
-        limit: int = 100,
-        excludes: list[str] | None = None,
-        boundary_rules: list[BoundaryRuleInput] | None = None,
-        refresh_cache: bool = False,
-        signal: object | None = None,
-    ) -> dict[str, object] | Awaitable[dict[str, object]]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -465,9 +448,7 @@ def coding_arch_capability_provider() -> CapabilityBundleProvider:
         implementation_version=1,
         compatible_contract=CapabilityContractRange.exact(1),
         facets=CODING_ARCH_CAPABILITY_DEFINITION.facets,
-        requirements=(
-            CODING_ARCH_WORKSPACE_REQUIREMENT,
-        ),
+        requirements=(CODING_ARCH_WORKSPACE_REQUIREMENT,),
         required_authorities=frozenset({"filesystem"}),
         source_id="plugin:coding.arch.default",
         selection_rule=PLUGIN_PROVIDER_SELECTION_RULE,
@@ -497,7 +478,11 @@ def create_coding_arch_provider(
     for value, members, name in (
         (read, ("exists", "is_file", "read_bytes"), "read facet"),
         (listing, ("exists", "is_dir", "iterdir"), "list facet"),
-        (search, ("exists", "is_file", "is_dir", "read_text", "walk_files"), "search facet"),
+        (
+            search,
+            ("exists", "is_file", "is_dir", "read_text", "walk_files"),
+            "search facet",
+        ),
     ):
         for member in members:
             _require_callable_member(value, member, name=name)

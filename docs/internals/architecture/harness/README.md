@@ -25,6 +25,73 @@ acceptance does not establish writable release or performance readiness.
 
 ## Start Here
 
+- [Coding Convergence Progress](coding-convergence-progress.md) records the user-expanded whole-Coding scope, separate source counts and locally implemented slices.
+- [Coding Responsibility Convergence Goal](coding-responsibility-convergence-goal.md)
+  records the active full-Coding objective and A86 starting baseline; its
+  [execution record](coding-responsibility-convergence-progress.md) tracks P1's
+  partial implementation and full costs under the accepted
+  [Worker history design](key-designs/worker-history-responsibility-convergence.md).
+- [Local Wheel Source Catalog Convergence](key-designs/local-wheel-source-catalog-convergence.md)
+  records the bounded shared POSIX source operation, existing Journal/Resources
+  reuse, compatibility differences and actual full-cost verification;
+  [dependency source operations](key-designs/dependency-source-operation-convergence.md)
+  extend the same mechanism while removing redundant constructor forwarding.
+- [Worker Candidate Operation Convergence](key-designs/worker-candidate-operation-convergence.md)
+  records A27's shared opt-in fact join and four install/update transactions in
+  the existing Package Product component, with actual-source verification,
+  bounded three-view code acceptance and full costs. Coding retains policy,
+  platform interpretation and CLI projection; the complete Goal remains active.
+- [Plugin and Session Lifecycle Convergence](key-designs/plugin-session-lifecycle-convergence.md)
+  is P2's accepted R2.1 design for shared membership, exact owner evidence and lease
+  coordination; its [three-view design review](key-designs/plugin-session-lifecycle-convergence-review.md)
+  records the technical contracts and the user's 2026-11-08 direction acceptance; D3 capture, owner lease/evidence/startup and joined family/retirement/close paths have bounded implementation acceptance. Broader startup/bootstrap convergence remains in the active Goal.
+- [Startup and Session Assembly Convergence](key-designs/startup-session-assembly-convergence.md)
+  continues P2's full startup path. Its first owner-publication contract is
+  implemented, followed by the three fixed composition cleanup paths, with bounded [three-view code acceptance](key-designs/startup-session-assembly-convergence-review.md);
+  the complete Loader-receipt to Catalog source-spec transfer is also connected,
+  with explicit baseline failures and bounded validation in §12. Broader
+  common-input, refresh and construction convergence remains unfinished.
+- [Windows Worker Semantic Reconstruction](key-designs/windows-worker-semantic-convergence.md)
+  continues the accepted Worker history responsibilities across all six ledger
+  bases and their joint review. R2's concrete interfaces and full migration cost
+  have bounded technical acceptance; all seven Coding facades now consume the
+  shared methods. Actual-source verification and three-view code review are
+  recorded in its [review](key-designs/windows-worker-semantic-convergence-review.md).
+- [Product Worker Runtime Convergence](key-designs/worker-product-runtime-convergence.md)
+  now compares the joint Canary, ordinary Linux/Windows, operator-query and
+  Provider attempt composition paths while preserving Coding policy and the
+  externally injected G8 factory contract. R2.1's joint direction is ready for
+  the user's important-diagram review; concrete interfaces and full costs remain
+  proposed, and the single-Canary prototype is not adopted.
+  Its [three-view review](key-designs/worker-product-runtime-convergence-review.md)
+  is ready for user review; only the independent old-layout exception-binding
+  fix has been implemented, not the proposed runtime migration.
+- [Coding Reconstruction Proposal](coding-reconstruction-proposal.md) covers the full
+  Coding source inventory and the proposed reuse-first responsibility convergence.
+- [Private Data Lifecycle Convergence](key-designs/private-data-lifecycle-convergence.md)
+  is the accepted first slice; its [three-view review](key-designs/private-data-lifecycle-convergence-review.md)
+  is complete for R3. The user has authorized its implementation; see the
+  [delivery record](private-data-convergence-delivery.md).
+- [Coding Private Data Implementation Goal](coding-private-data-implementation-goal.md)
+  records the accepted first slice's measurable delivery contract: high cohesion, narrow
+  dependencies, existing-component reuse and actual duplicate-code removal.
+- [Record Field and Value Validation Convergence](key-designs/record-field-metadata-convergence.md)
+  reuses fixed dataclass declarations in the existing Schema helper; record methods,
+  wire contracts and the original explicit construction remain available.
+- [Optional Goal Record Backend](../harnesswork/key-designs/goal-record-store-convergence.md)
+  closes F06's implementation placement through the original Journal writer,
+  borrowed root IO and codec. Product keeps paths, identity and store lifetime;
+  the remaining lifecycle validation failures and full cost are explicit.
+- [Owned Task Join Convergence](key-designs/owned-task-join-convergence.md) preserves
+  three existing cancellation contracts with one implementation each; lifecycle owners remain unchanged.
+- [Continuity Bytes Import](key-designs/continuity-bytes-import-convergence.md) remains
+  a draft: existing Blob sources and transient imports prevent an owned-only replacement.
+- [Transcript Continuity Provider Convergence](key-designs/transcript-continuity-provider-convergence.md)
+  is a technically reviewed R4 proposal for shared navigation and default projection
+  with Coding-owned historical interpretation. Important diagrams remain for user
+  review; the candidate's positive system cost is explicit and no production source
+  has been replaced.
+
 - [Source Consolidation Delivery](source-consolidation-delivery.md) freezes the
   50,000-line reduction baseline, accounting rules and incremental evidence.
 - [Transcript Admission Publication and Recovery](key-designs/transcript-admission-publication.md)

@@ -147,6 +147,7 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             or consumer == FOREGROUND
             or consumer == APPHOST / "local.py"
             or consumer == APPHOST / "launcher.py"
+            or consumer == APPHOST / "integrations/session_control.py"
             or consumer == APPHOST / "managed/connection.py"
             or consumer == APPHOST / "managed/coordinator.py"
             or consumer == APPHOST / "managed/mux_creation.py"
@@ -155,6 +156,22 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             or consumer == APPHOST / "managed/mux_probe.py"
             or consumer.is_relative_to(Path("src/loushang/appservice"))
             or consumer.is_relative_to(Path("src/loushang/harnesstui/mux"))
+            # A80 executes on the same Product catalog in the optional integration.
+            or (
+                consumer == APPHOST / "integrations/_canonical_transcript_catalog.py"
+                and {
+                    name for name in _imports(consumer)
+                    if name == "loushang.appserver"
+                    or name.startswith("loushang.appserver.")
+                } <= {
+                    "loushang.appserver.protocol",
+                    "loushang.appserver.protocol.SessionAvailabilityV1",
+                    "loushang.appserver.protocol.SessionCompatibilityV1",
+                    "loushang.appserver.protocol.SessionDiscoveryCandidateV1",
+                    "loushang.appserver.protocol.SessionIdentityV1",
+                    "loushang.appserver.protocol.SessionScopeV1",
+                }
+            )
         ), consumer
     # Reviewed LMUX receipt decoding and read-only authenticated discovery.
     for filename, expected in {

@@ -11,6 +11,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
@@ -38,6 +39,18 @@ from loushang.harness.resources.packages.plugin_lifecycle.commit_admission impor
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     PluginRevisionRefV1,
     VerifiedArtifactRefV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _list_value as _wire_list,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _nonempty_string as _wire_string,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _versioned_dict as _exact_dict,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_int as _wire_int,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -2594,39 +2607,15 @@ def _require_nonnegative(value: int, *, name: str) -> None:
         raise ValueError(f"{name} must be nonnegative")
 
 
-def _exact_dict(value: object, *, fields: set[str], name: str) -> dict[str, object]:
-    if not isinstance(value, dict) or set(value) != fields:
-        raise ValueError(f"{name} does not match its versioned schema")
-    return value
-
-
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise TypeError(f"{name} must be a non-empty string")
-    return value
-
-
 def _wire_optional_string(value: object, *, name: str) -> str | None:
     if value is None:
         return None
     return _wire_string(value, name=name)
 
 
-def _wire_int(value: object, *, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an integer")
-    return value
-
-
 def _wire_bool(value: object, *, name: str) -> bool:
     if type(value) is not bool:
         raise TypeError(f"{name} must be a boolean")
-    return value
-
-
-def _wire_list(value: object, *, name: str) -> list[object]:
-    if not isinstance(value, list):
-        raise TypeError(f"{name} must be a list")
     return value
 
 
@@ -2636,13 +2625,9 @@ def _assert_no_duplicate_json_keys(path: Path) -> None:
             json.loads(line, object_pairs_hook=_unique_json_object)
 
 
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    document: dict[str, object] = {}
-    for key, value in pairs:
-        if key in document:
-            raise ValueError("Package retention handoff has duplicate JSON keys")
-        document[key] = value
-    return document
+_unique_json_object = _unique_json_object_hook(
+    lambda: "Package retention handoff has duplicate JSON keys",
+)
 
 
 __all__ = [
@@ -2666,230 +2651,196 @@ __all__ = [
 ]
 
 
-_DESIRED_STATE_COMMIT_REQUEST_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("desired_request_id", "desired request id"),
-        RecordField("command_id", "command id"),
-        RecordField("command_fingerprint", "command fingerprint"),
-        RecordField(
-            "expected_inventory_revision", "expected inventory revision", _wire_int
-        ),
-        RecordField("operation_id", "operation identity"),
-        RecordField("operation_fingerprint", "operation fingerprint"),
-        RecordField("request_fingerprint", "request fingerprint"),
-        RecordField("attempt_epoch", "attempt epoch", _wire_int),
-        RecordField("product_id", "Product identity"),
-        RecordField("scope_id", "scope identity"),
-        RecordField("installation_id", "Installation identity"),
-        RecordField("plugin_id", "Plugin identity"),
-        RecordField("committed_set_id", "committed set id"),
-        RecordField("root_ref", decoder=PluginRevisionRefV1.from_dict),
-        RecordField("request_version", "request version", _wire_int),
+_DESIRED_STATE_COMMIT_REQUEST_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageDesiredStateCommitRequestV1,
+    _wire_string,
+    RecordField(
+        "expected_inventory_revision", "expected inventory revision", _wire_int
     ),
+    RecordField("operation_id", "operation identity"),
+    RecordField("attempt_epoch", "attempt epoch", _wire_int),
+    RecordField("product_id", "Product identity"),
+    RecordField("scope_id", "scope identity"),
+    RecordField("installation_id", "Installation identity"),
+    RecordField("plugin_id", "Plugin identity"),
+    RecordField("root_ref", decoder=PluginRevisionRefV1.from_dict),
+    RecordField("request_version", "request version", _wire_int),
+    derive_labels=True,
 )
 
 
-_DESIRED_STATE_COMMIT_RECEIPT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("receipt_id", "receipt id"),
-        RecordField("request", decoder=PackageDesiredStateCommitRequestV1.from_dict),
-        RecordField("inventory_revision", "inventory revision", _wire_int),
-        RecordField("owner_identity", "owner identity"),
-        RecordField("owner_revision", "owner revision", _wire_int),
-        RecordField("receipt_version", "receipt version", _wire_int),
-    ),
+_DESIRED_STATE_COMMIT_RECEIPT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageDesiredStateCommitReceiptV1,
+    _wire_string,
+    RecordField("request", decoder=PackageDesiredStateCommitRequestV1.from_dict),
+    RecordField("inventory_revision", "inventory revision", _wire_int),
+    RecordField("owner_revision", "owner revision", _wire_int),
+    RecordField("receipt_version", "receipt version", _wire_int),
+    derive_labels=True,
 )
 
 
-_DESIRED_STATE_COMMIT_FAILURE_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("failure_id", "failure id"),
-        RecordField("request", decoder=PackageDesiredStateCommitRequestV1.from_dict),
-        RecordField(
-            "observed_inventory_revision", "observed inventory revision", _wire_int
-        ),
-        RecordField("owner_identity", "owner identity"),
-        RecordField("owner_revision", "owner revision", _wire_int),
-        RecordField("code", "failure code"),
-        RecordField("failure_version", "failure version", _wire_int),
+_DESIRED_STATE_COMMIT_FAILURE_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageDesiredStateCommitFailureV1,
+    _wire_string,
+    RecordField("request", decoder=PackageDesiredStateCommitRequestV1.from_dict),
+    RecordField(
+        "observed_inventory_revision", "observed inventory revision", _wire_int
     ),
+    RecordField("owner_revision", "owner revision", _wire_int),
+    RecordField("code", "failure code"),
+    RecordField("failure_version", "failure version", _wire_int),
+    derive_labels=True,
 )
 
 
-_DESIRED_STATE_COMMIT_RESULT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("desired_request_id", "desired request id"),
-        RecordField("disposition", "disposition"),
-        RecordField(
-            "receipt",
-            decoder=partial(
-                decode_nullable, decoder=PackageDesiredStateCommitReceiptV1.from_dict
-            ),
+_DESIRED_STATE_COMMIT_RESULT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageDesiredStateCommitResultV1,
+    _wire_string,
+    RecordField(
+        "receipt",
+        decoder=partial(
+            decode_nullable, decoder=PackageDesiredStateCommitReceiptV1.from_dict
         ),
-        RecordField(
-            "failure",
-            decoder=partial(
-                decode_nullable, decoder=PackageDesiredStateCommitFailureV1.from_dict
-            ),
-        ),
-        RecordField("result_version", "result version", _wire_int),
     ),
+    RecordField(
+        "failure",
+        decoder=partial(
+            decode_nullable, decoder=PackageDesiredStateCommitFailureV1.from_dict
+        ),
+    ),
+    RecordField("result_version", "result version", _wire_int),
+    derive_labels=True,
 )
 
 
-_RETENTION_HANDOFF_REQUEST_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("handoff_id", "handoff id"),
-        RecordField(
-            "admission_request", decoder=PackageCommitAdmissionRequestV1.from_dict
-        ),
-        RecordField(
-            "admission_receipt", decoder=PackageCommitAdmissionReceiptV1.from_dict
-        ),
-        RecordField(
-            "transaction_pin_receipt", decoder=PackageTransactionPinReceiptV1.from_dict
-        ),
-        RecordField(
-            "desired_request", decoder=PackageDesiredStateCommitRequestV1.from_dict
-        ),
-        RecordField("request_version", "request version", _wire_int),
+_RETENTION_HANDOFF_REQUEST_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageRetentionHandoffRequestV1,
+    _wire_string,
+    RecordField("admission_request", decoder=PackageCommitAdmissionRequestV1.from_dict),
+    RecordField("admission_receipt", decoder=PackageCommitAdmissionReceiptV1.from_dict),
+    RecordField(
+        "transaction_pin_receipt", decoder=PackageTransactionPinReceiptV1.from_dict
     ),
+    RecordField(
+        "desired_request", decoder=PackageDesiredStateCommitRequestV1.from_dict
+    ),
+    RecordField("request_version", "request version", _wire_int),
+    derive_labels=True,
 )
 
 
-_RETENTION_HANDOFF_RECEIPT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("receipt_id", "receipt id"),
-        RecordField("request", decoder=PackageRetentionHandoffRequestV1.from_dict),
-        RecordField("state", "handoff state"),
-        RecordField("handoff_revision", "handoff revision", _wire_int),
-        RecordField("prior_receipt_id", "prior receipt id", _wire_optional_string),
-        RecordField(
-            "dependency_pin_receipt",
-            decoder=partial(
-                decode_nullable, decoder=PackageDependencyPinReceiptV1.from_dict
-            ),
+_RETENTION_HANDOFF_RECEIPT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageRetentionHandoffReceiptV1,
+    _wire_string,
+    RecordField("request", decoder=PackageRetentionHandoffRequestV1.from_dict),
+    RecordField("state", "handoff state"),
+    RecordField("handoff_revision", "handoff revision", _wire_int),
+    RecordField("prior_receipt_id", "prior receipt id", _wire_optional_string),
+    RecordField(
+        "dependency_pin_receipt",
+        decoder=partial(
+            decode_nullable, decoder=PackageDependencyPinReceiptV1.from_dict
         ),
-        RecordField(
-            "desired_receipt",
-            decoder=partial(
-                decode_nullable, decoder=PackageDesiredStateCommitReceiptV1.from_dict
-            ),
-        ),
-        RecordField(
-            "desired_failure",
-            decoder=partial(
-                decode_nullable, decoder=PackageDesiredStateCommitFailureV1.from_dict
-            ),
-        ),
-        RecordField("receipt_version", "receipt version", _wire_int),
     ),
+    RecordField(
+        "desired_receipt",
+        decoder=partial(
+            decode_nullable, decoder=PackageDesiredStateCommitReceiptV1.from_dict
+        ),
+    ),
+    RecordField(
+        "desired_failure",
+        decoder=partial(
+            decode_nullable, decoder=PackageDesiredStateCommitFailureV1.from_dict
+        ),
+    ),
+    RecordField("receipt_version", "receipt version", _wire_int),
+    derive_labels=True,
 )
 
 
-_RETENTION_HANDOFF_FAILURE_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("failure_id", "failure id"),
-        RecordField("handoff_id", "handoff id"),
-        RecordField("handoff_receipt_id", "handoff receipt id", _wire_optional_string),
-        RecordField("attempt_epoch", "attempt epoch", _wire_int),
-        RecordField("phase", "failure phase"),
-        RecordField("code", "failure code"),
-        RecordField("retryable", "retryability", _wire_bool),
-        RecordField("retry_domain", "retry domain"),
-        RecordField("operator_action", "operator action"),
-        RecordField("evidence_ref", "evidence ref"),
-        RecordField("failure_version", "failure version", _wire_int),
-    ),
+_RETENTION_HANDOFF_FAILURE_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageRetentionHandoffFailureV1,
+    _wire_string,
+    RecordField("handoff_receipt_id", "handoff receipt id", _wire_optional_string),
+    RecordField("attempt_epoch", "attempt epoch", _wire_int),
+    RecordField("phase", "failure phase"),
+    RecordField("code", "failure code"),
+    RecordField("retryable", "retryability", _wire_bool),
+    RecordField("failure_version", "failure version", _wire_int),
+    derive_labels=True,
 )
 
 
-_RETENTION_HANDOFF_RESULT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("handoff_id", "handoff id"),
-        RecordField("disposition", "disposition"),
-        RecordField("code", "result code"),
-        RecordField(
-            "receipt",
-            decoder=partial(
-                decode_nullable, decoder=PackageRetentionHandoffReceiptV1.from_dict
-            ),
+_RETENTION_HANDOFF_RESULT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageRetentionHandoffResultV1,
+    _wire_string,
+    RecordField("code", "result code"),
+    RecordField(
+        "receipt",
+        decoder=partial(
+            decode_nullable, decoder=PackageRetentionHandoffReceiptV1.from_dict
         ),
-        RecordField(
-            "failure",
-            decoder=partial(
-                decode_nullable, decoder=PackageRetentionHandoffFailureV1.from_dict
-            ),
-        ),
-        RecordField("result_version", "result version", _wire_int),
     ),
+    RecordField(
+        "failure",
+        decoder=partial(
+            decode_nullable, decoder=PackageRetentionHandoffFailureV1.from_dict
+        ),
+    ),
+    RecordField("result_version", "result version", _wire_int),
+    derive_labels=True,
 )
 
 
-_DEPENDENCY_PIN_REQUEST_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("pin_request_id", "pin request id"),
-        RecordField("handoff_id", "handoff id"),
-        RecordField("operation_id", "operation identity"),
-        RecordField("attempt_epoch", "attempt epoch", _wire_int),
-        RecordField("admission_id", "admission id"),
-        RecordField("publication_receipt_id", "publication receipt id"),
-        RecordField("committed_set_id", "committed set id"),
-        RecordField("transaction_pin_receipt_id", "transaction pin receipt id"),
-        RecordField("pin_set_id", "pin set id"),
-        RecordField("root_ref", decoder=PluginRevisionRefV1.from_dict),
-        RecordField(
-            "dependency_refs",
-            decoder=partial(
-                decode_tuple,
-                list_decoder=_wire_list,
-                list_label="dependency refs",
-                item_decoder=VerifiedArtifactRefV1.from_dict,
-                item_label=None,
-            ),
+_DEPENDENCY_PIN_REQUEST_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageDependencyPinRequestV1,
+    _wire_string,
+    RecordField("operation_id", "operation identity"),
+    RecordField("attempt_epoch", "attempt epoch", _wire_int),
+    RecordField("root_ref", decoder=PluginRevisionRefV1.from_dict),
+    RecordField(
+        "dependency_refs",
+        decoder=partial(
+            decode_tuple,
+            list_decoder=_wire_list,
+            list_label="dependency refs",
+            item_decoder=VerifiedArtifactRefV1.from_dict,
+            item_label=None,
         ),
-        RecordField("request_version", "request version", _wire_int),
     ),
+    RecordField("request_version", "request version", _wire_int),
+    derive_labels=True,
 )
 
 
-_DEPENDENCY_PIN_RECEIPT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("receipt_id", "receipt id"),
-        RecordField("request", decoder=PackageDependencyPinRequestV1.from_dict),
-        RecordField(
-            "pin_ids",
-            decoder=partial(
-                decode_tuple,
-                list_decoder=_wire_list,
-                list_label="pin ids",
-                item_decoder=_wire_string,
-                item_label="pin id",
-            ),
+_DEPENDENCY_PIN_RECEIPT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageDependencyPinReceiptV1,
+    _wire_string,
+    RecordField("request", decoder=PackageDependencyPinRequestV1.from_dict),
+    RecordField(
+        "pin_ids",
+        decoder=partial(
+            decode_tuple,
+            list_decoder=_wire_list,
+            list_label="pin ids",
+            item_decoder=_wire_string,
+            item_label="pin id",
         ),
-        RecordField("owner_identity", "owner identity"),
-        RecordField("owner_revision", "owner revision", _wire_int),
-        RecordField("lease_revision", "lease revision", _wire_int),
-        RecordField("state", "pin state"),
-        RecordField("dependency_pins_live", "dependency pin liveness", _wire_bool),
-        RecordField(
-            "transaction_pin_receipt", decoder=PackageTransactionPinReceiptV1.from_dict
-        ),
-        RecordField("prior_receipt_id", "prior receipt id", _wire_optional_string),
-        RecordField("desired_receipt_id", "desired receipt id", _wire_optional_string),
-        RecordField(
-            "transition_evidence_ref", "transition evidence ref", _wire_optional_string
-        ),
-        RecordField("receipt_version", "receipt version", _wire_int),
     ),
+    RecordField("owner_revision", "owner revision", _wire_int),
+    RecordField("lease_revision", "lease revision", _wire_int),
+    RecordField("state", "pin state"),
+    RecordField("dependency_pins_live", "dependency pin liveness", _wire_bool),
+    RecordField(
+        "transaction_pin_receipt", decoder=PackageTransactionPinReceiptV1.from_dict
+    ),
+    RecordField("prior_receipt_id", "prior receipt id", _wire_optional_string),
+    RecordField("desired_receipt_id", "desired receipt id", _wire_optional_string),
+    RecordField(
+        "transition_evidence_ref", "transition evidence ref", _wire_optional_string
+    ),
+    RecordField("receipt_version", "receipt version", _wire_int),
+    derive_labels=True,
 )

@@ -5,13 +5,9 @@ This does not provide a semantic base, publish a manifest, or delete bytes.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from hashlib import sha256
 
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
+from loushang.harness.worker.history._preview import _PreviewMethods
 
 from .package_product_worker_history_checkpoint import (
     CodingWorkerHistoryCheckpointV1,
@@ -23,7 +19,6 @@ from .package_product_worker_history_segments import (
     CodingWorkerSegmentedHistoryV1,
 )
 from .package_product_worker_history_stream_snapshot import (
-    CODING_WORKER_HISTORY_STREAM_STEMS,
     CodingWorkerHistoryStreamSnapshotV1,
 )
 
@@ -34,11 +29,8 @@ class CodingWorkerRetirementPreviewError(RuntimeError):
         self.code = code
 
 
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
-
-
 @dataclass(frozen=True, slots=True)
-class CodingWorkerStreamRetirementPreviewV2:
+class CodingWorkerStreamRetirementPreviewV2(_PreviewMethods):
     stem: str
     checkpoint_revision: int
     checkpoint_digest: str
@@ -49,45 +41,10 @@ class CodingWorkerStreamRetirementPreviewV2:
     retired_generations: tuple[int, ...]
     retained_generations: tuple[int, ...]
     deletion_authorized: bool = False
-
-    def __post_init__(self) -> None:
-        if (
-            type(self.stem) is not str
-            or self.stem not in CODING_WORKER_HISTORY_STREAM_STEMS
-            or type(self.checkpoint_revision) is not int
-            or self.checkpoint_revision < 1
-            or type(self.checkpoint_digest) is not str
-            or _DIGEST.fullmatch(self.checkpoint_digest) is None
-            or type(self.source_fingerprint) is not str
-            or _DIGEST.fullmatch(self.source_fingerprint) is None
-            or type(self.first_retained_generation) is not int
-            or self.first_retained_generation < 0
-            or type(self.first_retained_revision) is not int
-            or self.first_retained_revision
-            < (1 if self.first_retained_generation == 0 else 2)
-            or (
-                self.first_retained_generation == 0
-                and (
-                    self.stem != "worker-supervisor"
-                    or self.first_retained_revision != 1
-                )
-            )
-            or type(self.retired_sealed_digest) is not str
-            or _DIGEST.fullmatch(self.retired_sealed_digest) is None
-            or type(self.retired_generations) is not tuple
-            or self.retired_generations != tuple(range(self.first_retained_generation))
-            or type(self.retained_generations) is not tuple
-            or not self.retained_generations
-            or self.retained_generations
-            != tuple(
-                range(
-                    self.first_retained_generation,
-                    self.first_retained_generation + len(self.retained_generations),
-                )
-            )
-            or self.deletion_authorized is not False
-        ):
-            raise ValueError("Coding Worker retirement preview is invalid")
+    _anchor_type = CodingWorkerCheckpointAnchorV1
+    _checkpoint_type = CodingWorkerHistoryCheckpointV1
+    _snapshot_type = CodingWorkerHistoryStreamSnapshotV1
+    _error_type = CodingWorkerRetirementPreviewError
 
 
 def preview_first_coding_worker_stream_retirement_v2(
@@ -98,74 +55,12 @@ def preview_first_coding_worker_stream_retirement_v2(
     stem: str,
     first_retained_generation: int,
 ) -> CodingWorkerStreamRetirementPreviewV2:
-    """Bind one sealed V1 prefix to an anchored checkpoint without mutation."""
-
-    if (
-        type(checkpoint) is not CodingWorkerHistoryCheckpointV1
-        or type(anchor) is not CodingWorkerCheckpointAnchorV1
-        or type(history) is not CodingWorkerSegmentedHistoryV1
-        or type(stem) is not str
-        or stem not in CODING_WORKER_HISTORY_STREAM_STEMS
-        or type(first_retained_generation) is not int
-        or checkpoint.scope_id != anchor.scope_id
-        or checkpoint.store_id != anchor.store_id
-        or checkpoint.journal_revision != anchor.latest_revision
-        or checkpoint.record_digest != anchor.latest_digest
-    ):
-        raise CodingWorkerRetirementPreviewError(
-            "coding_worker_retirement_checkpoint_unanchored"
-        )
-    manifest = history.manifest
-    if (
-        manifest is None
-        or manifest.stream_id != stem
-        or not 0 <= first_retained_generation <= manifest.active_generation
-        or (
-            first_retained_generation == 0
-            and (stem != "worker-supervisor" or manifest.active_generation != 0)
-        )
-        or len(history.segments) != manifest.active_generation + 1
-    ):
-        raise CodingWorkerRetirementPreviewError(
-            "coding_worker_retirement_cutoff_unavailable"
-        )
-    matching = tuple(
-        snapshot for snapshot in checkpoint.stream_snapshots if snapshot.stem == stem
-    )
-    if len(matching) != 1:
-        raise CodingWorkerRetirementPreviewError(
-            "coding_worker_retirement_source_unproven"
-        )
-    snapshot = CodingWorkerHistoryStreamSnapshotV1.capture(
+    return CodingWorkerStreamRetirementPreviewV2._from_sources(
+        checkpoint=checkpoint,
+        anchor=anchor,
+        history=history,
         stem=stem,
-        active_generation=history.active_generation,
-        last_sealed_revision=history.last_sealed_revision,
-        segments=history.segments,
-    )
-    if snapshot != matching[0] or any(
-        len(raw) != seal.byte_count or sha256(raw).hexdigest() != seal.digest
-        for raw, seal in zip(history.segments[:-1], manifest.sealed, strict=True)
-    ):
-        raise CodingWorkerRetirementPreviewError(
-            "coding_worker_retirement_source_unproven"
-        )
-    retired = manifest.sealed[:first_retained_generation]
-    return CodingWorkerStreamRetirementPreviewV2(
-        stem=stem,
-        checkpoint_revision=checkpoint.journal_revision,
-        checkpoint_digest=checkpoint.record_digest,
-        source_fingerprint=snapshot.fingerprint,
         first_retained_generation=first_retained_generation,
-        first_retained_revision=(
-            1 if not retired else retired[-1].last_revision + 1
-        ),
-        retired_sealed_digest=sha256(
-            canonical_json_bytes([item.to_dict() for item in retired])
-        ).hexdigest(),
-        retired_generations=tuple(item.generation for item in retired),
-        retained_generations=tuple(
-            range(first_retained_generation, history.active_generation + 1)
-        ),
     )
 
 

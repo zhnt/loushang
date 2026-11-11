@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+import inspect
 import json
 import stat
 from dataclasses import replace
@@ -23,13 +25,64 @@ from loushang.coding.package_private_data_restore_records import (
 from loushang.coding.package_private_data_windows_restore_journal import (
     CodingWindowsArchPrivateDataRestoreTransaction,
     CodingWindowsArchRestorePublicationV1,
-    _decode_event,
-    _validate_sequence,
+)
+from loushang.harness.plugin_management._private_data_restore_windows import (
+    decode_windows_restore_event,
+    validate_windows_restore_sequence,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
+
+
+def _receipt_ports(
+    monkeypatch, module, *, read=None, write=None, list_names=None, inspect_parent=None
+):
+    profile = getattr(
+        CodingWindowsArchPrivateDataRestoreTransaction, "_receipt_io", None
+    )
+    native = (
+        importlib.import_module(
+            "loushang.harness.plugin_management._private_data_restore_windows"
+        )
+        if profile
+        else module
+    )
+    if read is not None:
+        if profile:
+            monkeypatch.setattr(
+                type(profile),
+                "read_private_receipt",
+                lambda self, *args, **kwargs: read(*args, **kwargs),
+            )
+        else:
+            monkeypatch.setattr(module, "read_windows_private_receipt", read)
+    if write is not None:
+        if profile:
+            from loushang.coding.package_legacy_windows_receipt import (
+                write_windows_private_receipt,
+            )
+
+            cap = (
+                inspect.signature(write_windows_private_receipt)
+                .parameters["maximum_bytes"]
+                .default
+            )
+
+            def publish(self, path, raw, *, maximum_bytes):
+                assert maximum_bytes == cap
+                return write(path, raw)
+
+            monkeypatch.setattr(type(profile), "write_private_receipt", publish)
+        else:
+            monkeypatch.setattr(module, "write_windows_private_receipt", write)
+    if list_names is not None:
+        monkeypatch.setattr(native, "windows_listdir_at", list_names)
+    if inspect_parent is not None:
+        monkeypatch.setattr(
+            native, "inspect_windows_product_private_directory_identity", inspect_parent
+        )
 
 
 def _events() -> tuple[
@@ -61,11 +114,18 @@ def _events() -> tuple[
 
 def test_windows_restore_event_chain_requires_exact_phases() -> None:
     started, completed = _events()
-    _validate_sequence((started, completed))
+    validate_windows_restore_sequence((started, completed), label="Windows Coding Arch")
     for event in (started, completed):
-        assert _decode_event(canonical_json_bytes(event.to_dict()) + b"\n") == event
+        assert (
+            decode_windows_restore_event(
+                canonical_json_bytes(event.to_dict()) + b"\n",
+                CodingArchPrivateDataRestoreEventV1,
+                label="Windows Coding Arch",
+            )
+            == event
+        )
     with pytest.raises(ValueError, match="completion has no start"):
-        _validate_sequence(
+        validate_windows_restore_sequence(
             (
                 CodingArchPrivateDataRestoreEventV1.create(
                     revision=1,
@@ -74,10 +134,11 @@ def test_windows_restore_event_chain_requires_exact_phases() -> None:
                     backup_id=started.backup_id,
                     deletion_receipt_id=started.deletion_receipt_id,
                 ),
-            )
+            ),
+            label="Windows Coding Arch",
         )
     with pytest.raises(ValueError, match="starts conflict"):
-        _validate_sequence(
+        validate_windows_restore_sequence(
             (
                 started,
                 CodingArchPrivateDataRestoreEventV1.create(
@@ -87,10 +148,11 @@ def test_windows_restore_event_chain_requires_exact_phases() -> None:
                     backup_id=started.backup_id,
                     deletion_receipt_id=started.deletion_receipt_id,
                 ),
-            )
+            ),
+            label="Windows Coding Arch",
         )
     with pytest.raises(ValueError, match="starts conflict"):
-        _validate_sequence(
+        validate_windows_restore_sequence(
             (
                 started,
                 completed,
@@ -101,12 +163,21 @@ def test_windows_restore_event_chain_requires_exact_phases() -> None:
                     backup_id="c" * 64,
                     deletion_receipt_id=started.deletion_receipt_id,
                 ),
-            )
+            ),
+            label="Windows Coding Arch",
         )
     with pytest.raises(ValueError, match="noncanonical"):
-        _decode_event(json.dumps(started.to_dict(), indent=2).encode())
+        decode_windows_restore_event(
+            json.dumps(started.to_dict(), indent=2).encode(),
+            CodingArchPrivateDataRestoreEventV1,
+            label="Windows Coding Arch",
+        )
     with pytest.raises(ValueError, match="invalid"):
-        _decode_event(b'{"revision":1,"revision":1}')
+        decode_windows_restore_event(
+            b'{"revision":1,"revision":1}',
+            CodingArchPrivateDataRestoreEventV1,
+            label="Windows Coding Arch",
+        )
 
 
 def test_windows_restore_transaction_cannot_escape_offline_gate() -> None:
@@ -142,17 +213,15 @@ def test_windows_restore_publication_binds_stage_identity_before_rename(
     )
     product = SimpleNamespace(state_root=tmp_path)
     transaction = CodingWindowsArchPrivateDataRestoreTransaction(
-        SimpleNamespace(), product, -1  # type: ignore[arg-type]
+        SimpleNamespace(),
+        product,
+        -1,  # type: ignore[arg-type]
     )
     records: dict[Path, bytes] = {}
     monkeypatch.setattr(
         module, "coding_arch_installation_private_data_root", lambda *_args: root
     )
-    monkeypatch.setattr(
-        module,
-        "inspect_windows_product_private_directory_identity",
-        lambda _path: (7, 8),
-    )
+    _receipt_ports(monkeypatch, module, inspect_parent=lambda _path: (7, 8))
     monkeypatch.setattr(
         module,
         "_capture_windows_target_snapshot",
@@ -172,26 +241,31 @@ def test_windows_restore_publication_binds_stage_identity_before_rename(
         "current_start",
         lambda _self: started,
     )
-    monkeypatch.setattr(
-        module, "read_windows_private_receipt", lambda path, **_kwargs: records.get(path)
-    )
-    monkeypatch.setattr(
-        module, "write_windows_private_receipt", lambda path, raw: records.setdefault(path, raw)
+    _receipt_ports(monkeypatch, module, read=lambda path, **_kwargs: records.get(path))
+    _receipt_ports(
+        monkeypatch, module, write=lambda path, raw: records.setdefault(path, raw)
     )
     identity = (9, 10, stat.S_IFDIR | 0o700, 0, 1)
     publication = transaction.prepare_publication(started, plan, source, 2, identity)
     assert publication.stage_name.endswith(".staging")
     assert transaction.publication_for(started, plan) == publication
-    assert transaction.prepare_publication(started, plan, source, 2, identity) == publication
+    assert (
+        transaction.prepare_publication(started, plan, source, 2, identity)
+        == publication
+    )
     with pytest.raises(ValueError, match="publication changed"):
         transaction.prepare_publication(
             started, plan, source, 2, (11, 12, stat.S_IFDIR | 0o700, 0, 1)
         )
-    records[transaction._publication_path(started)] = b'{"restoreId":"duplicate","restoreId":"duplicate"}'
+    records[transaction._publication_path(started)] = (
+        b'{"restoreId":"duplicate","restoreId":"duplicate"}'
+    )
     with pytest.raises(ValueError, match="publication is invalid"):
         transaction.publication_for(started, plan)
     with pytest.raises(ValueError, match="publication fields changed"):
-        CodingWindowsArchRestorePublicationV1.from_dict({"restoreId": started.restore_id})
+        CodingWindowsArchRestorePublicationV1.from_dict(
+            {"restoreId": started.restore_id}
+        )
 
 
 def test_windows_restore_replays_original_publication_after_unrelated_desired_change(
@@ -237,7 +311,9 @@ def test_windows_restore_replays_original_publication_after_unrelated_desired_ch
         ),
     )
     transaction = CodingWindowsArchPrivateDataRestoreTransaction(
-        SimpleNamespace(), product, -1  # type: ignore[arg-type]
+        SimpleNamespace(),
+        product,
+        -1,  # type: ignore[arg-type]
     )
     publication = CodingWindowsArchRestorePublicationV1(
         restore_id=started.restore_id,
@@ -261,10 +337,12 @@ def test_windows_restore_replays_original_publication_after_unrelated_desired_ch
         "_verify_plan_archive",
         lambda _self, _plan: source,
     )
-    monkeypatch.setattr(
+    _receipt_ports(
+        monkeypatch,
         module,
-        "read_windows_private_receipt",
-        lambda _path, **_kwargs: canonical_json_bytes(publication.to_dict()) + b"\n",
+        read=lambda _path, **_kwargs: (
+            canonical_json_bytes(publication.to_dict()) + b"\n"
+        ),
     )
 
     assert transaction._require_plan_current(plan) == source
@@ -309,7 +387,9 @@ def test_windows_restore_confirmation_is_immutable_and_strict(
         target_state="absent",
     )
     transaction = CodingWindowsArchPrivateDataRestoreTransaction(
-        SimpleNamespace(), SimpleNamespace(state_root=tmp_path), -1  # type: ignore[arg-type]
+        SimpleNamespace(),
+        SimpleNamespace(state_root=tmp_path),
+        -1,  # type: ignore[arg-type]
     )
     records: dict[Path, bytes] = {}
     monkeypatch.setattr(
@@ -317,18 +397,19 @@ def test_windows_restore_confirmation_is_immutable_and_strict(
         "_completed_restore",
         lambda _self, _plan: (completed, restored),
     )
-    monkeypatch.setattr(
-        module, "windows_listdir_at", lambda _fd: tuple(path.name for path in records)
+    _receipt_ports(
+        monkeypatch, module, list_names=lambda _fd: tuple(path.name for path in records)
     )
-    monkeypatch.setattr(
-        module, "read_windows_private_receipt", lambda path, **_kwargs: records.get(path)
-    )
-    monkeypatch.setattr(
-        module, "write_windows_private_receipt", lambda path, raw: records.setdefault(path, raw)
+    _receipt_ports(monkeypatch, module, read=lambda path, **_kwargs: records.get(path))
+    _receipt_ports(
+        monkeypatch, module, write=lambda path, raw: records.setdefault(path, raw)
     )
     confirmation = transaction.confirm_restore(plan)
     assert transaction.confirm_restore(plan) == confirmation
-    assert transaction.verify_confirmation(plan, confirmation.confirmation_id) == confirmation
+    assert (
+        transaction.verify_confirmation(plan, confirmation.confirmation_id)
+        == confirmation
+    )
     with pytest.raises(ValueError, match="is stale"):
         transaction.verify_confirmation(plan, "another-confirmation")
     records[transaction._confirmation_path(1)] = b'{"revision":1,"revision":1}'

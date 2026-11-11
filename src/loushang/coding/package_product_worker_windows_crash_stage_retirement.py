@@ -4,19 +4,18 @@ from __future__ import annotations
 
 import os
 
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
     PackageWindowsRuntimeQuiescenceV1,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    windows_listdir_at,
+from loushang.harness.worker.history._windows_semantic_contracts import (
+    launch_matches_intent,
+    native_matches_intent,
 )
 
 from .package_legacy_windows_receipt import (
-    read_windows_private_receipt,
     write_windows_private_receipt,
 )
 from .package_product_worker_windows_crash_cleanup_review import (
@@ -37,10 +36,13 @@ from .package_product_worker_windows_recovery_inventory import (
 )
 from .package_product_worker_windows_stage_retirement import (
     CodingWindowsWorkerStageRetirementReceiptV1,
+    WindowsWorkerRetirementRecords,
+    _has_other_retirement_artifact,
+    _read_retirement_bytes,
     _remove_remaining_stage,
     _stage_exists,
 )
-from .package_product_worker_windows_stage_review import _require_direct
+from .package_product_worker_windows_stage_review import _require_retirement_root
 
 _MAX_REVIEW_BYTES = 32768
 _MAX_RECEIPT_BYTES = 1024
@@ -69,10 +71,9 @@ def retire_coding_windows_product_worker_crash_stage(
         with product.gc_gate.guard(require_write=True):
             product.assert_root_gc_authority_current()
             with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                with WindowsPrivateDirectoryAcl() as acl:
-                    _require_direct(root, acl, directory=True)
-                    if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
-                        raise ValueError("Windows Worker crash stage root changed")
+                _require_retirement_root(
+                    product, root, ValueError, "Windows Worker crash stage root changed"
+                )
                 _require_no_other_retirement(product, expected_review.attempt_id)
                 start = _read_start(product, expected_review.attempt_id)
                 completed = _read_receipt(product, expected_review.attempt_id)
@@ -133,14 +134,14 @@ def retire_coding_windows_product_worker_crash_stage(
                 )
                 if _stage_exists(root, start.attempt_id):
                     raise ValueError("Windows Worker crash stage remains")
-                write_windows_private_receipt(
-                    _receipt_path(product, start.attempt_id),
-                    receipt.to_bytes(),
-                    maximum_bytes=_MAX_RECEIPT_BYTES,
+                _records.publish_receipt(
+                    product,
+                    start,
+                    receipt,
+                    write=write_windows_private_receipt,
+                    read=_read_receipt,
+                    changed_message="Windows Worker crash stage receipt changed",
                 )
-                if _read_receipt(product, start.attempt_id) != receipt:
-                    raise ValueError("Windows Worker crash stage receipt changed")
-                product.assert_root_gc_authority_current()
                 return receipt
 
 
@@ -182,11 +183,8 @@ def _require_crash_history(
             and attempt.supervisor_process_settled is not True
         )
         or intent.fingerprint != review.intent_fingerprint
-        or attempt.launch_request_fingerprint != intent.request_fingerprint
-        or attempt.launch_receipt_fingerprint != intent.receipt_fingerprint
-        or attempt.launch_identity_fingerprint != intent.identity_fingerprint
-        or attempt.native_worker_request_fingerprint != intent.request_fingerprint
-        or attempt.native_receipt_fingerprint != intent.receipt_fingerprint
+        or not launch_matches_intent(attempt, intent)
+        or not native_matches_intent(attempt, intent)
         or (
             review.supervisor_revision is not None
             and attempt.supervisor_identity_fingerprint != intent.identity_fingerprint
@@ -253,89 +251,28 @@ def _require_completed_crash_retirement_under_gc_guard(
 def _require_no_other_retirement(
     product: WindowsLocalWheelProductSessionOwner, attempt_id: str
 ) -> None:
-    with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-        names = windows_listdir_at(root)
-    if any(
-        name.casefold().startswith(
-            (
-                f"worker-stage-retire-{attempt_id}.json",
-                f"worker-stage-root-delete-{attempt_id}.json",
-                f"worker-stage-retired-{attempt_id}.json",
-                f"worker-partial-stage-retire-{attempt_id}.json",
-                f"worker-partial-stage-root-delete-{attempt_id}.json",
-                f"worker-partial-stage-retired-{attempt_id}.json",
-                f"worker-unlaunched-stage-retire-{attempt_id}.json",
-                f"worker-unlaunched-stage-root-delete-{attempt_id}.json",
-                f"worker-unlaunched-stage-retired-{attempt_id}.json",
-            )
-        )
-        for name in names
-    ):
+    if _has_other_retirement_artifact(product, attempt_id, "worker-crash-stage"):
         raise ValueError("Windows Worker crash stage retirement conflicts")
 
 
-def _read_start(
-    product: WindowsLocalWheelProductSessionOwner, attempt_id: str
-) -> CodingWindowsWorkerCrashStageReviewV1 | None:
-    raw = read_windows_private_receipt(
-        _start_path(product, attempt_id),
-        maximum_bytes=_MAX_REVIEW_BYTES,
-        allow_unpublished_stage=True,
-    )
-    review = (
-        None if raw is None else CodingWindowsWorkerCrashStageReviewV1.from_bytes(raw)
-    )
-    if review is not None and review.attempt_id != attempt_id:
-        raise ValueError("Windows Worker crash stage start changed")
-    return review
-
-
-def _read_receipt(
-    product: WindowsLocalWheelProductSessionOwner, attempt_id: str
-) -> CodingWindowsWorkerStageRetirementReceiptV1 | None:
-    raw = read_windows_private_receipt(
-        _receipt_path(product, attempt_id),
-        maximum_bytes=_MAX_RECEIPT_BYTES,
-        allow_unpublished_stage=True,
-    )
-    receipt = (
-        None
-        if raw is None
-        else CodingWindowsWorkerStageRetirementReceiptV1.from_bytes(raw)
-    )
-    if receipt is not None and receipt.attempt_id != attempt_id:
-        raise ValueError("Windows Worker crash stage receipt changed")
-    return receipt
-
-
-def _read_root_intent(
-    product: WindowsLocalWheelProductSessionOwner, attempt_id: str
-) -> CodingWindowsWorkerStageRetirementReceiptV1 | None:
-    raw = read_windows_private_receipt(
-        _root_intent_path(product, attempt_id),
-        maximum_bytes=_MAX_RECEIPT_BYTES,
-        allow_unpublished_stage=True,
-    )
-    receipt = (
-        None
-        if raw is None
-        else CodingWindowsWorkerStageRetirementReceiptV1.from_bytes(raw)
-    )
-    if receipt is not None and receipt.attempt_id != attempt_id:
-        raise ValueError("Windows Worker crash stage root intent changed")
-    return receipt
-
-
-def _start_path(product: WindowsLocalWheelProductSessionOwner, attempt_id: str):
-    return product.state_root / f"worker-crash-stage-retire-{attempt_id}.json"
-
-
-def _receipt_path(product: WindowsLocalWheelProductSessionOwner, attempt_id: str):
-    return product.state_root / f"worker-crash-stage-retired-{attempt_id}.json"
-
-
-def _root_intent_path(product: WindowsLocalWheelProductSessionOwner, attempt_id: str):
-    return product.state_root / f"worker-crash-stage-root-delete-{attempt_id}.json"
+_records = WindowsWorkerRetirementRecords(
+    stem="worker-crash-stage",
+    review_type=CodingWindowsWorkerCrashStageReviewV1,
+    receipt_type=CodingWindowsWorkerStageRetirementReceiptV1,
+    review_maximum_bytes=_MAX_REVIEW_BYTES,
+    receipt_maximum_bytes=_MAX_RECEIPT_BYTES,
+    read_bytes=_read_retirement_bytes,
+    error_type=ValueError,
+    start_invalid="Windows Worker crash stage start changed",
+    root_intent_invalid="Windows Worker crash stage root intent changed",
+    receipt_invalid="Windows Worker crash stage receipt changed",
+)
+_start_path = _records.start_path
+_read_start = _records.read_start
+_receipt_path = _records.receipt_path
+_root_intent_path = _records.root_intent_path
+_read_receipt = _records.read_receipt
+_read_root_intent = _records.read_root_intent
 
 
 __all__ = ["retire_coding_windows_product_worker_crash_stage"]

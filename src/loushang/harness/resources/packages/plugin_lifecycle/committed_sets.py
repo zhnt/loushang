@@ -10,6 +10,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal, TypeAlias, cast
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
@@ -26,6 +27,12 @@ from loushang.harness.journal import (
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     CommittedPackageSetRefV1,
     DependencyClosureLockV2,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _versioned_dict as _exact_dict,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_int as _wire_int,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -156,9 +163,7 @@ class PackageCommittedSetGcTombstoneV1:
     set_id: str
     root_ref_id: str
     tombstone_id: str
-    record_kind: Literal["committed_set_gc_tombstone"] = (
-        "committed_set_gc_tombstone"
-    )
+    record_kind: Literal["committed_set_gc_tombstone"] = "committed_set_gc_tombstone"
     record_version: int = 2
 
     def __post_init__(self) -> None:
@@ -209,13 +214,19 @@ class PackageCommittedSetGcTombstoneV1:
         document = _exact_dict(
             value,
             fields={
-                "journalRevision", "recordKind", "recordVersion", "rootRefId",
-                "setId", "tombstoneId",
+                "journalRevision",
+                "recordKind",
+                "recordVersion",
+                "rootRefId",
+                "setId",
+                "tombstoneId",
             },
             name="Committed-set GC tombstone",
         )
         return cls(
-            journal_revision=_wire_int(document["journalRevision"], name="journal revision"),
+            journal_revision=_wire_int(
+                document["journalRevision"], name="journal revision"
+            ),
             set_id=_wire_string(document["setId"], name="committed set id"),
             root_ref_id=_wire_string(document["rootRefId"], name="root ref id"),
             tombstone_id=_wire_string(document["tombstoneId"], name="tombstone id"),
@@ -233,7 +244,10 @@ CommittedSetJournalEvent: TypeAlias = (
 
 def _decode_event(value: object) -> CommittedSetJournalEvent:
     try:
-        if type(value) is dict and value.get("recordKind") == "committed_set_gc_tombstone":
+        if (
+            type(value) is dict
+            and value.get("recordKind") == "committed_set_gc_tombstone"
+        ):
             return PackageCommittedSetGcTombstoneV1.from_dict(value)
         return PackageCommittedSetRecordV1.from_dict(value)
     except (TypeError, ValueError) as exc:
@@ -343,19 +357,23 @@ class PackageCommittedSetJournal:
                     "GC committed set is unknown",
                     code="package_committed_set_gc_unknown",
                 )
-            if sum(
-                isinstance(item, PackageCommittedSetRecordV1)
-                and item.committed_set.root_ref.ref_id
-                == record.committed_set.root_ref.ref_id
-                for item in events
-            ) != 1:
+            if (
+                sum(
+                    isinstance(item, PackageCommittedSetRecordV1)
+                    and item.committed_set.root_ref.ref_id
+                    == record.committed_set.root_ref.ref_id
+                    for item in events
+                )
+                != 1
+            ):
                 raise self._error(
                     "GC committed root ref is aliased",
                     code="package_committed_set_gc_aliased",
                 )
             existing = next(
                 (
-                    item for item in events
+                    item
+                    for item in events
                     if isinstance(item, PackageCommittedSetGcTombstoneV1)
                     and item.set_id == record.committed_set.set_id
                 ),
@@ -478,7 +496,8 @@ def _validate_events(events: tuple[CommittedSetJournalEvent, ...]) -> None:
             records.append(event)
             continue
         matching = [
-            item for item in records
+            item
+            for item in records
             if item.committed_set.set_id == event.set_id
             and item.committed_set.root_ref.ref_id == event.root_ref_id
         ]
@@ -489,7 +508,8 @@ def _validate_events(events: tuple[CommittedSetJournalEvent, ...]) -> None:
             or sum(
                 item.committed_set.root_ref.ref_id == event.root_ref_id
                 for item in records
-            ) != 1
+            )
+            != 1
         ):
             raise ValueError("Committed-set GC tombstone lacks one exact root")
         retired_refs.add(event.root_ref_id)
@@ -518,18 +538,6 @@ def _require_positive(value: int, *, name: str) -> None:
         raise ValueError(f"{name} must be positive")
 
 
-def _exact_dict(value: object, *, fields: set[str], name: str) -> dict[str, object]:
-    if not isinstance(value, dict) or set(value) != fields:
-        raise ValueError(f"{name} does not match its versioned schema")
-    return value
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an integer")
-    return value
-
-
 def _wire_string(value: object, *, name: str) -> str:
     if type(value) is not str or not value:
         raise TypeError(f"{name} must be a non-empty string")
@@ -542,13 +550,9 @@ def _assert_no_duplicate_json_keys(path: Path) -> None:
             json.loads(line, object_pairs_hook=_unique_json_object)
 
 
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    document: dict[str, object] = {}
-    for key, value in pairs:
-        if key in document:
-            raise ValueError("Package committed set has duplicate JSON keys")
-        document[key] = value
-    return document
+_unique_json_object = _unique_json_object_hook(
+    lambda: "Package committed set has duplicate JSON keys",
+)
 
 
 __all__ = [

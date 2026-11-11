@@ -1,0 +1,1339 @@
+{
+  "empty:fresh": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ],
+      [
+        "sync",
+        "directory"
+      ],
+      [
+        "unlink",
+        ".worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage"
+      ],
+      [
+        "sync",
+        "directory"
+      ]
+    ],
+    "result": true,
+    "error": null,
+    "pending": {
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "5c5c41c8338b72d2e9b324dd4ec0edd397570a7cf95a8baf9252cd1b13ca0719"
+      }
+    }
+  },
+  "empty:repeat": {
+    "trace": [],
+    "result": true,
+    "error": null,
+    "pending": {
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "5c5c41c8338b72d2e9b324dd4ec0edd397570a7cf95a8baf9252cd1b13ca0719"
+      }
+    }
+  },
+  "empty:before-link": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "pause before link",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": true,
+    "final": {
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "5c5c41c8338b72d2e9b324dd4ec0edd397570a7cf95a8baf9252cd1b13ca0719"
+      }
+    }
+  },
+  "empty:after-link": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "link happened; acknowledgement lost",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      },
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": true,
+    "final": {
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "5c5c41c8338b72d2e9b324dd4ec0edd397570a7cf95a8baf9252cd1b13ca0719"
+      }
+    }
+  },
+  "empty:after-root-sync": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ],
+      [
+        "sync",
+        "directory"
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "root sync happened; acknowledgement lost",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      },
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": true,
+    "final": {
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "5c5c41c8338b72d2e9b324dd4ec0edd397570a7cf95a8baf9252cd1b13ca0719"
+      }
+    }
+  },
+  "empty:bad-mode": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerPayloadMaterializationError",
+        "coding_worker_payload_empty_repair_unverified",
+        "coding_worker_payload_empty_repair_unverified",
+        false
+      ]
+    ],
+    "pending": {
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 420,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 420,
+        "links": 1,
+        "digest": "5c5c41c8338b72d2e9b324dd4ec0edd397570a7cf95a8baf9252cd1b13ca0719"
+      }
+    }
+  },
+  "empty:changed-body": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerPayloadMaterializationError",
+        "coding_worker_payload_empty_repair_unverified",
+        "coding_worker_payload_empty_repair_unverified",
+        true
+      ],
+      [
+        "ValueError",
+        "Worker empty repair record changed",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a20"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "b713f6235cb5f9149590a132edad9dbc8b899957030cd9ababfa989fcd43dacc"
+      }
+    }
+  },
+  "empty:single-link-staging": {
+    "trace": [],
+    "result": true,
+    "error": null,
+    "pending": {
+      ".worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "666f726569676e"
+      },
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      ".worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "digest": "656771905e1ef731f65cd0a0d9fb061238380a1a012e6abdf846ecc7d2ea36fd"
+      },
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "5c5c41c8338b72d2e9b324dd4ec0edd397570a7cf95a8baf9252cd1b13ca0719"
+      }
+    }
+  },
+  "empty:short-read": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerPayloadMaterializationError",
+        "coding_worker_payload_empty_repair_unverified",
+        "coding_worker_payload_empty_repair_unverified",
+        false
+      ]
+    ],
+    "pending": {
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "5c5c41c8338b72d2e9b324dd4ec0edd397570a7cf95a8baf9252cd1b13ca0719"
+      }
+    }
+  },
+  "empty:zero-write": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "Worker empty repair intent write made no progress",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "bytes": ""
+      }
+    },
+    "retry": null,
+    "final": {
+      ".worker-empty-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "complete:fresh": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ],
+      [
+        "sync",
+        "directory"
+      ],
+      [
+        "unlink",
+        ".worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage"
+      ],
+      [
+        "sync",
+        "directory"
+      ]
+    ],
+    "result": true,
+    "error": null,
+    "pending": {
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c2273757065727669736f7246696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "e05f22d5efc56c08665b41ce0c51bc5b3aeb33c04606757e198166b60ce193af"
+      }
+    }
+  },
+  "complete:repeat": {
+    "trace": [],
+    "result": true,
+    "error": null,
+    "pending": {
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c2273757065727669736f7246696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "e05f22d5efc56c08665b41ce0c51bc5b3aeb33c04606757e198166b60ce193af"
+      }
+    }
+  },
+  "complete:before-link": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "pause before link",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c2273757065727669736f7246696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": true,
+    "final": {
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "e05f22d5efc56c08665b41ce0c51bc5b3aeb33c04606757e198166b60ce193af"
+      }
+    }
+  },
+  "complete:after-link": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "link happened; acknowledgement lost",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c2273757065727669736f7246696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2276657273696f6e223a317d0a"
+      },
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c2273757065727669736f7246696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": true,
+    "final": {
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "e05f22d5efc56c08665b41ce0c51bc5b3aeb33c04606757e198166b60ce193af"
+      }
+    }
+  },
+  "complete:after-root-sync": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ],
+      [
+        "sync",
+        "directory"
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "root sync happened; acknowledgement lost",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c2273757065727669736f7246696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2276657273696f6e223a317d0a"
+      },
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c2273757065727669736f7246696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": true,
+    "final": {
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "e05f22d5efc56c08665b41ce0c51bc5b3aeb33c04606757e198166b60ce193af"
+      }
+    }
+  },
+  "complete:bad-mode": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerPayloadMaterializationError",
+        "coding_worker_payload_complete_repair_unverified",
+        "coding_worker_payload_complete_repair_unverified",
+        false
+      ]
+    ],
+    "pending": {
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 420,
+        "links": 1,
+        "bytes": "7b22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c2273757065727669736f7246696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 420,
+        "links": 1,
+        "digest": "e05f22d5efc56c08665b41ce0c51bc5b3aeb33c04606757e198166b60ce193af"
+      }
+    }
+  },
+  "complete:changed-body": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerPayloadMaterializationError",
+        "coding_worker_payload_complete_repair_unverified",
+        "coding_worker_payload_complete_repair_unverified",
+        true
+      ],
+      [
+        "ValueError",
+        "Worker complete repair record changed",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c2273757065727669736f7246696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2276657273696f6e223a317d0a20"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "92059b5253d44f964f3bdaa5a5bd5d2a7aff05be0ea14c9e700d3fe43eba94c6"
+      }
+    }
+  },
+  "complete:single-link-staging": {
+    "trace": [],
+    "result": true,
+    "error": null,
+    "pending": {
+      ".worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "666f726569676e"
+      },
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c2273757065727669736f7246696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      ".worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "digest": "656771905e1ef731f65cd0a0d9fb061238380a1a012e6abdf846ecc7d2ea36fd"
+      },
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "e05f22d5efc56c08665b41ce0c51bc5b3aeb33c04606757e198166b60ce193af"
+      }
+    }
+  },
+  "complete:short-read": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerPayloadMaterializationError",
+        "coding_worker_payload_complete_repair_unverified",
+        "coding_worker_payload_complete_repair_unverified",
+        false
+      ]
+    ],
+    "pending": {
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c2273757065727669736f7246696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "e05f22d5efc56c08665b41ce0c51bc5b3aeb33c04606757e198166b60ce193af"
+      }
+    }
+  },
+  "complete:zero-write": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "Worker complete repair intent write made no progress",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "bytes": ""
+      }
+    },
+    "retry": null,
+    "final": {
+      ".worker-complete-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "unmarked:fresh": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ],
+      [
+        "sync",
+        "directory"
+      ],
+      [
+        "unlink",
+        ".worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage"
+      ],
+      [
+        "sync",
+        "directory"
+      ]
+    ],
+    "result": true,
+    "error": null,
+    "pending": {
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226d656d62657273223a5b7b22646576696365223a332c22646967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22696e6f6465223a382c226b696e64223a2266696c65222c226d6f6465223a3338342c2272656c617469766550617468223a22776f726b6572222c2273697a65223a347d5d2c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "971b9e2aa885c1267f9869fe660609554829096dba8c747527df8fb0b4b79d3a"
+      }
+    }
+  },
+  "unmarked:repeat": {
+    "trace": [],
+    "result": true,
+    "error": null,
+    "pending": {
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226d656d62657273223a5b7b22646576696365223a332c22646967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22696e6f6465223a382c226b696e64223a2266696c65222c226d6f6465223a3338342c2272656c617469766550617468223a22776f726b6572222c2273697a65223a347d5d2c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "971b9e2aa885c1267f9869fe660609554829096dba8c747527df8fb0b4b79d3a"
+      }
+    }
+  },
+  "unmarked:before-link": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "pause before link",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226d656d62657273223a5b7b22646576696365223a332c22646967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22696e6f6465223a382c226b696e64223a2266696c65222c226d6f6465223a3338342c2272656c617469766550617468223a22776f726b6572222c2273697a65223a347d5d2c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": true,
+    "final": {
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "971b9e2aa885c1267f9869fe660609554829096dba8c747527df8fb0b4b79d3a"
+      }
+    }
+  },
+  "unmarked:after-link": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "link happened; acknowledgement lost",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226d656d62657273223a5b7b22646576696365223a332c22646967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22696e6f6465223a382c226b696e64223a2266696c65222c226d6f6465223a3338342c2272656c617469766550617468223a22776f726b6572222c2273697a65223a347d5d2c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      },
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226d656d62657273223a5b7b22646576696365223a332c22646967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22696e6f6465223a382c226b696e64223a2266696c65222c226d6f6465223a3338342c2272656c617469766550617468223a22776f726b6572222c2273697a65223a347d5d2c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": true,
+    "final": {
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "971b9e2aa885c1267f9869fe660609554829096dba8c747527df8fb0b4b79d3a"
+      }
+    }
+  },
+  "unmarked:after-root-sync": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ],
+      [
+        "sync",
+        "directory"
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "root sync happened; acknowledgement lost",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226d656d62657273223a5b7b22646576696365223a332c22646967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22696e6f6465223a382c226b696e64223a2266696c65222c226d6f6465223a3338342c2272656c617469766550617468223a22776f726b6572222c2273697a65223a347d5d2c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      },
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226d656d62657273223a5b7b22646576696365223a332c22646967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22696e6f6465223a382c226b696e64223a2266696c65222c226d6f6465223a3338342c2272656c617469766550617468223a22776f726b6572222c2273697a65223a347d5d2c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": true,
+    "final": {
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "971b9e2aa885c1267f9869fe660609554829096dba8c747527df8fb0b4b79d3a"
+      }
+    }
+  },
+  "unmarked:bad-mode": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerPayloadMaterializationError",
+        "coding_worker_payload_unmarked_repair_unverified",
+        "coding_worker_payload_unmarked_repair_unverified",
+        false
+      ]
+    ],
+    "pending": {
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 420,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226d656d62657273223a5b7b22646576696365223a332c22646967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22696e6f6465223a382c226b696e64223a2266696c65222c226d6f6465223a3338342c2272656c617469766550617468223a22776f726b6572222c2273697a65223a347d5d2c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 420,
+        "links": 1,
+        "digest": "971b9e2aa885c1267f9869fe660609554829096dba8c747527df8fb0b4b79d3a"
+      }
+    }
+  },
+  "unmarked:changed-body": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerPayloadMaterializationError",
+        "coding_worker_payload_unmarked_repair_unverified",
+        "coding_worker_payload_unmarked_repair_unverified",
+        true
+      ],
+      [
+        "ValueError",
+        "Worker unmarked repair record changed",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226d656d62657273223a5b7b22646576696365223a332c22646967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22696e6f6465223a382c226b696e64223a2266696c65222c226d6f6465223a3338342c2272656c617469766550617468223a22776f726b6572222c2273697a65223a347d5d2c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a20"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "47469cb30200fb5dd6af75dbd0bcb905347ffa1a7a0959e23a2cd51b51b7192c"
+      }
+    }
+  },
+  "unmarked:single-link-staging": {
+    "trace": [],
+    "result": true,
+    "error": null,
+    "pending": {
+      ".worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "666f726569676e"
+      },
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226d656d62657273223a5b7b22646576696365223a332c22646967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22696e6f6465223a382c226b696e64223a2266696c65222c226d6f6465223a3338342c2272656c617469766550617468223a22776f726b6572222c2273697a65223a347d5d2c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      ".worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "digest": "656771905e1ef731f65cd0a0d9fb061238380a1a012e6abdf846ecc7d2ea36fd"
+      },
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "971b9e2aa885c1267f9869fe660609554829096dba8c747527df8fb0b4b79d3a"
+      }
+    }
+  },
+  "unmarked:short-read": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerPayloadMaterializationError",
+        "coding_worker_payload_unmarked_repair_unverified",
+        "coding_worker_payload_unmarked_repair_unverified",
+        false
+      ]
+    ],
+    "pending": {
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226d656d62657273223a5b7b22646576696365223a332c22646967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22696e6f6465223a382c226b696e64223a2266696c65222c226d6f6465223a3338342c2272656c617469766550617468223a22776f726b6572222c2273697a65223a347d5d2c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "971b9e2aa885c1267f9869fe660609554829096dba8c747527df8fb0b4b79d3a"
+      }
+    }
+  },
+  "unmarked:zero-write": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "Worker unmarked repair intent write made no progress",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "bytes": ""
+      }
+    },
+    "retry": null,
+    "final": {
+      ".worker-unmarked-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "registered:fresh": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ],
+      [
+        "sync",
+        "directory"
+      ],
+      [
+        "unlink",
+        ".worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage"
+      ],
+      [
+        "sync",
+        "directory"
+      ]
+    ],
+    "result": true,
+    "error": null,
+    "pending": {
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22626f6f744964656e74697479223a22626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a302c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "ad7ab1b7ad4107a2c3126546b2d35399808e7c35a14185710d52db6614a1e59f"
+      }
+    }
+  },
+  "registered:repeat": {
+    "trace": [],
+    "result": true,
+    "error": null,
+    "pending": {
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22626f6f744964656e74697479223a22626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a302c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "ad7ab1b7ad4107a2c3126546b2d35399808e7c35a14185710d52db6614a1e59f"
+      }
+    }
+  },
+  "registered:before-link": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "pause before link",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22626f6f744964656e74697479223a22626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a302c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": true,
+    "final": {
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "ad7ab1b7ad4107a2c3126546b2d35399808e7c35a14185710d52db6614a1e59f"
+      }
+    }
+  },
+  "registered:after-link": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "link happened; acknowledgement lost",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22626f6f744964656e74697479223a22626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a302c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      },
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22626f6f744964656e74697479223a22626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a302c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": true,
+    "final": {
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "ad7ab1b7ad4107a2c3126546b2d35399808e7c35a14185710d52db6614a1e59f"
+      }
+    }
+  },
+  "registered:after-root-sync": {
+    "trace": [
+      [
+        "sync",
+        "file"
+      ],
+      [
+        "link",
+        ".worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage",
+        "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+      ],
+      [
+        "sync",
+        "directory"
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "root sync happened; acknowledgement lost",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22626f6f744964656e74697479223a22626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a302c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      },
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 2,
+        "bytes": "7b22626f6f744964656e74697479223a22626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a302c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": true,
+    "final": {
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "ad7ab1b7ad4107a2c3126546b2d35399808e7c35a14185710d52db6614a1e59f"
+      }
+    }
+  },
+  "registered:bad-mode": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerPayloadMaterializationError",
+        "coding_worker_registered_payload_repair_unverified",
+        "coding_worker_registered_payload_repair_unverified",
+        false
+      ]
+    ],
+    "pending": {
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 420,
+        "links": 1,
+        "bytes": "7b22626f6f744964656e74697479223a22626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a302c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 420,
+        "links": 1,
+        "digest": "ad7ab1b7ad4107a2c3126546b2d35399808e7c35a14185710d52db6614a1e59f"
+      }
+    }
+  },
+  "registered:changed-body": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerRegisteredPayloadRepairError",
+        "coding_worker_registered_payload_repair_unverified",
+        "coding_worker_registered_payload_repair_unverified",
+        true
+      ],
+      [
+        "ValueError",
+        "Registered Worker payload repair changed",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22626f6f744964656e74697479223a22626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a302c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a20"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "c14c08b4d69242ad4124a34b2dbe4bb68d02d59a887e2fdb3dd924d9978a68d6"
+      }
+    }
+  },
+  "registered:single-link-staging": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerRegisteredPayloadRepairError",
+        "coding_worker_registered_payload_repair_unverified",
+        "coding_worker_registered_payload_repair_unverified",
+        true
+      ],
+      [
+        "ValueError",
+        "Registered Worker payload staging is unexpected",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "666f726569676e"
+      },
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22626f6f744964656e74697479223a22626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a302c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      ".worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "digest": "656771905e1ef731f65cd0a0d9fb061238380a1a012e6abdf846ecc7d2ea36fd"
+      },
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "ad7ab1b7ad4107a2c3126546b2d35399808e7c35a14185710d52db6614a1e59f"
+      }
+    }
+  },
+  "registered:short-read": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerPayloadMaterializationError",
+        "coding_worker_registered_payload_repair_unverified",
+        "coding_worker_registered_payload_repair_unverified",
+        false
+      ]
+    ],
+    "pending": {
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "bytes": "7b22626f6f744964656e74697479223a22626f6f74222c22676174655265636f7264446967657374223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c22686f73744964656e74697479223a22686f7374222c226c656173654964223a2231313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c226f776e657247656e65726174696f6e223a302c22706c616e223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c22656e747279706f696e74223a2262696e2f776f726b6572222c227061796c6f6164446967657374223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c227061796c6f616453697a65223a342c227265636569707446696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c227374616765446576696365223a332c227374616765496e6f6465223a372c2276657273696f6e223a317d2c22706f6c69637946696e6765727072696e74223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c22726563656970745265636f7264446967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c2276657273696f6e223a317d0a"
+      }
+    },
+    "retry": null,
+    "final": {
+      "worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json": {
+        "mode": 384,
+        "links": 1,
+        "digest": "ad7ab1b7ad4107a2c3126546b2d35399808e7c35a14185710d52db6614a1e59f"
+      }
+    }
+  },
+  "registered:zero-write": {
+    "trace": [],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "Registered Worker repair write made no progress",
+        null,
+        false
+      ]
+    ],
+    "pending": {
+      ".worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "bytes": ""
+      }
+    },
+    "retry": null,
+    "final": {
+      ".worker-registered-repair-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.stage": {
+        "mode": 384,
+        "links": 1,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  }
+}

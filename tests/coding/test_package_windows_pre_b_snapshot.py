@@ -25,14 +25,15 @@ from unittest.mock import patch
 
 import pytest
 
-import loushang.coding.package_installation_private_data as arch_private_data_module
 import loushang.coding.package_legacy_windows_receipt as windows_receipt_module
 import loushang.coding.package_private_data_windows_backup as windows_backup_module
-import loushang.coding.package_private_data_windows_backup_expiry_owner as windows_expiry_module
-import loushang.coding.package_private_data_windows_deletion_owner as windows_deletion_module
-import loushang.coding.package_private_data_windows_restore_owner as windows_restore_module
+import loushang.coding.package_private_data_windows_restore_journal as windows_restore_journal_module
 import loushang.coding.package_product_backup_types as backup_types_module
 import loushang.coding.package_product_worker_windows_payload as windows_payload_module
+import loushang.harness.plugin_management._private_data_backup_windows as windows_archive_action
+import loushang.harness.plugin_management._private_data_expiry_windows as windows_expiry_action
+import loushang.harness.resources.packages._private_tree_windows as windows_deletion_module
+import loushang.harness.resources.packages._private_tree_windows as windows_restore_tree_module
 from loushang.agent import synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
@@ -332,6 +333,9 @@ from loushang.harness.plugin_management.records import (
     PluginPackageRevisionRefV1,
 )
 from loushang.harness.plugin_management.service import PluginManagementService
+from loushang.harness.resources.packages._private_receipts_windows import (
+    WindowsPrivateReceiptIO,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
 )
@@ -644,9 +648,15 @@ def test_windows_ordinary_selection_preserves_pre_b_without_writing(
     ):
         selection = CodingFencedProductApplicationSelection(windows_candidate=True)
         try:
-            assert selection.factory_for_session(
-                manager, settings_manager=None if services is None else services.settings_manager,
-            ) is None
+            assert (
+                selection.factory_for_session(
+                    manager,
+                    settings_manager=None
+                    if services is None
+                    else services.settings_manager,
+                )
+                is None
+            )
         finally:
             selection.close()
     assert snapshot() == before
@@ -1208,10 +1218,16 @@ def test_windows_arch_private_data_uses_product_selected_native_acl(
         )
         try:
             runtime = binding.activate()
-            write_receipt = arch_private_data_module.write_windows_private_receipt
+            write_receipt = WindowsPrivateReceiptIO.write_private_receipt
             interrupted = False
 
-            def interrupt_first_root_receipt(path: Path, payload: bytes) -> None:
+            def interrupt_first_root_receipt(
+                receipt_io: WindowsPrivateReceiptIO,
+                path: Path,
+                payload: bytes,
+                *,
+                maximum_bytes: int,
+            ) -> None:
                 nonlocal interrupted
                 if (
                     path.name.startswith("arch-private-root-")
@@ -1220,11 +1236,11 @@ def test_windows_arch_private_data_uses_product_selected_native_acl(
                 ):
                     interrupted = True
                     raise RuntimeError("injected Arch root receipt interruption")
-                write_receipt(path, payload)
+                write_receipt(receipt_io, path, payload, maximum_bytes=maximum_bytes)
 
             with patch.object(
-                arch_private_data_module,
-                "write_windows_private_receipt",
+                WindowsPrivateReceiptIO,
+                "write_private_receipt",
                 interrupt_first_root_receipt,
             ):
                 with pytest.raises(
@@ -1668,7 +1684,7 @@ def test_windows_arch_private_data_deletion_recovers_after_rename(
         == receipt.receipt_id
     )
     with patch.object(
-        windows_restore_module,
+        windows_restore_tree_module,
         "windows_rename_open_directory_at",
         side_effect=OSError("injected Windows restore rename interruption"),
     ):
@@ -1711,7 +1727,7 @@ def test_windows_arch_private_data_deletion_recovers_after_rename(
     finally:
         unrelated_owner.close()
     with patch.object(
-        windows_restore_module,
+        windows_restore_journal_module,
         "_publish_windows_arch_restored_root_receipt",
         side_effect=OSError("injected Windows restore receipt interruption"),
     ):
@@ -1996,7 +2012,7 @@ def test_windows_arch_backup_expiry_recovers_across_native_effects(
     archive_path = backup_parent(lifecycle, key) / backup.backup_id
     assert archive_path.is_dir()
     with patch.object(
-        windows_expiry_module,
+        windows_expiry_action,
         "windows_rename_open_directory_at",
         side_effect=OSError("injected Windows expiry rename interruption"),
     ):
@@ -2005,7 +2021,7 @@ def test_windows_arch_backup_expiry_recovers_across_native_effects(
     assert archive_path.is_dir()
     assert client.status().status == "expiry_pending"
     with patch.object(
-        windows_expiry_module,
+        windows_archive_action,
         "windows_delete_open_entry",
         side_effect=OSError("injected Windows expiry deletion interruption"),
     ):
@@ -2014,14 +2030,18 @@ def test_windows_arch_backup_expiry_recovers_across_native_effects(
     assert not archive_path.exists()
     assert len(list(archive_path.parent.glob(".expiring-*"))) == 1
     assert client.status().status == "expiry_pending"
-    remove_tombstone = windows_expiry_module._remove_tombstone
+    remove_tombstone = (
+        windows_archive_action.WindowsPrivateArchiveIO.remove_expired_archive
+    )
 
     def interrupt_after_delete(*args: object) -> None:
         remove_tombstone(*args)  # type: ignore[arg-type]
         raise OSError("injected Windows expiry receipt interruption")
 
     with patch.object(
-        windows_expiry_module, "_remove_tombstone", side_effect=interrupt_after_delete
+        windows_archive_action.WindowsPrivateArchiveIO,
+        "remove_expired_archive",
+        new=interrupt_after_delete,
     ):
         with pytest.raises(OSError, match="expiry receipt interruption"):
             client.backup_expire(expiry_plan, expiry_confirmation)
@@ -2214,8 +2234,8 @@ finally:
         assert backup.snapshot().records[0].status == "unknown"
         assert not backup_parent(lifecycle, arch_key).exists()
         with patch.object(
-            windows_backup_module,
-            "_copy_members",
+            type(windows_backup_module._native_io),
+            "copy_members",
             side_effect=OSError("injected backup copy interruption"),
         ):
             with pytest.raises(OSError, match="copy interruption"):
@@ -2253,7 +2273,7 @@ finally:
             backup.retain(arch_key)
         partial_file.write_bytes(first_cache.read_bytes()[:16])
         with patch.object(
-            windows_backup_module,
+            windows_archive_action,
             "windows_rename_at",
             side_effect=OSError("injected backup publication interruption"),
         ):
@@ -2468,7 +2488,10 @@ def test_windows_candidate_ordinary_selection_preserves_old_desired_before_write
                 return_value=lifecycle,
             ),
         ):
-            assert selection.factory_for_session(manager, settings_manager=settings) is None
+            assert (
+                selection.factory_for_session(manager, settings_manager=settings)
+                is None
+            )
     finally:
         selection.close()
     assert lifecycle.desired_state.read_bytes() == old_bytes
@@ -4160,8 +4183,10 @@ def _assert_windows_worker_retired_history_allows_gc(
         c5_base = CodingWindowsWorkerC5SemanticBaseV1.from_semantic_read(
             prepared_join, semantic
         )
-        supervisor_base = CodingWindowsWorkerSupervisorSemanticBaseV1.from_semantic_read(
-            prepared_join, semantic
+        supervisor_base = (
+            CodingWindowsWorkerSupervisorSemanticBaseV1.from_semantic_read(
+                prepared_join, semantic
+            )
         )
         effect_ids = tuple(
             sorted(
@@ -6018,7 +6043,7 @@ finally:
                             assert live_job.native_job_absent is False
                             assert "native_job_present" in live_job.missing_proofs
                             with patch(
-                                "loushang.coding.package_product_worker_windows_backend_release.verify_windows_backend_material_expectation",
+                                "loushang.harness.package_product._windows_worker_backend_release.verify_windows_backend_material_expectation",
                                 wraps=verify_windows_backend_material_expectation,
                             ) as full_backend_checks:
                                 request.validate_current()
@@ -6743,7 +6768,7 @@ import json
 import sys
 from pathlib import Path
 from unittest.mock import patch
-import loushang.coding.package_product_worker_windows_partial_stage_retirement as partial_retirement_module
+from loushang.harness.worker.payload._windows_stage_retirement import WindowsStageRetirement
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package_product_runtime import open_coding_fenced_product_application_owner
 from loushang.coding.package_product_worker_windows_recovery_inventory import CodingWindowsWorkerRecoveryAdmissionError, _current_after_verified_retirements_under_gc_guard, inspect_coding_windows_product_worker_offline_recovery
@@ -6765,7 +6790,7 @@ try:
     repeated = retire_coding_windows_product_worker_complete_stage(product, expected_review=review)
     partial_review = review_coding_windows_product_worker_partial_stage(product, attempt_id="8" * 32)
     with patch.object(
-        partial_retirement_module, "_delete_directory_if_empty",
+        WindowsStageRetirement, "delete_directory_if_empty",
         side_effect=OSError("injected partial directory interruption"),
     ):
         try:
@@ -7173,7 +7198,7 @@ from unittest.mock import patch
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package_product_runtime import open_coding_fenced_product_application_owner
 import loushang.coding.package_product_worker_windows_payload as payload_module
-import loushang.coding.package_product_worker_windows_unlaunched_stage_retirement as unlaunched_retirement_module
+from loushang.harness.worker.payload._windows_stage_retirement import WindowsStageRetirement
 from loushang.coding.package_product_worker_windows_payload import CodingWindowsWorkerPayloadMaterializationError, materialize_coding_windows_product_worker_payload
 from loushang.coding.package_product_worker_windows_recovery_inventory import CodingWindowsWorkerRecoveryAdmissionError, _current_after_verified_retirements_under_gc_guard, _inspect_windows_worker_recovery_inventory_under_gc_guard, inspect_coding_windows_product_worker_offline_recovery
 from loushang.coding.package_product_worker_windows_receipt import CodingWindowsWorkerProductReceiptOwner
@@ -7210,7 +7235,7 @@ try:
         else:
             raise AssertionError("Unretired reservation was admitted")
     unlaunched_review = review_coding_windows_product_worker_settled_unlaunched(product, attempt_id="a" * 32)
-    with patch.object(unlaunched_retirement_module, "_delete_directory_if_empty", side_effect=OSError("injected unlaunched retirement interruption")):
+    with patch.object(WindowsStageRetirement, "delete_directory_if_empty", side_effect=OSError("injected unlaunched retirement interruption")):
         try:
             retire_coding_windows_product_worker_settled_unlaunched_stage(product, expected_review=unlaunched_review)
         except OSError as error:

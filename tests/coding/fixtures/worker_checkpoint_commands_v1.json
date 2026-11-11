@@ -1,0 +1,3315 @@
+{
+  "fresh": {
+    "first": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 1,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "newOptInOperationIds": [
+            "allow-1"
+          ],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102"
+        }
+      ]
+    },
+    "pending": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 238,
+        "mode": 384,
+        "digest": "c49f2fcd09b18a5ef5055acbc21f81000392fbea98d5832d373bf7487b062df1"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "retry": null,
+    "strict": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 1,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "newOptInOperationIds": [
+            "allow-1"
+          ],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102"
+        }
+      ]
+    },
+    "calls": [
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current"
+    ],
+    "final": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 238,
+        "mode": 384,
+        "digest": "c49f2fcd09b18a5ef5055acbc21f81000392fbea98d5832d373bf7487b062df1"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "duplicate": {
+    "first": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 1,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "newOptInOperationIds": [
+            "allow-1"
+          ],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102"
+        }
+      ]
+    },
+    "pending": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 238,
+        "mode": 384,
+        "digest": "c49f2fcd09b18a5ef5055acbc21f81000392fbea98d5832d373bf7487b062df1"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "retry": null,
+    "strict": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 1,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "newOptInOperationIds": [
+            "allow-1"
+          ],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102"
+        }
+      ]
+    },
+    "calls": [
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current"
+    ],
+    "final": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 238,
+        "mode": 384,
+        "digest": "c49f2fcd09b18a5ef5055acbc21f81000392fbea98d5832d373bf7487b062df1"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "closure-refused": {
+    "first": {
+      "error": [
+        [
+          "CodingWorkerHistoryCheckpointError",
+          "coding_worker_checkpoint_closure_unproven",
+          "coding_worker_checkpoint_closure_unproven"
+        ]
+      ]
+    },
+    "pending": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "retry": null,
+    "strict": {
+      "records": []
+    },
+    "calls": [
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "current",
+      "current"
+    ],
+    "final": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "head-before": {
+    "first": {
+      "error": [
+        [
+          "OSError",
+          "pause before first head",
+          null
+        ]
+      ]
+    },
+    "pending": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 174,
+        "mode": 384,
+        "digest": "4f7ca3c49d17f66894e85811363c0e23a257cf4d1bee03d1cafefe6499430a98"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "retry": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 1,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "newOptInOperationIds": [
+            "allow-1"
+          ],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102"
+        }
+      ]
+    },
+    "strict": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 1,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "newOptInOperationIds": [
+            "allow-1"
+          ],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102"
+        }
+      ]
+    },
+    "calls": [
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current"
+    ],
+    "final": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 238,
+        "mode": 384,
+        "digest": "c49f2fcd09b18a5ef5055acbc21f81000392fbea98d5832d373bf7487b062df1"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "append-complete": {
+    "first": {
+      "error": [
+        [
+          "OSError",
+          "append happened; acknowledgement lost",
+          null
+        ]
+      ]
+    },
+    "pending": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 174,
+        "mode": 384,
+        "digest": "4f7ca3c49d17f66894e85811363c0e23a257cf4d1bee03d1cafefe6499430a98"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "e77a05b319876153a2fd8a7190ca8d71c55aed26d393444ab0583d86f126c8a5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "retry": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 1,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "newOptInOperationIds": [
+            "allow-1"
+          ],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102"
+        }
+      ]
+    },
+    "strict": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 1,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "newOptInOperationIds": [
+            "allow-1"
+          ],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102"
+        }
+      ]
+    },
+    "calls": [
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current"
+    ],
+    "final": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 238,
+        "mode": 384,
+        "digest": "c49f2fcd09b18a5ef5055acbc21f81000392fbea98d5832d373bf7487b062df1"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "append-partial": {
+    "first": {
+      "error": [
+        [
+          "OSError",
+          "append happened; acknowledgement lost",
+          null
+        ]
+      ]
+    },
+    "pending": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 174,
+        "mode": 384,
+        "digest": "4f7ca3c49d17f66894e85811363c0e23a257cf4d1bee03d1cafefe6499430a98"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "e77a05b319876153a2fd8a7190ca8d71c55aed26d393444ab0583d86f126c8a5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 1150,
+        "mode": 384,
+        "digest": "66d0f459eb2935a2f44c646327c820edf52b64459fe0183df3c1bda63cc363d7"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "retry": {
+      "records": []
+    },
+    "strict": {
+      "records": []
+    },
+    "calls": [
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "runtime-enter",
+      "gc-enter",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "current",
+      "current"
+    ],
+    "final": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 174,
+        "mode": 384,
+        "digest": "4f7ca3c49d17f66894e85811363c0e23a257cf4d1bee03d1cafefe6499430a98"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "e77a05b319876153a2fd8a7190ca8d71c55aed26d393444ab0583d86f126c8a5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "head-after": {
+    "first": {
+      "error": [
+        [
+          "OSError",
+          "publication happened; acknowledgement lost",
+          null
+        ]
+      ]
+    },
+    "pending": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 174,
+        "mode": 384,
+        "digest": "4f7ca3c49d17f66894e85811363c0e23a257cf4d1bee03d1cafefe6499430a98"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "retry": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 1,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "newOptInOperationIds": [
+            "allow-1"
+          ],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102"
+        }
+      ]
+    },
+    "strict": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 1,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "newOptInOperationIds": [
+            "allow-1"
+          ],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102"
+        }
+      ]
+    },
+    "calls": [
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current"
+    ],
+    "final": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 238,
+        "mode": 384,
+        "digest": "c49f2fcd09b18a5ef5055acbc21f81000392fbea98d5832d373bf7487b062df1"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "anchor-after": {
+    "first": {
+      "error": [
+        [
+          "OSError",
+          "publication happened; acknowledgement lost",
+          null
+        ]
+      ]
+    },
+    "pending": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 238,
+        "mode": 384,
+        "digest": "c49f2fcd09b18a5ef5055acbc21f81000392fbea98d5832d373bf7487b062df1"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "retry": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 1,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "newOptInOperationIds": [
+            "allow-1"
+          ],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102"
+        }
+      ]
+    },
+    "strict": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 1,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "newOptInOperationIds": [
+            "allow-1"
+          ],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102"
+        }
+      ]
+    },
+    "calls": [
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current"
+    ],
+    "final": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 238,
+        "mode": 384,
+        "digest": "c49f2fcd09b18a5ef5055acbc21f81000392fbea98d5832d373bf7487b062df1"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "seal-next": {
+    "first": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 2,
+          "journalRevision": 2,
+          "newAttemptIds": [],
+          "newOptInOperationIds": [],
+          "newReceiptFingerprints": [],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "ad9bdd40b22a4d1c50888b072030527e9e7987776b195b55370ac0c46075f40e"
+        }
+      ]
+    },
+    "pending": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 238,
+        "mode": 384,
+        "digest": "b94ff084ce7922b8c19da5aaf9ad2e70a28159cac0b60f5fcd9cee27f53258d5"
+      },
+      "worker-history-checkpoints.g00000001.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "259989c5417427e5d1a9cdba84e1053ae622b6509eb6d1a88cf13a90a0522f5c"
+      },
+      "worker-history-checkpoints.g00000001.jsonl": {
+        "size": 2256,
+        "mode": 384,
+        "digest": "f3e70a5af0ced283c8ec39aa954bf4abefcf259ebf8c2672a0e81eeb19596342"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-history-checkpoints.segments.json": {
+        "size": 230,
+        "mode": 384,
+        "digest": "18985a0bf6675d9b71327dd295ea3fd511eb8dd69c97542f9627ebe4f0f61e50"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "retry": null,
+    "strict": {
+      "records": [
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 1,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "newOptInOperationIds": [
+            "allow-1"
+          ],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102"
+        },
+        {
+          "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 2,
+          "journalRevision": 2,
+          "newAttemptIds": [],
+          "newOptInOperationIds": [],
+          "newReceiptFingerprints": [],
+          "optInGenerationHighWater": [
+            [
+              "worker",
+              1,
+              0,
+              "allow",
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
+          ],
+          "previousDigest": "a73ce3d1ed8755420c220dcfc902bbeff3a97d2de27026508f8b5d38f4d65102",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "35eb621ac236c80f1b1f4a1cba21e75f81923d5b460354c6bbafda3524c4b1dd",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 0,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "key",
+              1
+            ]
+          ],
+          "recordDigest": "ad9bdd40b22a4d1c50888b072030527e9e7987776b195b55370ac0c46075f40e"
+        }
+      ]
+    },
+    "calls": [
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current",
+      "current"
+    ],
+    "final": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 238,
+        "mode": 384,
+        "digest": "b94ff084ce7922b8c19da5aaf9ad2e70a28159cac0b60f5fcd9cee27f53258d5"
+      },
+      "worker-history-checkpoints.g00000001.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "259989c5417427e5d1a9cdba84e1053ae622b6509eb6d1a88cf13a90a0522f5c"
+      },
+      "worker-history-checkpoints.g00000001.jsonl": {
+        "size": 2256,
+        "mode": 384,
+        "digest": "f3e70a5af0ced283c8ec39aa954bf4abefcf259ebf8c2672a0e81eeb19596342"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-history-checkpoints.segments.json": {
+        "size": 230,
+        "mode": 384,
+        "digest": "18985a0bf6675d9b71327dd295ea3fd511eb8dd69c97542f9627ebe4f0f61e50"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "source-tampered": {
+    "first": {
+      "error": [
+        [
+          "CodingWorkerHistorySegmentError",
+          "coding_worker_segment_head_changed",
+          "coding_worker_segment_head_changed"
+        ]
+      ]
+    },
+    "pending": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 238,
+        "mode": 384,
+        "digest": "c49f2fcd09b18a5ef5055acbc21f81000392fbea98d5832d373bf7487b062df1"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 3,
+        "mode": 384,
+        "digest": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "retry": null,
+    "strict": {
+      "error": [
+        [
+          "CodingWorkerHistorySegmentError",
+          "coding_worker_segment_head_changed",
+          "coding_worker_segment_head_changed"
+        ]
+      ]
+    },
+    "calls": [
+      "runtime-enter",
+      "gc-enter",
+      "gc-snapshot",
+      "review",
+      "current",
+      "current",
+      "gc-exit",
+      "runtime-exit",
+      "current",
+      "current",
+      "current"
+    ],
+    "final": {
+      "worker-activation-receipts.head.json": {
+        "size": 158,
+        "mode": 384,
+        "digest": "f6d0abbcad02f06407a88cc214b9d8aa3807e7b44188109bf0df85de52475ebe"
+      },
+      "worker-activation-receipts.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-activation-state.head.json": {
+        "size": 155,
+        "mode": 384,
+        "digest": "999e82fe5f6282c47aafa200ae3dc0bba7648138f527f99d20ee76ee5336c554"
+      },
+      "worker-activation-state.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-history-checkpoint-owner.json": {
+        "size": 238,
+        "mode": 384,
+        "digest": "c49f2fcd09b18a5ef5055acbc21f81000392fbea98d5832d373bf7487b062df1"
+      },
+      "worker-history-checkpoints.head.json": {
+        "size": 161,
+        "mode": 384,
+        "digest": "cd3f339e1a84ef0133f38d75fa0ed39e20b27f55a58783fe6fcaa6f8b60976c5"
+      },
+      "worker-history-checkpoints.jsonl": {
+        "size": 2301,
+        "mode": 384,
+        "digest": "e34509406414f010bc1f181f4541bc3aa91a6f7b582589854ebc6a14568db94c"
+      },
+      "worker-opt-in.head.json": {
+        "size": 145,
+        "mode": 384,
+        "digest": "9f9170492e0d16832f3738215d378eead6f56ef94f9b40fd3a9c73629753eb5b"
+      },
+      "worker-opt-in.jsonl": {
+        "size": 3,
+        "mode": 384,
+        "digest": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      },
+      "worker-start-gates.head.json": {
+        "size": 150,
+        "mode": 384,
+        "digest": "bcaaad16aff1671982a65a5362856d8b9eb85e8d7baabd886878ca9ffa209acb"
+      },
+      "worker-start-gates.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "worker-supervisor.head.json": {
+        "size": 149,
+        "mode": 384,
+        "digest": "6dcbd7448d416a64a6548a34e35e47fbf55739cdb82f5ce41f0ab340899e2d0c"
+      },
+      "worker-supervisor.jsonl": {
+        "size": 0,
+        "mode": 384,
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  }
+}

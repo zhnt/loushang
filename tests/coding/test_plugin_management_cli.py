@@ -68,6 +68,7 @@ from loushang.harness.plugin_management import (
     PluginPackageRevisionRefV1,
     plugin_enablement_legacy_input_fingerprint,
 )
+from loushang.harness.plugin_management import _enablement_capture as capture_module
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentPreviewRequestV1,
 )
@@ -75,6 +76,12 @@ from loushang.harness.plugin_management.explanation import (
     PluginManagementExplanationProjector,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.resources.packages import (
+    _private_directory as private_state_module,
+)
+from loushang.harness.resources.packages.plugin_lifecycle import (
+    windows_quarantine as windows_pin_module,
+)
 
 
 @dataclass(frozen=True)
@@ -204,7 +211,9 @@ def test_management_read_binding_does_not_create_absent_workspace_state(
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    before = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+    before = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
 
     binding = build_coding_plugin_management_cli_read_binding(
         workspace, _SettingsManager(_Settings())
@@ -215,7 +224,9 @@ def test_management_read_binding_does_not_create_absent_workspace_state(
             cast(PluginManagementApplicationCommandV1, object())
         )
 
-    after = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+    after = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
     assert after == before, (before, after)
 
 
@@ -306,64 +317,123 @@ def test_current_preview_cli_refuses_unfenced_workspace_without_writes(
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    before = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+    before = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
     stdout = StringIO()
     stderr = StringIO()
 
-    assert asyncio.run(run_cli(
-        ["--preview-current-plugins"], cwd=workspace, stdin=StringIO(),
-        stdout=stdout, stderr=stderr,
-    )) == 1
+    assert (
+        asyncio.run(
+            run_cli(
+                ["--preview-current-plugins"],
+                cwd=workspace,
+                stdin=StringIO(),
+                stdout=stdout,
+                stderr=stderr,
+            )
+        )
+        == 1
+    )
     assert stdout.getvalue() == ""
     assert stderr.getvalue() == "Error: plugin_preview_product_not_fenced\n"
-    assert tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))) == before
+    assert (
+        tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+        == before
+    )
 
     stderr = StringIO()
-    assert asyncio.run(run_cli(
-        ["--repair-plugin-desired-operation", "test:absent"],
-        cwd=workspace, stdin=StringIO(), stdout=StringIO(), stderr=stderr,
-    )) == 1
+    assert (
+        asyncio.run(
+            run_cli(
+                ["--repair-plugin-desired-operation", "test:absent"],
+                cwd=workspace,
+                stdin=StringIO(),
+                stdout=StringIO(),
+                stderr=stderr,
+            )
+        )
+        == 1
+    )
     assert stderr.getvalue() == "Error: coding_product_not_fenced\n"
-    assert tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))) == before
+    assert (
+        tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+        == before
+    )
 
     stderr = StringIO()
-    assert asyncio.run(run_cli(
-        ["--preview-current-plugins", "--prompt", "run this"],
-        cwd=workspace, stdin=StringIO(), stdout=StringIO(), stderr=stderr,
-    )) == 2
+    assert (
+        asyncio.run(
+            run_cli(
+                ["--preview-current-plugins", "--prompt", "run this"],
+                cwd=workspace,
+                stdin=StringIO(),
+                stdout=StringIO(),
+                stderr=stderr,
+            )
+        )
+        == 2
+    )
     assert stderr.getvalue() == "Error: plugin_preview_operation_conflict\n"
-    assert tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))) == before
+    assert (
+        tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+        == before
+    )
 
     stderr = StringIO()
-    assert asyncio.run(run_cli(
-        ["--explain-plugin-operation", "test:absent"],
-        cwd=workspace, stdin=StringIO(), stdout=StringIO(), stderr=stderr,
-    )) == 1
+    assert (
+        asyncio.run(
+            run_cli(
+                ["--explain-plugin-operation", "test:absent"],
+                cwd=workspace,
+                stdin=StringIO(),
+                stdout=StringIO(),
+                stderr=stderr,
+            )
+        )
+        == 1
+    )
     assert stderr.getvalue() == "Error: plugin_explanation_product_not_fenced\n"
-    assert tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))) == before
+    assert (
+        tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+        == before
+    )
 
     stderr = StringIO()
-    assert asyncio.run(run_cli(
-        ["--explain-plugin-operation", "test:absent", "--list-plugins"],
-        cwd=workspace, stdin=StringIO(), stdout=StringIO(), stderr=stderr,
-    )) == 2
+    assert (
+        asyncio.run(
+            run_cli(
+                ["--explain-plugin-operation", "test:absent", "--list-plugins"],
+                cwd=workspace,
+                stdin=StringIO(),
+                stdout=StringIO(),
+                stderr=stderr,
+            )
+        )
+        == 2
+    )
     assert stderr.getvalue() == "Error: plugin_explanation_operation_conflict\n"
-    assert tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))) == before
+    assert (
+        tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+        == before
+    )
 
     query = bind_coding_current_preview_query(workspace)
     with pytest.raises(CodingCurrentPreviewError) as mismatch:
-        query.preview_current(PluginCurrentPreviewRequestV1(
-            correlation_id="test:foreign-scope", product_id="coding",
-            scope_id="workspace:foreign", composition_set_id="coding-standard",
-        ))
+        query.preview_current(
+            PluginCurrentPreviewRequestV1(
+                correlation_id="test:foreign-scope",
+                product_id="coding",
+                scope_id="workspace:foreign",
+                composition_set_id="coding-standard",
+            )
+        )
     assert mismatch.value.code == "plugin_preview_scope_mismatch"
     client = open_coding_plugin_management_read_client(workspace)
     with pytest.raises(CodingCurrentPreviewError) as missing_preview:
         client.preview_current(correlation_id="test:sdk-absent-preview")
     assert missing_preview.value.code == "plugin_preview_product_not_fenced"
-    management = client.management_snapshot(
-        correlation_id="test:sdk-absent-management"
-    )
+    management = client.management_snapshot(correlation_id="test:sdk-absent-management")
     assert management["installations"] == []
     assert management["correlationId"] == "test:sdk-absent-management"
     with pytest.raises(CodingPluginOperationExplanationError) as missing_operation:
@@ -371,25 +441,22 @@ def test_current_preview_cli_refuses_unfenced_workspace_without_writes(
             "test:absent", correlation_id="test:sdk-absent-operation"
         )
     assert missing_operation.value.code == "plugin_explanation_product_not_fenced"
-    assert tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))) == before
+    assert (
+        tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+        == before
+    )
 
 
 def test_current_preview_dispatch_preserves_explicit_prompt_words() -> None:
     assert current_preview_option_requested(("--preview-current-plugins",))
-    assert not current_preview_option_requested(
-        ("--prompt=--preview-current-plugins",)
-    )
+    assert not current_preview_option_requested(("--prompt=--preview-current-plugins",))
     assert not current_preview_option_requested(("--", "--preview-current-plugins"))
     assert plugin_explanation_option_requested(("--explain-plugin-operation", "op:1"))
     assert not plugin_explanation_option_requested(
         ("--prompt", "--explain-plugin-operation")
     )
-    assert not plugin_explanation_option_requested(
-        ("--", "--explain-plugin-operation")
-    )
-    assert plugin_repair_option_requested(
-        ("--repair-plugin-desired-operation", "op:1")
-    )
+    assert not plugin_explanation_option_requested(("--", "--explain-plugin-operation"))
+    assert plugin_repair_option_requested(("--repair-plugin-desired-operation", "op:1"))
     assert not plugin_repair_option_requested(
         ("--prompt=--repair-plugin-desired-operation",)
     )
@@ -401,12 +468,36 @@ def test_current_preview_dispatch_preserves_explicit_prompt_words() -> None:
 @pytest.mark.parametrize(
     ("query", "write_option", "error_code"),
     [
-        ("--preview-current-plugins", ("--update-package", "example"), "plugin_preview_operation_conflict"),
-        ("--preview-current-plugins", ("--update-packages",), "plugin_preview_operation_conflict"),
-        ("--preview-current-plugins", ("--add-plugin-source", "example"), "plugin_preview_operation_conflict"),
-        ("--explain-plugin-operation", ("--update-package", "example"), "plugin_explanation_operation_conflict"),
-        ("--explain-plugin-operation", ("--update-packages",), "plugin_explanation_operation_conflict"),
-        ("--explain-plugin-operation", ("--add-plugin-source", "example"), "plugin_explanation_operation_conflict"),
+        (
+            "--preview-current-plugins",
+            ("--update-package", "example"),
+            "plugin_preview_operation_conflict",
+        ),
+        (
+            "--preview-current-plugins",
+            ("--update-packages",),
+            "plugin_preview_operation_conflict",
+        ),
+        (
+            "--preview-current-plugins",
+            ("--add-plugin-source", "example"),
+            "plugin_preview_operation_conflict",
+        ),
+        (
+            "--explain-plugin-operation",
+            ("--update-package", "example"),
+            "plugin_explanation_operation_conflict",
+        ),
+        (
+            "--explain-plugin-operation",
+            ("--update-packages",),
+            "plugin_explanation_operation_conflict",
+        ),
+        (
+            "--explain-plugin-operation",
+            ("--add-plugin-source", "example"),
+            "plugin_explanation_operation_conflict",
+        ),
     ],
 )
 def test_plugin_read_only_cli_refuses_combined_writes(
@@ -417,13 +508,20 @@ def test_plugin_read_only_cli_refuses_combined_writes(
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    query_args = (query, "test:operation") if query == "--explain-plugin-operation" else (query,)
+    query_args = (
+        (query, "test:operation") if query == "--explain-plugin-operation" else (query,)
+    )
     stdout = StringIO()
     stderr = StringIO()
-    result = asyncio.run(run_cli(
-        [*query_args, *write_option], cwd=workspace, stdin=StringIO(),
-        stdout=stdout, stderr=stderr,
-    ))
+    result = asyncio.run(
+        run_cli(
+            [*query_args, *write_option],
+            cwd=workspace,
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=stderr,
+        )
+    )
     assert result == 2
     assert stdout.getvalue() == ""
     assert stderr.getvalue() == f"Error: {error_code}\n"
@@ -437,17 +535,32 @@ def test_current_preview_revision_excludes_unrelated_settings_content(
     workspace = tmp_path / "workspace"
     settings_path = workspace / ".loushang" / "settings.json"
     settings_path.parent.mkdir(parents=True)
-    settings_path.write_text(json.dumps({
-        "disabled_skills": ["review"], "system_prompt": "private-one",
-    }))
+    settings_path.write_text(
+        json.dumps(
+            {
+                "disabled_skills": ["review"],
+                "system_prompt": "private-one",
+            }
+        )
+    )
     skills, first_revision = _capture_disabled_skills(workspace)
-    settings_path.write_text(json.dumps({
-        "disabled_skills": ["review"], "system_prompt": "private-two",
-    }))
+    settings_path.write_text(
+        json.dumps(
+            {
+                "disabled_skills": ["review"],
+                "system_prompt": "private-two",
+            }
+        )
+    )
     same_skills, second_revision = _capture_disabled_skills(workspace)
-    settings_path.write_text(json.dumps({
-        "disabled_skills": ["audit"], "system_prompt": "private-two",
-    }))
+    settings_path.write_text(
+        json.dumps(
+            {
+                "disabled_skills": ["audit"],
+                "system_prompt": "private-two",
+            }
+        )
+    )
     changed_skills, third_revision = _capture_disabled_skills(workspace)
 
     assert skills == same_skills == ("review",)
@@ -484,11 +597,15 @@ def test_management_explanation_of_absent_workspace_is_read_only(
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    before = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+    before = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
     binding = build_coding_plugin_management_cli_read_binding(
         workspace, _SettingsManager(_Settings())
     )
-    result = PluginManagementExplanationProjector(binding.ports.queries).explain_installation(
+    result = PluginManagementExplanationProjector(
+        binding.ports.queries
+    ).explain_installation(
         PluginInstallationKeyV1(
             product_id=binding.product_id,
             installation_scope=binding.installation_scope,
@@ -500,7 +617,9 @@ def test_management_explanation_of_absent_workspace_is_read_only(
 
     assert result.management_status == "unknown"
     assert result.snapshot_status == "partial_evidence"
-    after = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+    after = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
     assert after == before
 
 
@@ -512,15 +631,22 @@ def test_management_read_binding_does_not_create_missing_owner_locks(
     workspace.mkdir()
     layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
     layout.root.mkdir(parents=True)
-    before = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+    before = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
 
-    assert list_plugin_records(
-        build_coding_plugin_management_cli_read_binding(
-            workspace, _SettingsManager(_Settings())
+    assert (
+        list_plugin_records(
+            build_coding_plugin_management_cli_read_binding(
+                workspace, _SettingsManager(_Settings())
+            )
         )
-    ) == []
+        == []
+    )
 
-    after = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+    after = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
     assert after == before
 
     layout.desired_state.write_bytes(b'{"partial":')
@@ -585,15 +711,15 @@ def test_coding_management_cli_projects_relative_sources_from_workspace(
 
     [record] = list_plugin_records(binding)
     assert {key: value for key, value in record.items() if key != "management"} == {
-            "name": "debug-pack",
-            "version": "1.2.3",
-            "path": str(plugin_root.resolve()),
-            "source": str(plugin_root.resolve()),
-            "kind": "local",
-            "enabled": None,
-            "desiredState": "unknown",
-            "convergence": "unknown",
-            "migrationStatus": None,
+        "name": "debug-pack",
+        "version": "1.2.3",
+        "path": str(plugin_root.resolve()),
+        "source": str(plugin_root.resolve()),
+        "kind": "local",
+        "enabled": None,
+        "desiredState": "unknown",
+        "convergence": "unknown",
+        "migrationStatus": None,
     }
     management = record["management"]
     assert isinstance(management, dict)
@@ -839,20 +965,20 @@ def test_compatibility_reconcile_never_creates_lock_after_root_replacement(
         _SettingsManager(_Settings()),
     )
     assert writer is not None
-    read_private_state = lifecycle_module._read_private_state_file
+    read_private_state = capture_module._read_private_state_file
     calls = 0
 
-    def replace_after_handle(directory_fd, name):  # type: ignore[no-untyped-def]
+    def replace_after_handle(directory_fd, name, **kwargs):  # type: ignore[no-untyped-def]
         nonlocal calls
         calls += 1
         if calls == 1:
             detached = tmp_path / "detached-state"
             layout.root.rename(detached)
             layout.root.symlink_to(external, target_is_directory=True)
-        return read_private_state(directory_fd, name)
+        return read_private_state(directory_fd, name, **kwargs)
 
     monkeypatch.setattr(
-        lifecycle_module,
+        capture_module,
         "_read_private_state_file",
         replace_after_handle,
     )
@@ -905,8 +1031,7 @@ def test_compatibility_capture_waits_for_every_owner_journal_lock(
     requested = Event()
     completed = Event()
     errors: list[BaseException] = []
-    original_lock_at = lifecycle_module.journal_file_lock_at
-    original_path_lock = lifecycle_module.journal_file_lock
+    original_lock_at = capture_module.journal_file_lock_at
     expected_name = f"{getattr(layout, target_name).name}{lock_suffix}"
     target = getattr(layout, target_name)
 
@@ -915,13 +1040,7 @@ def test_compatibility_capture_waits_for_every_owner_journal_lock(
             requested.set()
         return original_lock_at(directory_fd, name, mode, **kwargs)
 
-    def observe_path_lock(path, mode, **kwargs):  # type: ignore[no-untyped-def]
-        if path == target and kwargs.get("lock_suffix", ".lock") == lock_suffix:
-            requested.set()
-        return original_path_lock(path, mode, **kwargs)
-
-    monkeypatch.setattr(lifecycle_module, "journal_file_lock_at", observe_lock)
-    monkeypatch.setattr(lifecycle_module, "journal_file_lock", observe_path_lock)
+    monkeypatch.setattr(capture_module, "journal_file_lock_at", observe_lock)
 
     def reconcile() -> None:
         try:
@@ -967,13 +1086,17 @@ def test_portable_compatibility_capture_supports_existing_state_tree(
     finally:
         lifecycle.release_owned_process_startup_lease()
     settings = _SettingsManager(_Settings())
-    captured_chain = lifecycle_module._capture_existing_private_directory_chain(layout)
+    captured_chain = private_state_module._capture_existing_private_directory_chain(
+        layout.root,
+        layout.private_state_base,
+        error_factory=lifecycle_module._private_state_read_error,
+    )
     assert captured_chain is not None
     expected_paths = tuple(path for path, _metadata in captured_chain)
     active_pins: list[Path] = []
 
     @contextmanager
-    def fake_windows_pin(path: Path, _expected):  # type: ignore[no-untyped-def]
+    def fake_windows_pin(path: Path, _expected, **_kwargs):  # type: ignore[no-untyped-def]
         assert tuple(active_pins) == expected_paths[: len(active_pins)]
         active_pins.append(path)
         try:
@@ -996,32 +1119,32 @@ def test_portable_compatibility_capture_supports_existing_state_tree(
         return path.read_text(encoding="utf-8") if path.exists() else ""
 
     monkeypatch.setattr(
-        lifecycle_module,
+        capture_module,
         "_supports_descriptor_relative_private_state_io",
         lambda: False,
     )
     monkeypatch.setattr(
-        lifecycle_module,
+        capture_module,
         "_supports_portable_private_state_io",
         lambda: True,
     )
     monkeypatch.setattr(
-        lifecycle_module,
+        private_state_module,
         "_uses_windows_directory_pins",
         lambda: True,
     )
     monkeypatch.setattr(
-        lifecycle_module,
-        "_open_windows_private_directory",
+        windows_pin_module,
+        "_open_windows_private_directory_pin",
         fake_windows_pin,
     )
     monkeypatch.setattr(
-        lifecycle_module,
+        capture_module,
         "journal_file_lock_at",
         rooted_lock,
     )
     monkeypatch.setattr(
-        lifecycle_module,
+        capture_module,
         "read_journal_file_at",
         rooted_read,
     )
@@ -1045,9 +1168,16 @@ def test_windows_private_directory_handle_anchors_child_reads(
     root.mkdir()
     (root / "state.jsonl").write_text("trusted", encoding="utf-8")
     replacement = tmp_path / "replaced-state"
-    expected = lifecycle_module._validate_existing_private_directory(root)
+    expected = private_state_module._validate_existing_private_directory(
+        root,
+        error_factory=lifecycle_module._private_state_read_error,
+    )
 
-    with lifecycle_module._open_windows_private_directory(root, expected) as descriptor:
+    with windows_pin_module._open_windows_private_directory_pin(
+        root,
+        expected,
+        error_factory=lifecycle_module._private_state_read_error,
+    ) as descriptor:
         try:
             root.rename(replacement)
         except OSError:
@@ -1077,9 +1207,16 @@ def test_windows_descriptor_relative_read_rejects_reparse_child(
     outside = tmp_path / "outside.jsonl"
     outside.write_text("attacker", encoding="utf-8")
     (root / "linked.jsonl").symlink_to(outside)
-    expected = lifecycle_module._validate_existing_private_directory(root)
+    expected = private_state_module._validate_existing_private_directory(
+        root,
+        error_factory=lifecycle_module._private_state_read_error,
+    )
 
-    with lifecycle_module._open_windows_private_directory(root, expected) as descriptor:
+    with windows_pin_module._open_windows_private_directory_pin(
+        root,
+        expected,
+        error_factory=lifecycle_module._private_state_read_error,
+    ) as descriptor:
         with pytest.raises(OSError, match="direct regular file"):
             lifecycle_module.read_journal_file_at(descriptor, "linked.jsonl")
 
@@ -1117,7 +1254,7 @@ def test_windows_compatibility_reconcile_survives_full_root_aba(
     attacker_detached = tmp_path / "attacker-detached"
 
     @contextmanager
-    def replace_root_for_capture(_captured):  # type: ignore[no-untyped-def]
+    def replace_root_for_capture(_captured, **_kwargs):  # type: ignore[no-untyped-def]
         with _open_windows_delete_shared_directory(layout.root) as descriptor:
             layout.root.rename(trusted_detached)
             attacker = build_coding_plugin_lifecycle(
@@ -1147,14 +1284,14 @@ def test_windows_compatibility_reconcile_survives_full_root_aba(
                 trusted_detached.rename(layout.root)
 
     monkeypatch.setattr(
-        lifecycle_module,
+        private_state_module,
         "_pin_portable_private_directory_chain",
         replace_root_for_capture,
     )
     monkeypatch.setattr(
-        lifecycle_module,
+        capture_module,
         "_assert_private_directory_chain_stable",
-        lambda _captured: None,
+        lambda _captured, **_kwargs: None,
     )
     settings = _SettingsManager(_Settings())
     writer = bind_coding_plugin_enablement_compatibility(layout, settings)
@@ -1288,12 +1425,12 @@ def test_portable_compatibility_capture_leaves_absent_state_root_absent(
     layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
     settings = _SettingsManager(_Settings())
     monkeypatch.setattr(
-        lifecycle_module,
+        capture_module,
         "_supports_descriptor_relative_private_state_io",
         lambda: False,
     )
     monkeypatch.setattr(
-        lifecycle_module,
+        capture_module,
         "_supports_portable_private_state_io",
         lambda: True,
     )

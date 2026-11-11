@@ -44,10 +44,7 @@ def adopt_coding_first_b_removed_local(
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
+        **epoch.fenced_runtime_open_kwargs()
     )
     try:
         receipt = accept_coding_first_b_removed_local(

@@ -19,6 +19,18 @@ from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     VerifiedClosurePlanV2,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _list_value as _wire_list,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _nonempty_string as _wire_string,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _versioned_dict as _exact_dict,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_int as _wire_int,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
@@ -628,30 +640,6 @@ def _require_nonnegative(value: int, *, name: str) -> None:
         raise ValueError(f"{name} must be nonnegative")
 
 
-def _exact_dict(value: object, *, fields: set[str], name: str) -> dict[str, object]:
-    if not isinstance(value, dict) or set(value) != fields:
-        raise ValueError(f"{name} does not match its versioned schema")
-    return value
-
-
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise TypeError(f"{name} must be a non-empty string")
-    return value
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an integer")
-    return value
-
-
-def _wire_list(value: object, *, name: str) -> list[object]:
-    if not isinstance(value, list):
-        raise TypeError(f"{name} must be a list")
-    return value
-
-
 __all__ = [
     "CommittedPackageSetRefV1",
     "DependencyClosureLockV2",
@@ -662,94 +650,70 @@ __all__ = [
 ]
 
 
-_VERIFIED_ARTIFACT_REF_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("ref_id", "ref id"),
-        RecordField("store_identity", "store identity"),
-        RecordField("store_revision", "store revision"),
-        RecordField("distribution", "distribution"),
-        RecordField("version", "version"),
-        RecordField("artifact_digest", "artifact digest"),
-        RecordField("extraction_tree_digest", "extraction tree digest"),
-        RecordField("ref_version", "ref version", _wire_int),
-    ),
+_VERIFIED_ARTIFACT_REF_V1_SCHEMA = RecordSchema.for_dataclass(
+    VerifiedArtifactRefV1,
+    _wire_string,
+    RecordField("ref_version", "ref version", _wire_int),
+    derive_labels=True,
 )
 
 
-_PLUGIN_REVISION_REF_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("ref_id", "ref id"),
-        RecordField("store_identity", "store identity"),
-        RecordField("store_revision", "store revision"),
-        RecordField("installation_id", "Installation identity"),
-        RecordField("plugin_id", "Plugin identity"),
-        RecordField("distribution", "distribution"),
-        RecordField("version", "version"),
-        RecordField("artifact_digest", "artifact digest"),
-        RecordField("extraction_tree_digest", "extraction tree digest"),
-        RecordField("ref_version", "ref version", _wire_int),
-    ),
+_PLUGIN_REVISION_REF_V1_SCHEMA = RecordSchema.for_dataclass(
+    PluginRevisionRefV1,
+    _wire_string,
+    RecordField("installation_id", "Installation identity"),
+    RecordField("plugin_id", "Plugin identity"),
+    RecordField("ref_version", "ref version", _wire_int),
+    derive_labels=True,
 )
 
 
-_DEPENDENCY_CLOSURE_LOCK_V2_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("operation_id", "operation identity"),
-        RecordField("attempt_epoch", "attempt epoch", _wire_int),
-        RecordField("root_node_id", "root node identity"),
-        RecordField(
-            "resolution_environment_fingerprint", "resolution environment fingerprint"
+_DEPENDENCY_CLOSURE_LOCK_V2_SCHEMA = RecordSchema.for_dataclass(
+    DependencyClosureLockV2,
+    _wire_string,
+    RecordField("operation_id", "operation identity"),
+    RecordField("attempt_epoch", "attempt epoch", _wire_int),
+    RecordField("root_node_id", "root node identity"),
+    RecordField(
+        "nodes",
+        decoder=partial(
+            decode_tuple,
+            list_decoder=_wire_list,
+            list_label="closure nodes",
+            item_decoder=DependencyClosureNodeV2.from_dict,
+            item_label=None,
         ),
-        RecordField("verified_plan_fingerprint", "verified plan fingerprint"),
-        RecordField("prepublication_graph_digest", "prepublication graph digest"),
-        RecordField(
-            "nodes",
-            decoder=partial(
-                decode_tuple,
-                list_decoder=_wire_list,
-                list_label="closure nodes",
-                item_decoder=DependencyClosureNodeV2.from_dict,
-                item_label=None,
-            ),
-        ),
-        RecordField("node_count", "node count", _wire_int),
-        RecordField("edge_count", "edge count", _wire_int),
-        RecordField("max_depth", "maximum depth", _wire_int),
-        RecordField("lock_digest", "closure lock digest"),
-        RecordField("lock_version", "closure lock version", _wire_int),
     ),
+    RecordField("node_count", "node count", _wire_int),
+    RecordField("edge_count", "edge count", _wire_int),
+    RecordField("max_depth", "maximum depth", _wire_int),
+    RecordField("lock_digest", "closure lock digest"),
+    RecordField("lock_version", "closure lock version", _wire_int),
+    derive_labels=True,
 )
 
 
-_COMMITTED_PACKAGE_SET_REF_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("set_id", "set id"),
-        RecordField("operation_id", "operation identity"),
-        RecordField("attempt_epoch", "attempt epoch", _wire_int),
-        RecordField("request_fingerprint", "request fingerprint"),
-        RecordField("product_id", "Product identity"),
-        RecordField("scope_id", "scope identity"),
-        RecordField("installation_id", "Installation identity"),
-        RecordField("plugin_id", "Plugin identity"),
-        RecordField("classification_fingerprint", "classification fingerprint"),
-        RecordField("closure_lock_digest", "closure lock digest"),
-        RecordField("prepublication_graph_digest", "prepublication graph digest"),
-        RecordField("root_ref", decoder=PluginRevisionRefV1.from_dict),
-        RecordField(
-            "dependency_refs",
-            decoder=partial(
-                decode_tuple,
-                list_decoder=_wire_list,
-                list_label="dependency refs",
-                item_decoder=VerifiedArtifactRefV1.from_dict,
-                item_label=None,
-            ),
+_COMMITTED_PACKAGE_SET_REF_V1_SCHEMA = RecordSchema.for_dataclass(
+    CommittedPackageSetRefV1,
+    _wire_string,
+    RecordField("operation_id", "operation identity"),
+    RecordField("attempt_epoch", "attempt epoch", _wire_int),
+    RecordField("product_id", "Product identity"),
+    RecordField("scope_id", "scope identity"),
+    RecordField("installation_id", "Installation identity"),
+    RecordField("plugin_id", "Plugin identity"),
+    RecordField("root_ref", decoder=PluginRevisionRefV1.from_dict),
+    RecordField(
+        "dependency_refs",
+        decoder=partial(
+            decode_tuple,
+            list_decoder=_wire_list,
+            list_label="dependency refs",
+            item_decoder=VerifiedArtifactRefV1.from_dict,
+            item_label=None,
         ),
-        RecordField("commit_revision", "commit revision", _wire_int),
-        RecordField("set_version", "set version", _wire_int),
     ),
+    RecordField("commit_revision", "commit revision", _wire_int),
+    RecordField("set_version", "set version", _wire_int),
+    derive_labels=True,
 )

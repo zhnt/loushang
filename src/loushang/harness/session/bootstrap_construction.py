@@ -43,6 +43,11 @@ from loushang.harness.resources.packages.product_contract import (
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import ResolvedRuntimeProfile
+from loushang.harness.session._cleanup import (
+    get_session_construction_cleanup,
+    retain_session_construction_failure,
+    run_cleanup_steps,
+)
 from loushang.harness.session.bootstrap_configuration import (
     CatalogBootstrapProjectionPreparer,
     ExtensionFlagValues,
@@ -342,6 +347,7 @@ class AgentProductConstructionRuntime(Generic[AgentT, SessionT, StandardExtensio
             StandardExtensionT,
         ],
     ) -> AgentProductConstructionResult[SessionT, StandardExtensionT]:
+        session: SessionT | None = None
         try:
             configuration = StandardAgentSessionConfigurationRuntime[
                 StandardExtensionT
@@ -451,8 +457,19 @@ class AgentProductConstructionRuntime(Generic[AgentT, SessionT, StandardExtensio
                 session=session,
                 configuration=configuration,
             )
-        except Exception:
-            request.ports.dispose_capabilities()
+        except BaseException as error:
+            if session is not None:
+                from loushang.harness.session.agent_product import AgentProductSession
+
+                if issubclass(type(session), AgentProductSession):
+                    failure = retain_session_construction_failure(
+                        error, cast(AgentProductSession, session)
+                    )
+                    if failure is error:
+                        raise
+                    raise failure from error
+            if issubclass(type(error), Exception):
+                request.ports.dispose_capabilities()
             raise
 
 
@@ -579,13 +596,16 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         )
         session_side_question_bindings: list[LegacySideQuestionBinding] = []
         package_runtime: PackageProductRuntimeBindingV1 | None = None
+        constructed_session: SessionT | None = None
 
         def bind_package_runtime(session: SessionT) -> SessionT:
+            nonlocal constructed_session
             if package_runtime is not None and package_runtime.on_dispose is not None:
                 bind = getattr(session, "_bind_package_product_runtime", None)
                 if not callable(bind):
                     raise TypeError("Package Product Session cannot own its runtime")
                 bind(package_runtime)
+            constructed_session = session
             return session
 
         def create_session(
@@ -786,27 +806,44 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 )
             )
         except BaseException as error:
+            cleanup = get_session_construction_cleanup(error)
+            if cleanup is not None and cleanup.owns_session(constructed_session):
+                from loushang.harness.session.agent_product import AgentProductSession
+
+                if issubclass(type(constructed_session), AgentProductSession):
+                    raise
             if package_runtime is not None:
-                try:
-                    package_runtime.dispose_runtime()
-                except BaseException as cleanup_error:
-                    error.add_note(
-                        f"Package Product runtime cleanup also failed: {cleanup_error}"
-                    )
-            for side_question_binding in reversed(session_side_question_bindings):
-                try:
-                    side_question_binding.dispose()
-                except BaseException as cleanup_error:
-                    error.add_note(
-                        "final Session side-question cleanup also failed: "
-                        f"{cleanup_error}"
-                    )
-            try:
-                bootstrap_capability_runtime.dispose()
-            except BaseException as cleanup_error:
-                error.add_note(
-                    f"bootstrap capability cleanup also failed: {cleanup_error}"
+                run_cleanup_steps(
+                    error,
+                    (
+                        (
+                            "Package Product runtime cleanup",
+                            lambda: cast(
+                                PackageProductRuntimeBindingV1, package_runtime
+                            ).dispose_runtime(),
+                        ),
+                    ),
                 )
+            for side_question_binding in reversed(session_side_question_bindings):
+
+                def dispose_side_question(
+                    binding: LegacySideQuestionBinding = side_question_binding,
+                ) -> None:
+                    binding.dispose()
+
+                run_cleanup_steps(
+                    error,
+                    (("final Session side-question cleanup", dispose_side_question),),
+                )
+            run_cleanup_steps(
+                error,
+                (
+                    (
+                        "bootstrap capability cleanup",
+                        lambda: bootstrap_capability_runtime.dispose(),
+                    ),
+                ),
+            )
             raise
 
         return result

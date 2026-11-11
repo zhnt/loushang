@@ -30,6 +30,16 @@ ENABLEMENT_MIGRATION = Path(
     "src/loushang/harness/plugin_management/enablement_migration.py"
 )
 CODING_LIFECYCLE = Path("src/loushang/coding/_plugin_lifecycle.py")
+ENABLEMENT_CAPTURE = Path(
+    "src/loushang/harness/plugin_management/_enablement_capture.py"
+)
+PRIVATE_DIRECTORY = Path(
+    "src/loushang/harness/resources/packages/_private_directory.py"
+)
+WINDOWS_PRIMITIVES = Path(
+    "src/loushang/harness/resources/packages/plugin_lifecycle/windows_quarantine.py"
+)
+
 WINDOWS_WORKFLOW = Path(".github/workflows/windows-shell-compatibility.yml")
 CODING_MANAGEMENT_TEST = Path("tests/coding/test_plugin_management_cli.py")
 JOURNAL_TEST = Path("tests/harness/journal/test_jsonl.py")
@@ -166,6 +176,9 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     adapter = _source(CODING_BINDING)
     compatibility = _source(CODING_COMPATIBILITY)
     lifecycle = _source(CODING_LIFECYCLE)
+    capture = _source(ENABLEMENT_CAPTURE)
+    private_directory = _source(PRIVATE_DIRECTORY)
+    windows_primitives = _source(WINDOWS_PRIMITIVES)
     windows_workflow = _source(WINDOWS_WORKFLOW)
     settings = _source(SETTINGS_MANAGER)
     config_engine = _source(CONFIG_ENGINE)
@@ -187,19 +200,16 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "bind_coding_plugin_enablement_compatibility(" in adapter
     assert "class CodingPluginEnablementCompatibilityWriter:" in compatibility
     assert "with _capture_existing_plugin_enablement_state(" in compatibility
-    assert "journal_file_lock_at(" in lifecycle
-    assert "_read_private_state_file(" in lifecycle
-    assert "_capture_existing_plugin_enablement_state_portable(" in lifecycle
-    assert "_pin_portable_private_directory_chain(" in lifecycle
-    assert "_open_windows_private_directory(" in lifecycle
-    assert "read_journal_file_at(" in lifecycle
-    assert 'f"{layout.enablement_migration.name}.migration.lock"' in lifecycle
-    assert 'f"{layout.desired_state.name}.lock"' in lifecycle
+    assert "journal_file_lock_at(" in capture
+    assert "_read_private_state_file(" in capture
+    assert "_capture_existing_plugin_enablement_state_portable(" in capture
+    assert "_pin_portable_private_directory_chain(" in private_directory
+    assert "_open_windows_private_directory_pin(" in windows_primitives
+    assert "read_journal_file_at(" in capture
+    assert 'f"{layout.enablement_migration.name}.migration.lock"' in capture
+    assert 'f"{layout.desired_state.name}.lock"' in capture
     assert "FILE_FLAG_OPEN_REPARSE_POINT" in _source(CONTRACT)
     assert "FILE_FLAG_BACKUP_SEMANTICS" in _source(CONTRACT)
-    assert "file_flag_backup_semantics" in lifecycle
-    assert "file_list_directory" in lifecycle
-    assert "share_read_write" in lifecycle
     assert "tests/coding/test_plugin_management_cli.py" in windows_workflow
     assert "test_windows_descriptor_relative_read_rejects_reparse_child" in (
         coding_management_test

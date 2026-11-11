@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
@@ -26,6 +27,12 @@ from loushang.harness.journal import (
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     BoundedAcquisitionReceiptV1,
     PackageAuthenticatedSourceEvidenceV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _nonempty_string as _wire_string,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_int as _wire_int,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     VerifiedWheelArtifactV1,
@@ -577,25 +584,9 @@ def _assert_no_duplicate_json_keys(path: Path) -> None:
             json.loads(line, object_pairs_hook=_unique_json_object)
 
 
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    document: dict[str, object] = {}
-    for key, value in pairs:
-        if key in document:
-            raise ValueError("Package artifact evidence contains duplicate JSON keys")
-        document[key] = value
-    return document
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an integer")
-    return value
-
-
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise TypeError(f"{name} must be a non-empty string")
-    return value
+_unique_json_object = _unique_json_object_hook(
+    lambda: "Package artifact evidence contains duplicate JSON keys",
+)
 
 
 __all__ = [

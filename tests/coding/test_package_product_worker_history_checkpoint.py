@@ -15,6 +15,7 @@ from loushang.coding.package_product_worker_history_checkpoint import (
     _is_empty_seal_successor,
     _read_records,
     _read_records_or_repair_empty_bootstrap,
+    read_coding_worker_checkpoint_writer_fence,
 )
 from loushang.coding.package_product_worker_history_checkpoint_anchor import (
     ANCHOR_NAME,
@@ -39,7 +40,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 
 
-def test_worker_checkpoint_stream_requires_exact_old_bytes_before_new_revision() -> None:
+def test_worker_checkpoint_stream_requires_exact_old_bytes_before_new_revision() -> (
+    None
+):
     first = b'{"journalRevision":1}\n'
     next_record = b'{"journalRevision":2}\n'
     prior = CodingWorkerHistoryStreamSnapshotV1.capture(
@@ -55,9 +58,7 @@ def test_worker_checkpoint_stream_requires_exact_old_bytes_before_new_revision()
         last_sealed_revision=0,
         segments=appended,
     )
-    assert prior.is_exact_prefix_of(
-        appended_snapshot, current_segments=appended
-    )
+    assert prior.is_exact_prefix_of(appended_snapshot, current_segments=appended)
 
     rewritten = (b'{"journalRevision":9}\n' + next_record,)
     rewritten_snapshot = CodingWorkerHistoryStreamSnapshotV1.capture(
@@ -67,9 +68,7 @@ def test_worker_checkpoint_stream_requires_exact_old_bytes_before_new_revision()
         segments=rewritten,
     )
     assert rewritten_snapshot.total_revision > prior.total_revision
-    assert not prior.is_exact_prefix_of(
-        rewritten_snapshot, current_segments=rewritten
-    )
+    assert not prior.is_exact_prefix_of(rewritten_snapshot, current_segments=rewritten)
 
     rotated = (first + next_record, b"")
     rotated_snapshot = CodingWorkerHistoryStreamSnapshotV1.capture(
@@ -78,9 +77,7 @@ def test_worker_checkpoint_stream_requires_exact_old_bytes_before_new_revision()
         last_sealed_revision=2,
         segments=rotated,
     )
-    assert prior.is_exact_prefix_of(
-        rotated_snapshot, current_segments=rotated
-    )
+    assert prior.is_exact_prefix_of(rotated_snapshot, current_segments=rotated)
     assert _is_empty_seal_successor(appended_snapshot, rotated_snapshot)
     rewritten_rotated = CodingWorkerHistoryStreamSnapshotV1.capture(
         stem="worker-start-gates",
@@ -94,6 +91,7 @@ def test_worker_checkpoint_stream_requires_exact_old_bytes_before_new_revision()
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux rooted Product journal")
 def test_worker_checkpoint_reopens_complete_record_and_refuses_uncommitted_append(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     snapshots = tuple(
         CodingWorkerHistoryStreamSnapshotV1.capture(
@@ -181,6 +179,15 @@ def test_worker_checkpoint_reopens_complete_record_and_refuses_uncommitted_appen
                         settle_lag=False,
                     )
                 assert lagging.value.code == "coding_worker_checkpoint_anchor_lagging"
+                before_fence = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+                with pytest.raises(CodingWorkerHistoryCheckpointError) as fence:
+                    read_coding_worker_checkpoint_writer_fence(
+                        rooted, scope_id="project", store_id="store"
+                    )
+                assert fence.value.code == "coding_worker_checkpoint_anchor_lagging"
+                assert {
+                    p.name: p.read_bytes() for p in tmp_path.iterdir()
+                } == before_fence
                 settled = _anchor_for_records(
                     rooted,
                     scope_id="project",
@@ -191,10 +198,31 @@ def test_worker_checkpoint_reopens_complete_record_and_refuses_uncommitted_appen
                 assert settled is not None
                 assert settled.latest_revision == 1
                 assert settled.latest_digest == checkpoint.record_digest
-                assert read_coding_worker_checkpoint_anchor(
-                    rooted, scope_id="project", store_id="store"
-                ) == settled
+                assert (
+                    read_coding_worker_checkpoint_anchor(
+                        rooted, scope_id="project", store_id="store"
+                    )
+                    == settled
+                )
+                from loushang.coding import package_product_worker_history_checkpoint
+
+                with monkeypatch.context() as limits:
+                    limits.setattr(
+                        package_product_worker_history_checkpoint,
+                        "_MAX_ACTIVE_RECORDS",
+                        0,
+                    )
+                    with pytest.raises(CodingWorkerHistoryCheckpointError) as capacity:
+                        _read_records(rooted, scope_id="project", store_id="store")
+                    assert capacity.value.code == "coding_worker_checkpoint_corrupt"
                 rooted.append_bytes(b"{}\n")
+                before_fence = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+                assert read_coding_worker_checkpoint_writer_fence(
+                    rooted, scope_id="project", store_id="store"
+                ) == (checkpoint,)
+                assert {
+                    p.name: p.read_bytes() for p in tmp_path.iterdir()
+                } == before_fence
                 with pytest.raises(
                     CodingWorkerHistorySegmentError,
                     match="coding_worker_segment_head_changed",
@@ -249,9 +277,9 @@ def test_worker_checkpoint_bootstrap_requires_anchor_before_head_recovery(
                 )
                 assert records == ()
                 assert history.active_raw == b""
-                assert _read_records(
-                    rooted, scope_id="project", store_id="store"
-                )[0] == ()
+                assert (
+                    _read_records(rooted, scope_id="project", store_id="store")[0] == ()
+                )
         finally:
             io.cleanup()
     finally:

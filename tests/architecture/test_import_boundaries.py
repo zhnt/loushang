@@ -748,7 +748,14 @@ def test_coding_agent_session_delegates_shared_turn_runtime_to_harness() -> None
 
     assert "compose_session_runtime" in shared_source
     assert "initialize_composed_session" in shared_source
-    assert "class AgentSession(AgentProductSession):" in coding_source
+    assert (
+        "class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):"
+        in coding_source
+        and "class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):"
+        in Path("src/loushang/harness/session/_resume_continuation.py").read_text(
+            encoding="utf-8"
+        )
+    )
     forbidden_owners = (
         "OrderedEventBus",
         "RuntimeEventPublisher",
@@ -1023,7 +1030,14 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     assert "from loushang.harness.session.facade import" not in optional_source
     assert "class AgentSessionAdapterMixin(SessionFacade" in adapter_source
     assert "class AgentProductSession(AgentSessionAdapterMixin):" in product_source
-    assert "class AgentSession(AgentProductSession):" in coding_source
+    assert (
+        "class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):"
+        in coding_source
+        and "class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):"
+        in Path("src/loushang/harness/session/_resume_continuation.py").read_text(
+            encoding="utf-8"
+        )
+    )
     assert "_facade" not in coding_source
     assert "SessionControlPort" in facade_source
     assert "SessionResourcePort" in facade_source
@@ -1784,10 +1798,20 @@ def test_continuity_core_and_common_tui_keep_product_boundaries() -> None:
         ),
     )
 
+    # A68 reuses this neutral short-write primitive, not Journal persistence.
+    accepted_payload_io = frozenset(
+        "continuity core: src/loushang/harness/continuity/"
+        f"_payload_staging.py imports {target}"
+        for target in (
+            "loushang.harness.journal._io_loops",
+            "loushang.harness.journal._io_loops.write_all",
+        )
+    )
     offenders = [
         offender
         for boundary in boundaries
         for offender in _find_forbidden_imports(boundary)
+        if offender not in accepted_payload_io
     ]
 
     assert offenders == []

@@ -1,0 +1,5288 @@
+{
+  "source_baseline": "8ad6b6098f1c24c8cfb6f4d9d290e99bc74d618d",
+  "records": [
+    {
+      "module": "loushang.coding.package_private_data_backup_records",
+      "class": "CodingArchPrivateDataBackupReceiptV1",
+      "cases": [
+        {
+          "expected": {
+            "value": {
+              "backupId": "b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38",
+              "byteCount": 3,
+              "fileCount": 1,
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "receiptId": "arch-backup:b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38",
+              "receiptVersion": 1,
+              "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+            },
+            "keys": [
+              "backupId",
+              "byteCount",
+              "fileCount",
+              "installationKey",
+              "receiptId",
+              "receiptVersion",
+              "sourceTargetId"
+            ]
+          },
+          "changes": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt fields are invalid"
+          },
+          "document": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt fields are invalid"
+          },
+          "document": null
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt fields are invalid"
+          },
+          "document": {
+            "extra": true,
+            "backupId": "b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38",
+            "byteCount": 3,
+            "fileCount": 1,
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            "receiptId": "arch-backup:b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38",
+            "receiptVersion": 1,
+            "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "backupId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "backupId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "backupId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "backupId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "backupId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "backupId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "byteCount": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "byteCount": false
+          }
+        },
+        {
+          "expected": {
+            "value": {
+              "backupId": "b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38",
+              "byteCount": 0,
+              "fileCount": 1,
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "receiptId": "arch-backup:b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38",
+              "receiptVersion": 1,
+              "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+            },
+            "keys": [
+              "backupId",
+              "byteCount",
+              "fileCount",
+              "installationKey",
+              "receiptId",
+              "receiptVersion",
+              "sourceTargetId"
+            ]
+          },
+          "changes": {
+            "byteCount": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "byteCount": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "byteCount": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "byteCount": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "fileCount": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "fileCount": false
+          }
+        },
+        {
+          "expected": {
+            "value": {
+              "backupId": "b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38",
+              "byteCount": 3,
+              "fileCount": 0,
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "receiptId": "arch-backup:b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38",
+              "receiptVersion": 1,
+              "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+            },
+            "keys": [
+              "backupId",
+              "byteCount",
+              "fileCount",
+              "installationKey",
+              "receiptId",
+              "receiptVersion",
+              "sourceTargetId"
+            ]
+          },
+          "changes": {
+            "fileCount": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "fileCount": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "fileCount": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "fileCount": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got NoneType"
+          },
+          "changes": {
+            "installationKey": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got bool"
+          },
+          "changes": {
+            "installationKey": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got int"
+          },
+          "changes": {
+            "installationKey": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got str"
+          },
+          "changes": {
+            "installationKey": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got list"
+          },
+          "changes": {
+            "installationKey": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key fields do not match; missing=['installationScope', 'pluginId', 'productId', 'schemaVersion', 'scopeId'], unknown=[]"
+          },
+          "changes": {
+            "installationKey": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "receiptId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "receiptId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "receiptId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "receiptId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "receiptId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "receiptId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "receiptVersion": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "receiptVersion": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "receiptVersion": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "receiptVersion": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "receiptVersion": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "receiptVersion": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "sourceTargetId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "sourceTargetId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "sourceTargetId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "sourceTargetId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "sourceTargetId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup receipt is invalid"
+          },
+          "changes": {
+            "sourceTargetId": {}
+          }
+        }
+      ],
+      "valid": {
+        "backupId": "b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38",
+        "byteCount": 3,
+        "fileCount": 1,
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "receiptId": "arch-backup:b2b46405880441e13549cf9b660f43737367bba70f954c6a3e3bab34d81deb38",
+        "receiptVersion": 1,
+        "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+      }
+    },
+    {
+      "module": "loushang.coding.package_private_data_restore_records",
+      "class": "CodingArchPrivateDataRestorePlanV1",
+      "cases": [
+        {
+          "expected": {
+            "value": {
+              "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "deletionReceiptId": "fixture:deleted",
+              "desiredInventoryRevision": 2,
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "planVersion": 1,
+              "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+              "targetState": "absent"
+            },
+            "keys": [
+              "backupId",
+              "deletionReceiptId",
+              "desiredInventoryRevision",
+              "installationKey",
+              "planVersion",
+              "sourceTargetId",
+              "targetState"
+            ]
+          },
+          "changes": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan fields are invalid"
+          },
+          "document": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan fields are invalid"
+          },
+          "document": null
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan fields are invalid"
+          },
+          "document": {
+            "extra": true,
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "deletionReceiptId": "fixture:deleted",
+            "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+            "desiredInventoryRevision": 2,
+            "targetState": "absent",
+            "planVersion": 1
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got NoneType"
+          },
+          "changes": {
+            "installationKey": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got bool"
+          },
+          "changes": {
+            "installationKey": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got int"
+          },
+          "changes": {
+            "installationKey": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got str"
+          },
+          "changes": {
+            "installationKey": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got list"
+          },
+          "changes": {
+            "installationKey": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key fields do not match; missing=['installationScope', 'pluginId', 'productId', 'schemaVersion', 'scopeId'], unknown=[]"
+          },
+          "changes": {
+            "installationKey": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "backupId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "backupId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "backupId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "backupId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "backupId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "backupId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "sourceTargetId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "sourceTargetId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "sourceTargetId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "sourceTargetId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "sourceTargetId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "sourceTargetId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "desiredInventoryRevision": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "desiredInventoryRevision": false
+          }
+        },
+        {
+          "expected": {
+            "value": {
+              "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "deletionReceiptId": "fixture:deleted",
+              "desiredInventoryRevision": 0,
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "planVersion": 1,
+              "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+              "targetState": "absent"
+            },
+            "keys": [
+              "backupId",
+              "deletionReceiptId",
+              "desiredInventoryRevision",
+              "installationKey",
+              "planVersion",
+              "sourceTargetId",
+              "targetState"
+            ]
+          },
+          "changes": {
+            "desiredInventoryRevision": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "desiredInventoryRevision": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "desiredInventoryRevision": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "desiredInventoryRevision": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "targetState": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "targetState": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "targetState": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "targetState": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.TypeError",
+            "code": null,
+            "message": "unhashable type: 'list'"
+          },
+          "changes": {
+            "targetState": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.TypeError",
+            "code": null,
+            "message": "unhashable type: 'dict'"
+          },
+          "changes": {
+            "targetState": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "planVersion": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "planVersion": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "planVersion": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "planVersion": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "planVersion": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore plan is invalid"
+          },
+          "changes": {
+            "planVersion": {}
+          }
+        }
+      ],
+      "valid": {
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "deletionReceiptId": "fixture:deleted",
+        "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+        "desiredInventoryRevision": 2,
+        "targetState": "absent",
+        "planVersion": 1
+      }
+    },
+    {
+      "module": "loushang.coding.package_private_data_backup_expiry_records",
+      "class": "CodingArchPrivateDataBackupExpiryPlanV1",
+      "cases": [
+        {
+          "expected": {
+            "value": {
+              "archiveRootIdentity": [
+                1,
+                1,
+                16832,
+                0,
+                2
+              ],
+              "archiveTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+              "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "backupReceiptId": "arch-backup:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+              "desiredInventoryRevision": 2,
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "planVersion": 1,
+              "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+              "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+            },
+            "keys": [
+              "archiveRootIdentity",
+              "archiveTargetId",
+              "backupId",
+              "backupReceiptId",
+              "confirmationId",
+              "desiredInventoryRevision",
+              "installationKey",
+              "planVersion",
+              "restoreCompletionDigest",
+              "restoredTargetId",
+              "sourceTargetId"
+            ]
+          },
+          "changes": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan fields are invalid"
+          },
+          "document": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan fields are invalid"
+          },
+          "document": null
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan fields are invalid"
+          },
+          "document": {
+            "extra": true,
+            "archiveRootIdentity": [
+              1,
+              1,
+              16832,
+              0,
+              2
+            ],
+            "archiveTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+            "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "backupReceiptId": "arch-backup:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+            "desiredInventoryRevision": 2,
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            "planVersion": 1,
+            "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+            "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry identity is invalid"
+          },
+          "changes": {
+            "archiveRootIdentity": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry identity is invalid"
+          },
+          "changes": {
+            "archiveRootIdentity": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry identity is invalid"
+          },
+          "changes": {
+            "archiveRootIdentity": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry identity is invalid"
+          },
+          "changes": {
+            "archiveRootIdentity": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "archiveRootIdentity": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry identity is invalid"
+          },
+          "changes": {
+            "archiveRootIdentity": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "archiveTargetId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "archiveTargetId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "archiveTargetId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "archiveTargetId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "archiveTargetId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "archiveTargetId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "backupId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "backupId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "backupId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "backupId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "backupId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "backupId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "backupReceiptId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "backupReceiptId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "backupReceiptId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "backupReceiptId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "backupReceiptId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "backupReceiptId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "confirmationId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "confirmationId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "confirmationId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "confirmationId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "confirmationId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "confirmationId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "desiredInventoryRevision": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "desiredInventoryRevision": false
+          }
+        },
+        {
+          "expected": {
+            "value": {
+              "archiveRootIdentity": [
+                1,
+                1,
+                16832,
+                0,
+                2
+              ],
+              "archiveTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+              "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "backupReceiptId": "arch-backup:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+              "desiredInventoryRevision": 0,
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "planVersion": 1,
+              "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+              "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+            },
+            "keys": [
+              "archiveRootIdentity",
+              "archiveTargetId",
+              "backupId",
+              "backupReceiptId",
+              "confirmationId",
+              "desiredInventoryRevision",
+              "installationKey",
+              "planVersion",
+              "restoreCompletionDigest",
+              "restoredTargetId",
+              "sourceTargetId"
+            ]
+          },
+          "changes": {
+            "desiredInventoryRevision": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "desiredInventoryRevision": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "desiredInventoryRevision": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "desiredInventoryRevision": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got NoneType"
+          },
+          "changes": {
+            "installationKey": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got bool"
+          },
+          "changes": {
+            "installationKey": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got int"
+          },
+          "changes": {
+            "installationKey": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got str"
+          },
+          "changes": {
+            "installationKey": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got list"
+          },
+          "changes": {
+            "installationKey": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key fields do not match; missing=['installationScope', 'pluginId', 'productId', 'schemaVersion', 'scopeId'], unknown=[]"
+          },
+          "changes": {
+            "installationKey": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "planVersion": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "planVersion": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "planVersion": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "planVersion": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "planVersion": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "planVersion": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "restoreCompletionDigest": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "restoreCompletionDigest": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "restoreCompletionDigest": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "restoreCompletionDigest": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "restoreCompletionDigest": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "restoreCompletionDigest": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "restoredTargetId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "restoredTargetId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "restoredTargetId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "restoredTargetId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "restoredTargetId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "restoredTargetId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "sourceTargetId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "sourceTargetId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "sourceTargetId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "sourceTargetId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "sourceTargetId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan is invalid"
+          },
+          "changes": {
+            "sourceTargetId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry identity is invalid"
+          },
+          "changes": {
+            "archiveRootIdentity": {},
+            "installationKey": {}
+          }
+        }
+      ],
+      "valid": {
+        "archiveRootIdentity": [
+          1,
+          1,
+          16832,
+          0,
+          2
+        ],
+        "archiveTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+        "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "backupReceiptId": "arch-backup:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+        "desiredInventoryRevision": 2,
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "planVersion": 1,
+        "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+        "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+      }
+    },
+    {
+      "module": "loushang.coding.package_private_data_backup_expiry_records",
+      "class": "CodingArchPrivateDataBackupExpiryConfirmationV1",
+      "cases": [
+        {
+          "expected": {
+            "value": {
+              "actorId": "fixture:operator",
+              "confirmationId": "arch-backup-expiry-confirm:3f6f01a8d531ed568a7cfdffedc1ed391bfe41fbf24315931163ee8a91574d5d",
+              "confirmationVersion": 1,
+              "planFingerprint": "15e00819a44cd1d6d771764914ac52f714c948cdb147db92b086971e19beef0f",
+              "policyRevision": "fixture:1"
+            },
+            "keys": [
+              "actorId",
+              "confirmationId",
+              "confirmationVersion",
+              "planFingerprint",
+              "policyRevision"
+            ]
+          },
+          "changes": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation fields are invalid"
+          },
+          "document": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation fields are invalid"
+          },
+          "document": null
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation fields are invalid"
+          },
+          "document": {
+            "extra": true,
+            "actorId": "fixture:operator",
+            "confirmationId": "arch-backup-expiry-confirm:3f6f01a8d531ed568a7cfdffedc1ed391bfe41fbf24315931163ee8a91574d5d",
+            "confirmationVersion": 1,
+            "planFingerprint": "15e00819a44cd1d6d771764914ac52f714c948cdb147db92b086971e19beef0f",
+            "policyRevision": "fixture:1"
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "actorId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "actorId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "actorId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "actorId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "actorId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "actorId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "confirmationId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "confirmationId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "confirmationId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "confirmationId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "confirmationId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "confirmationId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "confirmationVersion": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "confirmationVersion": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "confirmationVersion": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "confirmationVersion": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "confirmationVersion": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "confirmationVersion": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "planFingerprint": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "planFingerprint": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "planFingerprint": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "planFingerprint": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "planFingerprint": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "planFingerprint": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "policyRevision": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "policyRevision": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "policyRevision": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "policyRevision": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "policyRevision": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation is invalid"
+          },
+          "changes": {
+            "policyRevision": {}
+          }
+        }
+      ],
+      "valid": {
+        "actorId": "fixture:operator",
+        "confirmationId": "arch-backup-expiry-confirm:3f6f01a8d531ed568a7cfdffedc1ed391bfe41fbf24315931163ee8a91574d5d",
+        "confirmationVersion": 1,
+        "planFingerprint": "15e00819a44cd1d6d771764914ac52f714c948cdb147db92b086971e19beef0f",
+        "policyRevision": "fixture:1"
+      }
+    },
+    {
+      "module": "loushang.coding.package_private_data_deletion_journal",
+      "class": "CodingArchPrivateDataDeletionEventV1",
+      "cases": [
+        {
+          "expected": {
+            "value": {
+              "confirmation": {
+                "confirmationId": "operator:fixture",
+                "confirmationVersion": 1,
+                "planFingerprint": "51b5d498f04f3bf4e21b50961d93be625382c6dba3d6e8754ee1575305024e86"
+              },
+              "phase": "started",
+              "plan": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "coding.arch.default",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                },
+                "ownerId": "coding.arch.private-data:posix-v1",
+                "planVersion": 1,
+                "targetId": "absent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "receipt": null,
+              "recordVersion": 1,
+              "revision": 1,
+              "target": {
+                "members": [],
+                "rootIdentity": null,
+                "rootPathDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            },
+            "keys": [
+              "confirmation",
+              "phase",
+              "plan",
+              "receipt",
+              "recordVersion",
+              "revision",
+              "target"
+            ]
+          },
+          "changes": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion event fields are invalid"
+          },
+          "document": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion event fields are invalid"
+          },
+          "document": null
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion event fields are invalid"
+          },
+          "document": {
+            "extra": true,
+            "confirmation": {
+              "confirmationId": "operator:fixture",
+              "confirmationVersion": 1,
+              "planFingerprint": "51b5d498f04f3bf4e21b50961d93be625382c6dba3d6e8754ee1575305024e86"
+            },
+            "phase": "started",
+            "plan": {
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "ownerId": "coding.arch.private-data:posix-v1",
+              "planVersion": 1,
+              "targetId": "absent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "receipt": null,
+            "recordVersion": 1,
+            "revision": 1,
+            "target": {
+              "members": [],
+              "rootIdentity": null,
+              "rootPathDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data confirmation fields are invalid"
+          },
+          "changes": {
+            "confirmation": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data confirmation fields are invalid"
+          },
+          "changes": {
+            "confirmation": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data confirmation fields are invalid"
+          },
+          "changes": {
+            "confirmation": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data confirmation fields are invalid"
+          },
+          "changes": {
+            "confirmation": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data confirmation fields are invalid"
+          },
+          "changes": {
+            "confirmation": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data confirmation fields are invalid"
+          },
+          "changes": {
+            "confirmation": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion event phase is invalid"
+          },
+          "changes": {
+            "phase": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion event phase is invalid"
+          },
+          "changes": {
+            "phase": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion event phase is invalid"
+          },
+          "changes": {
+            "phase": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion event phase is invalid"
+          },
+          "changes": {
+            "phase": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.TypeError",
+            "code": null,
+            "message": "unhashable type: 'list'"
+          },
+          "changes": {
+            "phase": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.TypeError",
+            "code": null,
+            "message": "unhashable type: 'dict'"
+          },
+          "changes": {
+            "phase": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion plan fields are invalid"
+          },
+          "changes": {
+            "plan": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion plan fields are invalid"
+          },
+          "changes": {
+            "plan": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion plan fields are invalid"
+          },
+          "changes": {
+            "plan": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion plan fields are invalid"
+          },
+          "changes": {
+            "plan": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion plan fields are invalid"
+          },
+          "changes": {
+            "plan": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion plan fields are invalid"
+          },
+          "changes": {
+            "plan": {}
+          }
+        },
+        {
+          "expected": {
+            "value": {
+              "confirmation": {
+                "confirmationId": "operator:fixture",
+                "confirmationVersion": 1,
+                "planFingerprint": "51b5d498f04f3bf4e21b50961d93be625382c6dba3d6e8754ee1575305024e86"
+              },
+              "phase": "started",
+              "plan": {
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "coding.arch.default",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                },
+                "ownerId": "coding.arch.private-data:posix-v1",
+                "planVersion": 1,
+                "targetId": "absent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "receipt": null,
+              "recordVersion": 1,
+              "revision": 1,
+              "target": {
+                "members": [],
+                "rootIdentity": null,
+                "rootPathDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            },
+            "keys": [
+              "confirmation",
+              "phase",
+              "plan",
+              "receipt",
+              "recordVersion",
+              "revision",
+              "target"
+            ]
+          },
+          "changes": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion receipt fields are invalid"
+          },
+          "changes": {
+            "receipt": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion receipt fields are invalid"
+          },
+          "changes": {
+            "receipt": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion receipt fields are invalid"
+          },
+          "changes": {
+            "receipt": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion receipt fields are invalid"
+          },
+          "changes": {
+            "receipt": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion receipt fields are invalid"
+          },
+          "changes": {
+            "receipt": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion event phase is invalid"
+          },
+          "changes": {
+            "recordVersion": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion event phase is invalid"
+          },
+          "changes": {
+            "recordVersion": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion event phase is invalid"
+          },
+          "changes": {
+            "recordVersion": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion event phase is invalid"
+          },
+          "changes": {
+            "recordVersion": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion event phase is invalid"
+          },
+          "changes": {
+            "recordVersion": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion event phase is invalid"
+          },
+          "changes": {
+            "recordVersion": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion revision is invalid"
+          },
+          "changes": {
+            "revision": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion revision is invalid"
+          },
+          "changes": {
+            "revision": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion revision is invalid"
+          },
+          "changes": {
+            "revision": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion revision is invalid"
+          },
+          "changes": {
+            "revision": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion revision is invalid"
+          },
+          "changes": {
+            "revision": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion revision is invalid"
+          },
+          "changes": {
+            "revision": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch private-data target fields are invalid"
+          },
+          "changes": {
+            "target": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch private-data target fields are invalid"
+          },
+          "changes": {
+            "target": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch private-data target fields are invalid"
+          },
+          "changes": {
+            "target": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch private-data target fields are invalid"
+          },
+          "changes": {
+            "target": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch private-data target fields are invalid"
+          },
+          "changes": {
+            "target": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch private-data target fields are invalid"
+          },
+          "changes": {
+            "target": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion plan fields are invalid"
+          },
+          "changes": {
+            "confirmation": {},
+            "plan": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data confirmation fields are invalid"
+          },
+          "changes": {
+            "confirmation": {},
+            "target": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Private-data deletion plan fields are invalid"
+          },
+          "changes": {
+            "plan": {},
+            "target": {}
+          }
+        }
+      ],
+      "valid": {
+        "confirmation": {
+          "confirmationId": "operator:fixture",
+          "confirmationVersion": 1,
+          "planFingerprint": "51b5d498f04f3bf4e21b50961d93be625382c6dba3d6e8754ee1575305024e86"
+        },
+        "phase": "started",
+        "plan": {
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "ownerId": "coding.arch.private-data:posix-v1",
+          "planVersion": 1,
+          "targetId": "absent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "receipt": null,
+        "recordVersion": 1,
+        "revision": 1,
+        "target": {
+          "members": [],
+          "rootIdentity": null,
+          "rootPathDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "module": "loushang.coding.package_private_data_restore_journal",
+      "class": "CodingArchPrivateDataRestoreEventV1",
+      "cases": [
+        {
+          "expected": {
+            "value": {
+              "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "deletionReceiptId": "fixture:deleted",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "phase": "started",
+              "recordVersion": 1,
+              "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+              "revision": 1,
+              "recordDigest": "66ea185ab986305f24d22380abc2d75d3fdbc022f14eccd3968312ddc96f55e1"
+            },
+            "keys": [
+              "backupId",
+              "deletionReceiptId",
+              "installationKey",
+              "phase",
+              "recordVersion",
+              "restoreId",
+              "revision",
+              "recordDigest"
+            ]
+          },
+          "changes": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event fields are invalid"
+          },
+          "document": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event fields are invalid"
+          },
+          "document": null
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event fields are invalid"
+          },
+          "document": {
+            "extra": true,
+            "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "deletionReceiptId": "fixture:deleted",
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            "phase": "started",
+            "recordDigest": "66ea185ab986305f24d22380abc2d75d3fdbc022f14eccd3968312ddc96f55e1",
+            "recordVersion": 1,
+            "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+            "revision": 1
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "backupId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "backupId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "backupId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "backupId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "backupId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "backupId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got NoneType"
+          },
+          "changes": {
+            "installationKey": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got bool"
+          },
+          "changes": {
+            "installationKey": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got int"
+          },
+          "changes": {
+            "installationKey": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got str"
+          },
+          "changes": {
+            "installationKey": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got list"
+          },
+          "changes": {
+            "installationKey": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key fields do not match; missing=['installationScope', 'pluginId', 'productId', 'schemaVersion', 'scopeId'], unknown=[]"
+          },
+          "changes": {
+            "installationKey": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "phase": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "phase": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "phase": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "phase": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.TypeError",
+            "code": null,
+            "message": "unhashable type: 'list'"
+          },
+          "changes": {
+            "phase": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.TypeError",
+            "code": null,
+            "message": "unhashable type: 'dict'"
+          },
+          "changes": {
+            "phase": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "recordDigest": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "recordDigest": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "recordDigest": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "recordDigest": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "recordDigest": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "recordDigest": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "recordVersion": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "recordVersion": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "recordVersion": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "recordVersion": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "recordVersion": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "recordVersion": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "restoreId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "restoreId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "restoreId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "restoreId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "restoreId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "restoreId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "revision": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "revision": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "revision": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "revision": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "revision": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore event is invalid"
+          },
+          "changes": {
+            "revision": {}
+          }
+        }
+      ],
+      "valid": {
+        "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "deletionReceiptId": "fixture:deleted",
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "phase": "started",
+        "recordDigest": "66ea185ab986305f24d22380abc2d75d3fdbc022f14eccd3968312ddc96f55e1",
+        "recordVersion": 1,
+        "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+        "revision": 1
+      }
+    },
+    {
+      "module": "loushang.coding.package_private_data_restore_confirmation",
+      "class": "CodingArchPrivateDataRestoreConfirmationV1",
+      "cases": [
+        {
+          "expected": {
+            "value": {
+              "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "deletionReceiptId": "fixture:deleted",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+              "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+              "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+              "recordVersion": 1,
+              "revision": 1,
+              "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+            },
+            "keys": [
+              "backupId",
+              "deletionReceiptId",
+              "installationKey",
+              "restoreCompletionDigest",
+              "restoredTargetId",
+              "restoreId",
+              "confirmationId",
+              "recordVersion",
+              "revision",
+              "recordDigest"
+            ]
+          },
+          "changes": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation fields are invalid"
+          },
+          "document": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation fields are invalid"
+          },
+          "document": null
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation fields are invalid"
+          },
+          "document": {
+            "extra": true,
+            "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+            "deletionReceiptId": "fixture:deleted",
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b",
+            "recordVersion": 1,
+            "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+            "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+            "revision": 1
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "backupId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "backupId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "backupId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "backupId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "backupId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "backupId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "confirmationId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "confirmationId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "confirmationId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "confirmationId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "confirmationId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "confirmationId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "deletionReceiptId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got NoneType"
+          },
+          "changes": {
+            "installationKey": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got bool"
+          },
+          "changes": {
+            "installationKey": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got int"
+          },
+          "changes": {
+            "installationKey": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got str"
+          },
+          "changes": {
+            "installationKey": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got list"
+          },
+          "changes": {
+            "installationKey": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key fields do not match; missing=['installationScope', 'pluginId', 'productId', 'schemaVersion', 'scopeId'], unknown=[]"
+          },
+          "changes": {
+            "installationKey": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "recordDigest": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "recordDigest": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "recordDigest": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "recordDigest": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "recordDigest": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "recordDigest": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "recordVersion": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "recordVersion": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "recordVersion": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "recordVersion": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "recordVersion": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "recordVersion": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoreCompletionDigest": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoreCompletionDigest": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoreCompletionDigest": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoreCompletionDigest": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoreCompletionDigest": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoreCompletionDigest": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoreId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoreId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoreId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoreId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoreId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoreId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoredTargetId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoredTargetId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoredTargetId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoredTargetId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoredTargetId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "restoredTargetId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "revision": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "revision": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "revision": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "revision": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "revision": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch restore confirmation is invalid"
+          },
+          "changes": {
+            "revision": {}
+          }
+        }
+      ],
+      "valid": {
+        "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+        "deletionReceiptId": "fixture:deleted",
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b",
+        "recordVersion": 1,
+        "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+        "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+        "revision": 1
+      }
+    },
+    {
+      "module": "loushang.coding.package_private_data_backup_expiry_journal",
+      "class": "CodingArchPrivateDataBackupExpiryEventV1",
+      "cases": [
+        {
+          "expected": {
+            "value": {
+              "archive": null,
+              "confirmation": {
+                "actorId": "fixture:operator",
+                "confirmationId": "arch-backup-expiry-confirm:3f6f01a8d531ed568a7cfdffedc1ed391bfe41fbf24315931163ee8a91574d5d",
+                "confirmationVersion": 1,
+                "planFingerprint": "15e00819a44cd1d6d771764914ac52f714c948cdb147db92b086971e19beef0f",
+                "policyRevision": "fixture:1"
+              },
+              "phase": "confirmed",
+              "plan": {
+                "archiveRootIdentity": [
+                  1,
+                  1,
+                  16832,
+                  0,
+                  2
+                ],
+                "archiveTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+                "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "backupReceiptId": "arch-backup:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+                "desiredInventoryRevision": 2,
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "coding.arch.default",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                },
+                "planVersion": 1,
+                "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+                "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+              },
+              "receipt": null,
+              "recordVersion": 1,
+              "revision": 1
+            },
+            "keys": [
+              "archive",
+              "confirmation",
+              "phase",
+              "plan",
+              "receipt",
+              "recordVersion",
+              "revision"
+            ]
+          },
+          "changes": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event fields are invalid"
+          },
+          "document": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event fields are invalid"
+          },
+          "document": null
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event fields are invalid"
+          },
+          "document": {
+            "extra": true,
+            "archive": null,
+            "confirmation": {
+              "actorId": "fixture:operator",
+              "confirmationId": "arch-backup-expiry-confirm:3f6f01a8d531ed568a7cfdffedc1ed391bfe41fbf24315931163ee8a91574d5d",
+              "confirmationVersion": 1,
+              "planFingerprint": "15e00819a44cd1d6d771764914ac52f714c948cdb147db92b086971e19beef0f",
+              "policyRevision": "fixture:1"
+            },
+            "phase": "confirmed",
+            "plan": {
+              "archiveRootIdentity": [
+                1,
+                1,
+                16832,
+                0,
+                2
+              ],
+              "archiveTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+              "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "backupReceiptId": "arch-backup:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+              "desiredInventoryRevision": 2,
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "planVersion": 1,
+              "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+              "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+            },
+            "receipt": null,
+            "recordVersion": 1,
+            "revision": 1
+          }
+        },
+        {
+          "expected": {
+            "value": {
+              "archive": null,
+              "confirmation": {
+                "actorId": "fixture:operator",
+                "confirmationId": "arch-backup-expiry-confirm:3f6f01a8d531ed568a7cfdffedc1ed391bfe41fbf24315931163ee8a91574d5d",
+                "confirmationVersion": 1,
+                "planFingerprint": "15e00819a44cd1d6d771764914ac52f714c948cdb147db92b086971e19beef0f",
+                "policyRevision": "fixture:1"
+              },
+              "phase": "confirmed",
+              "plan": {
+                "archiveRootIdentity": [
+                  1,
+                  1,
+                  16832,
+                  0,
+                  2
+                ],
+                "archiveTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+                "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "backupReceiptId": "arch-backup:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+                "desiredInventoryRevision": 2,
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "coding.arch.default",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                },
+                "planVersion": 1,
+                "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+                "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+              },
+              "receipt": null,
+              "recordVersion": 1,
+              "revision": 1
+            },
+            "keys": [
+              "archive",
+              "confirmation",
+              "phase",
+              "plan",
+              "receipt",
+              "recordVersion",
+              "revision"
+            ]
+          },
+          "changes": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch private-data target fields are invalid"
+          },
+          "changes": {
+            "archive": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch private-data target fields are invalid"
+          },
+          "changes": {
+            "archive": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch private-data target fields are invalid"
+          },
+          "changes": {
+            "archive": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch private-data target fields are invalid"
+          },
+          "changes": {
+            "archive": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch private-data target fields are invalid"
+          },
+          "changes": {
+            "archive": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation fields are invalid"
+          },
+          "changes": {
+            "confirmation": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation fields are invalid"
+          },
+          "changes": {
+            "confirmation": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation fields are invalid"
+          },
+          "changes": {
+            "confirmation": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation fields are invalid"
+          },
+          "changes": {
+            "confirmation": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation fields are invalid"
+          },
+          "changes": {
+            "confirmation": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry confirmation fields are invalid"
+          },
+          "changes": {
+            "confirmation": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "phase": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "phase": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "phase": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "phase": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.TypeError",
+            "code": null,
+            "message": "unhashable type: 'list'"
+          },
+          "changes": {
+            "phase": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.TypeError",
+            "code": null,
+            "message": "unhashable type: 'dict'"
+          },
+          "changes": {
+            "phase": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan fields are invalid"
+          },
+          "changes": {
+            "plan": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan fields are invalid"
+          },
+          "changes": {
+            "plan": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan fields are invalid"
+          },
+          "changes": {
+            "plan": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan fields are invalid"
+          },
+          "changes": {
+            "plan": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan fields are invalid"
+          },
+          "changes": {
+            "plan": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan fields are invalid"
+          },
+          "changes": {
+            "plan": {}
+          }
+        },
+        {
+          "expected": {
+            "value": {
+              "archive": null,
+              "confirmation": {
+                "actorId": "fixture:operator",
+                "confirmationId": "arch-backup-expiry-confirm:3f6f01a8d531ed568a7cfdffedc1ed391bfe41fbf24315931163ee8a91574d5d",
+                "confirmationVersion": 1,
+                "planFingerprint": "15e00819a44cd1d6d771764914ac52f714c948cdb147db92b086971e19beef0f",
+                "policyRevision": "fixture:1"
+              },
+              "phase": "confirmed",
+              "plan": {
+                "archiveRootIdentity": [
+                  1,
+                  1,
+                  16832,
+                  0,
+                  2
+                ],
+                "archiveTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+                "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "backupReceiptId": "arch-backup:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+                "desiredInventoryRevision": 2,
+                "installationKey": {
+                  "installationScope": "workspace",
+                  "pluginId": "coding.arch.default",
+                  "productId": "coding",
+                  "schemaVersion": 1,
+                  "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                },
+                "planVersion": 1,
+                "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+                "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+              },
+              "receipt": null,
+              "recordVersion": 1,
+              "revision": 1
+            },
+            "keys": [
+              "archive",
+              "confirmation",
+              "phase",
+              "plan",
+              "receipt",
+              "recordVersion",
+              "revision"
+            ]
+          },
+          "changes": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt fields are invalid"
+          },
+          "changes": {
+            "receipt": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt fields are invalid"
+          },
+          "changes": {
+            "receipt": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt fields are invalid"
+          },
+          "changes": {
+            "receipt": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt fields are invalid"
+          },
+          "changes": {
+            "receipt": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt fields are invalid"
+          },
+          "changes": {
+            "receipt": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "recordVersion": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "recordVersion": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "recordVersion": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "recordVersion": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "recordVersion": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "recordVersion": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "revision": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "revision": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "revision": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "revision": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "revision": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry event is invalid"
+          },
+          "changes": {
+            "revision": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry plan fields are invalid"
+          },
+          "changes": {
+            "confirmation": {},
+            "plan": {}
+          }
+        }
+      ],
+      "valid": {
+        "archive": null,
+        "confirmation": {
+          "actorId": "fixture:operator",
+          "confirmationId": "arch-backup-expiry-confirm:3f6f01a8d531ed568a7cfdffedc1ed391bfe41fbf24315931163ee8a91574d5d",
+          "confirmationVersion": 1,
+          "planFingerprint": "15e00819a44cd1d6d771764914ac52f714c948cdb147db92b086971e19beef0f",
+          "policyRevision": "fixture:1"
+        },
+        "phase": "confirmed",
+        "plan": {
+          "archiveRootIdentity": [
+            1,
+            1,
+            16832,
+            0,
+            2
+          ],
+          "archiveTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "backupReceiptId": "arch-backup:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+          "desiredInventoryRevision": 2,
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "planVersion": 1,
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "sourceTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393"
+        },
+        "receipt": null,
+        "recordVersion": 1,
+        "revision": 1
+      }
+    },
+    {
+      "module": "loushang.coding.package_private_data_backup_expiry_records",
+      "class": "CodingArchPrivateDataBackupExpiryReceiptV1",
+      "cases": [
+        {
+          "expected": {
+            "value": {
+              "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "confirmationId": "arch-backup-expiry-confirm:3f6f01a8d531ed568a7cfdffedc1ed391bfe41fbf24315931163ee8a91574d5d",
+              "installationKey": {
+                "installationScope": "workspace",
+                "pluginId": "coding.arch.default",
+                "productId": "coding",
+                "schemaVersion": 1,
+                "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "planFingerprint": "15e00819a44cd1d6d771764914ac52f714c948cdb147db92b086971e19beef0f",
+              "receiptId": "arch-backup-expiry:34e6913a43435080b0e73ce0bba32ec9b3d4f2ce725ef55bb12303cecc38ce94",
+              "receiptVersion": 1
+            },
+            "keys": [
+              "backupId",
+              "confirmationId",
+              "installationKey",
+              "planFingerprint",
+              "receiptId",
+              "receiptVersion"
+            ]
+          },
+          "changes": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt fields are invalid"
+          },
+          "document": {}
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt fields are invalid"
+          },
+          "document": null
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt fields are invalid"
+          },
+          "document": {
+            "extra": true,
+            "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "confirmationId": "arch-backup-expiry-confirm:3f6f01a8d531ed568a7cfdffedc1ed391bfe41fbf24315931163ee8a91574d5d",
+            "installationKey": {
+              "installationScope": "workspace",
+              "pluginId": "coding.arch.default",
+              "productId": "coding",
+              "schemaVersion": 1,
+              "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            "planFingerprint": "15e00819a44cd1d6d771764914ac52f714c948cdb147db92b086971e19beef0f",
+            "receiptId": "arch-backup-expiry:34e6913a43435080b0e73ce0bba32ec9b3d4f2ce725ef55bb12303cecc38ce94",
+            "receiptVersion": 1
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "backupId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "backupId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "backupId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "backupId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "backupId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "backupId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "confirmationId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "confirmationId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "confirmationId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "confirmationId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "confirmationId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "confirmationId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got NoneType"
+          },
+          "changes": {
+            "installationKey": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got bool"
+          },
+          "changes": {
+            "installationKey": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got int"
+          },
+          "changes": {
+            "installationKey": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got str"
+          },
+          "changes": {
+            "installationKey": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key must be a JSON object, got list"
+          },
+          "changes": {
+            "installationKey": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "loushang.harness.plugin_management.records.PluginLifecycleCodecError",
+            "code": "invalid_plugin_lifecycle_record",
+            "message": "Plugin installation key fields do not match; missing=['installationScope', 'pluginId', 'productId', 'schemaVersion', 'scopeId'], unknown=[]"
+          },
+          "changes": {
+            "installationKey": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "planFingerprint": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "planFingerprint": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "planFingerprint": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "planFingerprint": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "planFingerprint": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "planFingerprint": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "receiptId": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "receiptId": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "receiptId": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "receiptId": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "receiptId": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "receiptId": {}
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "receiptVersion": null
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "receiptVersion": false
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "receiptVersion": 0
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "receiptVersion": ""
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "receiptVersion": []
+          }
+        },
+        {
+          "expected": {
+            "error_type": "builtins.ValueError",
+            "code": null,
+            "message": "Coding Arch backup expiry receipt is invalid"
+          },
+          "changes": {
+            "receiptVersion": {}
+          }
+        }
+      ],
+      "valid": {
+        "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "confirmationId": "arch-backup-expiry-confirm:3f6f01a8d531ed568a7cfdffedc1ed391bfe41fbf24315931163ee8a91574d5d",
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "planFingerprint": "15e00819a44cd1d6d771764914ac52f714c948cdb147db92b086971e19beef0f",
+        "receiptId": "arch-backup-expiry:34e6913a43435080b0e73ce0bba32ec9b3d4f2ce725ef55bb12303cecc38ce94",
+        "receiptVersion": 1
+      }
+    }
+  ]
+}

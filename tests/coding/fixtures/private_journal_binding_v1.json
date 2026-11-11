@@ -1,0 +1,8416 @@
+{
+  "native_approval:False:False:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "native_approval:False:False:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "open failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:False:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "native_approval:True:False:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "open failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:False:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "native_approval:False:True:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "open failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:False:True:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock"
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "native_approval:True:True:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "open failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerNativeApprovalError",
+      "message": "coding_worker_native_approval_state_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "native_approval:True:True:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        false
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "opt_in:False:False:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "open failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:False:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "opt_in:True:False:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "open failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:False:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "opt_in:False:True:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "open failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:False:True:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "opt_in:True:True:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "open failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerOptInJournalError",
+      "message": "coding_worker_opt_in_state_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "opt_in:True:True:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "receipt:False:False:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "open failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:False:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "receipt:True:False:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "open failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:False:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "receipt:False:True:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "open failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:False:True:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "receipt:True:True:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "open failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerReceiptError",
+      "message": "coding_worker_receipt_state_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "receipt:True:True:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "start_gate_journal:False:False:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": {
+        "type": "OSError",
+        "message": "open failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "context": {
+        "type": "OSError",
+        "message": "open failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": true
+    }
+  },
+  "start_gate_journal:False:False:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:False:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": ".lock",
+          "initialize_empty_target_if_new": true
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "start_gate_journal:True:False:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": {
+        "type": "OSError",
+        "message": "open failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "context": {
+        "type": "OSError",
+        "message": "open failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": true
+    }
+  },
+  "start_gate_journal:True:False:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:False:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "file-stat",
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": ".lock",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "start_gate_journal:False:True:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": {
+        "type": "OSError",
+        "message": "open failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "context": {
+        "type": "OSError",
+        "message": "open failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": true
+    }
+  },
+  "start_gate_journal:False:True:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:False:True:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": true,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:success": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": null
+  },
+  "start_gate_journal:True:True:open_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ]
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": {
+        "type": "OSError",
+        "message": "open failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "context": {
+        "type": "OSError",
+        "message": "open failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": true
+    }
+  },
+  "start_gate_journal:True:True:fstat_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "fstat failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:unsafe_uid": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:unsafe_mode": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:wrong_identity": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_unsafe",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:constructor_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "constructor failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:bind_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:body_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "ValueError",
+      "message": "body failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:bind_exit_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "bind exit failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:body_and_cleanup_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "cleanup failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:post_changed": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "CodingWorkerStartGateJournalError",
+      "message": "coding_worker_start_gate_root_changed",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:post_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "post failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-lstat",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": null,
+      "suppress_context": false
+    }
+  },
+  "start_gate_journal:True:True:body_and_close_failure": {
+    "trace": [
+      [
+        "parent-open",
+        "/state",
+        720896
+      ],
+      "parent-fstat",
+      "parent-lstat",
+      [
+        "io",
+        "/state",
+        71
+      ],
+      [
+        "bind",
+        "/state/history.jsonl",
+        true
+      ],
+      [
+        "sibling",
+        "history.jsonl.lock"
+      ],
+      [
+        "lock",
+        {
+          "exclusive": false,
+          "suffix": "",
+          "create": false
+        }
+      ],
+      "body",
+      "bind-exit",
+      "io-cleanup",
+      "parent-close"
+    ],
+    "error": {
+      "type": "OSError",
+      "message": "close failure",
+      "cause": null,
+      "context": {
+        "type": "ValueError",
+        "message": "body failure",
+        "cause": null,
+        "context": null,
+        "suppress_context": false
+      },
+      "suppress_context": false
+    }
+  }
+}

@@ -3887,6 +3887,7 @@ def test_external_data_skill_enters_fenced_session_catalog(
 
     workspace = tmp_path / "workspace"
     workspace.mkdir(mode=0o700)
+    (workspace / "AGENTS.md").touch()
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
     settings = SettingsManager(

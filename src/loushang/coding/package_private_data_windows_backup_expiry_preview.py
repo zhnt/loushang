@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, replace
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
+from loushang.harness.plugin_management.private_data_deletion import (
+    latest_deleted_target_receipt,
+)
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_directory,
     windows_listdir_at,
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
@@ -31,7 +32,7 @@ from .package_private_data_windows_archive_snapshot import (
     capture_windows_arch_backup_archive,
 )
 from .package_private_data_windows_backup import (
-    _directory_identity,
+    _archive_io,
     _read_archive_manifest,
 )
 from .package_private_data_windows_deletion_journal import (
@@ -44,7 +45,6 @@ from .package_private_data_windows_restore_journal import (
     CodingWindowsArchPrivateDataRestoreJournal,
     CodingWindowsArchPrivateDataRestoreTransaction,
 )
-from .package_private_data_windows_restore_preview import _matching_latest_deletion
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,33 +94,19 @@ class CodingWindowsArchPrivateDataBackupExpiryPreview:
             parent_path
         )
         with WindowsPrivateDirectoryAcl() as acl:
-            parent_fd = open_windows_directory(
-                parent_path, share_delete=False, read_control=True
-            )
-            try:
-                acl.validate(parent_fd)
-                if (
-                    _directory_identity(parent_fd) != parent_identity
-                    or any(
-                        name.endswith(".staging")
-                        for name in windows_listdir_at(parent_fd)
-                    )
+            with _archive_io._parent_scope(
+                parent_path,
+                parent_identity,
+                acl,
+                changed="Windows Coding Arch backup parent changed",
+            ) as parent_fd:
+                if any(
+                    name.endswith(".staging") for name in windows_listdir_at(parent_fd)
                 ):
                     raise ValueError("Windows Coding Arch backup parent changed")
-                receipt, source = _read_archive_manifest(
-                    parent_fd, backup_id, acl
-                )
+                receipt, source = _read_archive_manifest(parent_fd, backup_id, acl)
                 if receipt.installation_key != key or receipt.backup_id != backup_id:
                     raise ValueError("Windows Coding Arch backup Installation changed")
-            finally:
-                os.close(parent_fd)
-                if (
-                    inspect_windows_product_private_directory_identity(
-                        parent_path
-                    )
-                    != parent_identity
-                ):
-                    raise ValueError("Windows Coding Arch backup parent changed")
         deletion = CodingWindowsArchPrivateDataDeletionTransaction(
             self.product.state_root, transaction.state_fd
         )
@@ -130,7 +116,9 @@ class CodingWindowsArchPrivateDataBackupExpiryPreview:
             deletion._close()
         if events and events[-1].phase != "completed":
             raise ValueError("Windows Coding Arch deletion is unfinished")
-        deletion_receipt = _matching_latest_deletion(events, key, receipt)
+        deletion_receipt = latest_deleted_target_receipt(
+            events, key, receipt.source_target_id
+        )
         if deletion_receipt is None:
             raise ValueError("Windows Coding Arch backup expiry lacks deletion")
         restore_plan = CodingArchPrivateDataRestorePlanV1(
@@ -147,9 +135,7 @@ class CodingWindowsArchPrivateDataBackupExpiryPreview:
                 transaction.completed_plan_revision_for(restore_plan)
             ),
         )
-        confirmation = transaction.verify_confirmation(
-            restore_plan, confirmation_id
-        )
+        confirmation = transaction.verify_confirmation(restore_plan, confirmation_id)
         completion, restored = transaction._completed_restore(restore_plan)
         archive = capture_windows_arch_backup_archive(
             self.layout, key, backup_id, source, receipt

@@ -23,6 +23,7 @@ from loushang.harness.plugin_management import (
     PluginManagementSourceRecordV1,
     PluginManagementSourceSnapshotV1,
 )
+from loushang.harness.plugin_management.assembly import bind_plugin_desired_state
 from loushang.harness.plugin_management.desired_command import (
     PluginDesiredCommandAuthorityV1,
     PluginDesiredRepairResultV1,
@@ -35,9 +36,6 @@ from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.operation_explanation import (
     PluginOperationExplanationProjector,
     PluginOperationExplanationV1,
-)
-from loushang.harness.plugin_management.package_gc_reservation import (
-    PluginPackageGcReservationJournal,
 )
 from loushang.harness.plugin_management.package_operation_explanation import (
     PackageOperationExplanationProjector,
@@ -243,11 +241,7 @@ class _ProductCliOwner:
         self.assert_workspace_current()
         epoch = resolve_coding_package_epoch_layout(self.layout)
         runtime = PackageProductPosixFencedRuntimeOwner.open(
-            authority_root=epoch.authority_root,
-            control_root=epoch.control_root,
-            store_id=epoch.store_id,
-            epochs_root_name=epoch.epochs_root_name,
-            read_only=read_only,
+            **epoch.fenced_runtime_open_kwargs(), read_only=read_only
         )
         try:
             self.assert_workspace_current()
@@ -266,14 +260,11 @@ class _ProductCliOwner:
                 ):
                     raise ValueError("Fenced Product management state is unsafe")
                 load_policy = JournalLoadPolicy(partial_tail="raise", create_lock=False)
-                gate = PluginPackageGcReservationJournal(
-                    state_root / "gc-reservations.jsonl", load_policy=load_policy
-                )
-                desired = PluginDesiredStateLedger(
+                desired = bind_plugin_desired_state(
+                    state_root / "gc-reservations.jsonl",
                     state_root / "desired-state.jsonl",
-                    gc_gate=gate,
                     load_policy=load_policy,
-                )
+                ).desired
                 management = PluginManagementService(
                     desired_state=desired,
                     operation_journal_path=state_root / "management-operations.jsonl",

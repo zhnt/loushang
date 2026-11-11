@@ -14,11 +14,24 @@ from collections.abc import Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
+from loushang.harness.resources.packages._file_consumption import (
+    FileConsumptionError,
+    consume_file,
+)
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
     RecordSchema,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _exact_dict as _exact_dict,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _nonempty_string as _wire_string,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_int as _wire_int,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -377,23 +390,26 @@ class PackageVerifiedTreeTransferOwner:
         manifest = candidate.transfer_manifest
         try:
             for entry in manifest.entries:
-                digest = sha256()
-                byte_count = 0
                 with candidate._open_verified_tree_file(entry) as source:
                     with sink.open_file(entry) as destination:
-                        while chunk := source.read(self._chunk_size):
-                            if not isinstance(chunk, bytes):
-                                destination.abort()
-                                raise OSError("Verified source returned non-byte data")
-                            byte_count += len(chunk)
-                            if byte_count > entry.byte_count:
-                                destination.abort()
-                                raise OSError("Verified source file size changed")
-                            digest.update(chunk)
-                            destination.write(chunk)
+                        try:
+                            byte_count, digest = consume_file(
+                                source,
+                                destination=destination,
+                                max_bytes=entry.byte_count,
+                                chunk_size=self._chunk_size,
+                            )
+                        except FileConsumptionError as error:
+                            destination.abort()
+                            reason = (
+                                "returned non-byte data"
+                                if error.code == "non_bytes"
+                                else "file size changed"
+                            )
+                            raise OSError("Verified source " + reason) from None
                         if (
                             byte_count != entry.byte_count
-                            or digest.hexdigest() != entry.content_digest
+                            or digest != entry.content_digest
                         ):
                             destination.abort()
                             raise OSError("Verified source file identity changed")
@@ -585,32 +601,6 @@ def _require_positive(value: int, *, name: str) -> None:
 def _require_nonnegative(value: int, *, name: str) -> None:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise ValueError(f"{name} must be a non-negative integer")
-
-
-def _exact_dict(
-    value: object,
-    *,
-    fields: set[str],
-    name: str,
-) -> dict[str, object]:
-    if not isinstance(value, Mapping):
-        raise TypeError(f"{name} must be an object")
-    document = dict(value)
-    if set(document) != fields:
-        raise ValueError(f"{name} fields do not match the versioned schema")
-    return cast(dict[str, object], document)
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an integer")
-    return value
-
-
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise TypeError(f"{name} must be a non-empty string")
-    return value
 
 
 _VERIFIED_TREE_ENTRY_V1_SCHEMA = RecordSchema(

@@ -495,9 +495,7 @@ def _resolve_import_from(path: Path, node: ast.ImportFrom) -> set[str]:
 
 def _imports(path: Path) -> set[str]:
     return {
-        imported
-        for imported in resolved_imports(path)
-        if not imported.endswith(".*")
+        imported for imported in resolved_imports(path) if not imported.endswith(".*")
     }
 
 
@@ -842,9 +840,8 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
     }
     assert outside_worker == {
         CODING_CANARY,
-        CODING_ROOT / "package_product_worker_operator_query.py",
-        CODING_ROOT / "package_product_worker_pending_host.py",
-        CODING_ROOT / "package_product_worker_windows_pending_host.py",
+        Path("src/loushang/harness/session/_worker_operator_query.py"),
+        Path("src/loushang/harness/session/_worker_provider.py"),
     }
 
     worker_consumers = {
@@ -856,10 +853,33 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
             for imported in _imports(path)
         )
     }
-    assert worker_consumers == {
+    optional_backend_release = {
+        path
+        for path in worker_consumers
+        if path == HARNESS_ROOT / "package_product/_windows_worker_backend_release.py"
+        and {
+            imported
+            for imported in resolved_imports(path)
+            if imported.startswith("loushang.harness.worker")
+        }
+        <= {
+            "loushang.harness.worker.history._native_approval",
+            "loushang.harness.worker.history._native_approval._DIGEST",
+            "loushang.harness.worker.history._native_approval._NativeApprovalMethods",
+            "loushang.harness.worker.history._native_approval._NativeDecision",
+            "loushang.harness.worker.history._native_approval._NativeReviewMethods",
+        }
+    }
+    assert worker_consumers - optional_backend_release == {
         SANDBOX_RUNTIME,
         HARNESS_ROOT / "package_product/product_worker_candidate.py",
         HARNESS_ROOT / "package_product/product_worker_wheel_admission.py",
+        Path("src/loushang/harness/package_product/_linux_worker_history.py"),
+        Path("src/loushang/harness/package_product/_linux_worker_native_release.py"),
+        Path("src/loushang/harness/package_product/_linux_worker_recovery.py"),
+        Path("src/loushang/harness/package_product/_worker_windows_attempt.py"),
+        Path("src/loushang/harness/session/_worker_operator_query.py"),
+        Path("src/loushang/harness/session/_worker_provider.py"),
     }
     assert _literal_string_collection(WORKER_PUBLIC, "__all__") == (
         CURRENT_WORKER_PUBLIC_EXPORTS
@@ -903,7 +923,51 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
             for imported in _imports_containing(path, "worker")
         )
     }
-    assert coding_worker_consumers == {
+    optional_initial_seal = {
+        path
+        for path in coding_worker_consumers
+        if path == CODING_ROOT / "package_product_worker_history_rotate_v2.py"
+        and {
+            imported
+            for imported in resolved_imports(path)
+            if imported.startswith("loushang.harness.worker")
+        }
+        <= {
+            "loushang.harness.worker.history._publication",
+            "loushang.harness.worker.history._publication.HistoryPublication",
+        }
+    }
+    history_proofs = "loushang.harness.worker.history._windows_semantic_contracts"
+    optional_retirement_proofs = {
+        path
+        for path in coding_worker_consumers
+        if path.name in {
+            "package_product_worker_windows_crash_stage_retirement.py",
+            "package_product_worker_windows_unlaunched_stage_retirement.py",
+        }
+        and path.parent == CODING_ROOT
+        and not any(
+            isinstance(node, ast.Import)
+            and any(alias.name == history_proofs for alias in node.names)
+            for node in ast.walk(ast.parse(_read(path), filename=str(path)))
+        )
+        and {
+            imported
+            for imported in resolved_imports(path)
+            if imported.startswith("loushang.harness.worker")
+        }
+        <= {
+            history_proofs,
+            history_proofs + ".native_matches_intent",
+            history_proofs + ".launch_matches_intent",
+            *(
+                {history_proofs + ".no_effect_history_matches"}
+                if path.name == "package_product_worker_windows_unlaunched_stage_retirement.py"
+                else ()
+            ),
+        }
+    }
+    assert coding_worker_consumers - optional_initial_seal - optional_retirement_proofs == {
         CODING_CANARY,
         CODING_APPHOST_PRODUCT,
         CODING_APPHOST_CANARY,
@@ -914,12 +978,10 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package_product_worker_activation_base_v2.py",
         CODING_ROOT / "package_product_worker_history_prepared_v2.py",
         CODING_ROOT / "package_product_worker_history_retention.py",
+        CODING_ROOT / "package_product_worker_history_segments.py",
         CODING_ROOT / "package_product_worker_no_effect_closure.py",
-        CODING_ROOT / "package_product_worker_posix_gc_history.py",
-        CODING_ROOT / "package_product_worker_registered_c5_settlement.py",
         CODING_ROOT / "package_product_worker_registered_payload_repair.py",
         CODING_ROOT / "package_product_worker_registered_recovery.py",
-        CODING_ROOT / "package_product_worker_installed_native.py",
         CODING_ROOT / "package_product_worker_native_release.py",
         CODING_ROOT / "package_product_worker_payload.py",
         CODING_ROOT / "package_product_worker_policy.py",
@@ -950,12 +1012,49 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package_product_worker_windows_crash_supervisor_settlement.py",
         CODING_ROOT / "package_product_worker_windows_launch_intent.py",
         CODING_ROOT / "package_product_worker_windows_payload.py",
+        CODING_ROOT / "package_product_worker_windows_history_sources.py",
+        CODING_ROOT / "package_product_worker_windows_gc_history.py",
+        CODING_ROOT / "package_product_worker_windows_history_join.py",
+        CODING_ROOT / "package_product_worker_windows_opt_in_base.py",
+        CODING_ROOT / "package_product_worker_windows_receipt_base.py",
+        CODING_ROOT / "package_product_worker_windows_launch_intent_base.py",
+        CODING_ROOT / "package_product_worker_windows_provisioning_base.py",
+        CODING_ROOT / "package_product_worker_windows_stage_retirement.py",
+        CODING_ROOT / "package_product_worker_windows_partial_stage_retirement.py",
+        CODING_ROOT / "package_product_worker_windows_stage_review.py",
         CODING_ROOT / "package_product_worker_windows_receipt.py",
         CODING_ROOT / "package_product_worker_windows_receipt_journal.py",
+        CODING_ROOT / "package_product_worker_windows_opt_in_journal.py",
+        CODING_ROOT / "package_product_worker_windows_native_approval_journal.py",
         CODING_ROOT / "package_product_worker_windows_recovery_inventory.py",
         CODING_ROOT / "package_product_worker_windows_supervisor_base.py",
         CODING_ROOT / "package_product_worker_windows_supervisor_journal.py",
         CODING_ROOT / "resume_continuation.py",
+        CODING_ROOT / "package_product_worker_history_checkpoint.py",
+        CODING_ROOT / "package_product_worker_history_checkpoint_anchor.py",
+        CODING_ROOT / "package_product_worker_history_cutover_v2.py",
+        CODING_ROOT / "package_product_worker_history_deletion_v2.py",
+        CODING_ROOT / "package_product_worker_history_read_v2.py",
+        CODING_ROOT / "package_product_worker_history_retirement_preview.py",
+        CODING_ROOT / "package_product_worker_history_stage_v2.py",
+        CODING_ROOT / "package_product_worker_history_commit_v2.py",
+        CODING_ROOT / "package_product_worker_history_retire_v2.py",
+        CODING_ROOT / "package_product_worker_history_stream_snapshot.py",
+        CODING_ROOT / "package_product_worker_history_v2_names.py",
+        CODING_ROOT / "package_product_worker_no_effect_archive_v2.py",
+        CODING_ROOT / "package_product_worker_opt_in.py",
+        CODING_ROOT / "package_product_worker_opt_in_base_v2.py",
+        CODING_ROOT / "package_product_worker_receipt_base_v2.py",
+        CODING_ROOT / "package_product_worker_start_gate_base_v2.py",
+        CODING_ROOT / "package_product_worker_windows_history_preparation.py",
+        CODING_ROOT / "package_product_worker_windows_reserved_review.py",
+        CODING_ROOT / "package_product_worker_windows_partial_stage_review.py",
+        CODING_ROOT / "package_product_worker_windows_history_cutover_record.py",
+        CODING_ROOT / "package_product_worker_windows_checkpoint.py",
+        Path("src/loushang/coding/_worker_preparation_inputs.py"),
+        Path("src/loushang/coding/package_product_worker_gc_references.py"),
+        Path("src/loushang/coding/package_product_worker_native_approval.py"),
+        Path("src/loushang/coding/package_product_worker_windows_payload_inventory.py"),
     }
     hosting_consumers = {
         path
@@ -968,10 +1067,6 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
     assert hosting_consumers == {
         CODING_ROOT / "gui_local_host.py",
         CODING_APPHOST_CANARY,
-        CODING_ROOT / "package_product_worker_cleanup_evidence.py",
-        CODING_ROOT / "package_product_worker_operator_query.py",
-        CODING_ROOT / "package_product_worker_pending_host.py",
-        CODING_ROOT / "package_product_worker_windows_pending_host.py",
         CODING_ROOT / "package_product_worker_windows_backend_release.py",
         CODING_ROOT / "package_product_worker_windows_installed_backend.py",
         CODING_ROOT / "package_product_worker_windows_receipt.py",

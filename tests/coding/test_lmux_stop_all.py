@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from loushang.apphost.managed import stopper as stop_module
 from loushang.apphost.managed._files import ManagedStorageError
 from loushang.apphost.managed.contracts import (
     ManagedHandoffPhaseV1,
@@ -71,8 +72,8 @@ def batch(namespace, monkeypatch):
         async def close(self):
             events.append(("stopper_close", self.service.service_id))
 
-    monkeypatch.setattr(module, "ManagedServiceJournalV1", Journal)
-    monkeypatch.setattr(module, "ManagedServiceStopOperationV1", Stopper)
+    monkeypatch.setattr(stop_module, "ManagedServiceJournalV1", Journal)
+    monkeypatch.setattr(stop_module, "ManagedServiceStopOperationV1", Stopper)
     owner = module.StopAll(SimpleNamespace(registry=object()), namespace,
         ManagedDiscoverySnapshotV1(tuple(observations), ()), deadline=monotonic() + 30, emit=results.append)
     return owner, behavior, events, results
@@ -104,7 +105,7 @@ def test_shared_deadline_does_not_admit_later_entries(batch, monkeypatch):
     owner, behavior, events, results = batch
 
     async def expire():
-        monkeypatch.setattr(module, "monotonic", lambda: owner.deadline + 1)
+        monkeypatch.setattr(stop_module, "monotonic", lambda: owner.deadline + 1)
 
     behavior[owner.entries[0].observation.service.service_id] = expire
 

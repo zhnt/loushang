@@ -1,0 +1,406 @@
+{
+  "baseline": "8ad6b6098f1c24c8cfb6f4d9d290e99bc74d618d",
+  "scope": "four original unmodified filename-scan methods; emulated listing/missing reader, not native platform proof",
+  "scans": {
+    "deletion": {
+      "empty": {
+        "records": 0,
+        "staged": null,
+        "trace": [
+          "list"
+        ]
+      },
+      "unrelated": {
+        "records": 0,
+        "staged": null,
+        "trace": [
+          "list"
+        ]
+      },
+      "stage": {
+        "records": 0,
+        "staged": 1,
+        "trace": [
+          "list"
+        ]
+      },
+      "unexpected": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch deletion member is unexpected",
+        "trace": [
+          "list"
+        ]
+      },
+      "zero": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch deletion revision is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "gap": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch deletion event sequence is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "stage_gap": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch deletion event sequence is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "two_stages": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch deletion event sequence is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "published_missing": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch deletion event disappeared",
+        "trace": [
+          "list",
+          "read:arch-private-deletion-00000001.json:4194304"
+        ]
+      },
+      "with_next_stage": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch deletion event disappeared",
+        "trace": [
+          "list",
+          "read:arch-private-deletion-00000001.json:4194304"
+        ]
+      },
+      "too_many": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch deletion event sequence is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "overflow_then_unexpected": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch deletion member is unexpected",
+        "trace": [
+          "list"
+        ]
+      },
+      "zero_then_unexpected": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch deletion revision is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "closed": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch deletion transaction is closed",
+        "trace": []
+      }
+    },
+    "restore": {
+      "empty": {
+        "records": 0,
+        "staged": null,
+        "trace": [
+          "list"
+        ]
+      },
+      "unrelated": {
+        "records": 0,
+        "staged": null,
+        "trace": [
+          "list"
+        ]
+      },
+      "stage": {
+        "records": 0,
+        "staged": 1,
+        "trace": [
+          "list"
+        ]
+      },
+      "unexpected": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore member is unexpected",
+        "trace": [
+          "list"
+        ]
+      },
+      "zero": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore revision is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "gap": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore event sequence is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "stage_gap": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore event sequence is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "two_stages": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore event sequence is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "published_missing": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore event disappeared",
+        "trace": [
+          "list",
+          "read:arch-private-restore-00000001.json:16384"
+        ]
+      },
+      "with_next_stage": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore event disappeared",
+        "trace": [
+          "list",
+          "read:arch-private-restore-00000001.json:16384"
+        ]
+      },
+      "too_many": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore event sequence is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "overflow_then_unexpected": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore member is unexpected",
+        "trace": [
+          "list"
+        ]
+      },
+      "zero_then_unexpected": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore revision is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "closed": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore transaction is closed",
+        "trace": []
+      }
+    },
+    "confirmation": {
+      "empty": {
+        "records": 0,
+        "staged": null,
+        "trace": [
+          "list"
+        ]
+      },
+      "unrelated": {
+        "records": 0,
+        "staged": null,
+        "trace": [
+          "list"
+        ]
+      },
+      "stage": {
+        "records": 0,
+        "staged": 1,
+        "trace": [
+          "list"
+        ]
+      },
+      "unexpected": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore confirmation member is unexpected",
+        "trace": [
+          "list"
+        ]
+      },
+      "zero": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore confirmation revision is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "gap": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore confirmation sequence changed",
+        "trace": [
+          "list"
+        ]
+      },
+      "stage_gap": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore confirmation sequence changed",
+        "trace": [
+          "list"
+        ]
+      },
+      "two_stages": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore confirmation sequence changed",
+        "trace": [
+          "list"
+        ]
+      },
+      "published_missing": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore confirmation disappeared",
+        "trace": [
+          "list",
+          "read:arch-restore-confirmation-00000001.json:16384"
+        ]
+      },
+      "with_next_stage": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore confirmation disappeared",
+        "trace": [
+          "list",
+          "read:arch-restore-confirmation-00000001.json:16384"
+        ]
+      },
+      "too_many": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore confirmation sequence changed",
+        "trace": [
+          "list"
+        ]
+      },
+      "overflow_then_unexpected": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore confirmation member is unexpected",
+        "trace": [
+          "list"
+        ]
+      },
+      "zero_then_unexpected": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore confirmation revision is invalid",
+        "trace": [
+          "list"
+        ]
+      },
+      "closed": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore transaction is closed",
+        "trace": []
+      }
+    },
+    "expiry": {
+      "empty": {
+        "records": 0,
+        "staged": null,
+        "trace": [
+          "list"
+        ]
+      },
+      "unrelated": {
+        "records": 0,
+        "staged": null,
+        "trace": [
+          "list"
+        ]
+      },
+      "stage": {
+        "records": 0,
+        "staged": 1,
+        "trace": [
+          "list"
+        ]
+      },
+      "unexpected": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch backup expiry member is unexpected",
+        "trace": [
+          "list"
+        ]
+      },
+      "zero": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch backup expiry revision changed",
+        "trace": [
+          "list"
+        ]
+      },
+      "gap": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch backup expiry sequence changed",
+        "trace": [
+          "list"
+        ]
+      },
+      "stage_gap": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch backup expiry sequence changed",
+        "trace": [
+          "list"
+        ]
+      },
+      "two_stages": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch backup expiry sequence changed",
+        "trace": [
+          "list"
+        ]
+      },
+      "published_missing": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch backup expiry event disappeared",
+        "trace": [
+          "list",
+          "read:arch-backup-expiry-00000001.json:16777216"
+        ]
+      },
+      "with_next_stage": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch backup expiry event disappeared",
+        "trace": [
+          "list",
+          "read:arch-backup-expiry-00000001.json:16777216"
+        ]
+      },
+      "too_many": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch backup expiry sequence changed",
+        "trace": [
+          "list"
+        ]
+      },
+      "overflow_then_unexpected": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch backup expiry member is unexpected",
+        "trace": [
+          "list"
+        ]
+      },
+      "zero_then_unexpected": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch backup expiry revision changed",
+        "trace": [
+          "list"
+        ]
+      },
+      "closed": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore transaction is closed",
+        "trace": []
+      }
+    }
+  }
+}

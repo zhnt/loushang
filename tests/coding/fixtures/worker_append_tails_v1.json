@@ -1,0 +1,1971 @@
+{
+  "activation_state_journal:plain": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-activation-state.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-state.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "activation_state_journal:generation_one": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-activation-state.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-state.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "1": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "1": "6f6c640a6e65770a"
+    }
+  },
+  "activation_state_journal:legacy_name": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-activation-state.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-state.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "activation_state_journal:seal_count": {
+    "trace": [
+      "seal",
+      "path",
+      [
+        "target",
+        "worker-activation-state.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-state.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "activation_state_journal:seal_bytes": {
+    "trace": [
+      "seal",
+      "path",
+      [
+        "target",
+        "worker-activation-state.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-state.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "activation_state_journal:seal_capacity": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "WorkerActivationStateJournalError",
+        "worker_activation_state_capacity",
+        "worker_activation_state_capacity",
+        true
+      ],
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_capacity",
+        "coding_worker_segment_capacity",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "activation_state_journal:seal_corrupt": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "WorkerActivationStateJournalError",
+        "worker_activation_state_corrupt",
+        "worker_activation_state_corrupt",
+        true
+      ],
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_head_corrupt",
+        "coding_worker_segment_head_corrupt",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "activation_state_journal:seal_oserror": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "OSError",
+        "seal",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "activation_state_journal:target": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-activation-state.jsonl"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "target",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "activation_state_journal:append_before": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-activation-state.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-state.jsonl",
+        "before",
+        "before",
+        "before"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "append",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "activation_state_journal:append_after": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-activation-state.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-state.jsonl",
+        "before",
+        "before",
+        "before"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "append",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "activation_state_journal:commit_before": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-activation-state.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-state.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "OSError",
+        "commit",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "activation_state_journal:commit_after": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-activation-state.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-state.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "OSError",
+        "commit",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "activation_state_journal:late_config": {
+    "trace": [
+      "seal",
+      "path",
+      [
+        "target",
+        "worker-activation-state.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-state.g00000001.jsonl",
+        "after",
+        "after",
+        "after"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "activation_state_journal:encoding_drift": {
+    "trace": [
+      "seal",
+      "path",
+      [
+        "target",
+        "worker-activation-state.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-state.g00000001.jsonl",
+        "after",
+        "after",
+        "after"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_active_changed",
+        "coding_worker_segment_active_changed",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a",
+      "1": "64726966740a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": ""
+    }
+  },
+  "receipt:plain": {
+    "trace": [
+      [
+        "target",
+        "worker-activation-receipts.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-receipts.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "receipt:generation_one": {
+    "trace": [
+      [
+        "target",
+        "worker-activation-receipts.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-receipts.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "1": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "1": "6f6c640a6e65770a"
+    }
+  },
+  "receipt:legacy_name": {
+    "trace": [
+      [
+        "target",
+        "custom.jsonl"
+      ],
+      [
+        "append",
+        "custom.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "receipt:seal_count": {
+    "trace": [
+      "seal",
+      [
+        "target",
+        "worker-activation-receipts.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-receipts.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "receipt:seal_bytes": {
+    "trace": [
+      "seal",
+      [
+        "target",
+        "worker-activation-receipts.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-receipts.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "receipt:seal_capacity": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "CodingWorkerReceiptError",
+        "coding_worker_segment_capacity",
+        "coding_worker_segment_capacity",
+        true
+      ],
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_capacity",
+        "coding_worker_segment_capacity",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "receipt:seal_corrupt": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "CodingWorkerReceiptError",
+        "coding_worker_segment_head_corrupt",
+        "coding_worker_segment_head_corrupt",
+        true
+      ],
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_head_corrupt",
+        "coding_worker_segment_head_corrupt",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "receipt:seal_oserror": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "OSError",
+        "seal",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "receipt:target": {
+    "trace": [
+      [
+        "target",
+        "worker-activation-receipts.jsonl"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "target",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "receipt:append_before": {
+    "trace": [
+      [
+        "target",
+        "worker-activation-receipts.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-receipts.jsonl",
+        "before",
+        "before",
+        "before"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "append",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "receipt:append_after": {
+    "trace": [
+      [
+        "target",
+        "worker-activation-receipts.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-receipts.jsonl",
+        "before",
+        "before",
+        "before"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "append",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "receipt:commit_before": {
+    "trace": [
+      [
+        "target",
+        "worker-activation-receipts.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-receipts.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "OSError",
+        "commit",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "receipt:commit_after": {
+    "trace": [
+      [
+        "target",
+        "worker-activation-receipts.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-receipts.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "OSError",
+        "commit",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "receipt:late_config": {
+    "trace": [
+      "seal",
+      [
+        "target",
+        "worker-activation-receipts.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-receipts.g00000001.jsonl",
+        "after",
+        "after",
+        "after"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "receipt:encoding_drift": {
+    "trace": [
+      "seal",
+      [
+        "target",
+        "worker-activation-receipts.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-activation-receipts.g00000001.jsonl",
+        "after",
+        "after",
+        "after"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_active_changed",
+        "coding_worker_segment_active_changed",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a",
+      "1": "64726966740a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": ""
+    }
+  },
+  "start_gate_journal:plain": {
+    "trace": [
+      [
+        "target",
+        "worker-start-gates.jsonl"
+      ],
+      [
+        "append",
+        "worker-start-gates.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "start_gate_journal:generation_one": {
+    "trace": [
+      [
+        "target",
+        "worker-start-gates.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-start-gates.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "1": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "1": "6f6c640a6e65770a"
+    }
+  },
+  "start_gate_journal:legacy_name": {
+    "trace": [
+      [
+        "target",
+        "custom.jsonl"
+      ],
+      [
+        "append",
+        "custom.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "start_gate_journal:seal_count": {
+    "trace": [
+      "seal",
+      [
+        "target",
+        "worker-start-gates.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-start-gates.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "start_gate_journal:seal_bytes": {
+    "trace": [
+      "seal",
+      [
+        "target",
+        "worker-start-gates.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-start-gates.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "start_gate_journal:seal_capacity": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "CodingWorkerStartGateJournalError",
+        "coding_worker_segment_capacity",
+        "coding_worker_segment_capacity",
+        true
+      ],
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_capacity",
+        "coding_worker_segment_capacity",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "start_gate_journal:seal_corrupt": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "CodingWorkerStartGateJournalError",
+        "coding_worker_segment_head_corrupt",
+        "coding_worker_segment_head_corrupt",
+        true
+      ],
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_head_corrupt",
+        "coding_worker_segment_head_corrupt",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "start_gate_journal:seal_oserror": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "OSError",
+        "seal",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "start_gate_journal:target": {
+    "trace": [
+      [
+        "target",
+        "worker-start-gates.jsonl"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "target",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "start_gate_journal:append_before": {
+    "trace": [
+      [
+        "target",
+        "worker-start-gates.jsonl"
+      ],
+      [
+        "append",
+        "worker-start-gates.jsonl",
+        "before",
+        "before",
+        "before"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "append",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "start_gate_journal:append_after": {
+    "trace": [
+      [
+        "target",
+        "worker-start-gates.jsonl"
+      ],
+      [
+        "append",
+        "worker-start-gates.jsonl",
+        "before",
+        "before",
+        "before"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "append",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "start_gate_journal:commit_before": {
+    "trace": [
+      [
+        "target",
+        "worker-start-gates.jsonl"
+      ],
+      [
+        "append",
+        "worker-start-gates.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "OSError",
+        "commit",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "start_gate_journal:commit_after": {
+    "trace": [
+      [
+        "target",
+        "worker-start-gates.jsonl"
+      ],
+      [
+        "append",
+        "worker-start-gates.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "OSError",
+        "commit",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "start_gate_journal:late_config": {
+    "trace": [
+      "seal",
+      [
+        "target",
+        "worker-start-gates.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-start-gates.g00000001.jsonl",
+        "after",
+        "after",
+        "after"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "start_gate_journal:encoding_drift": {
+    "trace": [
+      "seal",
+      [
+        "target",
+        "worker-start-gates.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-start-gates.g00000001.jsonl",
+        "after",
+        "after",
+        "after"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_active_changed",
+        "coding_worker_segment_active_changed",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a",
+      "1": "64726966740a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": ""
+    }
+  },
+  "supervisor_journal:plain": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-supervisor.jsonl"
+      ],
+      [
+        "append",
+        "worker-supervisor.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "supervisor_journal:generation_one": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-supervisor.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-supervisor.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "1": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "1": "6f6c640a6e65770a"
+    }
+  },
+  "supervisor_journal:legacy_name": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-supervisor.jsonl"
+      ],
+      [
+        "append",
+        "worker-supervisor.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "supervisor_journal:seal_count": {
+    "trace": [
+      "seal",
+      "path",
+      [
+        "target",
+        "worker-supervisor.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-supervisor.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "supervisor_journal:seal_bytes": {
+    "trace": [
+      "seal",
+      "path",
+      [
+        "target",
+        "worker-supervisor.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-supervisor.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "supervisor_journal:seal_capacity": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "AttributeError",
+        "module 'loushang.coding.package_product_worker_supervisor_journal' has no attribute 'WorkerSupervisorJournalError'",
+        null,
+        false
+      ],
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_capacity",
+        "coding_worker_segment_capacity",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "supervisor_journal:seal_corrupt": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "AttributeError",
+        "module 'loushang.coding.package_product_worker_supervisor_journal' has no attribute 'WorkerSupervisorJournalError'",
+        null,
+        false
+      ],
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_head_corrupt",
+        "coding_worker_segment_head_corrupt",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "supervisor_journal:seal_oserror": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "OSError",
+        "seal",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "supervisor_journal:target": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-supervisor.jsonl"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "target",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "supervisor_journal:append_before": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-supervisor.jsonl"
+      ],
+      [
+        "append",
+        "worker-supervisor.jsonl",
+        "before",
+        "before",
+        "before"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "append",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "supervisor_journal:append_after": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-supervisor.jsonl"
+      ],
+      [
+        "append",
+        "worker-supervisor.jsonl",
+        "before",
+        "before",
+        "before"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "append",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "supervisor_journal:commit_before": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-supervisor.jsonl"
+      ],
+      [
+        "append",
+        "worker-supervisor.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "OSError",
+        "commit",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "supervisor_journal:commit_after": {
+    "trace": [
+      "path",
+      [
+        "target",
+        "worker-supervisor.jsonl"
+      ],
+      [
+        "append",
+        "worker-supervisor.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "OSError",
+        "commit",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "supervisor_journal:late_config": {
+    "trace": [
+      "seal",
+      "path",
+      [
+        "target",
+        "worker-supervisor.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-supervisor.g00000001.jsonl",
+        "after",
+        "after",
+        "after"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "supervisor_journal:encoding_drift": {
+    "trace": [
+      "seal",
+      "path",
+      [
+        "target",
+        "worker-supervisor.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-supervisor.g00000001.jsonl",
+        "after",
+        "after",
+        "after"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_active_changed",
+        "coding_worker_segment_active_changed",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a",
+      "1": "64726966740a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": ""
+    }
+  },
+  "opt_in:plain": {
+    "trace": [
+      [
+        "target",
+        "worker-opt-in.jsonl"
+      ],
+      [
+        "append",
+        "worker-opt-in.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "opt_in:generation_one": {
+    "trace": [
+      [
+        "target",
+        "worker-opt-in.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-opt-in.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "1": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "1": "6f6c640a6e65770a"
+    }
+  },
+  "opt_in:legacy_name": {
+    "trace": [
+      [
+        "target",
+        "worker-opt-in.jsonl"
+      ],
+      [
+        "append",
+        "worker-opt-in.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "opt_in:seal_count": {
+    "trace": [
+      "seal",
+      [
+        "target",
+        "worker-opt-in.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-opt-in.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "opt_in:seal_bytes": {
+    "trace": [
+      "seal",
+      [
+        "target",
+        "worker-opt-in.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-opt-in.g00000001.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "opt_in:seal_capacity": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "CodingWorkerOptInJournalError",
+        "coding_worker_segment_capacity",
+        "coding_worker_segment_capacity",
+        true
+      ],
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_capacity",
+        "coding_worker_segment_capacity",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "opt_in:seal_corrupt": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "CodingWorkerOptInJournalError",
+        "coding_worker_segment_head_corrupt",
+        "coding_worker_segment_head_corrupt",
+        true
+      ],
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_head_corrupt",
+        "coding_worker_segment_head_corrupt",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "opt_in:seal_oserror": {
+    "trace": [
+      "seal"
+    ],
+    "error": [
+      [
+        "OSError",
+        "seal",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "opt_in:target": {
+    "trace": [
+      [
+        "target",
+        "worker-opt-in.jsonl"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "target",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "opt_in:append_before": {
+    "trace": [
+      [
+        "target",
+        "worker-opt-in.jsonl"
+      ],
+      [
+        "append",
+        "worker-opt-in.jsonl",
+        "before",
+        "before",
+        "before"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "append",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "opt_in:append_after": {
+    "trace": [
+      [
+        "target",
+        "worker-opt-in.jsonl"
+      ],
+      [
+        "append",
+        "worker-opt-in.jsonl",
+        "before",
+        "before",
+        "before"
+      ]
+    ],
+    "error": [
+      [
+        "OSError",
+        "append",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "opt_in:commit_before": {
+    "trace": [
+      [
+        "target",
+        "worker-opt-in.jsonl"
+      ],
+      [
+        "append",
+        "worker-opt-in.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "OSError",
+        "commit",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a"
+    }
+  },
+  "opt_in:commit_after": {
+    "trace": [
+      [
+        "target",
+        "worker-opt-in.jsonl"
+      ],
+      [
+        "append",
+        "worker-opt-in.jsonl",
+        "before",
+        "before",
+        "before"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "OSError",
+        "commit",
+        null,
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a6e65770a"
+    }
+  },
+  "opt_in:late_config": {
+    "trace": [
+      "seal",
+      [
+        "target",
+        "worker-opt-in.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-opt-in.g00000001.jsonl",
+        "after",
+        "after",
+        "after"
+      ],
+      "commit"
+    ],
+    "error": null,
+    "data": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": "6e65770a"
+    }
+  },
+  "opt_in:encoding_drift": {
+    "trace": [
+      "seal",
+      [
+        "target",
+        "worker-opt-in.g00000001.jsonl"
+      ],
+      [
+        "append",
+        "worker-opt-in.g00000001.jsonl",
+        "after",
+        "after",
+        "after"
+      ],
+      "commit"
+    ],
+    "error": [
+      [
+        "CodingWorkerHistorySegmentError",
+        "coding_worker_segment_active_changed",
+        "coding_worker_segment_active_changed",
+        false
+      ]
+    ],
+    "data": {
+      "0": "6f6c640a",
+      "1": "64726966740a"
+    },
+    "heads": {
+      "0": "6f6c640a",
+      "1": ""
+    }
+  }
+}

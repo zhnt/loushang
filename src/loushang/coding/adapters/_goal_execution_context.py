@@ -7,21 +7,12 @@ from dataclasses import dataclass, field
 
 from loushang.ai.json_codec import deserialize_message, serialize_message
 from loushang.ai.tool.transform import MessagePairingError, transform_messages_result
-from loushang.ai.types import ImagePart, UserMessage
 from loushang.harness.multiagent import (
     AgentRef,
     ControlLimits,
     ForkTier,
-    MappedHistoryMessage,
-    SubagentContextFactory,
-    TranscriptWatermark,
 )
-from loushang.harness.transcript.profile import (
-    AgentTranscriptProfile,
-    context_item_to_model_message,
-)
-from loushang.harness.transcript.session_images import hydrate_session_message_images
-from loushang.harness.transcript.types import SessionImagePart
+from loushang.harness.session.multiagent import build_agent_context_plan
 from loushang.harnesswork.goal import GoalError
 from loushang.harnesswork.goal.records import canonical
 
@@ -89,66 +80,33 @@ def message_digest(messages):
     return digest(canonical([serialize_message(m) for m in messages]).encode())
 
 
-class _HistorySource:
-    def __init__(self, manager, blobs):
-        self.manager, self.blobs = manager, blobs
-
-    def records_to(self, record_id):
-        records = self.manager.get_branch(record_id)
-        if not records or records[-1].record_id != record_id:
-            raise GoalError("inherited history watermark unavailable")
-        profile = AgentTranscriptProfile.default()
-        if any(
-            (r.kind, r.payload_version) not in profile.payload_codecs.registered_keys
-            for r in records
-        ):
-            raise GoalError("unsupported inherited Transcript record")
-        projection = profile.replay_projection(records)
-        selected = []
-        for item in projection.items:
-            hydrated = hydrate_session_message_images(item, self.blobs)
-            content = getattr(item, "content", None)
-            if isinstance(content, list):
-                after = getattr(hydrated, "content", ())
-                if any(
-                    isinstance(part, SessionImagePart)
-                    and not isinstance(after[index], ImagePart)
-                    for index, part in enumerate(content)
-                ):
-                    raise GoalError("inherited image could not be preserved")
-            message = context_item_to_model_message(hydrated)
-            if message is None:
-                raise GoalError("unsupported inherited context message")
-            # Original codecs detach nested mutable tool arguments/content too.
-            detached = deserialize_message(
-                json.loads(canonical(serialize_message(message)))
-            )
-            selected.append(
-                MappedHistoryMessage(detached, isinstance(detached, UserMessage))
-            )
-        return tuple(selected)
+def detach_message(message):
+    return deserialize_message(json.loads(canonical(serialize_message(message))))
 
 
 def build_context(
     *, session, blobs, choice, system_prompt, source_identity, watermark=None
 ):
-    manager = session.session_manager
-    if manager.header.conversation_id != session.session_id:
-        raise GoalError("parent history Session identity mismatch")
-    if choice.mode == "inherit":
-        watermark = watermark or manager.get_leaf_id()
-        if not watermark:
-            raise GoalError("inherit requires a committed parent watermark")
-    else:
-        watermark = None
-    plan = SubagentContextFactory(
-        source=_HistorySource(manager, blobs), mapper=lambda value: (value,)
-    ).build(
-        tier=choice.tier,
-        watermark=TranscriptWatermark(watermark) if watermark else None,
+    plan, watermark = build_agent_context_plan(
+        session=session,
+        blobs=blobs,
+        choice=choice,
+        watermark=watermark,
         system_prompt=system_prompt,
         allowed_tools=TOOLS,
+        error_type=GoalError,
+        detach_message=detach_message,
     )
+    return plan, context_material(
+        session_id=session.session_id,
+        source_identity=source_identity,
+        choice=choice,
+        plan=plan,
+        watermark=watermark,
+    )
+
+
+def context_material(*, session_id, source_identity, choice, plan, watermark):
     history = plan.history
     if (
         choice.mode == "inherit"
@@ -166,7 +124,7 @@ def build_context(
         raise GoalError("inherited history needs tool/message repair")
     material = {
         "mapper": MAPPER,
-        "source_session_id": session.session_id if watermark else None,
+        "source_session_id": session_id if watermark else None,
         "source_store_identity": source_identity if watermark else None,
         "watermark": watermark,
         "requested_tier": choice.tier.mode,
@@ -176,4 +134,4 @@ def build_context(
         "messages_sha256": message_digest(history.messages),
         "diagnostics": [d.code for d in history.diagnostics],
     }
-    return plan, material
+    return material

@@ -1,0 +1,1322 @@
+{
+  "loushang.hosting._child_session_host:_await_owned": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": [
+        "ValueError",
+        "child failed"
+      ],
+      "__context__": [
+        "ValueError",
+        "child failed"
+      ],
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.hosting._endpoint_host:_await_owned": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": [
+        "ValueError",
+        "child failed"
+      ],
+      "__context__": [
+        "ValueError",
+        "child failed"
+      ],
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.hosting._process_host:_await_owned": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": [
+        "ValueError",
+        "child failed"
+      ],
+      "__context__": [
+        "ValueError",
+        "child failed"
+      ],
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.hosting._launch_preparation:_await_owned": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": [
+        "ValueError",
+        "child failed"
+      ],
+      "__context__": [
+        "ValueError",
+        "child failed"
+      ],
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.harness.worker.hosting_adapter:_await_owned": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": [
+        "ValueError",
+        "child failed"
+      ],
+      "__context__": [
+        "ValueError",
+        "child failed"
+      ],
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.harness.worker.session:_await_owned": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": [
+        "ValueError",
+        "child failed"
+      ],
+      "__context__": [
+        "ValueError",
+        "child failed"
+      ],
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.harness.workspace.process.hosting_compat:_await_owned": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": [
+        "ValueError",
+        "child failed"
+      ],
+      "__context__": [
+        "ValueError",
+        "child failed"
+      ],
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.apphost.application:_join_owned": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "second caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "child cancelled",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.harness.runtime._owned_tasks:_await_cancellation_atomic": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "second caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "child cancelled",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.harness.extensions.runner:_join_cancellation_atomic": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "second caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "child cancelled",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.harness.extensions.generation:_join_cleanup": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "second caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "child cancelled",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.apphost.continuity:_join_report": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "second caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "child cancelled",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.apphost.continuity:_join_runtime": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "second caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "child cancelled",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.coding.hosted_continuity:_join_runtime": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "second caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "child cancelled",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    }
+  },
+  "loushang.appservice.continuity_runtime:_join_owned": {
+    "finished_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "finished_cancelled": {
+      "error": "CancelledError",
+      "message": "",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    },
+    "running_success": {
+      "value": "child result",
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "running_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 0
+    },
+    "caller_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "caller_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "second caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 2
+    },
+    "caller_cancel_failure": {
+      "error": "ValueError",
+      "message": "child failed",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": false,
+      "caller_cancelling": 1
+    },
+    "caller_cancel_task_cancel": {
+      "error": "CancelledError",
+      "message": "child cancelled",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": true,
+      "caller_cancelled": true,
+      "caller_cancelling": 1
+    },
+    "cleared_repeat_cancel_success": {
+      "error": "CancelledError",
+      "message": "first caller cancellation",
+      "__cause__": null,
+      "__context__": null,
+      "child_cancelled": false,
+      "caller_cancelled": true,
+      "caller_cancelling": 0
+    }
+  }
+}

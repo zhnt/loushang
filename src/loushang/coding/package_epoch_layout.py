@@ -7,6 +7,7 @@ import re
 import stat
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 from loushang.coding._plugin_lifecycle import CodingPluginLifecycleStateLayout
 
@@ -35,6 +36,13 @@ _LIFECYCLE_MEMBER_DOMAINS = {
     "session-owners": "instance_state",
 }
 _LIFECYCLE_DIRECTORY_MEMBERS = frozenset({"process-startups", "session-owners"})
+
+
+class _FencedRuntimeOpenKwargs(TypedDict):
+    authority_root: Path
+    control_root: Path
+    store_id: str
+    epochs_root_name: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +80,16 @@ class CodingPackageEpochLayoutV1:
             for right in roots[index + 1 :]
         ):
             raise ValueError("Coding Package epoch authorities overlap")
+
+    def fenced_runtime_open_kwargs(self) -> _FencedRuntimeOpenKwargs:
+        """Bind the existing fenced runtime entry points to this layout."""
+
+        return {
+            "authority_root": self.authority_root,
+            "control_root": self.control_root,
+            "store_id": self.store_id,
+            "epochs_root_name": self.epochs_root_name,
+        }
 
     @property
     def legacy_root(self) -> Path:

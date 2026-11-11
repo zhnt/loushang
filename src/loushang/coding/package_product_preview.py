@@ -25,15 +25,13 @@ from loushang.harness.package_product.product_worker_candidate import (
     WorkerPackageCandidateV1,
     verify_product_selected_worker_candidate,
 )
+from loushang.harness.plugin_management.assembly import bind_plugin_desired_state
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentCompositionPreviewV1,
     PluginCurrentResourceAdmissionV1,
     PluginCurrentResourceSelectionV1,
 )
-from loushang.harness.plugin_management.ledger import (
-    PluginDesiredStateLedger,
-    PluginDesiredStateSnapshotV1,
-)
+from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
 )
@@ -465,11 +463,7 @@ class CodingFencedProductReadOnlyPreviewOwner:
             raise TypeError("Coding Plugin lifecycle layout is required")
         epoch = resolve_coding_package_epoch_layout(layout)
         runtime = PackageProductPosixFencedRuntimeOwner.open(
-            authority_root=epoch.authority_root,
-            control_root=epoch.control_root,
-            store_id=epoch.store_id,
-            epochs_root_name=epoch.epochs_root_name,
-            read_only=True,
+            **epoch.fenced_runtime_open_kwargs(), read_only=True
         )
         try:
             if workspace_guard is not None:
@@ -536,11 +530,10 @@ class CodingFencedProductReadOnlyPreviewOwner:
                     read_only=True,
                 ).extend_policy(policy)
             strict = JournalLoadPolicy(partial_tail="raise", create_lock=False)
-            gate = PluginPackageGcReservationJournal(
-                state_root / "gc-reservations.jsonl", load_policy=strict
-            )
-            desired = PluginDesiredStateLedger(
-                state_root / "desired-state.jsonl", gc_gate=gate, load_policy=strict
+            desired_binding = bind_plugin_desired_state(
+                state_root / "gc-reservations.jsonl",
+                state_root / "desired-state.jsonl",
+                load_policy=strict,
             )
             settlements = PackageStoreSettlementJournal(
                 state_root / "root-settlements.jsonl"
@@ -549,7 +542,7 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 product_id=policy.product_id,
                 scope_id=policy.project_scope_id,
                 installation_scope="workspace",
-                desired_state=desired,
+                desired_state=desired_binding.desired,
                 bindings=PluginPackageGcBindingJournal(
                     state_root / "gc-bindings.jsonl"
                 ),
@@ -562,7 +555,7 @@ class CodingFencedProductReadOnlyPreviewOwner:
                     store_identity=f"coding-product-root-store:{epoch.store_id}",
                     settlement_journal=settlements,
                 ),
-                gc_gate=gate,
+                gc_gate=desired_binding.gc_reservations,
             )
             runtime.assert_current()
             if workspace_guard is not None:
@@ -573,7 +566,7 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 selected_manifests=_LocalWheelSelectedManifestReader(
                     policy=policy, root_reader=root_reader, read_only=True
                 ),
-                gc_gate=gate,
+                gc_gate=desired_binding.gc_reservations,
                 worker_candidates=worker_candidates,
             )
         except BaseException:

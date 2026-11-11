@@ -16,8 +16,8 @@ from typing import cast
 
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
-from loushang.ai.types import AssistantMessage
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
+from loushang.apphost.integrations.session_control import _HostedAgentExecutionWork
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -734,7 +734,7 @@ class _ActivatedHostedResumeV1:
     input_record_id: str
 
 
-class _HostedResumeExecutionWorkV1:
+class _HostedResumeExecutionWorkV1(_HostedAgentExecutionWork):
     def __init__(
         self,
         binding: CodingDeferredHostedSessionV1,
@@ -754,14 +754,11 @@ class _HostedResumeExecutionWorkV1:
         self._submission_id = submission_id
         self._session: AgentSession | None = None
         self._interrupted = False
-        self._outcome: ExecutionOutcomeV1 | None = None
+        self._agent_outcome: ExecutionOutcomeV1 | None = None
         self._unsubscribe: Callable[[], None] | None = None
         self._unbind_turn: Callable[[], None] | None = None
 
     async def run(self, control: ExecutionControlV1) -> ExecutionOutcomeV1:
-        from loushang.agent import AbortSignal
-        from loushang.agent.types import AgentEvent
-
         if self._cancel_requested():
             return ExecutionOutcomeV1(ExecutionStatusV1.INTERRUPTED)
         try:
@@ -774,35 +771,8 @@ class _HostedResumeExecutionWorkV1:
             )
             session = activated.session
             self._session = session
-
-            def observe(event: AgentEvent, signal: AbortSignal) -> None:
-                if event["type"] == "agent_end":
-                    for message in reversed(event["messages"]):
-                        if isinstance(message, AssistantMessage):
-                            self._outcome = ExecutionOutcomeV1(
-                                ExecutionStatusV1.INTERRUPTED
-                                if message.stop_reason == "aborted"
-                                else ExecutionStatusV1.FAILED
-                                if message.stop_reason == "error"
-                                else ExecutionStatusV1.SUCCEEDED,
-                                error_code=(
-                                    "assistant_response_error"
-                                    if message.stop_reason == "error"
-                                    else None
-                                ),
-                            )
-                            break
-
-            self._unsubscribe = session.agent.subscribe(observe)
-            self._unbind_turn = control.bind_turn_interrupt(
-                lambda: session.abort() if session.is_streaming else False
-            )
-            await session._run_published_resume_input(
-                attempt_id=activated.attempt_id,
-                input_record_id=activated.input_record_id,
-            )
-            return self._outcome or ExecutionOutcomeV1(
-                ExecutionStatusV1.FAILED, error_code="missing_agent_outcome"
+            return await self._execute_published_input(
+                control, session, activated.attempt_id, activated.input_record_id
             )
         except asyncio.CancelledError:
             self._interrupted = True
@@ -810,22 +780,14 @@ class _HostedResumeExecutionWorkV1:
                 self._session.abort()
             raise
         finally:
-            if self._unbind_turn is not None:
-                self._unbind_turn()
-                self._unbind_turn = None
+            self._clear_turn()
 
     async def settle(self) -> None:
-        if self._session is not None:
-            await self._session.settle_execution(interrupted=self._interrupted)
-        if self._unsubscribe is not None:
-            self._unsubscribe()
-            self._unsubscribe = None
+        await self._settle_published_input(self._session)
         if (
-            not self._cancel_requested() and self._outcome is not None
-            and self._outcome.status is ExecutionStatusV1.SUCCEEDED
+            not self._cancel_requested() and self._agent_outcome is not None
+            and self._agent_outcome.status is ExecutionStatusV1.SUCCEEDED
         ):
             self._binding.start_title_if_unnamed()
-
-
 
 __all__ = ["CodingDeferredHostedSessionV1"]

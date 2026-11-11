@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 import stat
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TypeAlias
 
+from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.journal._io_loops import write_all
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
 )
@@ -33,10 +37,14 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     open_windows_directory,
+    open_windows_regular_file_at,
     supports_windows_rooted_io,
     windows_flush_directory,
+    windows_flush_file,
     windows_listdir_at,
     windows_rmdir_at,
+    windows_stat_at,
+    windows_unlink_at,
 )
 
 # B4c1 froze a pathless cross-platform wire shape before the Windows backend
@@ -137,6 +145,89 @@ class _PinnedWindowsAuthority:
                 self._descriptors[:-1],
             )
             os.close(descriptor)
+
+
+@contextmanager
+def _hold_windows_private_cutover_directory(
+    parent_path: Path,
+    *,
+    prefix: str,
+    projection_name: str,
+    projection_label: str,
+    projection_contents: bytes | None = None,
+) -> Iterator[Path]:
+    """Hold the cutover's ACL-checked temporary root through exact cleanup."""
+
+    name = prefix + secrets.token_hex(16)
+    with WindowsPrivateDirectoryAcl() as acl:
+        parent = _PinnedWindowsAuthority.open(parent_path, read_control=True)
+        child: int | None = None
+        child_identity: tuple[int, int] | None = None
+        file_identity: tuple[int, int] | None = None
+        try:
+            acl.validate(parent.descriptor)
+            child = open_windows_directory(
+                name,
+                dir_fd=parent.descriptor,
+                create_new=True,
+                share_delete=False,
+                security_descriptor=acl.security_descriptor,
+                read_control=True,
+            )
+            child_metadata = os.fstat(child)
+            child_identity = child_metadata.st_dev, child_metadata.st_ino
+            acl.validate(child)
+            if projection_contents is not None:
+                descriptor = open_windows_regular_file_at(
+                    child,
+                    projection_name,
+                    create_new=True,
+                    write=True,
+                    security_descriptor=acl.security_descriptor,
+                    read_control=True,
+                )
+                try:
+                    file_metadata = os.fstat(descriptor)
+                    file_identity = file_metadata.st_dev, file_metadata.st_ino
+                    acl.validate(descriptor)
+                    write_all(
+                        lambda pending: os.write(descriptor, pending),
+                        projection_contents,
+                        message=f"{projection_label} write made no progress",
+                    )
+                    windows_flush_file(descriptor)
+                finally:
+                    os.close(descriptor)
+            windows_flush_directory(child)
+            windows_flush_directory(parent.descriptor)
+            parent.assert_visible()
+            yield parent_path / name
+        finally:
+            try:
+                if child is not None:
+                    try:
+                        if file_identity is not None:
+                            visible_file = windows_stat_at(child, projection_name)
+                            if (
+                                visible_file.st_dev,
+                                visible_file.st_ino,
+                            ) != file_identity:
+                                raise OSError(f"{projection_label} file changed")
+                            windows_unlink_at(child, projection_name)
+                            windows_flush_directory(child)
+                    finally:
+                        os.close(child)
+                if child_identity is not None:
+                    visible_child = windows_stat_at(parent.descriptor, name)
+                    if (
+                        visible_child.st_dev,
+                        visible_child.st_ino,
+                    ) != child_identity:
+                        raise OSError(f"{projection_label} directory changed")
+                    windows_rmdir_at(parent.descriptor, name)
+                    windows_flush_directory(parent.descriptor)
+            finally:
+                parent.close()
 
 
 def _open_ancestor_chain(root: Path, *, read_control: bool = False) -> tuple[int, ...]:
@@ -365,85 +456,14 @@ class PackageWindowsEpochCutoverOwner(_PackageEpochCutoverWorkflow):
                 "Windows Package epoch reopen is unavailable",
                 code="package_epoch_cutover_unavailable",
             )
-        if (
-            not isinstance(authority_root, Path)
-            or not authority_root.is_absolute()
-            or ".." in authority_root.parts
-            or authority_root == Path(authority_root.anchor)
-            or not isinstance(epoch_journal, PackageEpochFenceJournal)
-        ):
-            raise ValueError("Package epoch reopen authority is invalid")
-        _require_safe_id(store_id, name="Package store identity")
-        _require_component(epochs_root_name, name="Package epochs root name")
-        records = epoch_journal.records()
-        if not records or records[-1].receipt.store_id != store_id:
-            raise PackageWindowsEpochCutoverError(
-                "Package epoch fence is unavailable",
-                code="package_epoch_fence_stale",
-            )
-        current = records[-1].receipt
-        prior = records[-2].receipt if len(records) > 1 else None
-        source = current.request
-        request = PackageWindowsEpochCutoverRequestV1.create(
+
+        return PackageWindowsEpochCutoverOwner._reopen_fenced(
+            authority_root,
             store_id=store_id,
-            prior_fence=prior,
-            expected_legacy_root_identity=source.legacy_root_identity,
-            namespace_id=source.namespace_id,
-            minimum_runtime_version=source.minimum_runtime_version,
-            minimum_runtime_protocol_epoch=source.minimum_runtime_protocol_epoch,
-        )
-        switch = PackageWindowsEpochRootSwitchReceiptV1.create(
-            request,
-            fenced_root_identity=source.fenced_root_identity,
-            quiescence_receipt_id=source.quiescence_receipt_id,
-            snapshot_receipt_id=source.snapshot_receipt_id,
-        )
-        if switch.switch_receipt_id != source.root_switch_receipt_id:
-            raise _identity_changed()
-        try:
-            pinned = _PinnedWindowsAuthority.open(authority_root)
-            try:
-                epochs_fd = pinned.open_authority_child(epochs_root_name)
-                try:
-                    epochs_identity = _directory_native_identity(epochs_fd)
-                    selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
-                    try:
-                        if (
-                            _directory_identity(selected_fd)
-                            != source.fenced_root_identity
-                        ):
-                            raise _identity_changed()
-                    finally:
-                        os.close(selected_fd)
-                finally:
-                    os.close(epochs_fd)
-                pinned.assert_visible()
-                epochs_fd = pinned.open_authority_child(
-                    epochs_root_name, expected_identity=epochs_identity
-                )
-                try:
-                    selected_fd = _open_directory_at(epochs_fd, source.namespace_id)
-                    try:
-                        if (
-                            _directory_identity(selected_fd)
-                            != source.fenced_root_identity
-                        ):
-                            raise _identity_changed()
-                    finally:
-                        os.close(selected_fd)
-                finally:
-                    os.close(epochs_fd)
-            finally:
-                pinned.close()
-        except Exception as exc:
-            raise _native_error(exc) from exc
-        if epoch_journal.current(store_id) != current:
-            raise PackageWindowsEpochCutoverError(
-                "Package epoch changed during reopen",
-                code="package_epoch_fence_stale",
-            )
-        return PackageWindowsEpochCutoverResultV1.fenced(
-            request, fence=current, switch_receipt=switch
+            epoch_journal=epoch_journal,
+            epochs_root_name=epochs_root_name,
+            open_authority=lambda root: _PinnedWindowsAuthority.open(root),
+            native_identity=lambda descriptor: _directory_native_identity(descriptor),
         )
 
     def __init__(

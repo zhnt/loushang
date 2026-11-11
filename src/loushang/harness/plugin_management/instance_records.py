@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from hashlib import sha256
-from typing import Literal, TypeVar, cast
+from typing import Literal
 
-from loushang.foundation.json import JsonValueError, require_json_mapping
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
     JournalCodecError,
@@ -14,10 +13,21 @@ from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1,
     PluginLifecycleCodecError,
     PluginPackageRevisionRefV1,
+    _record_document,
+    _require_nonempty,
+    _require_positive_integer,
+)
+from loushang.harness.plugin_management.records import (
+    _require_digest as _require_sha256,
 )
 from loushang.harness.plugin_management.retirement import (
     PluginRetirementIntentV1,
     PluginRetirementRecordCodecError,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+    decode_nullable,
 )
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.declarations import PluginDeclarationCodecError
@@ -63,10 +73,7 @@ _LEASE_KINDS = frozenset(
         "agent_membership",
     }
 )
-_RESULT_CODE_CHARACTERS = frozenset(
-    "abcdefghijklmnopqrstuvwxyz0123456789._-:"
-)
-_NestedT = TypeVar("_NestedT")
+_RESULT_CODE_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789._-:")
 
 
 class PluginInstanceRuntimeRecordCodecError(JournalCodecError):
@@ -137,38 +144,15 @@ class PluginInstanceLeaseMemberV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginInstanceLeaseMemberV1:
-        document = _wire_object(value, name="Plugin Instance lease member")
-        _wire_exact_fields(
-            document,
-            keys={
-                "familyId",
-                "installationKey",
-                "instanceRevisionRef",
-                "leaseId",
-                "memberVersion",
-                "packageRevision",
-            },
+        document = _decode_document(
+            value,
             name="Plugin Instance lease member",
-        )
-        _wire_version(
-            document.get("memberVersion"),
-            expected=PLUGIN_INSTANCE_LEASE_MEMBER_VERSION,
+            schema=_PLUGININSTANCELEASEMEMBER_SCHEMA,
+            version=PLUGIN_INSTANCE_LEASE_MEMBER_VERSION,
+            version_field="memberVersion",
         )
         try:
-            return cls(
-                lease_id=_wire_string(document["leaseId"], name="lease id"),
-                family_id=_wire_string(document["familyId"], name="family id"),
-                installation_key=PluginInstallationKeyV1.from_dict(
-                    document["installationKey"]
-                ),
-                instance_revision_ref=PluginInstanceRevisionRef.from_dict(
-                    document["instanceRevisionRef"]
-                ),
-                package_revision=PluginPackageRevisionRefV1.from_dict(
-                    document["packageRevision"]
-                ),
-                member_version=PLUGIN_INSTANCE_LEASE_MEMBER_VERSION,
-            )
+            return _PLUGININSTANCELEASEMEMBER_SCHEMA.decode(cls, document)
         except PluginInstanceRuntimeRecordCodecError:
             raise
         except (
@@ -258,7 +242,9 @@ class PluginInstanceLeaseFamilyV1:
                 for member in self.members
             ),
         ):
-            raise ValueError("Plugin Instance lease family id does not match its fields")
+            raise ValueError(
+                "Plugin Instance lease family id does not match its fields"
+            )
 
     @classmethod
     def create(
@@ -322,25 +308,12 @@ class PluginInstanceLeaseFamilyV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginInstanceLeaseFamilyV1:
-        document = _wire_object(value, name="Plugin Instance lease family")
-        _wire_exact_fields(
-            document,
-            keys={
-                "familyId",
-                "familyVersion",
-                "holderReference",
-                "idempotencyKey",
-                "leaseKind",
-                "members",
-                "operationId",
-                "parentFamilyId",
-                "sourceInventoryRevision",
-            },
+        document = _decode_document(
+            value,
             name="Plugin Instance lease family",
-        )
-        _wire_version(
-            document.get("familyVersion"),
-            expected=PLUGIN_INSTANCE_LEASE_FAMILY_VERSION,
+            schema=_PLUGININSTANCELEASEFAMILY_SCHEMA,
+            version=PLUGIN_INSTANCE_LEASE_FAMILY_VERSION,
+            version_field="familyVersion",
         )
         try:
             lease_kind = _wire_string(document["leaseKind"], name="lease kind")
@@ -349,31 +322,9 @@ class PluginInstanceLeaseFamilyV1:
             members = document["members"]
             if not isinstance(members, list):
                 raise ValueError("Plugin Instance lease members must be a JSON array")
-            return cls(
-                family_id=_wire_string(document["familyId"], name="family id"),
-                lease_kind=cast(PluginInstanceLeaseKind, lease_kind),
-                operation_id=_wire_string(
-                    document["operationId"], name="operation id"
-                ),
-                idempotency_key=_wire_string(
-                    document["idempotencyKey"], name="idempotency key"
-                ),
-                holder_reference=_wire_string(
-                    document["holderReference"], name="holder reference"
-                ),
-                parent_family_id=_wire_optional_string(
-                    document["parentFamilyId"], name="parent family id"
-                ),
-                source_inventory_revision=_wire_optional_integer(
-                    document["sourceInventoryRevision"],
-                    name="source inventory revision",
-                ),
-                members=tuple(
-                    PluginInstanceLeaseMemberV1.from_dict(member)
-                    for member in members
-                ),
-                family_version=PLUGIN_INSTANCE_LEASE_FAMILY_VERSION,
-            )
+            document["leaseKind"] = lease_kind
+            document["members"] = members
+            return _PLUGININSTANCELEASEFAMILY_SCHEMA.decode(cls, document)
         except PluginInstanceRuntimeRecordCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -488,47 +439,15 @@ class PluginInstanceActivationV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginInstanceActivationV1:
-        document = _wire_object(value, name="Plugin Instance activation")
-        _wire_exact_fields(
-            document,
-            keys={
-                "activationId",
-                "activationVersion",
-                "directHostFamily",
-                "installationKey",
-                "instanceRevisionRef",
-                "packageRevision",
-                "sourceInventoryRevision",
-            },
+        document = _decode_document(
+            value,
             name="Plugin Instance activation",
-        )
-        _wire_version(
-            document.get("activationVersion"),
-            expected=PLUGIN_INSTANCE_ACTIVATION_VERSION,
+            schema=_PLUGININSTANCEACTIVATION_SCHEMA,
+            version=PLUGIN_INSTANCE_ACTIVATION_VERSION,
+            version_field="activationVersion",
         )
         try:
-            return cls(
-                activation_id=_wire_string(
-                    document["activationId"], name="activation id"
-                ),
-                installation_key=PluginInstallationKeyV1.from_dict(
-                    document["installationKey"]
-                ),
-                instance_revision_ref=PluginInstanceRevisionRef.from_dict(
-                    document["instanceRevisionRef"]
-                ),
-                package_revision=PluginPackageRevisionRefV1.from_dict(
-                    document["packageRevision"]
-                ),
-                source_inventory_revision=_wire_integer(
-                    document["sourceInventoryRevision"],
-                    name="source inventory revision",
-                ),
-                direct_host_family=PluginInstanceLeaseFamilyV1.from_dict(
-                    document["directHostFamily"]
-                ),
-                activation_version=PLUGIN_INSTANCE_ACTIVATION_VERSION,
-            )
+            return _PLUGININSTANCEACTIVATION_SCHEMA.decode(cls, document)
         except PluginInstanceRuntimeRecordCodecError:
             raise
         except (
@@ -572,36 +491,15 @@ class PluginInstanceLeaseFamilyReleaseV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginInstanceLeaseFamilyReleaseV1:
-        document = _wire_object(value, name="Plugin Instance lease family release")
-        _wire_exact_fields(
-            document,
-            keys={
-                "familyId",
-                "idempotencyKey",
-                "operationId",
-                "releaseReference",
-                "releaseVersion",
-            },
+        document = _decode_document(
+            value,
             name="Plugin Instance lease family release",
-        )
-        _wire_version(
-            document.get("releaseVersion"),
-            expected=PLUGIN_INSTANCE_FAMILY_RELEASE_VERSION,
+            schema=_PLUGININSTANCELEASEFAMILYRELEASE_SCHEMA,
+            version=PLUGIN_INSTANCE_FAMILY_RELEASE_VERSION,
+            version_field="releaseVersion",
         )
         try:
-            return cls(
-                family_id=_wire_string(document["familyId"], name="family id"),
-                operation_id=_wire_string(
-                    document["operationId"], name="operation id"
-                ),
-                idempotency_key=_wire_string(
-                    document["idempotencyKey"], name="idempotency key"
-                ),
-                release_reference=_wire_string(
-                    document["releaseReference"], name="release reference"
-                ),
-                release_version=PLUGIN_INSTANCE_FAMILY_RELEASE_VERSION,
-            )
+            return _PLUGININSTANCELEASEFAMILYRELEASE_SCHEMA.decode(cls, document)
         except PluginInstanceRuntimeRecordCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -686,50 +584,15 @@ class PluginInstanceRevocationV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginInstanceRevocationV1:
-        document = _wire_object(value, name="Plugin Instance revocation")
-        _wire_exact_fields(
-            document,
-            keys={
-                "authorityReference",
-                "idempotencyKey",
-                "installationKey",
-                "instanceRevisionRef",
-                "operationId",
-                "reasonCode",
-                "revocationId",
-                "revocationVersion",
-            },
+        document = _decode_document(
+            value,
             name="Plugin Instance revocation",
-        )
-        _wire_version(
-            document.get("revocationVersion"),
-            expected=PLUGIN_INSTANCE_REVOCATION_VERSION,
+            schema=_PLUGININSTANCEREVOCATION_SCHEMA,
+            version=PLUGIN_INSTANCE_REVOCATION_VERSION,
+            version_field="revocationVersion",
         )
         try:
-            return cls(
-                revocation_id=_wire_string(
-                    document["revocationId"], name="revocation id"
-                ),
-                installation_key=PluginInstallationKeyV1.from_dict(
-                    document["installationKey"]
-                ),
-                instance_revision_ref=PluginInstanceRevisionRef.from_dict(
-                    document["instanceRevisionRef"]
-                ),
-                operation_id=_wire_string(
-                    document["operationId"], name="operation id"
-                ),
-                idempotency_key=_wire_string(
-                    document["idempotencyKey"], name="idempotency key"
-                ),
-                authority_reference=_wire_string(
-                    document["authorityReference"], name="authority reference"
-                ),
-                reason_code=_wire_string(
-                    document["reasonCode"], name="reason code"
-                ),
-                revocation_version=PLUGIN_INSTANCE_REVOCATION_VERSION,
-            )
+            return _PLUGININSTANCEREVOCATION_SCHEMA.decode(cls, document)
         except PluginInstanceRuntimeRecordCodecError:
             raise
         except (
@@ -827,60 +690,19 @@ class PluginInstanceRetirementCompletionV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginInstanceRetirementCompletionV1:
-        document = _wire_object(value, name="Plugin Instance retirement completion")
-        _wire_exact_fields(
-            document,
-            keys={
-                "completionId",
-                "completionKind",
-                "completionReference",
-                "completionVersion",
-                "coordinationId",
-                "idempotencyKey",
-                "installationKey",
-                "instanceRevisionRef",
-                "operationId",
-            },
+        document = _decode_document(
+            value,
             name="Plugin Instance retirement completion",
-        )
-        _wire_version(
-            document.get("completionVersion"),
-            expected=PLUGIN_INSTANCE_RETIREMENT_COMPLETION_VERSION,
+            schema=_PLUGININSTANCERETIREMENTCOMPLETION_SCHEMA,
+            version=PLUGIN_INSTANCE_RETIREMENT_COMPLETION_VERSION,
+            version_field="completionVersion",
         )
         try:
-            kind = _wire_string(
-                document["completionKind"], name="completion kind"
-            )
+            kind = _wire_string(document["completionKind"], name="completion kind")
             if kind not in {"graceful", "security"}:
                 raise ValueError("Unsupported Plugin Instance completion kind")
-            return cls(
-                completion_id=_wire_string(
-                    document["completionId"], name="completion id"
-                ),
-                completion_kind=cast(
-                    PluginInstanceRetirementCompletionKind,
-                    kind,
-                ),
-                coordination_id=_wire_string(
-                    document["coordinationId"], name="coordination id"
-                ),
-                installation_key=PluginInstallationKeyV1.from_dict(
-                    document["installationKey"]
-                ),
-                instance_revision_ref=PluginInstanceRevisionRef.from_dict(
-                    document["instanceRevisionRef"]
-                ),
-                operation_id=_wire_string(
-                    document["operationId"], name="operation id"
-                ),
-                idempotency_key=_wire_string(
-                    document["idempotencyKey"], name="idempotency key"
-                ),
-                completion_reference=_wire_string(
-                    document["completionReference"], name="completion reference"
-                ),
-                completion_version=PLUGIN_INSTANCE_RETIREMENT_COMPLETION_VERSION,
-            )
+            document["completionKind"] = kind
+            return _PLUGININSTANCERETIREMENTCOMPLETION_SCHEMA.decode(cls, document)
         except PluginInstanceRuntimeRecordCodecError:
             raise
         except (
@@ -1074,30 +896,15 @@ class PluginInstanceRuntimeEventV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginInstanceRuntimeEventV1:
-        document = _wire_object(value, name="Plugin Instance runtime event")
-        _wire_exact_fields(
-            document,
-            keys={
-                "activation",
-                "completion",
-                "eventKind",
-                "family",
-                "journalRevision",
-                "recordVersion",
-                "release",
-                "retirementIntent",
-                "revocation",
-            },
+        document = _decode_document(
+            value,
             name="Plugin Instance runtime event",
-        )
-        _wire_version(
-            document.get("recordVersion"),
-            expected=PLUGIN_INSTANCE_RUNTIME_EVENT_VERSION,
+            schema=_PLUGININSTANCERUNTIMEEVENT_SCHEMA,
+            version=PLUGIN_INSTANCE_RUNTIME_EVENT_VERSION,
+            version_field="recordVersion",
         )
         try:
-            event_kind = _wire_string(
-                document["eventKind"], name="runtime event kind"
-            )
+            event_kind = _wire_string(document["eventKind"], name="runtime event kind")
             if event_kind not in {
                 "activated",
                 "family_acquired",
@@ -1107,33 +914,8 @@ class PluginInstanceRuntimeEventV1:
                 "retired",
             }:
                 raise ValueError("Unsupported Plugin Instance runtime event kind")
-            return cls(
-                journal_revision=_wire_integer(
-                    document["journalRevision"], name="journal revision"
-                ),
-                event_kind=cast(PluginInstanceRuntimeEventKind, event_kind),
-                activation=_wire_optional_nested(
-                    document["activation"], PluginInstanceActivationV1.from_dict
-                ),
-                family=_wire_optional_nested(
-                    document["family"], PluginInstanceLeaseFamilyV1.from_dict
-                ),
-                retirement_intent=_wire_optional_nested(
-                    document["retirementIntent"], PluginRetirementIntentV1.from_dict
-                ),
-                revocation=_wire_optional_nested(
-                    document["revocation"], PluginInstanceRevocationV1.from_dict
-                ),
-                release=_wire_optional_nested(
-                    document["release"],
-                    PluginInstanceLeaseFamilyReleaseV1.from_dict,
-                ),
-                completion=_wire_optional_nested(
-                    document["completion"],
-                    PluginInstanceRetirementCompletionV1.from_dict,
-                ),
-                record_version=PLUGIN_INSTANCE_RUNTIME_EVENT_VERSION,
-            )
+            document["eventKind"] = event_kind
+            return _PLUGININSTANCERUNTIMEEVENT_SCHEMA.decode(cls, document)
         except PluginInstanceRuntimeRecordCodecError:
             raise
         except (
@@ -1272,33 +1054,6 @@ def plugin_instance_retirement_completion_id(
     return sha256(b"plugin-instance-retirement-completion-v1\0" + payload).hexdigest()
 
 
-def _wire_object(value: object, *, name: str) -> dict[str, object]:
-    try:
-        return cast(dict[str, object], require_json_mapping(value, name=name))
-    except JsonValueError as exc:
-        raise _invalid_record(str(exc)) from exc
-
-
-def _wire_exact_fields(
-    value: dict[str, object], *, keys: set[str], name: str
-) -> None:
-    actual = set(value)
-    if actual != keys:
-        missing = sorted(keys - actual)
-        unknown = sorted(actual - keys)
-        raise _invalid_record(
-            f"{name} fields do not match; missing={missing!r}, unknown={unknown!r}"
-        )
-
-
-def _wire_version(value: object, *, expected: int) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value != expected:
-        raise PluginInstanceRuntimeRecordCodecError(
-            "Unsupported Plugin Instance runtime record version",
-            code="unsupported_plugin_instance_runtime_record_version",
-        )
-
-
 def _wire_string(value: object, *, name: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{name} must be a non-empty string")
@@ -1321,32 +1076,6 @@ def _wire_optional_integer(value: object, *, name: str) -> int | None:
     if value is None:
         return None
     return _wire_integer(value, name=name)
-
-
-def _wire_optional_nested(
-    value: object,
-    decoder: Callable[[object], _NestedT],
-) -> _NestedT | None:
-    if value is None:
-        return None
-    return decoder(value)
-
-
-def _require_nonempty(value: str, *, name: str) -> None:
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{name} must be a non-empty string")
-
-
-def _require_sha256(value: str, *, name: str) -> None:
-    if not isinstance(value, str) or len(value) != 64 or any(
-        character not in "0123456789abcdef" for character in value
-    ):
-        raise ValueError(f"{name} must be a lowercase SHA-256 digest")
-
-
-def _require_positive_integer(value: int, *, name: str) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        raise ValueError(f"{name} must be a positive integer")
 
 
 def _require_result_code(value: str) -> None:
@@ -1396,3 +1125,133 @@ __all__ = [
     "plugin_instance_retirement_completion_id",
     "plugin_instance_revocation_id",
 ]
+
+
+_PLUGININSTANCELEASEMEMBER_SCHEMA = RecordSchema.for_dataclass(
+    PluginInstanceLeaseMemberV1,
+    _wire_string,
+    RecordField("installation_key", decoder=PluginInstallationKeyV1.from_dict),
+    RecordField("instance_revision_ref", decoder=PluginInstanceRevisionRef.from_dict),
+    RecordField("package_revision", decoder=PluginPackageRevisionRefV1.from_dict),
+    RecordField("member_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGININSTANCELEASEFAMILY_SCHEMA = RecordSchema.for_dataclass(
+    PluginInstanceLeaseFamilyV1,
+    _wire_string,
+    RecordField("lease_kind", decoder=lambda value: value),
+    RecordField("parent_family_id", "parent family id", _wire_optional_string),
+    RecordField(
+        "source_inventory_revision", "source inventory revision", _wire_optional_integer
+    ),
+    RecordField(
+        "members",
+        decoder=lambda value: tuple(
+            (PluginInstanceLeaseMemberV1.from_dict(member) for member in value)
+        ),
+    ),
+    RecordField("family_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGININSTANCEACTIVATION_SCHEMA = RecordSchema.for_dataclass(
+    PluginInstanceActivationV1,
+    _wire_string,
+    RecordField("installation_key", decoder=PluginInstallationKeyV1.from_dict),
+    RecordField("instance_revision_ref", decoder=PluginInstanceRevisionRef.from_dict),
+    RecordField("package_revision", decoder=PluginPackageRevisionRefV1.from_dict),
+    RecordField(
+        "source_inventory_revision", "source inventory revision", _wire_integer
+    ),
+    RecordField("direct_host_family", decoder=PluginInstanceLeaseFamilyV1.from_dict),
+    RecordField("activation_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGININSTANCELEASEFAMILYRELEASE_SCHEMA = RecordSchema.for_dataclass(
+    PluginInstanceLeaseFamilyReleaseV1,
+    _wire_string,
+    RecordField("release_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGININSTANCEREVOCATION_SCHEMA = RecordSchema.for_dataclass(
+    PluginInstanceRevocationV1,
+    _wire_string,
+    RecordField("installation_key", decoder=PluginInstallationKeyV1.from_dict),
+    RecordField("instance_revision_ref", decoder=PluginInstanceRevisionRef.from_dict),
+    RecordField("revocation_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGININSTANCERETIREMENTCOMPLETION_SCHEMA = RecordSchema.for_dataclass(
+    PluginInstanceRetirementCompletionV1,
+    _wire_string,
+    RecordField("completion_kind", decoder=lambda value: value),
+    RecordField("installation_key", decoder=PluginInstallationKeyV1.from_dict),
+    RecordField("instance_revision_ref", decoder=PluginInstanceRevisionRef.from_dict),
+    RecordField("completion_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGININSTANCERUNTIMEEVENT_SCHEMA = RecordSchema.for_dataclass(
+    PluginInstanceRuntimeEventV1,
+    _wire_string,
+    RecordField("journal_revision", "journal revision", _wire_integer),
+    RecordField("event_kind", decoder=lambda value: value),
+    RecordField(
+        "activation",
+        decoder=lambda value: decode_nullable(
+            value, decoder=PluginInstanceActivationV1.from_dict
+        ),
+    ),
+    RecordField(
+        "family",
+        decoder=lambda value: decode_nullable(
+            value, decoder=PluginInstanceLeaseFamilyV1.from_dict
+        ),
+    ),
+    RecordField(
+        "retirement_intent",
+        decoder=lambda value: decode_nullable(
+            value, decoder=PluginRetirementIntentV1.from_dict
+        ),
+    ),
+    RecordField(
+        "revocation",
+        decoder=lambda value: decode_nullable(
+            value, decoder=PluginInstanceRevocationV1.from_dict
+        ),
+    ),
+    RecordField(
+        "release",
+        decoder=lambda value: decode_nullable(
+            value, decoder=PluginInstanceLeaseFamilyReleaseV1.from_dict
+        ),
+    ),
+    RecordField(
+        "completion",
+        decoder=lambda value: decode_nullable(
+            value, decoder=PluginInstanceRetirementCompletionV1.from_dict
+        ),
+    ),
+    RecordField("record_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_decode_document = partial(
+    _record_document,
+    invalid_record=_invalid_record,
+    unsupported_version=lambda: PluginInstanceRuntimeRecordCodecError(
+        "Unsupported Plugin Instance runtime record version",
+        code="unsupported_plugin_instance_runtime_record_version",
+    ),
+)

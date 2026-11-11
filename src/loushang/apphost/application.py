@@ -22,6 +22,15 @@ from loushang.appservice.discovery_ports import (
 )
 from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
+from loushang.foundation._owned_tasks import (
+    _join_failure_first,
+)
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _observe_background_result,
+)
+from loushang.foundation._owned_tasks import (
+    _task_failed_or_cancelled as _phase_task_failed,
+)
 
 from .contracts import AppHostShutdownBudgetV1, AppHostShutdownReportV1
 
@@ -503,22 +512,7 @@ def _shutdown_report(
     )
 
 
-async def _join_owned(
-    task: asyncio.Task[HostedApplicationShutdownReportV1],
-) -> HostedApplicationShutdownReportV1:
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as error:
-            if caller is None or caller.cancelling() == 0:
-                return task.result()
-            cancellation = error
-    result = task.result()
-    if cancellation is not None:
-        raise cancellation
-    return result
+_join_owned = _join_failure_first
 
 
 def _method_descriptor(value: object, name: str) -> object:
@@ -526,10 +520,6 @@ def _method_descriptor(value: object, name: str) -> object:
     if isinstance(descriptor, (classmethod, staticmethod)):
         return descriptor.__func__
     return descriptor
-
-
-def _phase_task_failed(task: asyncio.Task[object]) -> bool:
-    return task.done() and (task.cancelled() or task.exception() is not None)
 
 
 def _apphost_phase_needs_retry(task: asyncio.Task[object]) -> bool:
@@ -544,11 +534,6 @@ def _apphost_phase_needs_retry(task: asyncio.Task[object]) -> bool:
 def _require_async_method(value: object, name: str) -> None:
     if not inspect.iscoroutinefunction(_method_descriptor(value, name)):
         raise TypeError(f"hosted application {name} port is invalid")
-
-
-def _observe_background_result(task: asyncio.Task[object]) -> None:
-    if not task.cancelled():
-        task.exception()
 
 
 __all__ = [

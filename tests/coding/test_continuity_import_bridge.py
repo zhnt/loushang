@@ -23,6 +23,7 @@ from loushang.harness.continuity import (
     ContinuityTarget,
     PreparedActivationLease,
 )
+from loushang.harness.continuity import _payload_staging as payload_staging
 
 requires_secure_staging = pytest.mark.skipif(
     not continuity_module._supports_continuity_directory_handles(),
@@ -93,14 +94,14 @@ def _source() -> ContinuityProviderSourceDescriptor:
 def staged_payloads(monkeypatch: pytest.MonkeyPatch):
     """Observe owned handles without replacing the OS identity checks."""
     captured = []
-    original = continuity_module._write_private_continuity_payload
+    original = payload_staging._ContinuityPayloadStaging.write
 
-    def capture(root, payload):
-        staged = original(root, payload)
+    def capture(staging_owner, root, payload):
+        staged = original(staging_owner, root, payload)
         captured.append(staged)
         return staged
 
-    monkeypatch.setattr(continuity_module, "_write_private_continuity_payload", capture)
+    monkeypatch.setattr(payload_staging._ContinuityPayloadStaging, "write", capture)
     yield captured
     for staged in captured:
         for descriptor in (staged.root_descriptor, staged.file_descriptor):
@@ -439,22 +440,23 @@ def test_coding_portable_activation_bridge_cleans_up_when_write_is_cancelled(
     started = threading.Event()
     release = threading.Event()
     staged_path: list[Path] = []
-    original = continuity_module._write_private_continuity_payload
+    original = payload_staging._ContinuityPayloadStaging.write
 
     def delayed_write(
+        staging_owner,
         root: Path,
         payload: ContinuityActivationPayload,
     ) -> object:
         started.set()
         if not release.wait(timeout=5):
             raise TimeoutError("test did not release continuity write")
-        staged = original(root, payload)
+        staged = original(staging_owner, root, payload)
         staged_path.append(staged.path)
         return staged
 
     monkeypatch.setattr(
-        continuity_module,
-        "_write_private_continuity_payload",
+        payload_staging._ContinuityPayloadStaging,
+        "write",
         delayed_write,
     )
     runtime = _Runtime()
@@ -658,7 +660,7 @@ def test_coding_continuity_write_failure_preserves_unowned_files_and_closes_hand
     close = os.close
     staged_paths = []
 
-    def broken_write(descriptor, data):
+    def broken_write(_staging_owner, descriptor, data):
         (path,) = root.iterdir()
         staged_paths.append(path)
         assert os.path.samestat(os.fstat(descriptor), path.stat())
@@ -677,7 +679,7 @@ def test_coding_continuity_write_failure_preserves_unowned_files_and_closes_hand
     )
     with monkeypatch.context() as patch:
         patch.setattr(
-            continuity_module, "_write_continuity_payload_bytes", broken_write
+            payload_staging._ContinuityPayloadStaging, "_write_bytes", broken_write
         )
         patch.setattr(continuity_module.os, "close", record_close)
         with pytest.raises(OSError) as caught:
@@ -705,7 +707,7 @@ def test_coding_continuity_name_exhaustion_does_not_unlink_existing_file(
     root.mkdir(mode=0o700)
     existing = root / "continuity-collision.jsonl"
     existing.write_bytes(b"not owned")
-    monkeypatch.setattr(continuity_module.secrets, "token_hex", lambda _: "collision")
+    monkeypatch.setattr(payload_staging.secrets, "token_hex", lambda _: "collision")
     payload = ContinuityActivationPayload.from_bytes(
         b"{}\n", media_type=CONTINUITY_JSONL_MEDIA_TYPE
     )
@@ -721,18 +723,18 @@ def test_coding_portable_activation_bridge_joins_cancelled_cleanup_before_releas
     staged_payloads,
 ) -> None:
     entered, release = threading.Event(), threading.Event()
-    original = continuity_module._remove_private_continuity_payload
+    original = payload_staging._ContinuityPayloadStaging.remove
     cleanup_completed = []
 
-    def delayed_remove(staged):
+    def delayed_remove(staging_owner, staged):
         entered.set()
         if not release.wait(timeout=5):
             raise TimeoutError("test did not release continuity cleanup")
-        original(staged)
+        original(staging_owner, staged)
         cleanup_completed.append(True)
 
     monkeypatch.setattr(
-        continuity_module, "_remove_private_continuity_payload", delayed_remove
+        payload_staging._ContinuityPayloadStaging, "remove", delayed_remove
     )
     runtime = _Runtime()
     bridge = CodingContinuityActivationBridge(

@@ -1,0 +1,427 @@
+{
+  "source_baseline": "8ad6b6098f1c24c8cfb6f4d9d290e99bc74d618d",
+  "source_sha256": "ebb5b40e0b99fe0ef99085c8fadb7904a0cbd8cc6acbd4e8740bc670c971955d",
+  "scope": "original unchanged native receipt owner, emulated Windows primitives on real private temp FDs; no native ACL/platform proof",
+  "cases": {
+    "read": {
+      "value": "707269766174652072656365697074",
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "acl:record.json",
+        "stat:record.json",
+        "streams:record.json",
+        "read:record.json:33",
+        "read:record.json:18",
+        "stat:record.json",
+        "stat:record.json",
+        "streams:record.json",
+        "acl:record.json",
+        "close:record.json",
+        "open:record.json.stage",
+        "acl:root",
+        "stat:root",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json": "707269766174652072656365697074"
+      }
+    },
+    "missing": {
+      "value": null,
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "open:record.json.stage",
+        "acl:root",
+        "stat:root",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {}
+    },
+    "staged": {
+      "error_type": "loushang.coding.package_legacy_windows_receipt.CodingWindowsPrivateReceiptError",
+      "message": "Windows Product receipt has an unpublished stage",
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "open:record.json.stage",
+        "acl:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "read:record.json.stage:33",
+        "read:record.json.stage:18",
+        "stat:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "acl:record.json.stage",
+        "close:record.json.stage",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json.stage": "707269766174652072656365697074"
+      }
+    },
+    "allow_staged": {
+      "value": null,
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "open:record.json.stage",
+        "acl:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "read:record.json.stage:33",
+        "read:record.json.stage:18",
+        "stat:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "acl:record.json.stage",
+        "close:record.json.stage",
+        "acl:root",
+        "stat:root",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json.stage": "707269766174652072656365697074"
+      }
+    },
+    "both": {
+      "error_type": "loushang.coding.package_legacy_windows_receipt.CodingWindowsPrivateReceiptError",
+      "message": "Windows Product receipt has an unexpected stage",
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "acl:record.json",
+        "stat:record.json",
+        "streams:record.json",
+        "read:record.json:33",
+        "read:record.json:18",
+        "stat:record.json",
+        "stat:record.json",
+        "streams:record.json",
+        "acl:record.json",
+        "close:record.json",
+        "open:record.json.stage",
+        "acl:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "read:record.json.stage:33",
+        "read:record.json.stage:18",
+        "stat:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "acl:record.json.stage",
+        "close:record.json.stage",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json": "707269766174652072656365697074",
+        "record.json.stage": "707269766174652072656365697074"
+      }
+    },
+    "oversized": {
+      "error_type": "loushang.coding.package_legacy_windows_receipt.CodingWindowsPrivateReceiptError",
+      "message": "Windows Product receipt is unsafe",
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "acl:record.json",
+        "stat:record.json",
+        "streams:record.json",
+        "close:record.json",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json": "707269766174652072656365697074"
+      }
+    },
+    "named_stream": {
+      "error_type": "loushang.coding.package_legacy_windows_receipt.CodingWindowsPrivateReceiptError",
+      "message": "Windows Product receipt has a named stream",
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "acl:record.json",
+        "stat:record.json",
+        "streams:record.json",
+        "close:record.json",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json": "707269766174652072656365697074"
+      }
+    },
+    "attributes": {
+      "error_type": "loushang.coding.package_legacy_windows_receipt.CodingWindowsPrivateReceiptError",
+      "message": "Windows Product receipt attributes are unsupported",
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "acl:record.json",
+        "stat:record.json",
+        "close:record.json",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json": "707269766174652072656365697074"
+      }
+    },
+    "ledger_relaxed": {
+      "value": "707269766174652072656365697074",
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "stat:record.json",
+        "read:record.json:65536",
+        "read:record.json:65536",
+        "stat:record.json",
+        "stat:record.json",
+        "close:record.json",
+        "acl:root",
+        "stat:root",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json": "707269766174652072656365697074"
+      }
+    },
+    "denied_acl": {
+      "error_type": "builtins.PermissionError",
+      "message": "probe ACL denied",
+      "trace": [
+        "open:root",
+        "acl:root",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json": "707269766174652072656365697074"
+      }
+    },
+    "write": {
+      "value": null,
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "open:record.json.stage",
+        "open:record.json.stage",
+        "acl:record.json.stage",
+        "write:record.json.stage:15",
+        "flush:record.json.stage",
+        "close:record.json.stage",
+        "open:record.json.stage",
+        "acl:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "read:record.json.stage:65536",
+        "read:record.json.stage:65536",
+        "stat:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "acl:record.json.stage",
+        "close:record.json.stage",
+        "rename:record.json.stage:record.json",
+        "flush:root",
+        "open:record.json",
+        "acl:record.json",
+        "stat:record.json",
+        "streams:record.json",
+        "read:record.json:65536",
+        "read:record.json:65536",
+        "stat:record.json",
+        "stat:record.json",
+        "streams:record.json",
+        "acl:record.json",
+        "close:record.json",
+        "acl:root",
+        "stat:root",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json": "707269766174652072656365697074"
+      }
+    },
+    "resume_stage": {
+      "value": null,
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "open:record.json.stage",
+        "acl:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "read:record.json.stage:65536",
+        "read:record.json.stage:65536",
+        "stat:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "acl:record.json.stage",
+        "close:record.json.stage",
+        "rename:record.json.stage:record.json",
+        "flush:root",
+        "open:record.json",
+        "acl:record.json",
+        "stat:record.json",
+        "streams:record.json",
+        "read:record.json:65536",
+        "read:record.json:65536",
+        "stat:record.json",
+        "stat:record.json",
+        "streams:record.json",
+        "acl:record.json",
+        "close:record.json",
+        "acl:root",
+        "stat:root",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json": "707269766174652072656365697074"
+      }
+    },
+    "conflict": {
+      "error_type": "loushang.coding.package_legacy_windows_receipt.CodingWindowsPrivateReceiptError",
+      "message": "Windows Product receipt stage conflicts with review",
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "open:record.json.stage",
+        "acl:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "read:record.json.stage:65536",
+        "read:record.json.stage:65536",
+        "stat:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "acl:record.json.stage",
+        "close:record.json.stage",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json.stage": "646966666572656e74"
+      }
+    },
+    "already_published": {
+      "error_type": "loushang.coding.package_legacy_windows_receipt.CodingWindowsPrivateReceiptError",
+      "message": "Windows Product receipt already exists",
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "acl:record.json",
+        "stat:record.json",
+        "streams:record.json",
+        "read:record.json:65536",
+        "read:record.json:65536",
+        "stat:record.json",
+        "stat:record.json",
+        "streams:record.json",
+        "acl:record.json",
+        "close:record.json",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json": "707269766174652072656365697074"
+      }
+    },
+    "zero_write": {
+      "error_type": "loushang.coding.package_legacy_windows_receipt.CodingWindowsPrivateReceiptError",
+      "message": "Windows Product receipt stage write stopped",
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "open:record.json.stage",
+        "open:record.json.stage",
+        "acl:record.json.stage",
+        "write:record.json.stage:15",
+        "close:record.json.stage",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json.stage": ""
+      }
+    },
+    "rename_failure": {
+      "error_type": "builtins.OSError",
+      "message": "probe publication interrupted",
+      "trace": [
+        "open:root",
+        "acl:root",
+        "stat:root",
+        "open:record.json",
+        "open:record.json.stage",
+        "open:record.json.stage",
+        "acl:record.json.stage",
+        "write:record.json.stage:15",
+        "flush:record.json.stage",
+        "close:record.json.stage",
+        "open:record.json.stage",
+        "acl:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "read:record.json.stage:65536",
+        "read:record.json.stage:65536",
+        "stat:record.json.stage",
+        "stat:record.json.stage",
+        "streams:record.json.stage",
+        "acl:record.json.stage",
+        "close:record.json.stage",
+        "rename:record.json.stage:record.json",
+        "close:root"
+      ],
+      "open_descriptors": [],
+      "files": {
+        "record.json.stage": "707269766174652072656365697074"
+      }
+    },
+    "invalid_bound": {
+      "error_type": "builtins.ValueError",
+      "message": "Windows Product receipt bound is invalid",
+      "trace": [],
+      "open_descriptors": [],
+      "files": {}
+    }
+  }
+}

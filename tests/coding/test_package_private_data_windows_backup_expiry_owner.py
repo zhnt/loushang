@@ -10,7 +10,7 @@ from typing import cast
 
 import pytest
 
-import loushang.coding.package_private_data_windows_backup_expiry_owner as owner
+import loushang.harness.resources.packages._private_tree_windows as native
 from loushang.coding.package_private_data_deletion_preview import (
     CodingArchPrivateDataMemberV1,
     CodingArchPrivateDataTargetSnapshotV1,
@@ -19,6 +19,7 @@ from loushang.coding.package_private_data_deletion_preview import (
 from loushang.coding.package_private_data_windows_archive_snapshot import (
     CodingWindowsArchBackupArchiveSnapshotV1,
 )
+from loushang.coding.package_private_data_windows_preview import _native_io
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     open_windows_directory,
@@ -49,11 +50,13 @@ def test_expiry_manifest_must_keep_original_identity_and_bytes(
         def validate(self, descriptor: int) -> None:
             return None
 
-    monkeypatch.setattr(owner, "_require_simple_windows_metadata", lambda *a, **k: None)
     monkeypatch.setattr(
-        owner, "windows_regular_file_stream_names", lambda fd: ("::$DATA",)
+        type(_native_io), "require_simple_metadata", lambda *a, **k: None
     )
-    monkeypatch.setattr(owner, "windows_stat_at", lambda fd, name: path.stat())
+    monkeypatch.setattr(
+        native, "windows_regular_file_stream_names", lambda fd: ("::$DATA",)
+    )
+    monkeypatch.setattr(native, "windows_stat_at", lambda fd, name: path.stat())
     acl = cast(WindowsPrivateDirectoryAcl, FakeAcl())
     original = path.stat()
     parent_fd = (
@@ -64,7 +67,13 @@ def test_expiry_manifest_must_keep_original_identity_and_bytes(
     try:
         descriptor = os.open(path, os.O_RDONLY)
         try:
-            owner._require_manifest(descriptor, parent_fd, archive, acl)
+            _native_io.require_expiry_manifest(
+                descriptor,
+                parent_fd,
+                archive.manifest,
+                acl,
+                manifest_name="manifest.json",
+            )
         finally:
             os.close(descriptor)
         path.write_bytes(b'{"receipt":"changed"}\n')
@@ -73,7 +82,13 @@ def test_expiry_manifest_must_keep_original_identity_and_bytes(
         descriptor = os.open(path, os.O_RDONLY)
         try:
             with pytest.raises(ValueError, match="manifest changed"):
-                owner._require_manifest(descriptor, parent_fd, archive, acl)
+                _native_io.require_expiry_manifest(
+                    descriptor,
+                    parent_fd,
+                    archive.manifest,
+                    acl,
+                    manifest_name="manifest.json",
+                )
         finally:
             os.close(descriptor)
         replacement = tmp_path / "replacement"
@@ -83,7 +98,13 @@ def test_expiry_manifest_must_keep_original_identity_and_bytes(
         descriptor = os.open(path, os.O_RDONLY)
         try:
             with pytest.raises(ValueError, match="manifest changed"):
-                owner._require_manifest(descriptor, parent_fd, archive, acl)
+                _native_io.require_expiry_manifest(
+                    descriptor,
+                    parent_fd,
+                    archive.manifest,
+                    acl,
+                    manifest_name="manifest.json",
+                )
         finally:
             os.close(descriptor)
     finally:

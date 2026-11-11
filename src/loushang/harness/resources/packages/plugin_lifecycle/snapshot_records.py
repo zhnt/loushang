@@ -15,6 +15,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover im
     PackageEpochCutoverSnapshotReceiptV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _string_value as _wire_string,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
@@ -160,12 +163,6 @@ def _wire_object(
     return cast(dict[str, object], value)
 
 
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str):
-        raise TypeError(f"{name} must be a string")
-    return value
-
-
 def _wire_int(value: object, *, name: str) -> int:
     if type(value) is not int:
         raise TypeError(f"{name} must be an integer")
@@ -186,14 +183,11 @@ def _require_sha256(value: str, *, name: str) -> None:
 __all__: tuple[str, ...] = ()
 
 
-_OFFLINE_RESTORE_SNAPSHOT_EVIDENCE_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("evidence_id", "evidence id"),
-        RecordField("snapshot", decoder=PackageEpochCutoverSnapshotReceiptV1.from_dict),
-        RecordField("snapshot_tree_digest", "snapshot tree digest"),
-        RecordField("state_manifest_digest", "state manifest digest"),
-        RecordField("covered_domains", "covered domains", _wire_string_tuple),
-        RecordField("evidence_version", "evidence version", _wire_int),
-    ),
+_OFFLINE_RESTORE_SNAPSHOT_EVIDENCE_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageOfflineRestoreSnapshotEvidenceV1,
+    _wire_string,
+    RecordField("snapshot", decoder=PackageEpochCutoverSnapshotReceiptV1.from_dict),
+    RecordField("covered_domains", "covered domains", _wire_string_tuple),
+    RecordField("evidence_version", "evidence version", _wire_int),
+    derive_labels=True,
 )

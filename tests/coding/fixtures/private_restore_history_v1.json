@@ -1,0 +1,835 @@
+{
+  "cases": {
+    "empty": {
+      "events": [],
+      "posix": {
+        "accepted": true
+      },
+      "windows": {
+        "accepted": true
+      }
+    },
+    "pending": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        }
+      ],
+      "posix": {
+        "accepted": true
+      },
+      "windows": {
+        "accepted": true
+      }
+    },
+    "complete": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 2,
+          "recordDigest": "c2027eb0a7813a59ae49789f8997b28ec75496bbbe4d826ba46b51d26383efbc"
+        }
+      ],
+      "posix": {
+        "accepted": true
+      },
+      "windows": {
+        "accepted": true
+      }
+    },
+    "completion_without_start": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "3a439d002398f793b7922a17193ce11d2553b7b9300499f3209514fe073d5c20"
+        }
+      ],
+      "posix": {
+        "error_type": "builtins.ValueError",
+        "message": "Coding Arch restore completion changed"
+      },
+      "windows": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore completion has no start"
+      }
+    },
+    "wrong_first_revision": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 2,
+          "recordDigest": "0866e1b22cd56f6cc3ea5166f9bef94d5b17604d3555eb80d66138af82787f75"
+        }
+      ],
+      "posix": {
+        "error_type": "builtins.ValueError",
+        "message": "Coding Arch restore revisions changed"
+      },
+      "windows": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore revision changed"
+      }
+    },
+    "revision_gap": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 3,
+          "recordDigest": "a2bc7c0721432b01263a7b607af5d8abcdd64fa5a0b6c0e760db4c572ea606c4"
+        }
+      ],
+      "posix": {
+        "error_type": "builtins.ValueError",
+        "message": "Coding Arch restore revisions changed"
+      },
+      "windows": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore revision changed"
+      }
+    },
+    "repeated_start": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 2,
+          "recordDigest": "0866e1b22cd56f6cc3ea5166f9bef94d5b17604d3555eb80d66138af82787f75"
+        }
+      ],
+      "posix": {
+        "error_type": "builtins.ValueError",
+        "message": "Coding Arch restore starts changed"
+      },
+      "windows": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore starts conflict"
+      }
+    },
+    "new_start_while_pending": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        },
+        {
+          "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:447359fd27135f5e1ca145ba6d4655b98ba92a86e0bb17c88f970450e948fddb",
+          "revision": 2,
+          "recordDigest": "00816f96006ed271dd1ac0fe95f355c29f8e7c72d472a8382fa4ffe4b8c75431"
+        }
+      ],
+      "posix": {
+        "error_type": "builtins.ValueError",
+        "message": "Coding Arch restore starts changed"
+      },
+      "windows": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore starts conflict"
+      }
+    },
+    "wrong_completion_backup": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        },
+        {
+          "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:447359fd27135f5e1ca145ba6d4655b98ba92a86e0bb17c88f970450e948fddb",
+          "revision": 2,
+          "recordDigest": "4e4f163ec2c30076147de41cec1593574d1f0e2f28ee35c1df78ecdbc0574a73"
+        }
+      ],
+      "posix": {
+        "error_type": "builtins.ValueError",
+        "message": "Coding Arch restore completion changed"
+      },
+      "windows": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore completion has no start"
+      }
+    },
+    "wrong_completion_deletion": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:two",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:952b915f1a323fbf649f2123fee1ebc93d1f447dc62509e9e9492ba8d23118bd",
+          "revision": 2,
+          "recordDigest": "ff77ef707ce7abb9ad73400f2e5de008e09ed58befa390b9762f1e37203fc7c4"
+        }
+      ],
+      "posix": {
+        "error_type": "builtins.ValueError",
+        "message": "Coding Arch restore completion changed"
+      },
+      "windows": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore completion has no start"
+      }
+    },
+    "completed_twice": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 2,
+          "recordDigest": "c2027eb0a7813a59ae49789f8997b28ec75496bbbe4d826ba46b51d26383efbc"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 3,
+          "recordDigest": "a2bc7c0721432b01263a7b607af5d8abcdd64fa5a0b6c0e760db4c572ea606c4"
+        }
+      ],
+      "posix": {
+        "error_type": "builtins.ValueError",
+        "message": "Coding Arch restore completion changed"
+      },
+      "windows": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore completion has no start"
+      }
+    },
+    "restart_same_restore": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 2,
+          "recordDigest": "c2027eb0a7813a59ae49789f8997b28ec75496bbbe4d826ba46b51d26383efbc"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 3,
+          "recordDigest": "42f9c005fab2b5a946819117eb9c62a2cbb83e56f2ab9645d4b9371524014b1d"
+        }
+      ],
+      "posix": {
+        "error_type": "builtins.ValueError",
+        "message": "Coding Arch restore starts changed"
+      },
+      "windows": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore starts conflict"
+      }
+    },
+    "reuse_deletion_with_new_backup": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 2,
+          "recordDigest": "c2027eb0a7813a59ae49789f8997b28ec75496bbbe4d826ba46b51d26383efbc"
+        },
+        {
+          "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:447359fd27135f5e1ca145ba6d4655b98ba92a86e0bb17c88f970450e948fddb",
+          "revision": 3,
+          "recordDigest": "5ecf6af9d1448b08adb200da287c258821a361cd303a361e5dda3fcc65302104"
+        }
+      ],
+      "posix": {
+        "accepted": true
+      },
+      "windows": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore starts conflict"
+      }
+    },
+    "new_deletion_pending": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 2,
+          "recordDigest": "c2027eb0a7813a59ae49789f8997b28ec75496bbbe4d826ba46b51d26383efbc"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:two",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:952b915f1a323fbf649f2123fee1ebc93d1f447dc62509e9e9492ba8d23118bd",
+          "revision": 3,
+          "recordDigest": "ec6d6f1cd3596b4a4df826fe6740f32e3cf798894637504cb7c610f4ec1150f7"
+        }
+      ],
+      "posix": {
+        "accepted": true
+      },
+      "windows": {
+        "accepted": true
+      }
+    },
+    "new_deletion_complete": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 2,
+          "recordDigest": "c2027eb0a7813a59ae49789f8997b28ec75496bbbe4d826ba46b51d26383efbc"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:two",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:952b915f1a323fbf649f2123fee1ebc93d1f447dc62509e9e9492ba8d23118bd",
+          "revision": 3,
+          "recordDigest": "ec6d6f1cd3596b4a4df826fe6740f32e3cf798894637504cb7c610f4ec1150f7"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:two",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:952b915f1a323fbf649f2123fee1ebc93d1f447dc62509e9e9492ba8d23118bd",
+          "revision": 4,
+          "recordDigest": "07b6af9855b9e62914613b17165974213a550197bfc4d113500c4bb59389538c"
+        }
+      ],
+      "posix": {
+        "accepted": true
+      },
+      "windows": {
+        "accepted": true
+      }
+    },
+    "reuse_deletion_full_sequence": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 2,
+          "recordDigest": "c2027eb0a7813a59ae49789f8997b28ec75496bbbe4d826ba46b51d26383efbc"
+        },
+        {
+          "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:447359fd27135f5e1ca145ba6d4655b98ba92a86e0bb17c88f970450e948fddb",
+          "revision": 3,
+          "recordDigest": "5ecf6af9d1448b08adb200da287c258821a361cd303a361e5dda3fcc65302104"
+        },
+        {
+          "backupId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:447359fd27135f5e1ca145ba6d4655b98ba92a86e0bb17c88f970450e948fddb",
+          "revision": 4,
+          "recordDigest": "04a097b2e498b13fc0d9ebde6f38f2ad3f8117b512c4a0dcd8ad4e2be4493764"
+        }
+      ],
+      "posix": {
+        "accepted": true
+      },
+      "windows": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore starts conflict"
+      }
+    },
+    "repeated_old_restore_after_new": {
+      "events": [
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 1,
+          "recordDigest": "b22e4bbc7e0e530c2e4a8e667787a9a1ee29ef4da2645e574786a301dbeb8f8c"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 2,
+          "recordDigest": "c2027eb0a7813a59ae49789f8997b28ec75496bbbe4d826ba46b51d26383efbc"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:two",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:952b915f1a323fbf649f2123fee1ebc93d1f447dc62509e9e9492ba8d23118bd",
+          "revision": 3,
+          "recordDigest": "ec6d6f1cd3596b4a4df826fe6740f32e3cf798894637504cb7c610f4ec1150f7"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:two",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "completed",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:952b915f1a323fbf649f2123fee1ebc93d1f447dc62509e9e9492ba8d23118bd",
+          "revision": 4,
+          "recordDigest": "07b6af9855b9e62914613b17165974213a550197bfc4d113500c4bb59389538c"
+        },
+        {
+          "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deletionReceiptId": "deletion:one",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "history-compatibility"
+          },
+          "phase": "started",
+          "recordVersion": 1,
+          "restoreId": "arch-restore:90c42e056814220947c0e2420631a7ea5e8a727807d13d435f9498f8b3534f22",
+          "revision": 5,
+          "recordDigest": "e7b4b474c1f00a554c7e12b20ee447a49af40a87d55d14947ed61bbbcd9713bb"
+        }
+      ],
+      "posix": {
+        "error_type": "builtins.ValueError",
+        "message": "Coding Arch restore starts changed"
+      },
+      "windows": {
+        "error_type": "builtins.ValueError",
+        "message": "Windows Coding Arch restore starts conflict"
+      }
+    }
+  }
+}

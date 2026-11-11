@@ -7,6 +7,83 @@ This document is the short, authoritative map of the implemented
 decisions; migration ledgers record how the code arrived here and are not a
 second description of current ownership.
 
+Session's existing Product assembly also owns the complete receipt package
+merge into an inert plan, declaration finalization and exact owner completion.
+It uses the original Seed/selection values, Host and owner grouping. Coding
+retains product/trust/error policy, owner boundary decisions and its three typed
+public entries. No generic startup engine, registry or authorization is added;
+see [A36](key-designs/startup-session-assembly-convergence.md#14-a36catalog-package-plan-与-selection-的完整接缝).
+
+Resources' existing Windows epoch cutover owner also holds temporary private roots,
+including the optional projection file, exact identities and nested cleanup.
+Coding retains its prefix/filename/diagnostic policy and public context entry.
+The writer reuses the existing Journal short-write loop. See [A115](key-designs/windows-cutover-temporary-custody-convergence.md).
+
+The existing Agent Product Session runtime owns the planning slot's single waiter
+reference, completed data cache and loop/cancel/close lifetime. Coding's subclass
+keeps the original six fields in that same object and binds domain requests,
+freshness policy and diagnostic prefix. Resource retains native jobs/capacity;
+there is no second scheduler. See [A116](key-designs/session-planning-slot-custody-convergence.md).
+
+The optional HarnessWork GoalStore integration owns the complete cold Goal/Work
+source read and the original journal's close/retry custody. Work and Transcript
+retain their original projections and source authority; the reader is borrowed.
+Coding binds supported policies, namespace, lazy metadata/codec and actual public
+view/error types. No live GoalController is constructed. See [A117](key-designs/goal-work-source-custody-convergence.md).
+
+Worker's existing ReceiptHistory owns POSIX receipt persistence, including the locked
+reuse-or-append transaction for a caller-admitted policy. Coding still decides
+Product/Session/opt-in/native/discovery admission. All three latest-record scans
+share the existing receipt value component; Windows keeps its distinct sequence,
+capacity, native custody and byte format. See [A118](key-designs/worker-history-responsibility-convergence.md#a118收据持久事务与同义扫描收敛).
+
+Resources' existing Windows private-tree IO owns bounded private-directory chain
+creation from the nearest existing ancestor, including its ACLs and descriptor
+cleanup. Coding binds the approval-state target, budget and diagnostics and keeps
+platform/entry admission. This does not admit or repair a Product root; the
+stronger fenced Product chain API remains separate. See [A120](key-designs/windows-approval-root-custody-convergence.md).
+
+PackageProduct's existing Windows attempt driver owns complete live-stage
+verification under the original ACL and borrowed Product root. It reuses Worker
+marker/root/stream leaves and the existing stage-intent shape; Coding keeps
+selection/currentness, bound-request admission and the thin verification entry.
+No new evidence writer, runtime state or Code IO callback is introduced. See [A121](key-designs/worker-history-responsibility-convergence.md#a121完整windows-live-stage验证归原packageproduct).
+
+PackageProduct's Windows driver also owns the complete persisted-history read
+and ordered recheck under the caller's GC gate. It directly reuses the existing
+ReceiptIO and history-name rules; Coding retains concrete value/semantic codecs,
+entry admission and quiescence/GC acquisition. The result is read evidence,
+without cutover or deletion authority. See [A122](key-designs/worker-history-responsibility-convergence.md#a122完整windows持久base读取与复读归原packageproduct).
+
+Config.store owns the complete bounded, stable, no-write JSON patch snapshot,
+including POSIX/Windows file custody and strict decoding after cleanup. It directly
+uses Resources' existing file consumer. Coding retains Source policy, original
+path admission, diagnostic label and byte budget through its public thin reader.
+Ordinary JsonConfigStore.load/save remain unchanged; lazy platform imports keep
+Config's cold module closure unchanged. See [A123](key-designs/settings-snapshot-read-custody-convergence.md).
+
+HarnessWork's existing planning integration owns one admitted model Work's whole
+configuration lifetime on the original Work object: direct reservation, allowance,
+Session configuration, delegate execution, idle wait, release and fencing. Coding
+retains the phase/step/tool and diagnostic profile on its original class; existing
+Session admission/configuration and call allowance remain the sole underlying
+owners. Verification has a different finally contract and is unchanged. See [A126](key-designs/planning-work-configuration-custody-convergence.md).
+
+AppHost's existing optional Session control integration owns the same Work
+instance's Agent outcome observation, interrupt binding, concrete prompt or
+published-input dispatch and Session/subscription retirement. It calls the
+original Harness Session methods; Coding keeps the distinct run boundaries,
+Resume admission/activation and title/cancellation policies. There is no new
+Session, Task, Work manager or activation callback. The new direct Agent edge
+is type-only inside this optional integration, not the standard-library core.
+See [A127](key-designs/hosted-work-custody-convergence.md).
+
+The original HarnessWork Session integration also contains the private retained
+plan invocation program: submission Task, recording verification and same-run
+cancellation/join. Coding keeps Method preparation, AppService outcome mapping,
+step and Session cleanup. The same invocation holds the original state; no new
+manager or lifecycle port family is introduced. See [A128](key-designs/method-plan-custody-convergence.md).
+
 ## Scope
 
 Harness is the cross-Product execution substrate. It owns reusable mechanisms,
@@ -32,7 +109,149 @@ depend on `loushang.coding`, `loushang.harnesswork`, `loushang.work`, `loushang.
 | `tools` / `approval` / `policy` / `sandbox` | tool authoring and hosted execution mechanics, action policy evaluation, approval lifecycle, effects, execution-scope process-start authorization, and optional containment binding | Product risk defaults, executable/catalog admission, Product approval wording, arbitrary Product commands |
 | `resources` / `extensions` / `capabilities` | resource discovery and precedence, package materialization mechanics, staged Extension/resource generations with exact live-registration retirement, capability composition, and coarse Capability graph contracts, planning, transactional Mount binding, live state, and read-only projection | Product-owned built-in content, trust decisions, activation policy, or Product-specific Provider behavior |
 | `host` / `cli` / `events` / `presentation` | Product-neutral host lifecycle, RPC/JSON projection, runtime event contracts and reusable presentation | AppService tenancy, Channel protocol, Product grammar or final UI composition |
+| `worker` | original attempt state/CAS/epoch authority; fixed five-stream value/replay and read/fence mechanisms; Supervisor, C5, opt-in, start-gate and receipt storage over their existing Journal profiles; intent-owned preparation and Rooted owner publication/retirement; fixed physical payload validation and four named repair profiles under caller custody | Product selection/approval or GC authority, native process custody, automatic history repair/retirement |
+| `journal` | byte codecs, physical append/read/publication and rooted file bindings under caller custody | Worker semantic closure, Product policy or process settlement |
 | `diagnostics` / `continuity` / `workspace` | shared diagnostic records/export, continuity provider composition, one-shot execution, and bounded session-owned process primitives | Product-specific recovery UX, business audit retention, protocol/server selection, Product artifact semantics |
+
+The original Session multiagent integration also supplies exact-watermark Agent
+Transcript replay and image hydration to the existing context factory. Its
+HarnessWork integration owns the complete admitted Work-to-child-round
+association, dispatch/creation tasks, cancellation settlement and cleanup retry.
+The original MultiAgent control/runtime remains the identity, round and resource
+authority; no second runtime or registry is introduced. Coding keeps actual types,
+Product factory/policy, frozen context/report fields and pure evidence codecs.
+Blob put/readback and Work publish call their original owners directly. See the
+[A81 delivery](key-designs/delegated-goal-session-convergence.md) for the exact
+scope, original failure order, full cost and bounded verification.
+
+Journal's optional `owned` module supports the original retained writer and
+borrowed root IO through same-object exports and one forwarding borrow function.
+Its supported profile retains fixed subsystem lock/hash hooks,
+acquire/check/close and borrowed bind/cleanup, with IO cleanup before root release;
+it adds no lease tracking, platform or authority. The optional HarnessWork
+[Goal record backend](../harnesswork/key-designs/goal-record-store-convergence.md)
+consumes this public seam and the original JSONL/codecs. Product still chooses
+paths/labels, holds and closes the actual store; Coding's original GoalJournal
+constructor and path function are thin bindings. Goal core has no IO import.
+
+Journal also owns one stateless path-based cache byte publisher shared by Arch
+and Transcript indexes. Callers retain encoding, quotas and their original
+directory-sync policy; two scalar options preserve mode and cleanup differences.
+See [A111](key-designs/cache-publication-convergence.md).
+
+Journal's existing rooted IO module also owns bounded private UTF-8 text reads:
+parent/file descriptor custody, private metadata/version checks, one binary read
+and ordered cleanup reuse its original parent/version predicates. Coding retains
+the acceptance limit, diagnostic/error binding, codecs and operator policy; its
+three existing POSIX acceptance consumers still use one thin helper. This does
+not add a store, repair authority or new admission requirement. See the
+[A30 contract](key-designs/private-journal-parent-binding.md#cod-resp-goal-002-a30受限私有收据文本读取).
+
+
+The bounded [Worker history convergence](key-designs/worker-history-responsibility-convergence.md)
+has connected the Supervisor record/query/reopen/settlement path and the C5/opt-in/start-gate/receipt
+history paths to these owners. Worker.payload now also owns the original physical
+payload checks, named repair publication and precise remainder deletion. It reuses
+Journal write loops and Resources file consumption; Product authorization and
+Hosting process custody remain with their original owners.
+Coding retains its public value facades, exact Product admission and a narrow
+access adapter; the original Product/GC and Hosting authorities remain separate.
+Other Worker profiles, Product evidence/preflight and broader cleanup coordination remain
+in progress. The [execution record](coding-responsibility-convergence-progress.md)
+separates responsibility migration from whole-system source reduction.
+Worker history also owns caller-bound checkpoint read/publication, explicit
+complete-append repair and tail rollback, plus the existing five-stream V1/V2
+snapshot IO and byte-prefix verification. Coding retains the public value
+facades and original Product/runtime/GC admission; strict reads and fences do
+not gain automatic repair authority.
+
+The original Worker C5 Coordinator also owns the complete Resume parent
+observe/enroll/readback/seal and live-or-cleanup proof programs over its existing
+state/CAS primitives. Coding retains its concrete input/effect-owner policy,
+legacy public facades, same binding fields/lock and error projection. No new
+state holder, native replay or stronger stopped-only rule is introduced; Core
+has neutral defaults and Product configures only error construction. This is
+responsibility migration with an explicit +49-line system cost, not deduplication;
+see [A46](key-designs/worker-product-runtime-convergence.md#16-a46c5-resume-parent交接归原authority).
+
+Worker history also owns the three fixed Windows opt-in, receipt and native
+approval journal programs. Coding supplies pure value/error/limit profiles and
+its original public thin facades. The original Resources WindowsJournalFileIO
+retains file/ACL/marker custody; ordinary append binding registers its original
+ACL and lock with the caller's standard ExitStack. There is no second store,
+Product authorization or new generator boundary. This closes a prerequisite,
+while the wider guarded fact-capture/publication path remains in progress;
+see [A31](key-designs/windows-worker-semantic-convergence.md#13-a31三windows账本作为发布链必要依赖归位).
+
+Worker.history also owns the complete pure Windows native crash transition and
+witness-history predicate in its existing recovery facts module. Coding retains
+its two policy modes, typed thin helper and original public value types. Normal
+strict history and single-record journal validation remain distinct. This adds
+no IO, native cleanup authority or new state; see
+[A40](key-designs/windows-worker-semantic-convergence.md#17-a40恢复证明合同澄清与纯历史判据实际归位).
+
+Worker.history also supplies pure reading of the four existing Windows stage-review
+record formats using Resources' original RecordSchema. Coding retains the original
+public dataclasses, own fields, semantic admission, fingerprints and all encoders.
+There is no new I/O, authority or Product coordinator; MRO/private schema metadata
+changes are explicit. Future dataclass field changes require wire-format review.
+See [A43](key-designs/windows-worker-semantic-convergence.md#20-a43四类windows记录读取去重).
+
+The existing canonical record reader also serves checkpoint, preparation,
+cutover, launch-intent and stage-retirement values. Coding keeps each original
+concrete class, own fields, encoders and semantic admission; Resources supplies
+the original schema traversal. Original error/limit/shape differences remain
+explicit policy, and the same reader's 15 existing families retain their default
+contracts. See [A45](key-designs/windows-worker-semantic-convergence.md#21-a45其余五类canonical记录复用既有reader).
+
+The same Worker history owner now supplies complete Windows Supervisor and C5
+journal custody over the existing state engine, activation replay/projection and
+Resource file IO. Coding keeps exact Product admission and a three-operation
+access adapter to the original guard, currentness and borrowed-root authorities.
+Supervisor marker/history and C5 per-revision committed-head protocols remain
+distinct; no repair, additional root ownership or second history is introduced.
+See [A32](key-designs/windows-worker-semantic-convergence.md#14-a32supervisor-与-c5-的完整-windows-托管路径).
+
+Worker.payload also supplies Windows stage marker/read/direct checks and common
+physical member retirement over the existing Resources native APIs and ACL.
+Complete and partial proofs retain their distinct rules; Product root-intent IO,
+GC/runtime approval and native process history remain with their original owners.
+The private scope borrows descriptors and returns at the original intent boundary;
+it adds no automatic retry, transaction log or new deletion authority.
+The same Worker history owner serves six source-bound Windows semantic bases
+via existing Resources RecordSchema and the original ledger folds. It now also
+owns their pure reconstruction, retained replay and joint semantic checks in
+`history/_windows_*` methods. Coding retains the concrete public value classes,
+typed entry signatures, exact Prepared admission and fixed product/type/limit
+bindings; it constructs the six original values in their original order. The
+seven source checks, historical receipt policy, native decoder and distinct
+observed/effect/launched meanings remain intact. There is no new source reader,
+ledger or effect authority; see [KD010](key-designs/windows-worker-semantic-convergence.md).
+Existing V2 and other envelope profiles retain their asymmetric capacity and
+error behavior.
+Worker history also owns the neutral Windows recovery-attempt value, pure exact
+identity checks and fixed four-source projection. Its source traversal borrows
+existing native IO, ACL and Resources consumption. Coding keeps the real public
+value class and typed aliases, and the original two effectful Product root
+lookups/ACL envelope and GC decision remain in their original lexical positions.
+The 18-field asdict shape participates in semantic digests; future changes need
+compatible versioning. Neither observations nor debt labels grant cleanup or
+new launch authority.
+
+The existing Session `product_composition_assembly` also implements the pure
+relation between ordinary Session inputs and one already-admitted Worker.
+It reuses the original compiler, Provider resolver and closure validator;
+Coding supplies its Product identity, Consumer requirement and legacy error
+profile through two thin public functions. Product/Worker admission, deferred
+prepare, Graph visibility, C5 publication and platform cleanup keep their
+original owners. See [KD-004 A17](key-designs/worker-history-responsibility-convergence.md#10-a17普通session与worker图关系归原session装配)
+for the bounded contract; implementation evidence is tracked in the
+[execution record](coding-responsibility-convergence-progress.md).
+
+The same Session assembly now projects captured Product declarations into inert
+owner candidates, reusing the existing canonical domain hash. Product trust,
+owner choices and diagnostic policy remain in Coding; this adds no IO or
+registration authority. See [A113](key-designs/product-selected-contribution-projection.md).
 
 The bounded [child Session consolidation](multiagent/child-session-composition.md)
 keeps Coding configuration in its Product adapter and uses the original Session
@@ -57,12 +276,171 @@ The four focused [owned-task scenarios](../../../../tests/harness/runtime/test_o
 cover result reuse and repeated caller cancellation with success, failure or
 task cancellation; execution results belong to the implementation evidence.
 
+Continuity's internal `_payload_staging` owns the complete private payload
+write/pin/identity-checked-delete and cancellation settlement program. It uses
+the original journal write-all loop and owned-task join with one pure diagnostic
+label; it receives no Product authority or Code IO callbacks. Coding retains
+source/cwd/limit admission and restore/abort/lease business. Private DTO aliases
+preserve the Code import entry, with definition/reflection metadata moved.
+The [bounded custody evidence](key-designs/continuity-payload-custody-convergence.md)
+does not complete KD003 bytes import or eliminate the compatibility Path.
+
+Continuity's original Callback activation lease owns the single-use consume,
+abort-intent/Event coordination, shared abort Task, cancellation and retry
+mechanism. The generation lease directly reuses it, retaining late inner
+properties, strict async effects and original Gate admission/completion and
+inventory policy. These remain two necessary lease phases, with one algorithm;
+no additional manager, runtime component or Code callback is introduced.
+See [A92](key-designs/activation-lease-lifecycle-convergence.md) for scope,
+failure-order and release-time evidence.
+
+Package Product owns the complete Windows backend candidate/material review,
+installed Wheel custody/recheck and approval-current resource sequence. It uses
+original Hosting verification, Resource Wheel/ReceiptIO and the actual approval
+journal current port. Empty-slotted private methods construct the real Code
+values at the original scope boundaries; no new runtime state or manager exists.
+Coding retains Product admission/budgets, public DTOs/Reader/closure and independent
+approval/revocation decisions. [A93](key-designs/windows-backend-release-custody-convergence.md)
+records full costs, old pickle evidence and the separate pre-existing H5 mismatch.
+
+Worker history owns native-approval value/wire/history mechanics and the original
+Rooted journal program. Linux and Windows reuse one pure replay/CAS/count/create
+selector; their original append/byte/lock/custody rules remain separate. Coding
+keeps public dataclass identities/signatures, Product admission and the original
+GC/binding/currentness order. [Bounded native approval evidence](key-designs/native-approval-journal-convergence.md)
+does not grant native use. The subsequent complete Linux H6 Product native release
+custody now belongs to the existing Package Product component: review, install,
+repair, source/receipt verification and current launch material. It directly reuses
+the existing Posix Product owner, Worker verifier and approval owner.current;
+Coding retains actual public DTO/Reader identities and pure profile/type/version
+bindings. Install temporary cleanup and repair debt preservation remain separate.
+[Bounded custody evidence](key-designs/linux-product-native-release-custody-convergence.md)
+records real inert ZIP/FD observations; this grants no execution or replacement policy.
+
+Plugin Management's private `_installation_root_windows` owns complete Windows
+Installation root lineage: bind/inspect, restore intent/publication, original
+deletion-history replay, generation fencing and receipt bytes/write-or-match.
+It directly uses the existing native receipt IO, directory primitives and original
+concrete deletion transaction; no Code IO callback or second authority is added.
+Coding retains its actual Generation DTO, key/path/epoch/runtime admission and
+thin consumer entries. The existing restore transaction keeps its hook positions.
+[Bounded lineage evidence](key-designs/windows-installation-root-lineage-convergence.md)
+does not establish native Windows ACL or whole-Goal completion.
+
 The bounded [Product composition input preparation](plugin/composition-route-inputs.md)
 keeps owner grouping, structural supplied-binding checks, ordering and selection
 seed construction in the existing private Session assembly. Coding retains its
 original candidate-projection call, exact owner policy, restricted defaults and
 error adapter. The original admission/compiler, workspace selector and owner
 lifetimes remain separate; input preparation issues no execution authorization.
+
+The optional [hosted Session control bridge](../apphost/session-control-bridge-convergence.md)
+uses these existing Session operations and model-selection owners. AppHost
+integration owns the AppService wire conversion; Coding supplies Product identity,
+projection types and semantics, resume-input translation and observation hooks.
+The same actual Product adapter retains its binding and close task. This adds no
+Session/Agent/queue owner or reverse Harness dependency on hosted protocols.
+
+Transcript's existing discovery implementation also owns pinned source checks
+and attached-owner/disk observation in its private `_attached_discovery` module.
+It directly reuses Directory, the original stable read-only file loader and the
+same record codec. Coding keeps concrete Product/Session checks, GC identity,
+the actual facade constructor/state and diagnostic/read-limit binding. The
+attached owner is viewed through three read methods, without a proxy or new
+admission; full SourceReader store/branch rules are not imposed on this path.
+See [KD004 §12](key-designs/worker-history-responsibility-convergence.md#12-a29worker发现与附着观察归原transcript).
+
+The [foreground Product ownership adapter](../apphost/foreground-product-ownership-convergence.md)
+also reuses the existing Harness owned-task join. AppHost integration retains
+only unpublished Session cleanup debt and the original Product runtime handoff;
+Coding supplies its Session factory/catalog and Product policy. The borrowed
+profile view has no close authority; no new Session business owner is introduced.
+
+The bounded [local Wheel Source catalog convergence](key-designs/local-wheel-source-catalog-convergence.md)
+keeps shared POSIX source capture and catalog coordination inside Package Product.
+It directly reuses the original Journal and Resources controlled Source IO;
+Coding retains concrete records, codecs, admission and Product policy. Existing
+namespaces, epochs and Windows behavior remain authoritative. This introduces no
+second catalog store or installed-inventory authority.
+The same Package Product Source owner now coordinates the complete fixed Legacy
+publication, binding append/replay, strict reopen and policy extension program.
+Coding retains its real public values, original constructor, Product approval
+query and thin typed entries; Resources owns private Source verification and
+reuses the existing bounded consumption. Ordinary Source and Legacy share read
+scopes while retaining distinct grammar and error contracts. This is a measured
+responsibility transfer with system cost, not a claim of net source reduction;
+see [A34](key-designs/local-wheel-source-catalog-convergence.md#11-a34legacy-source-目录的完整操作归位).
+The same Resources package lifecycle also owns exact Product Source publication
+and inspection for the existing builtin and Windows Worker consumers (A25).
+Coding supplies fixed content/policy, display text and the live budget; direct
+target failure traces remain distinct from staged controlled Sources.
+Package Product also owns the Windows Worker immutable-receipt Source catalog
+coordination (A26), sharing stable source reads and Plugin policy merging with
+the existing POSIX catalogs. Windows keeps its receipt protocol and never uses
+the POSIX Journal backend; Coding retains concrete records and admission policy.
+
+The bounded [Worker candidate operation convergence](key-designs/worker-candidate-operation-convergence.md)
+(A27) keeps the opt-in selection fact join and four install/update lifecycle
+transactions inside the same Package Product component. It reuses original
+Desired/GC/committed facts, runtime factory and lifecycle cleanup. Coding retains
+approval/revocation, native platform interpretation, CAS and CLI projection;
+no additional admission, execution or persistence authority is introduced.
+
+The bounded [Plugin enablement compatibility capture](key-designs/plugin-session-lifecycle-convergence.md#11-d3-实现接缝完整兼容捕获路径候选)
+uses Plugin Management for the existing four-lock desired/migration capture,
+Resources for the original directory observations and fixed Windows pin, and
+Journal for the shared regular-text read. Coding retains its value/error policy
+and Product projection. This capture creates no new Ledger, registry or execution authority.
+
+The subsequent Plugin Session integration places process owner references,
+claim/incarnation and the original owner-evidence append/replay in
+`session/plugin_lifecycle/`, reusing Journal. Package Product owns the original
+startup registration, process registry and inactivity observation; Resources
+retains directory preparation. Coding retains its deployed values, paths,
+identity/error policy and thin adapters. Family acquisition, exact-owner retirement coordination and the outer close
+barrier now run through stateless Session mechanisms on the same original
+facade fields. PM assembly owns GC sealing and the explicit settled direct-host
+handoff/completion. Coding retains domain policy, values and projection;
+KD-007's lifecycle cluster is implemented, while broader startup/bootstrap
+convergence remains within the active Goal.
+The first [startup assembly slice](key-designs/startup-session-assembly-convergence.md)
+now places the single ephemeral owner-publication algorithm in Session's existing
+Plugin integration. Original AgentProductSession hooks consume optional empty-by-default
+bindings. Coding selects domain receipts and retains actual retirement qualifications;
+its assembly delegates to the same ordered lease-set fanout. Persistent evidence,
+Graph, registration and authorization remain with their original owners.
+The same publication owner now captures complete prepared/live generation receipts
+and the required Resource receipt, retaining original lazy reads and retry state.
+It reuses the existing three-field receipt identity; the Ledger's four-field
+canonicalization remains separate. Coding supplies Product keys/error text and
+four pure data getters; its two operational capture bodies are removed. See
+[A90](key-designs/startup-session-assembly-convergence.md#21-a90原publication直接捕获完整receipt).
+Session also owns the original shared construction cleanup algorithm and the three
+fixed Plugin composition cleanup lifecycles (failed preparation, untransferred
+preparation and published assembly). They use the same adopted facade fields,
+original Resources runtime and Session leases. Coding keeps domain labels,
+selection and binding; its old cleanup exports are compatibility imports.
+
+Resource Catalog also owns the bounded Loader-receipt to source-spec transfer
+in its private `_loader_inputs` module. Initial bootstrap, refresh, Product
+preview and local discovery reach it through the same public Coding adapter.
+It uses the original native/package/embedded specs, verified handles and capture;
+the original Adapter retains independent later admission/time checks and cleanup.
+Coding keeps canonical source policy, trust/plan compilation, clock and error
+projection. This adds no discovery, storage, Graph or fact authority. See
+[KD009 §12](key-designs/startup-session-assembly-convergence.md#12-loader回执至catalog输入共同准备的完整交接)
+for the complete transfer contract and the ten unchanged baseline test failures.
+
+Approval also owns the original ordered Plugin Resume parent coordination in
+its private `_plugin_resume_parents` implementation: checking both enrollments,
+retryable enrollment and sealing exact membership. It directly reuses the two
+native Plugin journals; no second parent registry, grant or cross-journal
+transaction is introduced. Coding retains its actual parent DTO and intent
+checks, journal path/writer-capability binding, diagnostic values and audited
+LSP/Arch settlement policy. Original snapshot locking and tail repair remain.
+See [KD009 §13](key-designs/startup-session-assembly-convergence.md#13-a28双plugin-resume-parent协作归原approval).
+
+
 
 ## Accepted Capability Graph Target (Mount Runtime Implemented)
 
@@ -275,6 +653,91 @@ prompt input nor the read tool owns a second copy of those rules or the
 inspect/resize/recompute sequence. Consumer-specific omission and presentation
 policy remains with Host prompt input and the read tool.
 
+## Opt-in Product Transcript Continuation
+
+The private [Transcript continuation profile](../../../../src/loushang/harness/transcript/_resume_continuation.py)
+owns the local first-input stage/commit/unknown/publication fence and guarded
+history-update program. It runs on the same Product Session instance and calls
+the original lifecycle/Artifact-aware committer and authoritative lookup. The
+standard ProductTranscriptSession remains unchanged; no second Writer, ledger,
+controller, pending lock or execution authorization is introduced.
+
+Coding retains real public classes and wire/data records, namespace/version/
+canonical hashes, Plan/source/owner/composition policy, logical-query decoding,
+neutral-record classification and runtime-ready publication. The profile reads
+borrowed logical identities and Product-classified history, not a default
+Transcript extension schema. Historical success never grants current execution
+or retry authority. Ten ephemeral defaults have a single profile definition;
+private Manager annotations/MRO/method source changes are bounded compatibility
+limits. See the [boundary](product-transcript-session-boundary.md#opt-in-resume-continuation-profile)
+and [KD009 implementation](key-designs/startup-session-assembly-convergence.md#19-a58恢复首输入提交与发布边界的完整候选).
+
+## Ordinary Worker Preparation And Windows Attempt Custody
+
+The implemented internal [Session Worker integration](../../../../src/loushang/harness/session/_worker_provider.py)
+now drives native preparation in the same Task and owns the returned
+Graph/Prepared handoff, facet visibility, commit and release-once integration.
+The original Graph remains the publication authority. The
+[Worker preparation programs](../../../../src/loushang/harness/worker/_ordinary_prepare.py)
+borrow the original Coordinator, Supervisor, Router, Hosting and resource
+objects. Worker keeps a selected manifest opaque while passing it to its
+original provisioning store; concrete Product selection and validation remain
+with their upper owner, avoiding a Worker-to-Package-Product dependency. Native
+acquisition cleans its own failed, unreturned attempt; Session
+owns failure cleanup after the attempt is returned. POSIX and Windows retain
+their distinct settlement and publication contracts, without another task,
+execution engine or recovery state.
+
+Selected POSIX payload materialization uses the original PayloadStorage through
+[Worker payload preparation](../../../../src/loushang/harness/worker/payload/_selected_payload.py).
+Windows physical stage work remains in the original
+[stage IO owner](../../../../src/loushang/harness/worker/payload/_windows_stage_io.py),
+including live root/ACL/handle lifetime at completion. No second file engine is
+introduced. Product checks and selection remain at their original call points.
+
+The existing [Package Product boundary](../../../../src/loushang/harness/package_product/_worker_windows_attempt.py)
+now owns fixed Windows intent read/inventory/commit, provisioning load/CAS and
+the outer cleanup-fact acquisition sequence under the original GC/currentness
+scope. It uses the same original Resources receipt writer, Journal, C5 and
+Hosting authorities. It adds no writer, journal, retained descriptor or fact
+index. Coding retains exact receipt/request/selection policy, error and layout
+bindings, and real public record/Prepared dataclasses with their own fields.
+
+The same Package Product boundary also owns the fixed inner orphan/runtime
+join, recovery-fact acquisition and retirement-root observation. Both payload
+and native inventory readers reuse one GC/currentness/root-borrow program.
+The original registry-before-GC lock order, normal-only final checks and
+supplied empty native-fact semantics remain. Worker StageIO owns the complete
+payload directory inventory using original Resources primitives; it observes
+crash-retained identities without certifying child ACLs or clean state.
+Coding retains exact admission, name/parser/error bindings and the original
+public record construction and repair policy. Orphan native errors propagate;
+the separate offline observation policy may report unknown. These reads grant
+no new cleanup authority. Other offline/backup/recovery decision paths and the
+rest of Coding remain convergence work; this does not make all callers thin.
+The bounded implementation and limits are recorded in
+[KD008 §22](key-designs/worker-product-runtime-convergence.md#22-a56联合方向接受实际接通与主线同步)
+and [§23](key-designs/worker-product-runtime-convergence.md#23-a57完整windows查询取得与同构reader复用).
+
+Package Product owns the complete read-only Windows stage capture under the
+caller's existing Product GC scope, using the original Worker StageInspection:
+ACL/root/stage/child descriptor lifetime, marker/tree/payload proof and final
+identity checks. Coding keeps exact intent admission, public Review/Error and
+domain decisions. The private ephemeral captured value belongs to Package
+Product; no Worker-to-Product dependency or Code IO callback is added. Complete
+and crash stage review, reserved review and settled-unlaunched recapture share
+this operation. Partial review and partial retirement's fresh comparison use
+Package Product's complete partial capture. Physical ACL/root/stage/child
+lifetimes stay inside ordinary lexical with/try/finally regions in that owner.
+Coding passes only pure public DTO construction: partial constructs before
+child cleanup, while full/reserved construct after child cleanup and final
+checks. Complete capture's factory is identity. Original multi-close exception
+contexts and first-child-error descriptor debt are preserved; no generator,
+manager or exposed resource-scope interface is introduced. Primitive inspection
+errors and operation diagnostics remain separate with original read bounds.
+See [A91](key-designs/windows-stage-capture-custody-convergence.md#a91完整partial-capture与原生关闭区域)
+for the correction of A89's flat stack, costs and finite platform evidence.
+
 ## Architecture Gates
 
 `make check-harness` is the integration gate. The architecture tests enforce:
@@ -324,3 +787,187 @@ When documents disagree, use this order:
 
 Completed migration records should be retained for traceability but must not be
 read as current ownership specifications.
+
+
+A48有界更新：原AppHost local的私有应用startup层承接原Code外层托管寿命，保原两层
+custody与同一Code实例；Coding保Launch/constructor、产品根与attempt/managed政策。
+原LocalStartup/phase/wait直接共用，无新owner/记录。Code−105/接收+201/系统+96，
+G17迁前同故障与17项managed权限限制仍在，不外推全链或整个Goal。见[专项接受](../apphost/local-startup-convergence.md#a48完整外层应用寿命归原apphost2026-11-09)。
+
+
+A49有界更新：固定snapshot批停及全部原清债程序归原AppHost managed stop；Code
+StopAll保真实入口/构造/JSON呈现，同一self/entry/task，不新建执行框架或事实权威。
+原单服务stop整体不改，确认/预算授予仍在Code；+20为接收成本而非净去重。19项原失败/
+准入受限项仍未通过；G17本轮原条件两次过但历史超时根因未证。见[专项边界](../apphost/managed-stop-batch-convergence.md)。
+
+
+## Opt-in Live Session Continuation
+
+The private [live Session profile](../../../../src/loushang/harness/session/_resume_continuation.py)
+is selected by Coding's existing AgentSession and inherits the original
+AgentProductSession. It owns the fixed candidate/input/publication/once-dispatch
+program on the same instance, reusing the original Graph, Prompt, Request Evidence,
+Transcript and Host owners. It adds no controller, queue, Writer or persistent
+recovery authority. Default AgentProductSession behavior stays unchanged.
+
+Coding retains real candidate/publication dataclasses, current selection/receipt
+and digest policy, Worker settlement, owner claims/receipts, Tool activation and
+Product ready markers. Core borrows readonly logical views, never historical
+execution permission. Eight local fields remain single-owned; their private keys
+and method defining module change. Four existing test observations follow the
+renamed dispatch flag with assertions preserved. See [KD009 A59](key-designs/startup-session-assembly-convergence.md#20-a59原session接管live恢复协调程序)
+for the exact costs and current verification limits; installed code is not by
+itself a completed whole-Goal acceptance.
+
+
+## Selected Worker Attempt Lifecycle
+
+The implemented private [Worker lifecycle program](../../../../src/loushang/harness/worker/_product_attempt_lifecycle.py)
+owns the original selected-attempt start, failure reclaim, latch-first rollback,
+recovery and normal close sequence. Coding's real Canary object inherits it,
+keeping one state/operation lock and the original injected Coordinator,
+Supervisor, Router, native, domain and cleanup authorities. No second activation
+engine, journal, controller or resource owner is created.
+
+Coding retains selection/binding admission, real Status/Error classes and own
+fields, explicit public signatures and domain output policy. Ordinary Graph
+handoff has different C5 publication and failure semantics; the programs borrow
+the same existing owners without a generic phase dispatcher. Current integration
+and bounded compatibility evidence are recorded in [KD008 A61](key-designs/worker-product-runtime-convergence.md#24-a61在已接受联合方向内接通完整canary生命周期).
+Remaining binder/native-selected work and full Coding convergence are not completed.
+
+## Selected Worker Single Query
+
+The private [Session query program](../../../../src/loushang/harness/session/_worker_operator_query.py)
+coordinates the original POSIX operator query from Product runtime activation
+through final disposal. It uses the original Worker Supervisor, C5, Hosting,
+selected-source IO and Session Graph. Graph preparation returns before the
+separate C5 publication and original Consumer query; all original acquisition,
+cleanup and exception boundaries remain in that single plain async program.
+It adds no controller, authority, journal, cleanup task or phase dispatcher.
+
+Coding retains existing Session/Product selection, public entry/error,
+query contract and provider policy, query-only settings and thin semantic
+adapters. Its ordinary and operator adapters share selected-source materialization
+and native field projection while preserving their different native reads.
+The exact integration cost and bounded evidence are in
+[KD008 A63](key-designs/worker-product-runtime-convergence.md#26-a63完整单次查询接通原session);
+controlled ports do not establish real native settlement or whole-Goal completion.
+
+## Product Plugin approval coordination (A73)
+
+The existing PluginDeclarationHost coordinates the explicit Product issuer and its
+unchanged sole resolve/preflight/Coordinator path. The existing ComponentHost owns
+journal construction, current authority/trust/policy readers and exact recorded
+Activation evidence validation; the existing ProductPluginCompositionAssembly
+owns candidate-order approval and binding into Session inputs. Approval signing
+stays with the supplied Product issuer, persistence with the original Approval
+journals, and later admission/consumption/Provider/Graph mechanisms stay unchanged.
+Coding retains Product paths/Profile/error mapping/issuer and Resume admission.
+[Bounded coordination evidence](key-designs/product-approval-closure-convergence.md)
+records the fixed original observations, original consumers and execution limits.
+
+## Retained Linux Worker payload recovery (A74)
+
+The Worker payload component owns the complete complete/empty/unmarked debt
+preview/review/inventory, intent/repair, read/reopen and retry coordination. It
+uses the original PayloadStorage, RepairJournal and RootedSupervisor history
+mechanisms directly. Product retains offline quiescence/currentness/GC admission;
+Coding keeps actual public DTOs/type admission and the original root borrowing
+scope. Core closes its stage FDs and never the borrowed root. The effectful
+Supervisor factory still admits/constructs the original owner at each old point;
+there is no Product scan/verify/delete callback. Registered recovery retains its
+separate evidence contract. [Bounded recovery evidence](key-designs/worker-payload-recovery-convergence.md)
+records the three different claim/settlement contracts and execution limits.
+
+## Retained prepared-operation task custody (A75)
+
+The original SessionLifecycleRuntime owns opt-in preparation/delivery Tasks,
+retained native operations, original cleanup debts and loop binding, including
+cancellation settlement, explicit abort and ordered drain/retry. Its existing
+_prepare_candidate and PreparedSessionLifecycleOperation remain the sole
+transition/candidate and consume/abort state owners. Coding retains domain
+Resume admission/build/continuation and first-input policy, public DTO construction
+and thin Root adapters; no second closed fact or manager is added. Ordinary
+restore/import/dispose does not automatically enroll or drain this custody.
+[Bounded custody evidence](key-designs/prepared-operation-task-custody-convergence.md)
+records original task/operation/debt identities and distinct cancellation programs.
+
+## Closed backup topology storage custody (A76)
+
+The existing Package Product component owns the complete topology read/create/
+reopen program shared by bootstrap, Arch writer verification and Worker backup
+attestation. It directly reuses RootedFileIO, the original fenced epochs and the
+actual WindowsPrivateReceiptIO. Coding supplies wire/history-fence/diagnostic
+values and retains closed kinds, hash identity, Product/GC admission and actual
+observation DTO. No new manager, store or Code IO callback is introduced.
+[Bounded topology evidence](key-designs/backup-topology-custody-convergence.md)
+records the platform asymmetries, original observations and complete cost.
+
+## Complete Linux Worker history proof (A77)
+
+Package Product owns retention review, gated offline reads, committed-V2 proof
+and strict GC history revalidation. These remain distinct programs with their
+original root/guard/reader ordering. Worker.history owns the pure joins and
+Review projections; the existing journals, V2 reader, snapshot/checkpoint owners,
+PayloadStorage/RepairJournal and native/topology custody remain sole mechanisms.
+Coding keeps actual DTOs, original public getter signatures and Product policy/
+admission with thin entries. There is no Code history/scan/verify callback or
+second manager. [Bounded proof evidence](key-designs/linux-worker-history-proof-convergence.md)
+records original bytes, failures, source origin, counters and execution limits.
+
+
+## Complete Linux Worker recovery and cleanup evidence (A78)
+
+Package Product owns registered lease/payload/C5 recovery and retries, ordinary
+crash C5 settlement, cleanup evidence and POSIX C5 Store GC/epoch custody. Public
+history locking also lives with A77's existing proof owner. Registry, Storage/
+RepairJournal, journals and ProductWorkerActivationCoordinator remain the sole
+lease, payload, history and C5 state engines. Code keeps real public DTOs and
+Evidence/Store classes, static Product authority identities, codec/policy and
+thin construction/compatibility entries. Ordinary evidence remains closed to
+registered recovery; the specialized under-guard owner retains its exact review.
+No Code scan/verify/repair/settle callback or second recovery transaction is added.
+[Bounded recovery evidence](key-designs/linux-worker-recovery-convergence.md)
+records independent durable steps, actual source/oracle evidence and limits.
+
+## Product selected revision input custody (A79)
+
+Package Product owns immutable selected snapshot handles, live currentness checks,
+builtin/external validation, actual distribution evidence, package/binding/plugin
+and resolution construction, and original current/prefix failure cleanup. Existing
+ExactProductSourceFiles owns installed source-root resolution, member capture and
+complete deterministic Wheel bytes; its prior native publication/inspection is
+unchanged. Coding keeps actual Artifact/spec classes, Product policy/member lists,
+metadata/Generator, module-file/relative location data, budgets, original public
+signatures and thin adapters. Core performs every path resolve, read and ZIP
+operation at the original point, without a Code IO callback or duplicate manager.
+The original Plugin DTO/parser, resolver, currentness and later approval/Graph
+owners remain sole mechanisms. [Bounded input evidence](key-designs/product-selected-revision-custody-convergence.md)
+records source identities, exact bytes, cleanup asymmetries and full cost.
+
+## Canonical transcript catalog custody (A80)
+
+The existing AppHost/Harness optional integration owns canonical create/find/list/
+open/display discovery, candidate claim/close and post-delivery session custody on
+the actual Product catalog/candidate instances. It neither activates the dark
+adapter nor adds a second catalog or registry. Transcript owns original physical
+revision/header observations and Managed StoreAdmission probe/identity custody.
+The original Factory/Writer, scanner, fingerprint and admission mechanisms remain
+the sole resource owners. Coding keeps real classes/public signatures and pure
+identity/metadata/compatibility/view policy with thin entries. Its existing narrow
+history-currentness guard retains effects; history preview/navigation is unchanged.
+[Bounded canonical evidence](key-designs/canonical-transcript-catalog-custody-convergence.md)
+records distinct owned/legacy failures, true thread completion and complete cost.
+
+## Failed completed-Session handoff (A98)
+
+The original Session construction cleanup retains one completed, undelivered
+Session. The original Transcript lifecycle pending entry settles that same
+custody before discarding its dependent transcript; failed close remains retryable.
+It calls the actual optional multiagent runtime and Session owners, with one
+retained task using the existing join primitive. Coding binds the two post-result
+failure boundaries and exposes the typed cleanup lookup. This adds no global
+registry, persisted owner or general before-release hook framework. Earlier
+constructor and scoped-model failure are separate obligations; see
+[A98](key-designs/startup-session-assembly-convergence.md#22-a98完成构造后的session交付失败责任).

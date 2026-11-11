@@ -5,6 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from loushang.harness.resources.packages.materializer import plugin_source_identity
+from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source import (
+    resolve_installed_product_root,
+)
 from loushang.harness.resources.plugins.dependency_grants import (
     PluginDependencyGrantError,
 )
@@ -17,24 +20,29 @@ _CODING_ARCH_PLUGIN_ID = "coding.arch.default"
 _LOUSHANG_DISTRIBUTION = "loushang"
 
 
+_CODING_PRODUCT_SOURCE_LOCATIONS = {
+    _CODING_LSP_PLUGIN_ID: ("_plugins", "coding_lsp_default"),
+    _CODING_ARCH_PLUGIN_ID: ("_plugins", "coding_arch_default"),
+}
+
+
 def coding_lsp_default_plugin_root() -> Path:
     """Return the exact checked-in source granted the reserved Plugin id."""
-
-    return (
-        Path(__file__).resolve().parent / "_plugins" / "coding_lsp_default"
-    ).resolve(strict=True)
+    return resolve_installed_product_root(
+        __file__, _CODING_PRODUCT_SOURCE_LOCATIONS[_CODING_LSP_PLUGIN_ID]
+    )
 
 
 def coding_arch_default_plugin_root() -> Path:
     """Return the exact checked-in source granted the reserved Arch Plugin id."""
+    return resolve_installed_product_root(
+        __file__, _CODING_PRODUCT_SOURCE_LOCATIONS[_CODING_ARCH_PLUGIN_ID]
+    )
 
-    return (
-        Path(__file__).resolve().parent / "_plugins" / "coding_arch_default"
-    ).resolve(strict=True)
 
-
-def coding_plugin_distribution_evidence_resolver(
-) -> InstalledPythonDistributionEvidenceResolver:
+def coding_plugin_distribution_evidence_resolver() -> (
+    InstalledPythonDistributionEvidenceResolver
+):
     """Create Coding's explicit evidence policy for its own editable checkout."""
 
     return InstalledPythonDistributionEvidenceResolver(allow_editable=True)

@@ -10,6 +10,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Protocol
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
@@ -36,6 +37,15 @@ from loushang.harness.resources.packages.plugin_lifecycle.commit_records import 
     PackageStableRefV1,
     PluginRevisionRefV1,
     VerifiedArtifactRefV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _nonempty_string as _wire_string,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _versioned_dict as _exact_dict,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_int as _wire_int,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -829,37 +839,15 @@ def _require_positive(value: int, *, name: str) -> None:
         raise ValueError(f"{name} must be positive")
 
 
-def _exact_dict(value: object, *, fields: set[str], name: str) -> dict[str, object]:
-    if not isinstance(value, dict) or set(value) != fields:
-        raise ValueError(f"{name} does not match its versioned schema")
-    return value
-
-
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise TypeError(f"{name} must be a non-empty string")
-    return value
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an integer")
-    return value
-
-
 def _assert_no_duplicate_json_keys(path: Path) -> None:
     for line in path.read_text(encoding="utf-8").splitlines():
         if line:
             json.loads(line, object_pairs_hook=_unique_json_object)
 
 
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    document: dict[str, object] = {}
-    for key, value in pairs:
-        if key in document:
-            raise ValueError("Package artifact staging has duplicate JSON keys")
-        document[key] = value
-    return document
+_unique_json_object = _unique_json_object_hook(
+    lambda: "Package artifact staging has duplicate JSON keys",
+)
 
 
 __all__ = [
@@ -875,18 +863,15 @@ __all__ = [
 ]
 
 
-_PLUGIN_ROOT_TARGET_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("target_id", "target id"),
-        RecordField("operation_id", "operation identity"),
-        RecordField("request_fingerprint", "request fingerprint"),
-        RecordField("product_id", "Product identity"),
-        RecordField("scope_id", "scope identity"),
-        RecordField("installation_id", "Installation identity"),
-        RecordField("plugin_id", "Plugin identity"),
-        RecordField("authority_id", "authority identity"),
-        RecordField("authority_revision", "authority revision"),
-        RecordField("target_version", "target version", _wire_int),
-    ),
+_PLUGIN_ROOT_TARGET_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackagePluginRootTargetV1,
+    _wire_string,
+    RecordField("operation_id", "operation identity"),
+    RecordField("product_id", "Product identity"),
+    RecordField("scope_id", "scope identity"),
+    RecordField("installation_id", "Installation identity"),
+    RecordField("plugin_id", "Plugin identity"),
+    RecordField("authority_id", "authority identity"),
+    RecordField("target_version", "target version", _wire_int),
+    derive_labels=True,
 )

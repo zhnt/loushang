@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar
+
+from loushang.foundation.json import _unique_json_object_hook
 
 H = TypeVar("H")
 R = TypeVar("R")
@@ -48,6 +51,28 @@ class FunctionalJournalHeaderCodec(Generic[H]):
 
     def decode_header(self, value: Mapping[str, object]) -> H:
         return self.decoder(value)
+
+
+def decode_json_record(
+    raw: bytes,
+    decoder: Callable[[object], R],
+    *,
+    label: str,
+    duplicate_message: str | None = None,
+) -> R:
+    """Decode one existing record, retaining caller schema and error-cause policy."""
+
+    unique_object = _unique_json_object_hook(
+        lambda: duplicate_message
+        if duplicate_message is not None
+        else f"{label} has duplicate fields"
+    )
+
+    try:
+        document = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object)
+        return decoder(document)
+    except (TypeError, UnicodeError, ValueError) as error:
+        raise ValueError(f"{label} is invalid") from error
 
 
 __all__ = [

@@ -1,0 +1,540 @@
+{
+  "native_fixture_user_id": 1000,
+  "normalization": "original physical stage dev/inode by exact field/value and canonical body tokens; per-name 24hex temporary ordinal, raw IDs retained",
+  "observations": {
+    "cleanup:base-registered": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "d2e000440eeaf50d52c34c17b2123c127600de22a4457090d94d259ae00692a3"
+    },
+    "cleanup:cancel-exception": {
+      "first_error": "CancelledError",
+      "retry_error": null,
+      "sha256": "36e6b7423a47e39d9235da93f6e5686944b353be4b040374a9da6a2253713013"
+    },
+    "cleanup:complete-read-error": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "b9d31ba00f010334a38c35156292ae5a683bea101a6f26fbf7b387316ab65edb"
+    },
+    "cleanup:host-error": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "20923bd4128ab732a4170ef5f8f999693cad9fa7c53bc22e9cac579825d8feb2"
+    },
+    "cleanup:intent-absent": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "0f4e0939797dfd6e1800a2d2f12f230d48d9a0ed006a3ad0d98ffcd8dccfb1ed"
+    },
+    "cleanup:intent-hash": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "d8f4b0efa9d70795000fc0683334434e51ec2604e960c1cd812c72bf48b2dbe7"
+    },
+    "cleanup:interrupt": {
+      "first_error": "KeyboardInterrupt",
+      "retry_error": null,
+      "sha256": "c65c93a8aa6f042989af0905964fcb3ebfb154485c694787b05224b35b519a15"
+    },
+    "cleanup:normal": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "570f66ca1358a8fc08b7c887bcd8df6383bbc19c00b6aaffbe7b6bb30f06d138"
+    },
+    "cleanup:prior-boot": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "fb9b14bb97856bd6626820c72559fa6fe25230c34e1dfdfb7016d52ea8cc809d"
+    },
+    "cleanup:stale-witness": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "bde522824fcaf6a07e6d3da234d35bcd01b75c52ea3a1d857a34bf0c19cffd8c"
+    },
+    "cleanup:wrong-boot": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "0892818ca25870613c0a05c8c975bc226e88a3a5defa8f685347611d0b5775e8"
+    },
+    "cleanup:wrong-generation-type": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "d2e000440eeaf50d52c34c17b2123c127600de22a4457090d94d259ae00692a3"
+    },
+    "cleanup:wrong-host": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "a95c6cabd392f9bf50218bd6431b9acd8f3d6d4b16178ee0c1977ebf0a89aefd"
+    },
+    "cleanup:wrong-witness-type": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "d2e000440eeaf50d52c34c17b2123c127600de22a4457090d94d259ae00692a3"
+    },
+    "crash:body-and-cleanup": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "8aa9e7621127153b8c82e54f94d3674becdc1654e9943cb4b3bedfc4b369476d"
+    },
+    "crash:c5-cas1-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "a2292b08b4e7a5985bf386a7e68ec6304738bc6a7187b38340bd9b589bd5a899"
+    },
+    "crash:c5-cas1-before": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "57e88b219c601c5a0bbbcd7495b29e4e2f56728bdb3bc012154557c31012d0f5"
+    },
+    "crash:c5-cas2-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "2adf7d14f699250d5cbd87e71f36c11320ce75c57e94a6373843fcdcea12ffe1"
+    },
+    "crash:c5-cas2-before": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "ea394893bc9ae9096604a797c7e16c9c0c85b70c8510dc35855bf0b6ff948575"
+    },
+    "crash:c5-cas3-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "7c64a29a5ec3b8121b1371d4ef7e1e9126cd29a6fef0459b441d9c3d1a71f31f"
+    },
+    "crash:c5-cas3-before": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "15f2d8b007d7aa2d082595e897126d78aed30fc0ed0dcb4dd84edd340992847f"
+    },
+    "crash:cancel-exception": {
+      "first_error": "CancelledError",
+      "retry_error": null,
+      "sha256": "3a69b8c3cb0edc85b1e2afab5e0961492e8a842d3738081edc12ff17f485fb7f"
+    },
+    "crash:cleanup-error": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "2f60ab6bf763e043c5ad02e972c7f626989e63bdf8c79c3193e8ccd11e5df76a"
+    },
+    "crash:gate-policy": {
+      "first_error": "CodingWorkerCrashC5SettlementError",
+      "retry_error": "CodingWorkerCrashC5SettlementError",
+      "sha256": "49918b1fddf45136c603441dc170e89d2d9562a6f75e9074abf0d1793433b857"
+    },
+    "crash:group-present": {
+      "first_error": "CodingWorkerCrashC5SettlementError",
+      "retry_error": "CodingWorkerCrashC5SettlementError",
+      "sha256": "f8ec30107107d76666f6a9794e2116e65b42b2011371b54d8be4c2a440531786"
+    },
+    "crash:host-error": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "17b1fa08227f82e420638136ffd8e7025d5cc75d22f86b315fab10ca03b1e0d6"
+    },
+    "crash:intent-absent": {
+      "first_error": "CodingWorkerCrashC5SettlementError",
+      "retry_error": "CodingWorkerCrashC5SettlementError",
+      "sha256": "668c4d6de1c60ca010ea17b71a41b206ee6aaef7b346cb8d58547323c5adb1ae"
+    },
+    "crash:intent-hash": {
+      "first_error": "CodingWorkerCrashC5SettlementError",
+      "retry_error": "CodingWorkerCrashC5SettlementError",
+      "sha256": "091ba1f3133cfafa08db7563218f0d26dcfc32841cf0afb940a6434e7cfdd7a4"
+    },
+    "crash:interrupt": {
+      "first_error": "KeyboardInterrupt",
+      "retry_error": null,
+      "sha256": "6035766e105cf54e1234c0c44859ee7d7da0d7ef329d6e7359cc7e3b95ed3b18"
+    },
+    "crash:live-payload": {
+      "first_error": "CodingWorkerCrashC5SettlementError",
+      "retry_error": "CodingWorkerCrashC5SettlementError",
+      "sha256": "1ff2f269c422d79c17d9c93c3bb753d90ce042cbd2dc8d5d7844610feea1f9b1"
+    },
+    "crash:native-error": {
+      "first_error": "CodingWorkerCrashC5SettlementError",
+      "retry_error": null,
+      "sha256": "d1059c4ea0ecd8351a4b72db80309c6a43ef6bb0f750858cb7c2a51a093c00ea"
+    },
+    "crash:native-other": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "cd4963b8f9ee9c8695a3a88423afec2916061922526b7a545c50da732bc5cf01"
+    },
+    "crash:normal": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "6713c3cc150cc61b36df0098968cd9715b0730bd6ae61acd77fe5da63ce2f2f0"
+    },
+    "crash:pin-enter": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "0e6a72d9aaefd02d4c87bd849a09c4c8507678979ef54aa47098ec23246bcec2"
+    },
+    "crash:pin-exit": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "848abf382cedb622f93c96a402b23ec3ac835e9e17fdb3f40fa8d08024f11d8d"
+    },
+    "crash:prior-boot": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "416c3dc88a5017afd5ad5cfb3458c3d5b6cf6bebfdb4ec673a73a5c3fd8f0ef8"
+    },
+    "crash:prior-cas4-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "d3ed09a8d1e7cb3f240ff522ed0742caa3be1efdae42301f5a97cb2e54f52ded"
+    },
+    "crash:prior-cas4-before": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "2e11e1ccc35051c6ad09c8893aa2ea1dedac3a16e048069f81cbace071fec92e"
+    },
+    "crash:read-error": {
+      "first_error": "CodingWorkerStartGateJournalError",
+      "retry_error": null,
+      "sha256": "7f6a3306f9367caed91e68ed25af40666253d50bcef5782c6a0f2d2e6f96ff13"
+    },
+    "crash:supervisor-active": {
+      "first_error": "CodingWorkerCrashC5SettlementError",
+      "retry_error": "CodingWorkerCrashC5SettlementError",
+      "sha256": "75b9330dde942fe9d1e74bfa254ea8da64cfe0937ba8b2c04f3fdbe394fc7a7f"
+    },
+    "payload:changed-prior": {
+      "first_error": "CodingWorkerRegisteredPayloadRepairError",
+      "retry_error": "CodingWorkerRegisteredPayloadRepairError",
+      "sha256": "f05963a6e63660a3fee55f770ca0105ab1aa60b47d9c4e25afc0ce08629021a8"
+    },
+    "payload:normal": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "e6423cdd28c79ac1a6c192d2f56a8ea75da7fa40e6dfc9b0f4e1ea97f01a12d0"
+    },
+    "payload:partial": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "be20b89c7dfa526cdb565bf5b137d4aed22dc9d974456b20ae0aaf12ef0e23d4"
+    },
+    "payload:payload-changed": {
+      "first_error": "CodingWorkerPayloadMaterializationError",
+      "retry_error": "CodingWorkerPayloadMaterializationError",
+      "sha256": "5875e7324e4a9dc11be77174f5a64836a74fa008555c1edddd0678f1bbed8452"
+    },
+    "payload:prior": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "69f741cb75453b1734ec0f847e04300755e15b2d01e223c777dd15f09e3d210f"
+    },
+    "payload:stage-absent": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "a2cdac48d935cefcf3e846b1fc6f57c2ff12a713d4e556d87093f5aed05b83b1"
+    },
+    "recover:already-repaired": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "422949c5086a6be41404e1bf523f90b9bfa0cf1fc458f82a8e983c519e45a002"
+    },
+    "recover:body-and-cleanup": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "4875bb5668b474b60b01d2de041b30eb7253402534cd68cc5af3ea1cd64b4e49"
+    },
+    "recover:c5-cas1-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "b1f590522c0e5dc1c7e56ea0fdedfded54632ba7728d46a7ef7665a6389075f8"
+    },
+    "recover:c5-cas1-before": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "efbe265e4e64449599ab253ad627b726e6cf67f66a2b749e66910feca6ca29d1"
+    },
+    "recover:cancel-exception": {
+      "first_error": "CancelledError",
+      "retry_error": null,
+      "sha256": "e447b86a33379cc3f15db7e415b6f8a7605bdb79c04ef78a40f8b7500ce98e27"
+    },
+    "recover:cleanup-error": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "826d91417553435560c4793012b3c1542b74898ce195646223e4a076b52380c8"
+    },
+    "recover:delete-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "a146906b077c738637a7078eeeff49839f784f0710ad7fc8923ea27e47de6f32"
+    },
+    "recover:delete-before": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "6e73940a7b7c2b01a3b1144205a4a2a8f1effbae44132820926aab892c9bd9e1"
+    },
+    "recover:delete-marker-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "8de604156eedc2de9b4985f373231ce2ccb2197c0edfddce96de230b103239ff"
+    },
+    "recover:delete-stage-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "7cacbe04ee1eb8138b525bc99d180b75dbcbd7fad0e557364a75970a7bd4f5f5"
+    },
+    "recover:fence-absent": {
+      "first_error": "CodingWorkerRegisteredRecoveryError",
+      "retry_error": "CodingWorkerRegisteredRecoveryError",
+      "sha256": "f62116ec8022269d0a979ad1d2b8e4db28704307e4930a1cad4be765a420f25b"
+    },
+    "recover:host-error": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "2bb45afe6455b1e69b83afec8478f8ae10fa9c9f17dac0dbae2004e7ade9df0e"
+    },
+    "recover:interrupt": {
+      "first_error": "KeyboardInterrupt",
+      "retry_error": null,
+      "sha256": "f1b9f821bf7a02cce2897b353d8563abbb268863f2a4d4bada5b048206ccbff2"
+    },
+    "recover:normal": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "54b565f26bbf4050f1f3cbbccef754d55b64e4db7023f80c2f38859f1bbd88c0"
+    },
+    "recover:orphan-multiple": {
+      "first_error": "CodingWorkerRegisteredC5SettlementError",
+      "retry_error": "CodingWorkerRegisteredC5SettlementError",
+      "sha256": "21e49207f2338f3d7a5ee49b1f7f2169d3f4d99791d8baf5fad44ed6507a8029"
+    },
+    "recover:orphan-none": {
+      "first_error": "CodingWorkerRegisteredC5SettlementError",
+      "retry_error": "CodingWorkerRegisteredC5SettlementError",
+      "sha256": "21e49207f2338f3d7a5ee49b1f7f2169d3f4d99791d8baf5fad44ed6507a8029"
+    },
+    "recover:owner-revision": {
+      "first_error": "CodingWorkerRegisteredPayloadRepairError",
+      "retry_error": "CodingWorkerRegisteredPayloadRepairError",
+      "sha256": "7f2cd7f53655e4f56782f95408397d263fe281535ecf7042d54daaedd43d7087"
+    },
+    "recover:pin-enter": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "7960ca498cd68daa60e2fc8d0d381910666d762d266d378907070fc1b6740c24"
+    },
+    "recover:pin-exit": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "3e80af1887202d53b64192feb6489cbd8436c41fa0305f49da88bf3ed6c45d1b"
+    },
+    "recover:publish-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "f2a1c434e1fc815cbaf7c1ccf555f28b20f653fdd5b0d7b58a95e1a0677f6bb9"
+    },
+    "recover:publish-before": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "1b9a07fce18da563a2871e6af3626455ab131dc5b8a6413932d7a64bf3d9a90d"
+    },
+    "recover:read-error": {
+      "first_error": "CodingWorkerStartGateJournalError",
+      "retry_error": null,
+      "sha256": "8b8728366ba1f08a04f039b638a8a79f0ccd1577d73ff3098c2e61ecd7a488fb"
+    },
+    "recover:registry-repair-after": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "cc019f1884a8a5e44ef7d29778a68de1f12feb67e86fc9bd197590939427578e"
+    },
+    "recover:registry-repair-before": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "745530242654704d363ed28f9e5c07c79509d3323dbaf3872350697abb0a8174"
+    },
+    "recover:registry-repaired-read": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "7526d54448e31ae9b9175096d10712eb098f3d59a5834aca287b067feddae9ee"
+    },
+    "recover:registry-review": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "7ce75a1135ca9015a53d024f8f05e0a1884842a4a765376ea56f4bad88f9fd3b"
+    },
+    "recover:runtime-active": {
+      "first_error": "CodingWorkerRegisteredPayloadRepairError",
+      "retry_error": "CodingWorkerRegisteredPayloadRepairError",
+      "sha256": "7f2cd7f53655e4f56782f95408397d263fe281535ecf7042d54daaedd43d7087"
+    },
+    "recover:same-boot": {
+      "first_error": "CodingWorkerRegisteredC5SettlementError",
+      "retry_error": "CodingWorkerRegisteredC5SettlementError",
+      "sha256": "21e49207f2338f3d7a5ee49b1f7f2169d3f4d99791d8baf5fad44ed6507a8029"
+    },
+    "recover:unknown-name": {
+      "first_error": "CodingWorkerRegisteredC5SettlementError",
+      "retry_error": "CodingWorkerRegisteredC5SettlementError",
+      "sha256": "46b64b0532857c737afb1a1e5574c9e987b06dc893b8a7d8515e33d634c4464b"
+    },
+    "registered-verify:cancel-exception": {
+      "first_error": "CancelledError",
+      "retry_error": null,
+      "sha256": "9c45e1ccc0a3895da1c86557e03ce173f6faa2002f2c7aaeec6a3a4297cf2949"
+    },
+    "registered-verify:fresh-read-error": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "195c3e1800416822bae02e234f3f6337fe5b26eed6671c9e2e70f66368068a77"
+    },
+    "registered-verify:host-error": {
+      "first_error": "OSError",
+      "retry_error": null,
+      "sha256": "d2f4ff79ec46a10429470e0f438092872d2cec73108c6ad4f99556caffdea53c"
+    },
+    "registered-verify:interrupt": {
+      "first_error": "KeyboardInterrupt",
+      "retry_error": null,
+      "sha256": "9646b1865cc13258c79dc3131a4656594f3b74fd5d50d3c4ff2ec11287efc4e7"
+    },
+    "registered-verify:normal": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "00eec16356748bdaab20a22b00898b1acc4e097b7221d399f1e9e46027a39acc"
+    },
+    "registered-verify:wrong-generation-type": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "00eec16356748bdaab20a22b00898b1acc4e097b7221d399f1e9e46027a39acc"
+    },
+    "v2-reopen:intent-changed": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "6928af87382d274611b48125c1a1677cc776b71d5cf4af93c2fdd11afaef83eb"
+    },
+    "v2-reopen:normal": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "28f61eeffa694c1e292d3779fd899a8a7a95a1ee8405744545bd639a38e3ec66"
+    },
+    "v2-reopen:retired": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "c2832355899b266132ac83060b99ba14639b0c045f50f3d74aec49c95c8e0bd6"
+    },
+    "v2-reopen:state-changed": {
+      "first_error": null,
+      "retry_error": null,
+      "sha256": "520822562f91d421c8e741033f4a139b3d139f83a90cf139234cdcfde3e76816"
+    }
+  },
+  "original": {
+    "head": "9756a965df7cbd4c25b0c8ff783ecc6b34b76502",
+    "sources": {
+      "src/loushang/coding/package_product_worker_activation_state.py": "2313329e19acfd15d2853bf411094e12b8e65de37cb4b7b4a32c926824c4b992",
+      "src/loushang/coding/package_product_worker_cleanup_evidence.py": "4c30a41c6675c36b49b55ef9a0e9689e7b6057c0e84d64afbbddebd24123fb3b",
+      "src/loushang/coding/package_product_worker_crash_c5_settlement.py": "0abac69de136e03f417e6e5d7071a329b15947cbe591fd4cb42f12c73004dc52",
+      "src/loushang/coding/package_product_worker_registered_c5_settlement.py": "4e651980106b368fa0277609cbadae940d913f5c565c2545c80b214e9e1deffa",
+      "src/loushang/coding/package_product_worker_registered_payload_repair.py": "1c9a00483d69ba2fce97ea409749ffb94250d7c45dc8a94c50f4c4db4523de8a",
+      "src/loushang/coding/package_product_worker_registered_recovery.py": "a4f687231e216b4c9e46731f673b2ee6df071f8cbd1c909d5fe6b2d76d0f64b7",
+      "src/loushang/harness/package_product/_linux_worker_history.py": "89fd8bf76cd540fca391309b6481d4f7edc6ed60f4b078533bae07575d6ad84e",
+      "src/loushang/harness/worker/history/_retention.py": "08bf19e2f3438baf5775a0bfe3185d72ae80e3aa5cf1ada0da3a88c8da098c64",
+      "src/loushang/harness/worker/payload/_repair.py": "8ec779fb128aee51ee33275a5fb35d3f9d3114c62dfa1fa6e04ba5982a06e804",
+      "src/loushang/harness/worker/payload/_storage.py": "508bc9c21081bb207b4c2d2da5c55682318576586663aac3abd3c7cc71db96bd",
+      "src/loushang/harness/worker/product_activation.py": "184ac0d689f49768df7269eedeed536939f049ec28a0407ea70b1288735ce8b5"
+    }
+  },
+  "original_source_frame_count": 1962,
+  "original_source_frame_sha256": "b3cf2e99e1da0b4372e15acc8eb1e19d559197f9b5a1fa9d57a4e964a4c0fb01",
+  "reflection": {
+    "CodingWorkerRegisteredOrphanReviewV1": {
+      "annotations": {
+        "activation_attempt": "CodingProductWorkerRetainedAttemptV1 | None",
+        "attempt_id": "str",
+        "current_boot_identity": "str",
+        "gate_record": "CodingWorkerStartGateRecordV1 | None",
+        "host_identity": "str",
+        "orphan_lease": "PackageEpochRuntimeLeaseV1 | None",
+        "payload_plan": "CodingWorkerPayloadDebtPlanV1 | None",
+        "receipt_record": "CodingWorkerReceiptRecordV1 | None",
+        "repaired_orphan_lease": "PackageEpochRuntimeLeaseV1 | None",
+        "repaired_owner_revision": "int | None",
+        "runtime_epoch": "int",
+        "store_root_identity": "str",
+        "supervisor_attempt": "WorkerAttemptRecordV1 | None",
+        "unrecognized_worker_state_names": "tuple[str, ...]"
+      },
+      "fields": [
+        "attempt_id",
+        "gate_record",
+        "activation_attempt",
+        "supervisor_attempt",
+        "receipt_record",
+        "orphan_lease",
+        "payload_plan",
+        "host_identity",
+        "current_boot_identity",
+        "runtime_epoch",
+        "store_root_identity",
+        "unrecognized_worker_state_names",
+        "repaired_orphan_lease",
+        "repaired_owner_revision"
+      ],
+      "module": "loushang.coding.package_product_worker_registered_recovery",
+      "qualname": "CodingWorkerRegisteredOrphanReviewV1",
+      "signature": "(attempt_id: 'str', gate_record: 'CodingWorkerStartGateRecordV1 | None', activation_attempt: 'CodingProductWorkerRetainedAttemptV1 | None', supervisor_attempt: 'WorkerAttemptRecordV1 | None', receipt_record: 'CodingWorkerReceiptRecordV1 | None', orphan_lease: 'PackageEpochRuntimeLeaseV1 | None', payload_plan: 'CodingWorkerPayloadDebtPlanV1 | None', host_identity: 'str', current_boot_identity: 'str', runtime_epoch: 'int', store_root_identity: 'str', unrecognized_worker_state_names: 'tuple[str, ...]', repaired_orphan_lease: 'PackageEpochRuntimeLeaseV1 | None' = None, repaired_owner_revision: 'int | None' = None) -> None",
+      "slots": [
+        "attempt_id",
+        "gate_record",
+        "activation_attempt",
+        "supervisor_attempt",
+        "receipt_record",
+        "orphan_lease",
+        "payload_plan",
+        "host_identity",
+        "current_boot_identity",
+        "runtime_epoch",
+        "store_root_identity",
+        "unrecognized_worker_state_names",
+        "repaired_orphan_lease",
+        "repaired_owner_revision"
+      ]
+    },
+    "CodingWorkerRegisteredPayloadRepairIntentV1": {
+      "annotations": {
+        "boot_identity": "str",
+        "gate_record_digest": "str",
+        "host_identity": "str",
+        "lease_id": "str",
+        "owner_generation": "int",
+        "plan": "CodingWorkerPayloadDebtPlanV1",
+        "policy_fingerprint": "str",
+        "receipt_record_digest": "str"
+      },
+      "fields": [
+        "plan",
+        "gate_record_digest",
+        "receipt_record_digest",
+        "policy_fingerprint",
+        "lease_id",
+        "host_identity",
+        "boot_identity",
+        "owner_generation"
+      ],
+      "module": "loushang.coding.package_product_worker_registered_payload_repair",
+      "qualname": "CodingWorkerRegisteredPayloadRepairIntentV1",
+      "signature": "(plan: 'CodingWorkerPayloadDebtPlanV1', gate_record_digest: 'str', receipt_record_digest: 'str', policy_fingerprint: 'str', lease_id: 'str', host_identity: 'str', boot_identity: 'str', owner_generation: 'int') -> None",
+      "slots": [
+        "plan",
+        "gate_record_digest",
+        "receipt_record_digest",
+        "policy_fingerprint",
+        "lease_id",
+        "host_identity",
+        "boot_identity",
+        "owner_generation"
+      ]
+    }
+  },
+  "v2_scope": "Real checkpoint/seal/preflight/stage/commit and journal/ledger readers; pre-existing completed payload debt has modeled fixed IDs, not a physical stage deletion by this V2 fixture."
+}

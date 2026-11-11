@@ -14,10 +14,8 @@ import hmac
 import json
 import logging
 import os
-import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn, cast
@@ -41,6 +39,7 @@ from loushang.harness.journal import (
     JsonlSnapshot,
     LockFactory,
 )
+from loushang.harness.journal._cache_publication import publish_cache_bytes
 from loushang.harness.transcript.kinds import MODEL_INPUT_COMPONENT_KIND
 from loushang.harness.transcript.model_input_v2_codec import (
     decode_model_input_node_bundle,
@@ -771,35 +770,15 @@ def _write_manifest(
     if write_cache is not None:
         write_cache(path, payload)
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_name: str | None = None
+    publish_cache_bytes(path, payload, file_mode=0o600, cleanup_error=OSError)
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            temp_name = handle.name
-            os.chmod(temp_name, 0o600)
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temp_name, path)
-        temp_name = None
-        try:
-            directory_fd = os.open(path.parent, os.O_RDONLY)
-        except OSError:
-            return
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(directory_fd)
     finally:
-        if temp_name is not None:
-            with suppress(OSError):
-                Path(temp_name).unlink()
+        os.close(directory_fd)
 
 
 def _decode_record_line(

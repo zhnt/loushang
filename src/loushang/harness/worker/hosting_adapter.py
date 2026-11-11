@@ -6,6 +6,9 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Protocol, TypeGuard, TypeVar, cast
 
+from loushang.foundation._owned_tasks import (
+    _join_cancellation_first,
+)
 from loushang.harness.workspace.process import ProcessExit, ProcessStderrTail
 from loushang.hosting import (
     ChildSessionHostingPort,
@@ -557,24 +560,7 @@ def _raise_if_aborted(signal: object | None) -> None:
         )
 
 
-async def _await_owned(task: asyncio.Task[_T]) -> _T:
-    cancellation: asyncio.CancelledError | None = None
-    while True:
-        try:
-            result = await asyncio.shield(task)
-            break
-        except asyncio.CancelledError as exc:
-            if task.cancelled():
-                raise
-            if cancellation is None:
-                cancellation = exc
-        except BaseException as exc:
-            if cancellation is not None:
-                raise cancellation from exc
-            raise
-    if cancellation is not None:
-        raise cancellation
-    return cast(_T, result)
+_await_owned = _join_cancellation_first
 
 
 __all__ = [

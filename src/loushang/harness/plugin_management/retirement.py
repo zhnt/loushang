@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, replace
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from typing import Literal, cast
 
-from loushang.foundation.json import JsonValueError, require_json_mapping
+from loushang.foundation.json import (
+    JsonValueError,
+    _unique_json_object_hook,
+    require_json_mapping,
+)
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
@@ -29,9 +34,18 @@ from loushang.harness.plugin_management.records import (
     PluginDesiredStateTransitionV1,
     PluginLifecycleCodecError,
     PluginPackageRevisionRefV1,
+    _record_document,
+    _require_positive_integer,
+)
+from loushang.harness.plugin_management.records import (
+    _require_digest as _require_sha256,
 )
 from loushang.harness.plugin_management.updates import (
     PluginDesiredStateUpdateTransitionV2,
+)
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
 )
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.declarations import PluginDeclarationCodecError
@@ -111,23 +125,12 @@ class PluginRetirementIntentV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginRetirementIntentV1:
-        document = _wire_object(value, name="Plugin retirement intent")
-        _wire_exact_fields(
-            document,
-            keys={
-                "instanceRevisionRef",
-                "intentVersion",
-                "mode",
-                "packageRevision",
-                "retirementId",
-                "sourceTransition",
-                "trigger",
-            },
+        document = _decode_document(
+            value,
             name="Plugin retirement intent",
-        )
-        _wire_version(
-            document.get("intentVersion"),
-            expected=PLUGIN_RETIREMENT_INTENT_VERSION,
+            schema=_PLUGINRETIREMENTINTENT_SCHEMA,
+            version=PLUGIN_RETIREMENT_INTENT_VERSION,
+            version_field="intentVersion",
         )
         try:
             trigger = _wire_string(
@@ -142,23 +145,9 @@ class PluginRetirementIntentV1:
                 document["sourceTransition"],
                 name="Plugin retirement source transition",
             )
-            return cls(
-                retirement_id=_wire_string(
-                    document["retirementId"], name="retirement id"
-                ),
-                trigger=cast(PluginRetirementTrigger, trigger),
-                mode="graceful",
-                instance_revision_ref=_wire_instance_ref(
-                    document["instanceRevisionRef"]
-                ),
-                package_revision=PluginPackageRevisionRefV1.from_dict(
-                    document["packageRevision"]
-                ),
-                source_transition=PLUGIN_DESIRED_STATE_JOURNAL_CODEC.decode_record(
-                    source_document
-                ),
-                intent_version=PLUGIN_RETIREMENT_INTENT_VERSION,
-            )
+            document["trigger"] = trigger
+            document["sourceTransition"] = source_document
+            return _PLUGINRETIREMENTINTENT_SCHEMA.decode(cls, document)
         except PluginRetirementRecordCodecError:
             raise
         except (
@@ -192,24 +181,15 @@ class PluginRetirementIntentRecordV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginRetirementIntentRecordV1:
-        document = _wire_object(value, name="Plugin retirement intent record")
-        _wire_exact_fields(
-            document,
-            keys={"intent", "journalRevision", "recordVersion"},
+        document = _decode_document(
+            value,
             name="Plugin retirement intent record",
-        )
-        _wire_version(
-            document.get("recordVersion"),
-            expected=PLUGIN_RETIREMENT_INTENT_RECORD_VERSION,
+            schema=_PLUGINRETIREMENTINTENTRECORD_SCHEMA,
+            version=PLUGIN_RETIREMENT_INTENT_RECORD_VERSION,
+            version_field="recordVersion",
         )
         try:
-            return cls(
-                journal_revision=_wire_integer(
-                    document["journalRevision"], name="journal revision"
-                ),
-                intent=PluginRetirementIntentV1.from_dict(document["intent"]),
-                record_version=PLUGIN_RETIREMENT_INTENT_RECORD_VERSION,
-            )
+            return _PLUGINRETIREMENTINTENTRECORD_SCHEMA.decode(cls, document)
         except PluginRetirementRecordCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -405,13 +385,9 @@ def decode_plugin_retirement_intent_capture(
     )
 
 
-def _unique_capture_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Retirement capture has duplicate JSON keys")
-        result[key] = value
-    return result
+_unique_capture_object = _unique_json_object_hook(
+    lambda: "Retirement capture has duplicate JSON keys",
+)
 
 
 def retirement_intent_for_transition(
@@ -494,36 +470,11 @@ def _replay(
     return replayed
 
 
-def _wire_object(value: object, *, name: str) -> dict[str, object]:
-    try:
-        return cast(dict[str, object], require_json_mapping(value, name=name))
-    except JsonValueError as exc:
-        raise _invalid_record(str(exc)) from exc
-
-
 def _wire_mapping(value: object, *, name: str) -> dict[str, object]:
     try:
         return cast(dict[str, object], require_json_mapping(value, name=name))
     except JsonValueError as exc:
         raise ValueError(str(exc)) from exc
-
-
-def _wire_exact_fields(value: dict[str, object], *, keys: set[str], name: str) -> None:
-    actual = set(value)
-    if actual != keys:
-        missing = sorted(keys - actual)
-        unknown = sorted(actual - keys)
-        raise _invalid_record(
-            f"{name} fields do not match; missing={missing!r}, unknown={unknown!r}"
-        )
-
-
-def _wire_version(value: object, *, expected: int) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value != expected:
-        raise PluginRetirementRecordCodecError(
-            "Unsupported Plugin retirement record version",
-            code="unsupported_plugin_retirement_record_version",
-        )
 
 
 def _wire_string(value: object, *, name: str) -> str:
@@ -540,20 +491,6 @@ def _wire_integer(value: object, *, name: str) -> int:
 
 def _wire_instance_ref(value: object) -> PluginInstanceRevisionRef:
     return PluginInstanceRevisionRef.from_dict(value)
-
-
-def _require_sha256(value: str, *, name: str) -> None:
-    if (
-        not isinstance(value, str)
-        or len(value) != 64
-        or any(character not in "0123456789abcdef" for character in value)
-    ):
-        raise ValueError(f"{name} must be a lowercase SHA-256 digest")
-
-
-def _require_positive_integer(value: int, *, name: str) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        raise ValueError(f"{name} must be a positive integer")
 
 
 def _require_version(value: int, *, expected: int) -> None:
@@ -595,3 +532,38 @@ __all__ = [
     "retirement_id_for",
     "retirement_intent_for_transition",
 ]
+
+
+_PLUGINRETIREMENTINTENT_SCHEMA = RecordSchema.for_dataclass(
+    PluginRetirementIntentV1,
+    _wire_string,
+    RecordField("trigger", decoder=lambda value: value),
+    RecordField("mode", decoder=lambda value: "graceful"),
+    RecordField("instance_revision_ref", decoder=_wire_instance_ref),
+    RecordField("package_revision", decoder=PluginPackageRevisionRefV1.from_dict),
+    RecordField(
+        "source_transition", decoder=PLUGIN_DESIRED_STATE_JOURNAL_CODEC.decode_record
+    ),
+    RecordField("intent_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINRETIREMENTINTENTRECORD_SCHEMA = RecordSchema.for_dataclass(
+    PluginRetirementIntentRecordV1,
+    _wire_string,
+    RecordField("journal_revision", "journal revision", _wire_integer),
+    RecordField("intent", decoder=PluginRetirementIntentV1.from_dict),
+    RecordField("record_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_decode_document = partial(
+    _record_document,
+    invalid_record=_invalid_record,
+    unsupported_version=lambda: PluginRetirementRecordCodecError(
+        "Unsupported Plugin retirement record version",
+        code="unsupported_plugin_retirement_record_version",
+    ),
+)

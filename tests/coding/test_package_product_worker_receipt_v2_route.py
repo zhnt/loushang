@@ -29,7 +29,6 @@ from loushang.coding.package_product_worker_receipt import (
     read_coding_product_worker_receipt_record,
     read_coding_product_worker_receipt_records,
 )
-from loushang.harness.journal import DURABLE_LOCKED_JOURNAL, JournalLoadPolicy
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -98,9 +97,11 @@ def test_receipt_v2_issue_and_retained_read_after_retired_deletion(
         session_id=policy.session_id,
         product_runtime_id=policy.product_runtime_id,
     )
-    owner._path = tmp_path / (stem + ".jsonl")
-    owner._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-    owner._load_policy = JournalLoadPolicy(partial_tail="raise", create_lock=False)
+    from loushang.coding._worker_history_access import _CodingHistoryAccess
+
+    receipt_module._CodingReceiptHistory.__init__(
+        owner, tmp_path / (stem + ".jsonl"), access=_CodingHistoryAccess(product)
+    )
     owner._derive = lambda _opt_in: policy  # type: ignore[method-assign]
 
     first = owner.issue()

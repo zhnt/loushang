@@ -49,6 +49,12 @@ def _journal(root: Path) -> CodingWorkerStartGateJournal:
         epoch_runtime=SimpleNamespace(registry=SimpleNamespace(store_id="store")),
         assert_root_gc_authority_current=lambda: None,
     )
+    from loushang.coding._worker_history_access import _CodingHistoryAccess
+    from loushang.coding.package_product_worker_history_read_v2 import _HISTORY_READER
+
+    journal._access = _CodingHistoryAccess(journal._product)
+    journal._history_reader = _HISTORY_READER
+    journal._error_type = CodingWorkerStartGateJournalError
     journal._path = root / "worker-start-gates.jsonl"
     journal._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
     return journal

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 from pathlib import Path
@@ -8,8 +9,8 @@ from pathlib import Path
 import pytest
 
 import loushang.coding.package_private_data_backup as backup_module
-import loushang.coding.package_private_data_backup_expiry as expiry_module
 import loushang.coding.package_private_data_restore as restore_module
+import loushang.harness.plugin_management.private_data_backup as expiry_module
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
@@ -31,8 +32,13 @@ from loushang.coding.package_private_data_backup_expiry import (
 from loushang.coding.package_private_data_backup_expiry_journal import (
     CodingArchPrivateDataBackupExpiryJournal,
 )
+from loushang.coding.package_private_data_backup_records import backup_id
 from loushang.coding.package_private_data_deletion_owner import (
     CodingArchPrivateDataDeletionOwner,
+)
+from loushang.coding.package_private_data_deletion_preview import (
+    CodingArchPrivateDataTargetSnapshotV1,
+    _capture_target_snapshot,
 )
 from loushang.coding.package_private_data_restore import (
     CodingArchPrivateDataRestoreOwner,
@@ -67,6 +73,175 @@ from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionCoordinator,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
+
+
+def test_private_data_v1_manifest_and_ids_remain_compatible() -> None:
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures" / "private_data_v1.json").read_text()
+    )
+    source = CodingArchPrivateDataTargetSnapshotV1.from_dict(fixture["source"])
+    receipt = CodingArchPrivateDataBackupReceiptV1.from_dict(fixture["receipt"])
+    absent = CodingArchPrivateDataTargetSnapshotV1.from_dict(fixture["absent"])
+    assert source.target_id == fixture["target_id"]
+    assert absent.target_id == fixture["absent_target_id"]
+    assert (
+        backup_id(receipt.installation_key, source) == receipt.backup_id
+    )
+    assert (
+        canonical_json_bytes(
+            {"receipt": receipt.to_dict(), "source": source.to_dict()}
+        )
+        + b"\n"
+        == fixture["manifest_utf8"].encode()
+    )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX private tree")
+def test_private_tree_preserves_explicit_empty_directories_and_metadata(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "source"
+    root.mkdir(mode=0o700)
+    (root / "empty").mkdir(mode=0o700)
+    (root / "data").write_bytes(b"abc")
+    (root / "data").chmod(0o600)
+    snapshot = _capture_target_snapshot(root, private_base=tmp_path)
+    assert [(item.relative_path, item.kind) for item in snapshot.members] == [
+        ("data", "file"),
+        ("empty", "directory"),
+    ]
+    for item in snapshot.members:
+        metadata = (root / item.relative_path).lstat()
+        assert item.identity == (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_mode,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+        )
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        backup_module._verify_files(descriptor, snapshot)
+        (root / "empty").rmdir()
+        with pytest.raises(ValueError, match="backup is incomplete"):
+            backup_module._verify_files(descriptor, snapshot)
+    finally:
+        os.close(descriptor)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX private archive errors")
+@pytest.mark.parametrize(
+    ("content", "later_damage", "message"),
+    [
+        (b"CORRUPT", "missing_file", "backup content changed"),
+        (b"short", "missing_directory", "backup file size changed"),
+        (b"CORRUPT", "unsafe_file", "backup content changed"),
+    ],
+)
+def test_archive_file_error_precedes_later_tree_failure(
+    tmp_path: Path, content: bytes, later_damage: str, message: str
+) -> None:
+    root = tmp_path / "archive"
+    root.mkdir(mode=0o700)
+    for name in ("a", "b"):
+        (root / name).write_bytes(b"correct")
+        (root / name).chmod(0o600)
+    (root / "empty").mkdir(mode=0o700)
+    source = _capture_target_snapshot(root, private_base=tmp_path)
+    _, _, file_order, _ = next(os.fwalk(root))
+    first, second = file_order
+    (root / first).write_bytes(content)
+    if later_damage == "missing_file":
+        (root / second).unlink()
+    elif later_damage == "missing_directory":
+        (root / "empty").rmdir()
+    else:
+        (root / second).chmod(0o644)
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with pytest.raises(ValueError, match=message):
+            backup_module._verify_files(descriptor, source)
+    finally:
+        os.close(descriptor)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX private archive errors")
+def test_archive_content_error_precedes_post_read_metadata_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "archive"
+    root.mkdir(mode=0o700)
+    path = root / "a"
+    path.write_bytes(b"correct")
+    path.chmod(0o600)
+    source = _capture_target_snapshot(root, private_base=tmp_path)
+    path.write_bytes(b"CORRUPT")
+    inode = path.stat().st_ino
+    original_read = os.read
+
+    def mutate_after_read(descriptor: int, maximum: int) -> bytes:
+        chunk = original_read(descriptor, maximum)
+        if chunk and os.fstat(descriptor).st_ino == inode:
+            os.fchmod(descriptor, 0o400)
+        return chunk
+
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(os, "read", mutate_after_read)
+            with pytest.raises(ValueError, match="backup content changed"):
+                backup_module._verify_files(descriptor, source)
+    finally:
+        os.close(descriptor)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX private archive errors")
+def test_archive_directory_symlink_rejected_before_corrupted_regular_file(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "archive"
+    root.mkdir(mode=0o700)
+    (root / "a").write_bytes(b"correct")
+    (root / "a").chmod(0o600)
+    (root / "z").mkdir(mode=0o700)
+    source = _capture_target_snapshot(root, private_base=tmp_path)
+    (root / "a").write_bytes(b"CORRUPT")
+    (root / "z").rmdir()
+    outside = tmp_path / "other"
+    outside.mkdir(mode=0o700)
+    (root / "z").symlink_to(outside, target_is_directory=True)
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with pytest.raises(ValueError, match="backup directory changed"):
+            backup_module._verify_files(descriptor, source)
+    finally:
+        os.close(descriptor)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX fwalk observation")
+def test_private_capture_keeps_observed_directory_when_child_open_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "source"
+    root.mkdir(mode=0o700)
+    (root / "blocked").mkdir(mode=0o700)
+    (root / "blocked" / "file").write_bytes(b"private")
+    original_open = os.open
+
+    def unavailable(path, flags, mode=0o777, *, dir_fd=None):
+        if path == "blocked":
+            raise PermissionError("injected unavailable child")
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "open", unavailable)
+        snapshot = _capture_target_snapshot(root, private_base=tmp_path)
+    assert [(item.relative_path, item.kind) for item in snapshot.members] == [
+        ("blocked", "directory")
+    ]
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX Arch private backup")
@@ -447,12 +622,12 @@ def test_arch_backup_retention_survives_source_deletion_and_detects_tampering(
             assert not archive.exists()
             assert backup.snapshot().records[0].status == "expiry_pending"
 
-            def interrupt_before_remove(*_args):
+            def interrupt_before_remove(*_args, **_kwargs):
                 raise RuntimeError("injected expiry removal failure")
 
             with monkeypatch.context() as patch:
                 patch.setattr(
-                    expiry_module, "_remove_tombstone", interrupt_before_remove
+                    expiry_module, "remove_expiry_tombstone", interrupt_before_remove
                 )
                 with pytest.raises(RuntimeError, match="removal failure"):
                     expiry.expire(expiry_plan, expiry_confirmation)

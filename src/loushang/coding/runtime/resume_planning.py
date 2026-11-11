@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Sequence
 from pathlib import Path
 from weakref import ref
@@ -19,9 +18,10 @@ from loushang.coding.resume_activation_plan import (
 )
 from loushang.coding.resume_history import CodingResumeHistoryPreview
 from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.session.agent_product_runtime import _SessionPlanningSlot
 
 
-class ResumePlanningSlot:
+class ResumePlanningSlot(_SessionPlanningSlot[SessionActivationPlanV1]):
     """Retain at most one waiter and one completed data-only Plan.
 
     Resource retains native work and capacity after a waiter leaves. This slot
@@ -29,20 +29,7 @@ class ResumePlanningSlot:
     selected Packages, receipts, journals, approval facts or Runtime authority.
     """
 
-    def __init__(self) -> None:
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._task: asyncio.Task[SessionActivationPlanV1] | None = None
-        self._key: tuple[object, ...] | None = None
-        self._plan: SessionActivationPlanV1 | None = None
-        self._closed = False
-        self._transition = asyncio.Lock()
-
-    def _on_loop(self) -> None:
-        loop = asyncio.get_running_loop()
-        if self._loop is None:
-            self._loop = loop
-        elif self._loop is not loop:
-            raise RuntimeError("coding_resume_planning_loop_changed")
+    _error_prefix = "coding_resume_planning"
 
     async def start(
         self,
@@ -87,14 +74,9 @@ class ResumePlanningSlot:
             max_work_units,
             time_budget_seconds,
         )
-        async with self._transition:
-            if self._closed:
-                raise RuntimeError("coding_resume_planning_closed")
-            if key == self._key and (self._task is not None or self._plan is not None):
-                return
-            await self._discard_reference()
-            self._key = key
-            work = plan_coding_resume_async(
+        await self._start_work(
+            key,
+            lambda: plan_coding_resume_async(
                 history,
                 current_composition,
                 workspace_root=workspace_root,
@@ -104,27 +86,8 @@ class ResumePlanningSlot:
                 max_work_units=max_work_units,
                 time_budget_seconds=time_budget_seconds,
                 priority="background",
-            )
-            try:
-                task = asyncio.create_task(work)
-            except BaseException:
-                work.close()
-                raise
-            self._task = task
-
-            def complete(done: asyncio.Task[SessionActivationPlanV1]) -> None:
-                if done.cancelled():
-                    result = None
-                else:
-                    # Observe errors without a foreground waiter.
-                    error = done.exception()
-                    result = done.result() if error is None else None
-                if self._task is done:
-                    self._task = None
-                    if not self._closed and self._key == key:
-                        self._plan = result
-
-            task.add_done_callback(complete)
+            ),
+        )
 
     def current(
         self,
@@ -152,43 +115,3 @@ class ResumePlanningSlot:
             self._key = None
             return None
         return plan
-
-    async def discard(self) -> None:
-        """Drop cached data and settle this slot's Resource waiter reference."""
-
-        self._on_loop()
-        async with self._transition:
-            await self._discard_reference()
-
-    async def _discard_reference(self) -> None:
-        self._plan = None
-        self._key = None
-        task = self._task
-        if task is None:
-            return
-        task.cancel()
-        cancellation = None
-        while not task.done():
-            try:
-                await asyncio.shield(task)
-            except asyncio.CancelledError as error:
-                caller = asyncio.current_task()
-                if caller is not None and caller.cancelling():
-                    cancellation = error
-            except Exception:
-                break
-        if self._task is task:
-            self._task = None
-        if cancellation is not None:
-            raise cancellation
-
-    async def close(self) -> None:
-        if self._closed and self._task is None:
-            return
-        if self._loop is None:
-            self._closed = True
-            return
-        self._on_loop()
-        async with self._transition:
-            self._closed = True
-            await self._discard_reference()

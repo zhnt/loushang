@@ -1,0 +1,727 @@
+{
+  "success": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "prepare",
+      "transfer",
+      "write",
+      "verify:30",
+      "close:30",
+      "fstat:20",
+      "stat",
+      "complete",
+      "result",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": [
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "restored",
+      "restore:test"
+    ],
+    "error": null,
+    "unclosed": []
+  },
+  "replay": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "events",
+      "begin",
+      "open:40",
+      "verify:40",
+      "close:40",
+      "verify:30",
+      "close:30",
+      "fstat:20",
+      "stat",
+      "result",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": [
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "already_present",
+      "restore:test"
+    ],
+    "error": null,
+    "unclosed": []
+  },
+  "existing_without_start": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "events",
+      "close:30",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "ValueError",
+      "Coding Arch existing data lacks restore start"
+    ],
+    "unclosed": []
+  },
+  "expected_same_absent": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "close:30",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "ValueError",
+      "Coding Arch restore target changed"
+    ],
+    "unclosed": []
+  },
+  "preflight": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "close:30",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "RuntimeError",
+      "preflight"
+    ],
+    "unclosed": []
+  },
+  "journal_open": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "close:30",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "RuntimeError",
+      "journal_open"
+    ],
+    "unclosed": []
+  },
+  "begin": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "close:30",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "RuntimeError",
+      "begin"
+    ],
+    "unclosed": []
+  },
+  "transfer": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "prepare",
+      "transfer",
+      "close:30",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "RuntimeError",
+      "transfer"
+    ],
+    "unclosed": []
+  },
+  "post_verify": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "prepare",
+      "transfer",
+      "write",
+      "verify:30",
+      "close:30",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "RuntimeError",
+      "verify"
+    ],
+    "unclosed": []
+  },
+  "archive_changed": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "prepare",
+      "transfer",
+      "write",
+      "verify:30",
+      "close:30",
+      "fstat:20",
+      "stat",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "ValueError",
+      "Coding Arch restore archive changed"
+    ],
+    "unclosed": []
+  },
+  "complete": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "prepare",
+      "transfer",
+      "write",
+      "verify:30",
+      "close:30",
+      "fstat:20",
+      "stat",
+      "complete",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "RuntimeError",
+      "complete"
+    ],
+    "unclosed": []
+  },
+  "result": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "prepare",
+      "transfer",
+      "write",
+      "verify:30",
+      "close:30",
+      "fstat:20",
+      "stat",
+      "complete",
+      "result",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "RuntimeError",
+      "result"
+    ],
+    "unclosed": []
+  },
+  "files_close": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "prepare",
+      "transfer",
+      "write",
+      "verify:30",
+      "close:30",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "OSError",
+      "close:30"
+    ],
+    "unclosed": [
+      30
+    ]
+  },
+  "archive_close": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "prepare",
+      "transfer",
+      "write",
+      "verify:30",
+      "close:30",
+      "fstat:20",
+      "stat",
+      "complete",
+      "result",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "OSError",
+      "close:20"
+    ],
+    "unclosed": [
+      20
+    ]
+  },
+  "parent_close": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "prepare",
+      "transfer",
+      "write",
+      "verify:30",
+      "close:30",
+      "fstat:20",
+      "stat",
+      "complete",
+      "result",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "OSError",
+      "close:10"
+    ],
+    "unclosed": [
+      10
+    ]
+  },
+  "result_archive_close": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "prepare",
+      "transfer",
+      "write",
+      "verify:30",
+      "close:30",
+      "fstat:20",
+      "stat",
+      "complete",
+      "result",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "OSError",
+      "close:20",
+      [
+        "RuntimeError",
+        "result"
+      ]
+    ],
+    "unclosed": [
+      20
+    ]
+  },
+  "complete_parent_close": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "prepare",
+      "transfer",
+      "write",
+      "verify:30",
+      "close:30",
+      "fstat:20",
+      "stat",
+      "complete",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "OSError",
+      "close:10",
+      [
+        "RuntimeError",
+        "complete"
+      ]
+    ],
+    "unclosed": [
+      10
+    ]
+  },
+  "archive_open": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "RuntimeError",
+      "archive_open"
+    ],
+    "unclosed": []
+  },
+  "files_open": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "RuntimeError",
+      "files_open"
+    ],
+    "unclosed": []
+  },
+  "replay_verify": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "events",
+      "begin",
+      "open:40",
+      "verify:40",
+      "close:40",
+      "close:30",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "RuntimeError",
+      "verify"
+    ],
+    "unclosed": []
+  },
+  "replay_close": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "events",
+      "begin",
+      "open:40",
+      "verify:40",
+      "close:40",
+      "close:30",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": null,
+    "error": [
+      "OSError",
+      "close:40"
+    ],
+    "unclosed": [
+      40
+    ]
+  },
+  "dynamic_hooks": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "prepare",
+      "transfer",
+      "changed_write",
+      "write",
+      "changed_verify",
+      "verify:30",
+      "close:30",
+      "fstat:20",
+      "stat",
+      "complete",
+      "result",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": [
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "restored",
+      "restore:test"
+    ],
+    "error": null,
+    "unclosed": []
+  },
+  "writer_snapshot": {
+    "trace": [
+      "offline:enter",
+      "open:10",
+      "stat",
+      "verify_archive",
+      "archive_open",
+      "fstat:20",
+      "files_open",
+      "verify:30",
+      "prepare",
+      "preflight",
+      "journal_open",
+      "identity",
+      "begin",
+      "prepare",
+      "transfer",
+      "write",
+      "write",
+      "verify:30",
+      "close:30",
+      "fstat:20",
+      "stat",
+      "complete",
+      "result",
+      "close:20",
+      "close:10",
+      "offline:exit"
+    ],
+    "value": [
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "restored",
+      "restore:test"
+    ],
+    "error": null,
+    "unclosed": []
+  }
+}

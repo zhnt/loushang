@@ -8,16 +8,14 @@ checkpoint can then refuse an earlier topology revision on reopen.
 
 from __future__ import annotations
 
-import os
 import re
-import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
-from loushang.harness.journal._rooted_io import RootedFileIO
+from loushang.harness.package_product._backup_topology import read_backup_topology
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
@@ -36,8 +34,7 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
 )
 
 from .package_legacy_windows_receipt import (
-    read_windows_private_receipt,
-    write_windows_private_receipt,
+    _receipt_io as _windows_receipt_io,
 )
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
@@ -68,8 +65,7 @@ def ensure_coding_product_backup_types(
     state_root: Path,
     scope_id: str,
     epoch_runtime: (
-        PackageProductPosixFencedRuntimeOwner
-        | PackageProductWindowsFencedRuntimeOwner
+        PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner
     ),
     gc_gate: PluginPackageGcReservationJournal,
     before_load: Callable[[], None] | None = None,
@@ -97,78 +93,27 @@ def _read_topology(
     state_root: Path,
     scope_id: str,
     epoch_runtime: (
-        PackageProductPosixFencedRuntimeOwner
-        | PackageProductWindowsFencedRuntimeOwner
+        PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner
     ),
     create_if_new: bool,
 ) -> str:
-    expected = _topology_bytes(scope_id)
-    epoch_runtime.assert_current()
-    path = state_root / _FILE_NAME
-    if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner):
-        from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-            windows_listdir_at,
-        )
-
-        with epoch_runtime.borrow_product_state_root_descriptor() as root:
-            raw = read_windows_private_receipt(
-                path,
-                maximum_bytes=_MAX_BYTES,
-                allow_unpublished_stage=create_if_new,
-            )
-            if raw is None:
-                if not create_if_new or any(
-                    name.casefold().startswith("worker-")
-                    for name in windows_listdir_at(root)
-                ):
-                    raise ValueError("Coding backup topology is absent after Worker history")
-                write_windows_private_receipt(
-                    path, expected, maximum_bytes=_MAX_BYTES
-                )
-                raw = read_windows_private_receipt(path, maximum_bytes=_MAX_BYTES)
-    elif isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
-        metadata = state_root.lstat()
-        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-        root_fd = os.open(state_root, flags)
-        try:
-            opened = os.fstat(root_fd)
-            if (
-                not stat.S_ISDIR(opened.st_mode)
-                or (opened.st_dev, opened.st_ino)
-                != (metadata.st_dev, metadata.st_ino)
-                or opened.st_uid != os.geteuid()
-                or stat.S_IMODE(opened.st_mode) & 0o077
-            ):
-                raise ValueError("Coding backup topology state root changed")
-            io = RootedFileIO(state_root, root_fd)
-            try:
-                with io.bind(path, durable=True) as rooted:
-                    try:
-                        raw = rooted.read_bytes(max_bytes=_MAX_BYTES)
-                    except FileNotFoundError:
-                        names, complete = rooted.scan_sibling_names(
-                            limit=_MAX_INVENTORY
-                        )
-                        if not create_if_new or not complete or any(
-                            name.startswith("worker-") for name in names
-                        ):
-                            raise ValueError(
-                                "Coding backup topology is absent after Worker history"
-                            ) from None
-                        rooted.create_new(expected)
-                        raw = rooted.read_bytes(max_bytes=_MAX_BYTES)
-            finally:
-                io.cleanup()
-        finally:
-            os.close(root_fd)
-    else:
-        raise TypeError("Coding backup topology requires a Product epoch")
-    epoch_runtime.assert_current()
-    if raw != expected:
-        raise ValueError("Coding backup topology changed")
-    return "coding-product-backup-types:" + sha256(
-        b"loushang.coding-product-backup-types/v1\0" + raw
-    ).hexdigest()
+    raw = read_backup_topology(
+        state_root=state_root,
+        epoch_runtime=epoch_runtime,
+        expected=_topology_bytes(scope_id),
+        create_if_new=create_if_new,
+        file_name=_FILE_NAME,
+        maximum_bytes=_MAX_BYTES,
+        maximum_inventory=_MAX_INVENTORY,
+        blocking_history_prefix="worker-",
+        label="Coding backup topology",
+        absent_message="Coding backup topology is absent after Worker history",
+        windows_receipts=_windows_receipt_io,
+    )
+    return (
+        "coding-product-backup-types:"
+        + sha256(b"loushang.coding-product-backup-types/v1\0" + raw).hexdigest()
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,10 +189,13 @@ def observe_coding_worker_backup_references_under_gc_guard(
 def _require_coding_product(
     product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
 ) -> None:
-    if not isinstance(
-        product,
-        (PosixLocalWheelProductSessionOwner, WindowsLocalWheelProductSessionOwner),
-    ) or product.policy.product_id != "coding":
+    if (
+        not isinstance(
+            product,
+            (PosixLocalWheelProductSessionOwner, WindowsLocalWheelProductSessionOwner),
+        )
+        or product.policy.product_id != "coding"
+    ):
         raise ValueError("Coding backup requires a Product owner")
 
 

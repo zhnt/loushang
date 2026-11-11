@@ -15,6 +15,12 @@ from loushang.ai.errors import AIRequestTooLargeError
 from loushang.ai.json_codec import deserialize_usage, serialize_usage
 from loushang.ai.types import AssistantMessage, StopReason, Usage
 from loushang.ai.utils.async_iter import close_async_source
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _consume_speculative_preparation,
+)
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _consume_transport_preparation,
+)
 from loushang.foundation.json import (
     JSONValue,
     require_json_mapping,
@@ -655,18 +661,6 @@ async def invoke_prepared_request(
             yield part
     finally:
         await close_async_source(source)
-
-
-def _consume_speculative_preparation(task: asyncio.Task[None]) -> None:
-    if not task.cancelled():
-        task.exception()
-
-
-def _consume_transport_preparation(
-    task: asyncio.Task[dict[str, JSONValue]],
-) -> None:
-    if not task.cancelled():
-        task.exception()
 
 
 def validate_prepared_request_capacity(

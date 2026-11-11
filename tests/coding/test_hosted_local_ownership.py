@@ -5,6 +5,7 @@ import inspect
 
 import pytest
 
+import loushang.apphost.local as apphost_local
 from loushang.apphost.application import HostedApplicationError
 from loushang.coding.hosted_local import CodingLocalCommandV1
 
@@ -88,7 +89,7 @@ def _command(tmp_path, monkeypatch, *, timeout=1):
         "loushang.coding.hosted_local.create_coding_hosted_attempt",
         lambda *a, **k: attempt,
     )
-    monkeypatch.setattr("loushang.coding.hosted_local.HostedLocalRuntimeV1", Local)
+    monkeypatch.setattr("loushang.apphost.local.HostedLocalRuntimeV1", Local)
     command = CodingLocalCommandV1(
         _local_launch(tmp_path.resolve()), settlement_timeout=timeout
     )
@@ -312,10 +313,9 @@ def test_G16_PRODUCT_CLOSE_settles_adopted_local_before_joining_outer_start(
     tmp_path, monkeypatch
 ):
     async def scenario():
-        import loushang.coding.hosted_local as local_module
 
         command, _, events = _command(tmp_path, monkeypatch)
-        factory = local_module.HostedLocalRuntimeV1
+        factory = apphost_local.HostedLocalRuntimeV1
         gate = asyncio.Event()
 
         def create(*args, **kwargs):
@@ -323,7 +323,7 @@ def test_G16_PRODUCT_CLOSE_settles_adopted_local_before_joining_outer_start(
             local.start_gate = gate
             return local
 
-        monkeypatch.setattr(local_module, "HostedLocalRuntimeV1", create)
+        monkeypatch.setattr(apphost_local, "HostedLocalRuntimeV1", create)
         starting = asyncio.create_task(command.start())
         async with asyncio.timeout(1):
             while command._local is None:
@@ -342,14 +342,13 @@ def test_G16_PRODUCT_READY_stop_during_local_handoff_cannot_announce_ready(
     tmp_path, monkeypatch
 ):
     async def scenario():
-        import loushang.coding.hosted_local as local_module
 
         command, _, events = _command(tmp_path, monkeypatch)
 
         async def stop(self):
             await self.close()
 
-        monkeypatch.setattr(local_module.HostedLocalRuntimeV1, "activate", stop)
+        monkeypatch.setattr(apphost_local.HostedLocalRuntimeV1, "activate", stop)
         with pytest.raises(HostedApplicationError, match="coding_local_closed"):
             await command.run(ready=lambda: events.append("ready"))
         assert "ready" not in events

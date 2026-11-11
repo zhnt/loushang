@@ -165,7 +165,9 @@ def test_G16_BOUNDARIES_native_io_is_confined_to_explicit_local_adapter() -> Non
 def test_G16_BOUNDARIES_local_apphost_edge_uses_public_application_capabilities() -> None:
     source = Path("src/loushang/apphost/local.py")
     # LMUX-M0 §17 reviewed staged startup/synchronous fence: 247 -> 327.
-    assert len(source.read_text().splitlines()) <= 300 + 80
+    # A48 adds the reviewed outer application lifetime to this same owner.
+    # Exact receiver cost: 380 -> 581; retain every dependency/native guard below.
+    assert len(source.read_text().splitlines()) <= 300 + 80 + 201
     tree = ast.parse(source.read_text())
     external = {
         node.module for node in ast.walk(tree)

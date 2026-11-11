@@ -117,6 +117,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.journal import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
     PackageEpochRuntimeLeaseRegistry,
+    PackageEpochRuntimeLeaseRegistryError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.owner import (
     PackageLifecycleOwner,
@@ -2266,6 +2267,126 @@ def _private_directory_identity(metadata: os.stat_result) -> str | None:
             }
         )
     ).hexdigest()
+
+
+def _repair_ordinary_posix_runtime_leases(
+    product: PosixLocalWheelProductSessionOwner,
+    outer_epoch_runtime: (
+        PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner
+    ),
+    *,
+    runtime_id_prefix: str,
+    error_prefix: str,
+) -> None:
+    """Recover ordinary leases only after complete no-Worker evidence checks."""
+    with product.gc_gate.guard(require_write=True):
+        product.assert_root_gc_authority_current()
+        root_fd = os.open(
+            product.state_root,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+        )
+        try:
+            root_stat = os.fstat(root_fd)
+            product.assert_root_gc_authority_current()
+            current_stat = product.state_root.stat()
+            if (root_stat.st_dev, root_stat.st_ino) != (
+                current_stat.st_dev,
+                current_stat.st_ino,
+            ):
+                raise RuntimeError(f"{error_prefix} Product state root changed")
+            if any("worker" in name.casefold() for name in os.listdir(root_fd)):
+                raise RuntimeError(
+                    f"{error_prefix} Worker recovery requires explicit review"
+                )
+        finally:
+            os.close(root_fd)
+        if any(
+            binding.source_trust_class == "local-worker-candidate"
+            for binding in product.policy.bindings
+        ):
+            raise RuntimeError(
+                f"{error_prefix} Worker recovery requires explicit review"
+            )
+        registry = outer_epoch_runtime.registry
+        fence = outer_epoch_runtime.cutover_result.fence
+        if fence is None:
+            raise RuntimeError(f"{error_prefix} Product epoch fence is unavailable")
+        for lease in registry.review_orphans(store_id=registry.store_id):
+            if (
+                not lease.runtime_id.startswith(runtime_id_prefix)
+                or lease.runtime_epoch != fence.epoch
+                or lease.store_root_identity != fence.fenced_root_identity
+            ):
+                raise RuntimeError(
+                    f"{error_prefix} orphan runtime requires explicit review"
+                )
+            outer_epoch_runtime.assert_current()
+            try:
+                registry.repair_orphan(lease.lease_id)
+            except PackageEpochRuntimeLeaseRegistryError as error:
+                if error.code != "package_epoch_lease_absent":
+                    raise
+        outer_epoch_runtime.assert_current()
+
+
+def _repair_ordinary_windows_runtime_leases(
+    product: WindowsLocalWheelProductSessionOwner,
+    outer_epoch_runtime: (
+        PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner
+    ),
+    *,
+    runtime_id_prefix: str,
+    error_prefix: str,
+) -> None:
+    """Recheck ordinary evidence inside the original Windows orphan repair guard."""
+    registry = product.epoch_runtime.registry
+    fence = product.epoch_runtime.cutover_result.fence
+    if fence is None:
+        raise RuntimeError(f"{error_prefix} Product epoch fence is unavailable")
+    for expected in registry.review_orphans(store_id=registry.store_id):
+
+        @contextmanager
+        def validate_while_locked(lease, *, expected=expected):
+            if lease != expected:
+                raise RuntimeError(f"{error_prefix} orphan runtime changed")
+            with product.gc_gate.guard(require_write=True):
+                product.assert_root_gc_authority_current()
+                with product.epoch_runtime.borrow_product_state_root_descriptor():
+                    if any(
+                        "worker" in name.casefold()
+                        for name in os.listdir(product.state_root)
+                    ):
+                        raise RuntimeError(
+                            f"{error_prefix} Worker recovery requires explicit review"
+                        )
+                    product.assert_root_gc_authority_current()
+                    if any(
+                        binding.source_trust_class == "local-worker-candidate"
+                        for binding in product.policy.bindings
+                    ):
+                        raise RuntimeError(
+                            f"{error_prefix} Worker recovery requires explicit review"
+                        )
+                    if (
+                        not lease.runtime_id.startswith(runtime_id_prefix)
+                        or lease.runtime_epoch != fence.epoch
+                        or lease.store_root_identity != fence.fenced_root_identity
+                    ):
+                        raise RuntimeError(
+                            f"{error_prefix} orphan runtime requires explicit review"
+                        )
+                    outer_epoch_runtime.assert_current()
+                    yield
+                    product.assert_root_gc_authority_current()
+
+        try:
+            registry.repair_orphan(
+                expected.lease_id, validation_guard=validate_while_locked
+            )
+        except PackageEpochRuntimeLeaseRegistryError as error:
+            if error.code != "package_epoch_lease_absent":
+                raise
+    outer_epoch_runtime.assert_current()
 
 
 __all__ = [

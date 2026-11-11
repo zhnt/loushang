@@ -14,6 +14,9 @@ from loushang.harness.plugin_management.records import (
     PluginInstallationStateV1,
     PluginLifecycleCodecError,
     PluginPackageRevisionRefV1,
+    _require_nonempty,
+    _require_nonnegative_integer,
+    _require_positive_integer,
 )
 
 PLUGIN_MANAGEMENT_UPDATE_COMMAND_VERSION = 2
@@ -73,9 +76,7 @@ _UPDATE_PROGRESS_CODES = frozenset(
         "desired_state_failed",
     }
 )
-_UPDATE_RESULT_DISPOSITIONS = frozenset(
-    {"succeeded", "restart_required", "failed"}
-)
+_UPDATE_RESULT_DISPOSITIONS = frozenset({"succeeded", "restart_required", "failed"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,9 +166,7 @@ class PluginManagementUpdateCommandV2:
             if action != "update":
                 raise ValueError("Plugin update command action must be update")
             return cls(
-                operation_id=_wire_string(
-                    document["operationId"], name="operation id"
-                ),
+                operation_id=_wire_string(document["operationId"], name="operation id"),
                 idempotency_key=_wire_string(
                     document["idempotencyKey"], name="idempotency key"
                 ),
@@ -266,9 +265,7 @@ class PluginMigrationFenceV1:
             if disposition != "not_applicable_unbound":
                 raise ValueError("Unsupported Plugin migration fence disposition")
             return cls(
-                fence_id=_wire_string(
-                    document["fenceId"], name="migration fence id"
-                ),
+                fence_id=_wire_string(document["fenceId"], name="migration fence id"),
                 installation_key=PluginInstallationKeyV1.from_dict(
                     document["installationKey"]
                 ),
@@ -347,9 +344,7 @@ class PluginDesiredStateUpdateMutationV1:
             if desired_state not in {"installed_disabled", "installed_enabled"}:
                 raise ValueError("Plugin update mutation requires an installed state")
             return cls(
-                command=PluginManagementUpdateCommandV2.from_dict(
-                    document["command"]
-                ),
+                command=PluginManagementUpdateCommandV2.from_dict(document["command"]),
                 desired_state=cast(
                     Literal["installed_disabled", "installed_enabled"],
                     desired_state,
@@ -416,7 +411,9 @@ class PluginDesiredStateUpdateTransitionV2:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginDesiredStateUpdateTransitionV2:
-        document = _lifecycle_object(value, name="Plugin desired-state update transition")
+        document = _lifecycle_object(
+            value, name="Plugin desired-state update transition"
+        )
         _lifecycle_exact_fields(
             document,
             keys={
@@ -470,9 +467,9 @@ PLUGIN_DESIRED_STATE_UPDATE_TRANSITION_CODEC = FunctionalJournalRecordCodec(
 @dataclass(frozen=True, slots=True)
 class PluginUpdateRestartRequirementV1:
     changed_package_fields: tuple[PluginUpdateChangedPackageField, ...]
-    reason_code: Literal[
+    reason_code: Literal["enabled_package_revision_changed"] = (
         "enabled_package_revision_changed"
-    ] = "enabled_package_revision_changed"
+    )
     requirement_version: int = PLUGIN_UPDATE_RESTART_REQUIREMENT_VERSION
 
     def __post_init__(self) -> None:
@@ -505,9 +502,7 @@ class PluginUpdateRestartRequirementV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginUpdateRestartRequirementV1:
-        document = _management_object(
-            value, name="Plugin update restart requirement"
-        )
+        document = _management_object(value, name="Plugin update restart requirement")
         _management_exact_fields(
             document,
             keys={"changedPackageFields", "reasonCode", "requirementVersion"},
@@ -565,9 +560,7 @@ class PluginUpdateOperationResultV2:
                 or self.restart_requirement is not None
                 or self.error_code is not None
             ):
-                raise ValueError(
-                    "Successful Plugin update requires only a transition"
-                )
+                raise ValueError("Successful Plugin update requires only a transition")
             return
         if self.disposition == "restart_required":
             if (
@@ -730,7 +723,9 @@ class PluginUpdateOperationEventV2:
         if self.migration_fence is not None and not self.migration_fence.matches(
             self.command
         ):
-            raise ValueError("Plugin update event migration fence does not match command")
+            raise ValueError(
+                "Plugin update event migration fence does not match command"
+            )
         if self.result is None:
             return
         terminal_progress = {
@@ -897,17 +892,13 @@ class PluginUpdateOperationEventV2:
                 operation_revision=_wire_integer(
                     document["operationRevision"], name="operation revision"
                 ),
-                command=PluginManagementUpdateCommandV2.from_dict(
-                    document["command"]
-                ),
+                command=PluginManagementUpdateCommandV2.from_dict(document["command"]),
                 status=cast(PluginUpdateOperationStatus, status),
                 progress_code=cast(PluginUpdateProgressCode, progress),
                 migration_fence=(
                     None
                     if document["migrationFence"] is None
-                    else PluginMigrationFenceV1.from_dict(
-                        document["migrationFence"]
-                    )
+                    else PluginMigrationFenceV1.from_dict(document["migrationFence"])
                 ),
                 result=(
                     None
@@ -1026,21 +1017,6 @@ def _wire_integer(value: object, *, name: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"{name} must be an integer")
     return value
-
-
-def _require_nonempty(value: str, *, name: str) -> None:
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{name} must be a non-empty string")
-
-
-def _require_nonnegative_integer(value: int, *, name: str) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise ValueError(f"{name} must be a non-negative integer")
-
-
-def _require_positive_integer(value: int, *, name: str) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        raise ValueError(f"{name} must be a positive integer")
 
 
 def _require_version(value: int, *, expected: int) -> None:

@@ -31,8 +31,8 @@ ownership, bounded stdio, exit convergence, cancellation-safe cleanup, and
 typed failure aggregation. H2 adds fail-closed POSIX process-group and Windows
 Job Object adapters plus the restrained `create_process_host` composition
 entrypoint. A dark Harness compatibility adapter covers the representable
-Current contract while refusing sealed-descriptor launches; no production
-consumer has switched owners. H3 adds the private bounded Inherited Peer
+Current contract while refusing sealed-descriptor launches; at that delivery no
+production consumer had switched owners. H3 adds the private bounded Inherited Peer
 Endpoint Host, POSIX socketpair and Windows anonymous-pipe backends, and
 single-use transfer into the exact H2 spawn allowlist. It publishes no new
 public endpoint factory. H4 adds the atomic Child Session Host and restrained
@@ -50,13 +50,21 @@ caller-admitted containment launcher beside its payload. H6.3 adds one exact
 Windows AMD64 PE/restricted-token/Job profile with retained native evidence.
 H6.4 adds the private Harness Worker managed-preparation bridge and a
 fake-backed H5 semantic parity matrix. It supplies no native Worker profile,
-changes no runtime owner or public API, and H5 remains dark.
+changes no runtime owner or public API within that slice; its generic H5 route
+remains dark.
 The accepted
 [H6.5 Windows LPAC design](managed-launch-preparation-h65-windows-lpac.md)
 separates Product-neutral LPAC provisioning from per-attempt native ownership.
 H6.5b native mechanics and the sole C5.5c Harness-friend Product composition are
 implemented with separate mandatory zero-skip reports; installed activation
 remains default-dark.
+
+The separately accepted [A63 explicit Product query](../harness/key-designs/worker-product-runtime-convergence.md#26-a63完整单次查询接通原session)
+retains the earlier native operator's Hosting adapter inside its complete Session
+lifetime. It does not select the generic H5c router or change ordinary startup.
+[The current H5 boundary](harness-worker-adapter-h5.md#current-bounded-adoption-explicit-operator-query)
+records its one-module/one-adapter adoption and the still-separate sealed-descriptor
+and general rollout obligations.
 
 Current process mechanics remain implemented inside Harness, principally by:
 
@@ -75,8 +83,9 @@ remain authoritative for the implemented Harness behavior.
 The accepted Target implements `loushang.hosting` inside the existing
 `loushang` distribution. H0 establishes the contract package, H1-H3 implement
 the constituent resource owners and exact platform adapters, and H4 composes
-their atomic child-session lifetime. A later activation slice may let Harness
-consume that port through a narrow owner adapter. Hosting does not import
+their atomic child-session lifetime. The existing bounded explicit query consumes
+that port through the Worker adapter; general Current-owner migration requires
+its separate activation contract. Hosting does not import
 Harness and does not acquire Harness authority merely because it performs the
 final OS operation.
 

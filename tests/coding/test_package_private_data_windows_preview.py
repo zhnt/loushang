@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from loushang.coding.package_private_data_windows_preview import (
-    _require_simple_windows_attributes,
+    _native_io,
 )
 
 
@@ -21,7 +21,7 @@ from loushang.coding.package_private_data_windows_preview import (
 def test_windows_arch_preview_admits_plain_attributes(
     attributes: int, directory: bool
 ) -> None:
-    _require_simple_windows_attributes(attributes, directory=directory)
+    _native_io.require_simple_attributes(attributes, directory=directory)
 
 
 @pytest.mark.parametrize(
@@ -41,4 +41,4 @@ def test_windows_arch_preview_refuses_unadmitted_attributes(
     attributes: int, directory: bool
 ) -> None:
     with pytest.raises(ValueError, match="attributes are unsupported"):
-        _require_simple_windows_attributes(attributes, directory=directory)
+        _native_io.require_simple_attributes(attributes, directory=directory)

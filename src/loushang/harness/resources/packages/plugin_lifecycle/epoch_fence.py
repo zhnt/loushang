@@ -27,6 +27,12 @@ from loushang.harness.resources.packages.plugin_lifecycle._record_schema import 
     RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _exact_integer as _wire_int,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _string_value as _wire_string,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
@@ -1425,22 +1431,10 @@ def _wire_object(
     return document
 
 
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str):
-        raise TypeError(f"{name} must be a string")
-    return value
-
-
 def _wire_optional_string(value: object, *, name: str) -> str | None:
     if value is None:
         return None
     return _wire_string(value, name=name)
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if type(value) is not int:
-        raise TypeError(f"{name} must be an integer")
-    return cast(int, value)
 
 
 def _wire_list(value: object, *, name: str) -> list[object]:
@@ -1467,70 +1461,48 @@ __all__ = [
 ]
 
 
-_EPOCH_FENCE_REQUEST_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("cutover_id", "cutover id"),
-        RecordField("store_id", "store id"),
-        RecordField("prior_epoch", "prior epoch", _wire_int),
-        RecordField("next_epoch", "next epoch", _wire_int),
-        RecordField("prior_fence_id", "prior fence id", _wire_optional_string),
-        RecordField("prior_fence_revision", "prior fence revision", _wire_int),
-        RecordField("legacy_root_identity", "legacy root identity"),
-        RecordField("fenced_root_identity", "fenced root identity"),
-        RecordField("namespace_id", "namespace id"),
-        RecordField("minimum_runtime_version", "minimum runtime version"),
-        RecordField(
-            "minimum_runtime_protocol_epoch",
-            "minimum runtime protocol epoch",
-            _wire_int,
-        ),
-        RecordField("quiescence_receipt_id", "quiescence receipt id"),
-        RecordField("snapshot_receipt_id", "snapshot receipt id"),
-        RecordField("root_switch_receipt_id", "root-switch receipt id"),
-        RecordField("request_version", "request version", _wire_int),
+_EPOCH_FENCE_REQUEST_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageEpochFenceRequestV1,
+    _wire_string,
+    RecordField("prior_epoch", "prior epoch", _wire_int),
+    RecordField("next_epoch", "next epoch", _wire_int),
+    RecordField("prior_fence_id", "prior fence id", _wire_optional_string),
+    RecordField("prior_fence_revision", "prior fence revision", _wire_int),
+    RecordField(
+        "minimum_runtime_protocol_epoch",
+        "minimum runtime protocol epoch",
+        _wire_int,
     ),
+    RecordField("root_switch_receipt_id", "root-switch receipt id"),
+    RecordField("request_version", "request version", _wire_int),
+    derive_labels=True,
 )
 
 
-_EPOCH_RUNTIME_LEASE_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("lease_id", "lease id"),
-        RecordField("runtime_id", "runtime id"),
-        RecordField("runtime_epoch", "runtime epoch", _wire_int),
-        RecordField("store_root_identity", "store root identity"),
-        RecordField("registration_receipt_id", "registration receipt id"),
-        RecordField("lease_version", "lease version", _wire_int),
-    ),
+_EPOCH_RUNTIME_LEASE_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageEpochRuntimeLeaseV1,
+    _wire_string,
+    RecordField("runtime_epoch", "runtime epoch", _wire_int),
+    RecordField("lease_version", "lease version", _wire_int),
+    derive_labels=True,
 )
 
 
-_EPOCH_RUNTIME_ADMISSION_REQUEST_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("admission_request_id", "admission request id"),
-        RecordField("store_id", "store id"),
-        RecordField("fence_id", "fence id"),
-        RecordField("runtime_id", "runtime id"),
-        RecordField("runtime_version", "runtime version"),
-        RecordField("runtime_protocol_epoch", "runtime protocol epoch", _wire_int),
-        RecordField("runtime_epoch", "runtime epoch", _wire_int),
-        RecordField("store_root_identity", "store root identity"),
-        RecordField("lease_id", "lease id"),
-        RecordField("request_version", "request version", _wire_int),
-    ),
+_EPOCH_RUNTIME_ADMISSION_REQUEST_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageEpochRuntimeAdmissionRequestV1,
+    _wire_string,
+    RecordField("runtime_protocol_epoch", "runtime protocol epoch", _wire_int),
+    RecordField("runtime_epoch", "runtime epoch", _wire_int),
+    RecordField("request_version", "request version", _wire_int),
+    derive_labels=True,
 )
 
 
-_EPOCH_RUNTIME_ADMISSION_RECEIPT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("receipt_id", "receipt id"),
-        RecordField("request", decoder=PackageEpochRuntimeAdmissionRequestV1.from_dict),
-        RecordField("fence_id", "fence id"),
-        RecordField("lease_snapshot_id", "lease snapshot id"),
-        RecordField("lease_owner_revision", "lease owner revision", _wire_int),
-        RecordField("receipt_version", "receipt version", _wire_int),
-    ),
+_EPOCH_RUNTIME_ADMISSION_RECEIPT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageEpochRuntimeAdmissionReceiptV1,
+    _wire_string,
+    RecordField("request", decoder=PackageEpochRuntimeAdmissionRequestV1.from_dict),
+    RecordField("lease_owner_revision", "lease owner revision", _wire_int),
+    RecordField("receipt_version", "receipt version", _wire_int),
+    derive_labels=True,
 )

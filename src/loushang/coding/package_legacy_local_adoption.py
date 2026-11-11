@@ -121,10 +121,7 @@ def adopt_coding_legacy_local_data_review(
     )
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
+        **epoch.fenced_runtime_open_kwargs()
     )
     admission_checked = False
     try:
@@ -198,10 +195,7 @@ def adopt_coding_legacy_local_data_review(
         product_owner.close()
     if not bound:
         epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-            authority_root=epoch.authority_root,
-            control_root=epoch.control_root,
-            store_id=epoch.store_id,
-            epochs_root_name=epoch.epochs_root_name,
+            **epoch.fenced_runtime_open_kwargs()
         )
         try:
             if not admission_checked:
@@ -298,11 +292,7 @@ def _settle_reviewed_removed_local_before_active_adoption(
 ) -> None:
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     owner = PackageProductPosixFencedRuntimeOwner.open(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
-        read_only=True,
+        **epoch.fenced_runtime_open_kwargs(), read_only=True
     )
     settings = SettingsManager(
         global_settings_path=default_global_settings_path(),

@@ -1,0 +1,3532 @@
+{
+  "baselineCommit": "89992a383",
+  "baselineSources": {
+    "_windows_record_journals.py": "5d4d2562b24351771a66c3925f589e2ba53a79228136cfad60cf912062f90e43",
+    "package_product_worker_native_approval.py": "75eea9d748c6656d96b6d17a7b05edefd98f46239f75013ccbaaa4bd44472b47"
+  },
+  "inputs": {
+    "approvalDigests": [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    ],
+    "duckReflection": "stable probe-only repr; pickle comparison excluded for deliberately invalid duck field",
+    "productAuthority": "controlled Product type facade; real Rooted journal files",
+    "scope": "scope",
+    "windowsAuthority": "controlled custody/native ports; real DTO/history codec"
+  },
+  "observations": {
+    "decode-approve-again": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": [
+        {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        },
+        {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 2,
+          "journalRevision": 2,
+          "operationId": "op-2",
+          "recordDigest": "4e1246c508693f2ab4609968e6193dd036a13462364c467ec1f8ea5c09bb2095",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        }
+      ]
+    },
+    "decode-bad-json": {
+      "disk": null,
+      "error": {
+        "cause": {
+          "cause": null,
+          "code": null,
+          "context": null,
+          "id": 1,
+          "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+          "notes": [],
+          "suppress": false,
+          "type": "JSONDecodeError"
+        },
+        "code": "invalid_record_json",
+        "context": {
+          "ref": 1
+        },
+        "id": 0,
+        "message": "Journal record is not valid JSON",
+        "notes": [],
+        "suppress": true,
+        "type": "JournalFileError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "decode-capacity-first": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_capacity",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_capacity",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "decode-decode-first": {
+      "disk": null,
+      "error": {
+        "cause": {
+          "cause": null,
+          "code": null,
+          "context": null,
+          "id": 1,
+          "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+          "notes": [],
+          "suppress": false,
+          "type": "JSONDecodeError"
+        },
+        "code": "invalid_record_json",
+        "context": {
+          "ref": 1
+        },
+        "id": 0,
+        "message": "Journal record is not valid JSON",
+        "notes": [],
+        "suppress": true,
+        "type": "JournalFileError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "decode-double-revoke": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_corrupt",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_corrupt",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "decode-duplicate": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_corrupt",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_corrupt",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "decode-empty": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": []
+    },
+    "decode-first-revoke": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_corrupt",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_corrupt",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "decode-generation": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_corrupt",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_corrupt",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "decode-limits-after-codec": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_capacity",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_capacity",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "decode-no-newline": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "partial_journal_tail",
+        "context": null,
+        "id": 0,
+        "message": "Journal record is missing its commit newline",
+        "notes": [],
+        "suppress": false,
+        "type": "JournalFileError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "decode-partial-tail": {
+      "disk": null,
+      "error": {
+        "cause": {
+          "cause": null,
+          "code": null,
+          "context": null,
+          "id": 1,
+          "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+          "notes": [],
+          "suppress": false,
+          "type": "JSONDecodeError"
+        },
+        "code": "invalid_record_json",
+        "context": {
+          "ref": 1
+        },
+        "id": 0,
+        "message": "Journal record is not valid JSON",
+        "notes": [],
+        "suppress": true,
+        "type": "JournalFileError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "decode-reordered": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": [
+        {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        }
+      ]
+    },
+    "decode-revision": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_corrupt",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_corrupt",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "decode-too-big": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_capacity",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_capacity",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "decode-utf8": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+        "notes": [],
+        "suppress": false,
+        "type": "UnicodeDecodeError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "decode-valid": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": [
+        {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        }
+      ]
+    },
+    "decode-whitespace": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": [
+        {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        }
+      ]
+    },
+    "decode-wrong-scope": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_corrupt",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_corrupt",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-approval": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": {
+        "annotations": {
+          "catalog_sha256": "str",
+          "launcher_sha256": "str",
+          "profile_sha256": "str",
+          "wheel_sha256": "str"
+        },
+        "create": null,
+        "dict": false,
+        "fields": [
+          [
+            "wheel_sha256",
+            "str",
+            "MISSING"
+          ],
+          [
+            "catalog_sha256",
+            "str",
+            "MISSING"
+          ],
+          [
+            "launcher_sha256",
+            "str",
+            "MISSING"
+          ],
+          [
+            "profile_sha256",
+            "str",
+            "MISSING"
+          ]
+        ],
+        "fqcn": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeReleaseApprovalV1",
+        "from_dict": "(value: 'object') -> 'CodingWorkerNativeReleaseApprovalV1'",
+        "frozen": "FrozenInstanceError",
+        "keys": [
+          "catalogSha256",
+          "launcherSha256",
+          "profileSha256",
+          "wheelSha256"
+        ],
+        "match_args": [
+          "wheel_sha256",
+          "catalog_sha256",
+          "launcher_sha256",
+          "profile_sha256"
+        ],
+        "pickle": "80049576010000000000008c366c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f6e61746976655f617070726f76616c948c23436f64696e67576f726b65724e617469766552656c65617365417070726f76616c56319493942981945d94288c4061616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161948c4062626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262948c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c40646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464649465622e",
+        "pickle_same": true,
+        "repr": "CodingWorkerNativeReleaseApprovalV1(wheel_sha256='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', catalog_sha256='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', launcher_sha256='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', profile_sha256='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd')",
+        "signature": "(wheel_sha256: 'str', catalog_sha256: 'str', launcher_sha256: 'str', profile_sha256: 'str') -> None",
+        "slots": [
+          "wheel_sha256",
+          "catalog_sha256",
+          "launcher_sha256",
+          "profile_sha256"
+        ],
+        "type": "CodingWorkerNativeReleaseApprovalV1",
+        "value": {
+          "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    "dto-approval-dict-subclass": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native release approval record is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-approval-extra": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native release approval record is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-approval-missing": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native release approval record is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-approval-short": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native release approval is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-approval-subclass": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": {
+        "annotations": null,
+        "create": null,
+        "dict": true,
+        "fields": [
+          [
+            "wheel_sha256",
+            "str",
+            "MISSING"
+          ],
+          [
+            "catalog_sha256",
+            "str",
+            "MISSING"
+          ],
+          [
+            "launcher_sha256",
+            "str",
+            "MISSING"
+          ],
+          [
+            "profile_sha256",
+            "str",
+            "MISSING"
+          ]
+        ],
+        "fqcn": "subclass",
+        "from_dict": null,
+        "frozen": "FrozenInstanceError",
+        "keys": [
+          "catalogSha256",
+          "launcherSha256",
+          "profileSha256",
+          "wheelSha256"
+        ],
+        "match_args": [
+          "wheel_sha256",
+          "catalog_sha256",
+          "launcher_sha256",
+          "profile_sha256"
+        ],
+        "pickle": null,
+        "pickle_same": true,
+        "repr": "ApprovalSubclass(wheel_sha256='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', catalog_sha256='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', launcher_sha256='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', profile_sha256='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd')",
+        "signature": null,
+        "slots": [
+          "wheel_sha256",
+          "catalog_sha256",
+          "launcher_sha256",
+          "profile_sha256"
+        ],
+        "type": "ApprovalSubclass",
+        "value": {
+          "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    "dto-approval-uppercase": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native release approval is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-codec-error": {
+      "disk": null,
+      "error": {
+        "cause": {
+          "cause": null,
+          "code": null,
+          "context": null,
+          "id": 1,
+          "message": "Worker native approval decision shape is invalid",
+          "notes": [],
+          "suppress": false,
+          "type": "ValueError"
+        },
+        "code": "coding_worker_native_approval_record_invalid",
+        "context": {
+          "ref": 1
+        },
+        "id": 0,
+        "message": "Worker native approval decision record is invalid",
+        "notes": [],
+        "suppress": true,
+        "type": "JournalCodecError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-decision": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": {
+        "annotations": {
+          "action": "Literal['approve', 'revoke']",
+          "approval": "CodingWorkerNativeReleaseApprovalV1 | None",
+          "generation": "int",
+          "journal_revision": "int",
+          "operation_id": "str",
+          "record_digest": "str",
+          "record_version": "int",
+          "scope_id": "str"
+        },
+        "create": "(*, journal_revision: 'int', scope_id: 'str', operation_id: 'str', generation: 'int', action: \"Literal['approve', 'revoke']\", approval: 'CodingWorkerNativeReleaseApprovalV1 | None') -> 'CodingWorkerNativeApprovalDecisionV1'",
+        "dict": false,
+        "fields": [
+          [
+            "journal_revision",
+            "int",
+            "MISSING"
+          ],
+          [
+            "scope_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "operation_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "generation",
+            "int",
+            "MISSING"
+          ],
+          [
+            "action",
+            "Literal['approve', 'revoke']",
+            "MISSING"
+          ],
+          [
+            "approval",
+            "CodingWorkerNativeReleaseApprovalV1 | None",
+            "MISSING"
+          ],
+          [
+            "record_digest",
+            "str",
+            "MISSING"
+          ],
+          [
+            "record_version",
+            "int",
+            1
+          ]
+        ],
+        "fqcn": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalDecisionV1",
+        "from_dict": "(value: 'object') -> 'CodingWorkerNativeApprovalDecisionV1'",
+        "frozen": "FrozenInstanceError",
+        "keys": [
+          "action",
+          "approval",
+          "generation",
+          "journalRevision",
+          "operationId",
+          "recordVersion",
+          "scopeId",
+          "recordDigest"
+        ],
+        "match_args": [
+          "journal_revision",
+          "scope_id",
+          "operation_id",
+          "generation",
+          "action",
+          "approval",
+          "record_digest",
+          "record_version"
+        ],
+        "pickle": "8004950b020000000000008c366c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f6e61746976655f617070726f76616c948c24436f64696e67576f726b65724e6174697665417070726f76616c4465636973696f6e56319493942981945d94284b018c0573636f7065948c046f702d31944b018c07617070726f76659468008c23436f64696e67576f726b65724e617469766552656c65617365417070726f76616c56319493942981945d94288c4061616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161948c4062626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262948c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c40646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464649465628c4033383939633661643063383063303830343063616133396230626366613866623938646637336465303663353266623765616132633231346665313734363232944b0165622e",
+        "pickle_same": true,
+        "repr": "CodingWorkerNativeApprovalDecisionV1(journal_revision=1, scope_id='scope', operation_id='op-1', generation=1, action='approve', approval=CodingWorkerNativeReleaseApprovalV1(wheel_sha256='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', catalog_sha256='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', launcher_sha256='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', profile_sha256='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'), record_digest='3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622', record_version=1)",
+        "signature": "(journal_revision: 'int', scope_id: 'str', operation_id: 'str', generation: 'int', action: \"Literal['approve', 'revoke']\", approval: 'CodingWorkerNativeReleaseApprovalV1 | None', record_digest: 'str', record_version: 'int' = 1) -> None",
+        "slots": [
+          "journal_revision",
+          "scope_id",
+          "operation_id",
+          "generation",
+          "action",
+          "approval",
+          "record_digest",
+          "record_version"
+        ],
+        "type": "CodingWorkerNativeApprovalDecisionV1",
+        "value": {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        }
+      }
+    },
+    "dto-decision-digest": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native approval decision is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-decision-extra": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native approval decision shape is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-decision-from-dict-duck": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native approval decision is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-decision-generation-bool": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native approval decision is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-decision-revision-bool": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native approval decision is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-decision-revoke": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": {
+        "annotations": {
+          "action": "Literal['approve', 'revoke']",
+          "approval": "CodingWorkerNativeReleaseApprovalV1 | None",
+          "generation": "int",
+          "journal_revision": "int",
+          "operation_id": "str",
+          "record_digest": "str",
+          "record_version": "int",
+          "scope_id": "str"
+        },
+        "create": "(*, journal_revision: 'int', scope_id: 'str', operation_id: 'str', generation: 'int', action: \"Literal['approve', 'revoke']\", approval: 'CodingWorkerNativeReleaseApprovalV1 | None') -> 'CodingWorkerNativeApprovalDecisionV1'",
+        "dict": false,
+        "fields": [
+          [
+            "journal_revision",
+            "int",
+            "MISSING"
+          ],
+          [
+            "scope_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "operation_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "generation",
+            "int",
+            "MISSING"
+          ],
+          [
+            "action",
+            "Literal['approve', 'revoke']",
+            "MISSING"
+          ],
+          [
+            "approval",
+            "CodingWorkerNativeReleaseApprovalV1 | None",
+            "MISSING"
+          ],
+          [
+            "record_digest",
+            "str",
+            "MISSING"
+          ],
+          [
+            "record_version",
+            "int",
+            1
+          ]
+        ],
+        "fqcn": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalDecisionV1",
+        "from_dict": "(value: 'object') -> 'CodingWorkerNativeApprovalDecisionV1'",
+        "frozen": "FrozenInstanceError",
+        "keys": [
+          "action",
+          "approval",
+          "generation",
+          "journalRevision",
+          "operationId",
+          "recordVersion",
+          "scopeId",
+          "recordDigest"
+        ],
+        "match_args": [
+          "journal_revision",
+          "scope_id",
+          "operation_id",
+          "generation",
+          "action",
+          "approval",
+          "record_digest",
+          "record_version"
+        ],
+        "pickle": "800495cd000000000000008c366c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f6e61746976655f617070726f76616c948c24436f64696e67576f726b65724e6174697665417070726f76616c4465636973696f6e56319493942981945d94284b018c0573636f7065948c046f702d31944b018c067265766f6b65944e8c4035396330633562656332323731353837616264386536656234623130393362666266396531653838343239643539643865376164633634346662626666663736944b0165622e",
+        "pickle_same": true,
+        "repr": "CodingWorkerNativeApprovalDecisionV1(journal_revision=1, scope_id='scope', operation_id='op-1', generation=1, action='revoke', approval=None, record_digest='59c0c5bec2271587abd8e6eb4b1093bfbf9e1e88429d59d8e7adc644fbbfff76', record_version=1)",
+        "signature": "(journal_revision: 'int', scope_id: 'str', operation_id: 'str', generation: 'int', action: \"Literal['approve', 'revoke']\", approval: 'CodingWorkerNativeReleaseApprovalV1 | None', record_digest: 'str', record_version: 'int' = 1) -> None",
+        "slots": [
+          "journal_revision",
+          "scope_id",
+          "operation_id",
+          "generation",
+          "action",
+          "approval",
+          "record_digest",
+          "record_version"
+        ],
+        "type": "CodingWorkerNativeApprovalDecisionV1",
+        "value": {
+          "action": "revoke",
+          "approval": null,
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "59c0c5bec2271587abd8e6eb4b1093bfbf9e1e88429d59d8e7adc644fbbfff76",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        }
+      }
+    },
+    "dto-decision-revoke-duck": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": {
+        "annotations": {
+          "action": "Literal['approve', 'revoke']",
+          "approval": "CodingWorkerNativeReleaseApprovalV1 | None",
+          "generation": "int",
+          "journal_revision": "int",
+          "operation_id": "str",
+          "record_digest": "str",
+          "record_version": "int",
+          "scope_id": "str"
+        },
+        "create": "(*, journal_revision: 'int', scope_id: 'str', operation_id: 'str', generation: 'int', action: \"Literal['approve', 'revoke']\", approval: 'CodingWorkerNativeReleaseApprovalV1 | None') -> 'CodingWorkerNativeApprovalDecisionV1'",
+        "dict": false,
+        "fields": [
+          [
+            "journal_revision",
+            "int",
+            "MISSING"
+          ],
+          [
+            "scope_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "operation_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "generation",
+            "int",
+            "MISSING"
+          ],
+          [
+            "action",
+            "Literal['approve', 'revoke']",
+            "MISSING"
+          ],
+          [
+            "approval",
+            "CodingWorkerNativeReleaseApprovalV1 | None",
+            "MISSING"
+          ],
+          [
+            "record_digest",
+            "str",
+            "MISSING"
+          ],
+          [
+            "record_version",
+            "int",
+            1
+          ]
+        ],
+        "fqcn": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalDecisionV1",
+        "from_dict": "(value: 'object') -> 'CodingWorkerNativeApprovalDecisionV1'",
+        "frozen": "FrozenInstanceError",
+        "keys": [
+          "action",
+          "approval",
+          "generation",
+          "journalRevision",
+          "operationId",
+          "recordVersion",
+          "scopeId",
+          "recordDigest"
+        ],
+        "match_args": [
+          "journal_revision",
+          "scope_id",
+          "operation_id",
+          "generation",
+          "action",
+          "approval",
+          "record_digest",
+          "record_version"
+        ],
+        "pickle": null,
+        "pickle_same": true,
+        "repr": "CodingWorkerNativeApprovalDecisionV1(journal_revision=1, scope_id='scope', operation_id='op-1', generation=1, action='revoke', approval=DuckApproval(), record_digest='17f19c45c608a30e50b860911200442f16a9f542c2bd516c7fc44d8aff961dce', record_version=1)",
+        "signature": "(journal_revision: 'int', scope_id: 'str', operation_id: 'str', generation: 'int', action: \"Literal['approve', 'revoke']\", approval: 'CodingWorkerNativeReleaseApprovalV1 | None', record_digest: 'str', record_version: 'int' = 1) -> None",
+        "slots": [
+          "journal_revision",
+          "scope_id",
+          "operation_id",
+          "generation",
+          "action",
+          "approval",
+          "record_digest",
+          "record_version"
+        ],
+        "type": "CodingWorkerNativeApprovalDecisionV1",
+        "value": {
+          "action": "revoke",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "17f19c45c608a30e50b860911200442f16a9f542c2bd516c7fc44d8aff961dce",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        }
+      }
+    },
+    "dto-decision-revoke-object": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "'object' object has no attribute 'to_dict'",
+        "notes": [],
+        "suppress": false,
+        "type": "AttributeError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-decision-revoke-value": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native approval decision is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-decision-scope": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native approval decision is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-decision-shape": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native approval decision shape is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-decision-subclass": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": {
+        "annotations": null,
+        "create": null,
+        "dict": true,
+        "fields": [
+          [
+            "journal_revision",
+            "int",
+            "MISSING"
+          ],
+          [
+            "scope_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "operation_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "generation",
+            "int",
+            "MISSING"
+          ],
+          [
+            "action",
+            "Literal['approve', 'revoke']",
+            "MISSING"
+          ],
+          [
+            "approval",
+            "CodingWorkerNativeReleaseApprovalV1 | None",
+            "MISSING"
+          ],
+          [
+            "record_digest",
+            "str",
+            "MISSING"
+          ],
+          [
+            "record_version",
+            "int",
+            1
+          ]
+        ],
+        "fqcn": "subclass",
+        "from_dict": null,
+        "frozen": "FrozenInstanceError",
+        "keys": [
+          "action",
+          "approval",
+          "generation",
+          "journalRevision",
+          "operationId",
+          "recordVersion",
+          "scopeId",
+          "recordDigest"
+        ],
+        "match_args": [
+          "journal_revision",
+          "scope_id",
+          "operation_id",
+          "generation",
+          "action",
+          "approval",
+          "record_digest",
+          "record_version"
+        ],
+        "pickle": null,
+        "pickle_same": true,
+        "repr": "DecisionSubclass(journal_revision=1, scope_id='scope', operation_id='op-1', generation=1, action='approve', approval=CodingWorkerNativeReleaseApprovalV1(wheel_sha256='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', catalog_sha256='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', launcher_sha256='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', profile_sha256='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'), record_digest='3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622', record_version=1)",
+        "signature": null,
+        "slots": [
+          "journal_revision",
+          "scope_id",
+          "operation_id",
+          "generation",
+          "action",
+          "approval",
+          "record_digest",
+          "record_version"
+        ],
+        "type": "DecisionSubclass",
+        "value": {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        }
+      }
+    },
+    "dto-decision-version-bool": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": {
+        "annotations": {
+          "action": "Literal['approve', 'revoke']",
+          "approval": "CodingWorkerNativeReleaseApprovalV1 | None",
+          "generation": "int",
+          "journal_revision": "int",
+          "operation_id": "str",
+          "record_digest": "str",
+          "record_version": "int",
+          "scope_id": "str"
+        },
+        "create": "(*, journal_revision: 'int', scope_id: 'str', operation_id: 'str', generation: 'int', action: \"Literal['approve', 'revoke']\", approval: 'CodingWorkerNativeReleaseApprovalV1 | None') -> 'CodingWorkerNativeApprovalDecisionV1'",
+        "dict": false,
+        "fields": [
+          [
+            "journal_revision",
+            "int",
+            "MISSING"
+          ],
+          [
+            "scope_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "operation_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "generation",
+            "int",
+            "MISSING"
+          ],
+          [
+            "action",
+            "Literal['approve', 'revoke']",
+            "MISSING"
+          ],
+          [
+            "approval",
+            "CodingWorkerNativeReleaseApprovalV1 | None",
+            "MISSING"
+          ],
+          [
+            "record_digest",
+            "str",
+            "MISSING"
+          ],
+          [
+            "record_version",
+            "int",
+            1
+          ]
+        ],
+        "fqcn": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeApprovalDecisionV1",
+        "from_dict": "(value: 'object') -> 'CodingWorkerNativeApprovalDecisionV1'",
+        "frozen": "FrozenInstanceError",
+        "keys": [
+          "action",
+          "approval",
+          "generation",
+          "journalRevision",
+          "operationId",
+          "recordVersion",
+          "scopeId",
+          "recordDigest"
+        ],
+        "match_args": [
+          "journal_revision",
+          "scope_id",
+          "operation_id",
+          "generation",
+          "action",
+          "approval",
+          "record_digest",
+          "record_version"
+        ],
+        "pickle": "8004950a020000000000008c366c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f6e61746976655f617070726f76616c948c24436f64696e67576f726b65724e6174697665417070726f76616c4465636973696f6e56319493942981945d94284b018c0573636f7065948c046f702d31944b018c07617070726f76659468008c23436f64696e67576f726b65724e617469766552656c65617365417070726f76616c56319493942981945d94288c4061616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161948c4062626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262948c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c40646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464649465628c4061643939663966303037386164326463613039333437363462393361363562646131616133633731313132633266653736646161653233326336313763373663948865622e",
+        "pickle_same": true,
+        "repr": "CodingWorkerNativeApprovalDecisionV1(journal_revision=1, scope_id='scope', operation_id='op-1', generation=1, action='approve', approval=CodingWorkerNativeReleaseApprovalV1(wheel_sha256='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', catalog_sha256='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', launcher_sha256='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', profile_sha256='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'), record_digest='ad99f9f0078ad2dca0934764b93a65bda1aa3c71112c2fe76daae232c617c76c', record_version=True)",
+        "signature": "(journal_revision: 'int', scope_id: 'str', operation_id: 'str', generation: 'int', action: \"Literal['approve', 'revoke']\", approval: 'CodingWorkerNativeReleaseApprovalV1 | None', record_digest: 'str', record_version: 'int' = 1) -> None",
+        "slots": [
+          "journal_revision",
+          "scope_id",
+          "operation_id",
+          "generation",
+          "action",
+          "approval",
+          "record_digest",
+          "record_version"
+        ],
+        "type": "CodingWorkerNativeApprovalDecisionV1",
+        "value": {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "ad99f9f0078ad2dca0934764b93a65bda1aa3c71112c2fe76daae232c617c76c",
+          "recordVersion": true,
+          "scopeId": "scope"
+        }
+      }
+    },
+    "dto-decision-version-float": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "PLC9B canonical JSON does not permit floats",
+        "notes": [],
+        "suppress": false,
+        "type": "TypeError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-decision-version-zero": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native approval decision is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-review": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": {
+        "annotations": {
+          "approval": "CodingWorkerNativeReleaseApprovalV1",
+          "product_policy_revision": "str",
+          "review_id": "str",
+          "review_version": "int",
+          "scope_id": "str"
+        },
+        "create": "(*, scope_id: 'str', product_policy_revision: 'str', approval: 'CodingWorkerNativeReleaseApprovalV1') -> 'CodingWorkerNativeReleaseReviewV1'",
+        "dict": false,
+        "fields": [
+          [
+            "scope_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "product_policy_revision",
+            "str",
+            "MISSING"
+          ],
+          [
+            "approval",
+            "CodingWorkerNativeReleaseApprovalV1",
+            "MISSING"
+          ],
+          [
+            "review_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "review_version",
+            "int",
+            1
+          ]
+        ],
+        "fqcn": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeReleaseReviewV1",
+        "from_dict": null,
+        "frozen": "FrozenInstanceError",
+        "keys": [
+          "approval",
+          "productPolicyRevision",
+          "reviewVersion",
+          "scopeId",
+          "reviewId"
+        ],
+        "match_args": [
+          "scope_id",
+          "product_policy_revision",
+          "approval",
+          "review_id",
+          "review_version"
+        ],
+        "pickle": "800495fc010000000000008c366c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f6e61746976655f617070726f76616c948c21436f64696e67576f726b65724e617469766552656c6561736552657669657756319493942981945d94288c0573636f7065948c06706f6c6963799468008c23436f64696e67576f726b65724e617469766552656c65617365417070726f76616c56319493942981945d94288c4061616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161948c4062626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262948c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c40646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464649465628c4063333838623932303738623063633161373738626433643839613236656261666338653534343939376139396230623033636339653561333338316461333434944b0165622e",
+        "pickle_same": true,
+        "repr": "CodingWorkerNativeReleaseReviewV1(scope_id='scope', product_policy_revision='policy', approval=CodingWorkerNativeReleaseApprovalV1(wheel_sha256='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', catalog_sha256='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', launcher_sha256='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', profile_sha256='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'), review_id='c388b92078b0cc1a778bd3d89a26ebafc8e544997a99b0b03cc9e5a3381da344', review_version=1)",
+        "signature": "(scope_id: 'str', product_policy_revision: 'str', approval: 'CodingWorkerNativeReleaseApprovalV1', review_id: 'str', review_version: 'int' = 1) -> None",
+        "slots": [
+          "scope_id",
+          "product_policy_revision",
+          "approval",
+          "review_id",
+          "review_version"
+        ],
+        "type": "CodingWorkerNativeReleaseReviewV1",
+        "value": {
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "productPolicyRevision": "policy",
+          "reviewId": "c388b92078b0cc1a778bd3d89a26ebafc8e544997a99b0b03cc9e5a3381da344",
+          "reviewVersion": 1,
+          "scopeId": "scope"
+        }
+      }
+    },
+    "dto-review-approval": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native release review is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-review-digest": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native release review is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-review-opaque": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native release review is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-review-subclass": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": {
+        "annotations": null,
+        "create": null,
+        "dict": true,
+        "fields": [
+          [
+            "scope_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "product_policy_revision",
+            "str",
+            "MISSING"
+          ],
+          [
+            "approval",
+            "CodingWorkerNativeReleaseApprovalV1",
+            "MISSING"
+          ],
+          [
+            "review_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "review_version",
+            "int",
+            1
+          ]
+        ],
+        "fqcn": "subclass",
+        "from_dict": null,
+        "frozen": "FrozenInstanceError",
+        "keys": [
+          "approval",
+          "productPolicyRevision",
+          "reviewVersion",
+          "scopeId",
+          "reviewId"
+        ],
+        "match_args": [
+          "scope_id",
+          "product_policy_revision",
+          "approval",
+          "review_id",
+          "review_version"
+        ],
+        "pickle": null,
+        "pickle_same": true,
+        "repr": "ReviewSubclass(scope_id='scope', product_policy_revision='policy', approval=CodingWorkerNativeReleaseApprovalV1(wheel_sha256='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', catalog_sha256='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', launcher_sha256='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', profile_sha256='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'), review_id='c388b92078b0cc1a778bd3d89a26ebafc8e544997a99b0b03cc9e5a3381da344', review_version=1)",
+        "signature": null,
+        "slots": [
+          "scope_id",
+          "product_policy_revision",
+          "approval",
+          "review_id",
+          "review_version"
+        ],
+        "type": "ReviewSubclass",
+        "value": {
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "productPolicyRevision": "policy",
+          "reviewId": "c388b92078b0cc1a778bd3d89a26ebafc8e544997a99b0b03cc9e5a3381da344",
+          "reviewVersion": 1,
+          "scopeId": "scope"
+        }
+      }
+    },
+    "dto-review-version-bool": {
+      "disk": null,
+      "error": null,
+      "trace": [],
+      "value": {
+        "annotations": {
+          "approval": "CodingWorkerNativeReleaseApprovalV1",
+          "product_policy_revision": "str",
+          "review_id": "str",
+          "review_version": "int",
+          "scope_id": "str"
+        },
+        "create": "(*, scope_id: 'str', product_policy_revision: 'str', approval: 'CodingWorkerNativeReleaseApprovalV1') -> 'CodingWorkerNativeReleaseReviewV1'",
+        "dict": false,
+        "fields": [
+          [
+            "scope_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "product_policy_revision",
+            "str",
+            "MISSING"
+          ],
+          [
+            "approval",
+            "CodingWorkerNativeReleaseApprovalV1",
+            "MISSING"
+          ],
+          [
+            "review_id",
+            "str",
+            "MISSING"
+          ],
+          [
+            "review_version",
+            "int",
+            1
+          ]
+        ],
+        "fqcn": "loushang.coding.package_product_worker_native_approval.CodingWorkerNativeReleaseReviewV1",
+        "from_dict": null,
+        "frozen": "FrozenInstanceError",
+        "keys": [
+          "approval",
+          "productPolicyRevision",
+          "reviewVersion",
+          "scopeId",
+          "reviewId"
+        ],
+        "match_args": [
+          "scope_id",
+          "product_policy_revision",
+          "approval",
+          "review_id",
+          "review_version"
+        ],
+        "pickle": "800495fb010000000000008c366c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f6e61746976655f617070726f76616c948c21436f64696e67576f726b65724e617469766552656c6561736552657669657756319493942981945d94288c0573636f7065948c06706f6c6963799468008c23436f64696e67576f726b65724e617469766552656c65617365417070726f76616c56319493942981945d94288c4061616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161948c4062626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262948c4063636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363948c40646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464649465628c4032323966333236393636393537383033333930376433653237316533616635643665636464323761366636393733633165633163386539343466306632303038948865622e",
+        "pickle_same": true,
+        "repr": "CodingWorkerNativeReleaseReviewV1(scope_id='scope', product_policy_revision='policy', approval=CodingWorkerNativeReleaseApprovalV1(wheel_sha256='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', catalog_sha256='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', launcher_sha256='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', profile_sha256='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'), review_id='229f3269669578033907d3e271e3af5d6ecdd27a6f6973c1ec1c8e944f0f2008', review_version=True)",
+        "signature": "(scope_id: 'str', product_policy_revision: 'str', approval: 'CodingWorkerNativeReleaseApprovalV1', review_id: 'str', review_version: 'int' = 1) -> None",
+        "slots": [
+          "scope_id",
+          "product_policy_revision",
+          "approval",
+          "review_id",
+          "review_version"
+        ],
+        "type": "CodingWorkerNativeReleaseReviewV1",
+        "value": {
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "productPolicyRevision": "policy",
+          "reviewId": "229f3269669578033907d3e271e3af5d6ecdd27a6f6973c1ec1c8e944f0f2008",
+          "reviewVersion": true,
+          "scopeId": "scope"
+        }
+      }
+    },
+    "dto-review-version-float": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "PLC9B canonical JSON does not permit floats",
+        "notes": [],
+        "suppress": false,
+        "type": "TypeError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "dto-review-version-zero": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native release review is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "posix-absent": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_absent",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_absent",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-append-error": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected append",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "append",
+          "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"new-op\", \"recordDigest\": \"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+          true
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-append-partial": {
+      "disk": "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"ddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected partial append",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "append",
+          "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"new-op\", \"recordDigest\": \"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+          true
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-bad-action": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native approval command is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "posix-bad-approval": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native approval command is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "posix-bad-generation": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native approval command is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "posix-bad-operation": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Worker native approval command is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "posix-body-cleanup-error": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": {
+          "cause": null,
+          "code": null,
+          "context": null,
+          "id": 1,
+          "message": "injected append",
+          "notes": [],
+          "suppress": false,
+          "type": "OSError"
+        },
+        "id": 0,
+        "message": "injected cleanup",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "append",
+          "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"new-op\", \"recordDigest\": \"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+          true
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-capacity": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_capacity",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_capacity",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-cleanup-error": {
+      "disk": "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"new-op\", \"recordDigest\": \"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected cleanup",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "append",
+          "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"new-op\", \"recordDigest\": \"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+          true
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-current-absent": {
+      "disk": null,
+      "error": null,
+      "trace": [
+        [
+          "gc-enter",
+          false
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": {
+        "record": null,
+        "replayIdentity": false
+      }
+    },
+    "posix-current-error": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected currentness",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          false
+        ],
+        [
+          "current"
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-current-noncanonical": {
+      "disk": "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"op-1\", \"recordVersion\": 1, \"scopeId\": \"scope\", \"recordDigest\": \"3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622\"}\n",
+      "error": null,
+      "trace": [
+        [
+          "gc-enter",
+          false
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": {
+        "record": {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        },
+        "replayIdentity": true
+      }
+    },
+    "posix-error-type-change": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_state_root_unsafe",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_state_root_unsafe",
+        "notes": [],
+        "suppress": false,
+        "type": "ReplacementApprovalError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-fresh": {
+      "disk": "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"new-op\", \"recordDigest\": \"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+      "error": null,
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "append",
+          "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"new-op\", \"recordDigest\": \"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+          true
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": {
+        "record": {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "new-op",
+          "recordDigest": "4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        },
+        "replayIdentity": false
+      }
+    },
+    "posix-gc-error": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected GC entry",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ]
+      ],
+      "value": null
+    },
+    "posix-gc-exit-error": {
+      "disk": "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"new-op\", \"recordDigest\": \"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected GC exit",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "append",
+          "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"new-op\", \"recordDigest\": \"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+          true
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-lock-error": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected lock",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-read-error": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected read",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-read-oversize": {
+      "disk": {
+        "bytes": 4194305,
+        "sha256": "95e441ca65cd41fa01b2a71799e79fd60db59ed34f13af32a91e85f90378676c"
+      },
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "rooted IO read limit exceeded",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-retry": {
+      "disk": "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"op-1\", \"recordDigest\": \"3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+      "error": null,
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": {
+        "record": {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        },
+        "replayIdentity": true
+      }
+    },
+    "posix-retry-conflict": {
+      "disk": "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"op-1\", \"recordDigest\": \"3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_operation_conflict",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_operation_conflict",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-retry-full": {
+      "disk": "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"op-1\", \"recordDigest\": \"3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+      "error": null,
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": {
+        "record": {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        },
+        "replayIdentity": true
+      }
+    },
+    "posix-revoke": {
+      "disk": "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"op-1\", \"recordDigest\": \"3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n{\"action\": \"revoke\", \"approval\": null, \"generation\": 2, \"journalRevision\": 2, \"operationId\": \"new-op\", \"recordDigest\": \"39a5011aaca08c446863adf1ea7e8524b207d4d705bf1b5aaaea6d7af5423c56\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+      "error": null,
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "append",
+          "{\"action\": \"revoke\", \"approval\": null, \"generation\": 2, \"journalRevision\": 2, \"operationId\": \"new-op\", \"recordDigest\": \"39a5011aaca08c446863adf1ea7e8524b207d4d705bf1b5aaaea6d7af5423c56\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+          true
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": {
+        "record": {
+          "action": "revoke",
+          "approval": null,
+          "generation": 2,
+          "journalRevision": 2,
+          "operationId": "new-op",
+          "recordDigest": "39a5011aaca08c446863adf1ea7e8524b207d4d705bf1b5aaaea6d7af5423c56",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        },
+        "replayIdentity": false
+      }
+    },
+    "posix-revoke-duck": {
+      "disk": "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"op-1\", \"recordDigest\": \"3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n{\"action\": \"revoke\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 2, \"journalRevision\": 2, \"operationId\": \"new-op\", \"recordDigest\": \"0130a4cf59852d87fdd882a03bd4fda864cf4a687d03a3b1f987b42b30869e43\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+      "error": null,
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "append",
+          "{\"action\": \"revoke\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 2, \"journalRevision\": 2, \"operationId\": \"new-op\", \"recordDigest\": \"0130a4cf59852d87fdd882a03bd4fda864cf4a687d03a3b1f987b42b30869e43\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+          true
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": {
+        "record": {
+          "action": "revoke",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 2,
+          "journalRevision": 2,
+          "operationId": "new-op",
+          "recordDigest": "0130a4cf59852d87fdd882a03bd4fda864cf4a687d03a3b1f987b42b30869e43",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        },
+        "replayIdentity": false
+      }
+    },
+    "posix-revoke-duck-reopen": {
+      "disk": "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"op-1\", \"recordDigest\": \"3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n{\"action\": \"revoke\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 2, \"journalRevision\": 2, \"operationId\": \"new-op\", \"recordDigest\": \"0130a4cf59852d87fdd882a03bd4fda864cf4a687d03a3b1f987b42b30869e43\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+      "error": {
+        "cause": {
+          "cause": {
+            "cause": null,
+            "code": null,
+            "context": null,
+            "id": 2,
+            "message": "Worker native approval decision is invalid",
+            "notes": [],
+            "suppress": false,
+            "type": "ValueError"
+          },
+          "code": "coding_worker_native_approval_record_invalid",
+          "context": {
+            "ref": 2
+          },
+          "id": 1,
+          "message": "Worker native approval decision record is invalid",
+          "notes": [],
+          "suppress": true,
+          "type": "JournalCodecError"
+        },
+        "code": "coding_worker_native_approval_record_invalid",
+        "context": {
+          "ref": 1
+        },
+        "id": 0,
+        "message": "Journal record is invalid",
+        "notes": [],
+        "suppress": true,
+        "type": "JournalFileError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "append",
+          "{\"action\": \"revoke\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 2, \"journalRevision\": 2, \"operationId\": \"new-op\", \"recordDigest\": \"0130a4cf59852d87fdd882a03bd4fda864cf4a687d03a3b1f987b42b30869e43\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+          true
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ],
+        [
+          "gc-enter",
+          false
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "posix-stale": {
+      "disk": "{\"action\": \"approve\", \"approval\": {\"catalogSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"launcherSha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"profileSha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"wheelSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"generation\": 1, \"journalRevision\": 1, \"operationId\": \"op-1\", \"recordDigest\": \"3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622\", \"recordVersion\": 1, \"scopeId\": \"scope\"}\n",
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_stale",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_stale",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [
+        [
+          "gc-enter",
+          true
+        ],
+        [
+          "lock",
+          {
+            "exclusive": true,
+            "suffix": ".lock"
+          }
+        ],
+        [
+          "current"
+        ],
+        [
+          "read",
+          {
+            "max_bytes": 4194304
+          }
+        ],
+        [
+          "cleanup"
+        ],
+        [
+          "gc-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-absent": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_absent",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_absent",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-append-error": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected append",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "max-events"
+        ],
+        [
+          "initialize",
+          "lock"
+        ],
+        [
+          "append",
+          10,
+          "acl",
+          null,
+          "{\"action\":\"approve\",\"approval\":{\"catalogSha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"launcherSha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"profileSha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"wheelSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"generation\":1,\"journalRevision\":1,\"operationId\":\"new-op\",\"recordDigest\":\"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\",\"recordVersion\":1,\"scopeId\":\"scope\"}\n"
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-bad-action": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker native approval command is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "windows-bad-approval": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker native approval command is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "windows-bad-generation": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker native approval command is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "windows-bad-operation": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "Windows Worker native approval command is invalid",
+        "notes": [],
+        "suppress": false,
+        "type": "ValueError"
+      },
+      "trace": [],
+      "value": null
+    },
+    "windows-body-cleanup-error": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": {
+          "cause": null,
+          "code": null,
+          "context": null,
+          "id": 1,
+          "message": "injected append",
+          "notes": [],
+          "suppress": false,
+          "type": "OSError"
+        },
+        "id": 0,
+        "message": "injected cleanup",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "max-events"
+        ],
+        [
+          "initialize",
+          "lock"
+        ],
+        [
+          "append",
+          10,
+          "acl",
+          null,
+          "{\"action\":\"approve\",\"approval\":{\"catalogSha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"launcherSha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"profileSha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"wheelSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"generation\":1,\"journalRevision\":1,\"operationId\":\"new-op\",\"recordDigest\":\"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\",\"recordVersion\":1,\"scopeId\":\"scope\"}\n"
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-byte-capacity": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_capacity",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_capacity",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "max-events"
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-capacity": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_capacity",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_capacity",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "max-events"
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-cleanup-error": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected cleanup",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "max-events"
+        ],
+        [
+          "initialize",
+          "lock"
+        ],
+        [
+          "append",
+          10,
+          "acl",
+          null,
+          "{\"action\":\"approve\",\"approval\":{\"catalogSha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"launcherSha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"profileSha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"wheelSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"generation\":1,\"journalRevision\":1,\"operationId\":\"new-op\",\"recordDigest\":\"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\",\"recordVersion\":1,\"scopeId\":\"scope\"}\n"
+        ],
+        [
+          "visible",
+          10
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-code-limit": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_capacity",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_capacity",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-empty-bytes": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_corrupt",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_corrupt",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-fresh": {
+      "disk": null,
+      "error": null,
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "max-events"
+        ],
+        [
+          "initialize",
+          "lock"
+        ],
+        [
+          "append",
+          10,
+          "acl",
+          null,
+          "{\"action\":\"approve\",\"approval\":{\"catalogSha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"launcherSha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"profileSha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"wheelSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"generation\":1,\"journalRevision\":1,\"operationId\":\"new-op\",\"recordDigest\":\"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\",\"recordVersion\":1,\"scopeId\":\"scope\"}\n"
+        ],
+        [
+          "visible",
+          10
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": {
+        "record": {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "new-op",
+          "recordDigest": "4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        },
+        "replayIdentity": false
+      }
+    },
+    "windows-initialize-error": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected initialize",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "max-events"
+        ],
+        [
+          "initialize",
+          "lock"
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-no-newline": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_corrupt",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_corrupt",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-noncanonical": {
+      "disk": null,
+      "error": {
+        "cause": {
+          "cause": null,
+          "code": null,
+          "context": null,
+          "id": 1,
+          "message": "Windows Worker native approval bytes changed",
+          "notes": [],
+          "suppress": false,
+          "type": "ValueError"
+        },
+        "code": "coding_worker_native_approval_corrupt",
+        "context": {
+          "ref": 1
+        },
+        "id": 0,
+        "message": "coding_worker_native_approval_corrupt",
+        "notes": [],
+        "suppress": true,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-read-error": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected read",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-retry": {
+      "disk": null,
+      "error": null,
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "visible",
+          10
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": {
+        "record": {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        },
+        "replayIdentity": true
+      }
+    },
+    "windows-retry-conflict": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_operation_conflict",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_operation_conflict",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-retry-full": {
+      "disk": null,
+      "error": null,
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "visible",
+          10
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": {
+        "record": {
+          "action": "approve",
+          "approval": {
+            "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "launcherSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "profileSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "wheelSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "generation": 1,
+          "journalRevision": 1,
+          "operationId": "op-1",
+          "recordDigest": "3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        },
+        "replayIdentity": true
+      }
+    },
+    "windows-revoke": {
+      "disk": null,
+      "error": null,
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "max-events"
+        ],
+        [
+          "initialize",
+          "lock"
+        ],
+        [
+          "append",
+          10,
+          "acl",
+          "{\"action\":\"approve\",\"approval\":{\"catalogSha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"launcherSha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"profileSha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"wheelSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"generation\":1,\"journalRevision\":1,\"operationId\":\"op-1\",\"recordDigest\":\"3899c6ad0c80c08040caa39b0bcfa8fb98df73de06c52fb7eaa2c214fe174622\",\"recordVersion\":1,\"scopeId\":\"scope\"}\n",
+          "{\"action\":\"revoke\",\"approval\":null,\"generation\":2,\"journalRevision\":2,\"operationId\":\"new-op\",\"recordDigest\":\"39a5011aaca08c446863adf1ea7e8524b207d4d705bf1b5aaaea6d7af5423c56\",\"recordVersion\":1,\"scopeId\":\"scope\"}\n"
+        ],
+        [
+          "visible",
+          10
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": {
+        "record": {
+          "action": "revoke",
+          "approval": null,
+          "generation": 2,
+          "journalRevision": 2,
+          "operationId": "new-op",
+          "recordDigest": "39a5011aaca08c446863adf1ea7e8524b207d4d705bf1b5aaaea6d7af5423c56",
+          "recordVersion": 1,
+          "scopeId": "scope"
+        },
+        "replayIdentity": false
+      }
+    },
+    "windows-stale": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": "coding_worker_native_approval_stale",
+        "context": null,
+        "id": 0,
+        "message": "coding_worker_native_approval_stale",
+        "notes": [],
+        "suppress": false,
+        "type": "CodingWorkerNativeApprovalError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    },
+    "windows-visible-error": {
+      "disk": null,
+      "error": {
+        "cause": null,
+        "code": null,
+        "context": null,
+        "id": 0,
+        "message": "injected visibility",
+        "notes": [],
+        "suppress": false,
+        "type": "OSError"
+      },
+      "trace": [
+        [
+          "root",
+          10
+        ],
+        [
+          "bind",
+          10
+        ],
+        [
+          "custody-enter"
+        ],
+        [
+          "max-events"
+        ],
+        [
+          "initialize",
+          "lock"
+        ],
+        [
+          "append",
+          10,
+          "acl",
+          null,
+          "{\"action\":\"approve\",\"approval\":{\"catalogSha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"launcherSha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"profileSha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"wheelSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"generation\":1,\"journalRevision\":1,\"operationId\":\"new-op\",\"recordDigest\":\"4d7c11e8d40e4f81abed7854ce4e24ca42843a803632b7bbd434a56ad29afd1e\",\"recordVersion\":1,\"scopeId\":\"scope\"}\n"
+        ],
+        [
+          "visible",
+          10
+        ],
+        [
+          "custody-exit"
+        ]
+      ],
+      "value": null
+    }
+  },
+  "schemaVersion": 1
+}

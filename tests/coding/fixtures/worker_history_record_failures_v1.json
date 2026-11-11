@@ -1,0 +1,2135 @@
+{
+  "CodingWorkerHistoryCheckpointV1": {
+    "valid": {
+      "value": {
+        "public_type": "loushang.coding.package_product_worker_history_checkpoint.CodingWorkerHistoryCheckpointV1",
+        "signature": "(journal_revision: 'int', scope_id: 'str', store_id: 'str', attempt_id: 'str', receipt_fingerprint: 'str', previous_digest: 'str', gc_reservation_revision: 'int', backup_topology_revision: 'str', stream_snapshots: 'tuple[CodingWorkerHistoryStreamSnapshotV1, ...]', new_opt_in_operation_ids: 'tuple[str, ...]', new_attempt_ids: 'tuple[str, ...]', new_receipt_fingerprints: 'tuple[str, ...]', opt_in_generation_high_water: 'tuple[tuple[str, int, int, str, str], ...]', supervisor_epoch_high_water: 'tuple[tuple[str, int], ...]', record_digest: 'str', record_version: 'int' = 1) -> None",
+        "fields": [
+          [
+            "journal_revision",
+            "int",
+            true,
+            true,
+            true
+          ],
+          [
+            "scope_id",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "store_id",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "attempt_id",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "receipt_fingerprint",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "previous_digest",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "gc_reservation_revision",
+            "int",
+            true,
+            true,
+            true
+          ],
+          [
+            "backup_topology_revision",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "stream_snapshots",
+            "tuple[CodingWorkerHistoryStreamSnapshotV1, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "new_opt_in_operation_ids",
+            "tuple[str, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "new_attempt_ids",
+            "tuple[str, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "new_receipt_fingerprints",
+            "tuple[str, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "opt_in_generation_high_water",
+            "tuple[tuple[str, int, int, str, str], ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "supervisor_epoch_high_water",
+            "tuple[tuple[str, int], ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "record_digest",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "record_version",
+            "int",
+            true,
+            true,
+            true
+          ]
+        ],
+        "wire": {
+          "attemptId": "11111111111111111111111111111111",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 0,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "11111111111111111111111111111111"
+          ],
+          "newOptInOperationIds": [],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ff051807488833d3343c4ac256aed400449d92e68aba4e11229521d1da21525b",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                359
+              ],
+              "segmentDigests": [
+                "40a879fabe065d8f2c24d36e6f40780cad5080bafa53e6993a7db64e3c6f887e"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 1,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              1
+            ]
+          ],
+          "recordDigest": "f2cdd65bf56357746a57ffcff03bb656aafe98f0a07d2d766b56f06e8e66d7ec"
+        },
+        "repr": "CodingWorkerHistoryCheckpointV1(journal_revision=1, scope_id='scope', store_id='store', attempt_id='11111111111111111111111111111111', receipt_fingerprint='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', previous_digest='', gc_reservation_revision=0, backup_topology_revision='coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', stream_snapshots=(CodingWorkerHistoryStreamSnapshotV1(stem='worker-opt-in', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-activation-receipts', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-activation-state', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-start-gates', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-supervisor', active_generation=0, last_sealed_revision=0, total_revision=1, segment_byte_counts=(359,), segment_digests=('40a879fabe065d8f2c24d36e6f40780cad5080bafa53e6993a7db64e3c6f887e',), fingerprint='ff051807488833d3343c4ac256aed400449d92e68aba4e11229521d1da21525b')), new_opt_in_operation_ids=(), new_attempt_ids=('11111111111111111111111111111111',), new_receipt_fingerprints=('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',), opt_in_generation_high_water=(), supervisor_epoch_high_water=(('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1),), record_digest='f2cdd65bf56357746a57ffcff03bb656aafe98f0a07d2d766b56f06e8e66d7ec', record_version=1)",
+        "has_dict": false,
+        "frozen": {
+          "journal_revision": {
+            "type": "dataclasses.FrozenInstanceError",
+            "message": "cannot assign to field 'journal_revision'",
+            "cause": null
+          },
+          "not_an_existing_field": {
+            "type": "builtins.TypeError",
+            "message": "super(type, obj): obj must be an instance or subtype of type",
+            "cause": null
+          }
+        }
+      }
+    },
+    "non-object": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "unknown-key": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "missing:attemptId": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "attemptId:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "attemptId:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "attemptId:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "attemptId:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "attemptId:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "attemptId:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "attemptId:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "missing:backupTopologyRevision": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "backupTopologyRevision:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "backupTopologyRevision:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "backupTopologyRevision:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "backupTopologyRevision:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "backupTopologyRevision:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "backupTopologyRevision:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "backupTopologyRevision:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "missing:gcReservationRevision": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "gcReservationRevision:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "gcReservationRevision:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "gcReservationRevision:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "gcReservationRevision:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "gcReservationRevision:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "gcReservationRevision:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "gcReservationRevision:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "missing:journalRevision": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "journalRevision:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "journalRevision:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "journalRevision:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "journalRevision:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "journalRevision:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "journalRevision:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "journalRevision:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "missing:newAttemptIds": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "newAttemptIds:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newAttemptIds:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newAttemptIds:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newAttemptIds:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newAttemptIds:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newAttemptIds:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "newAttemptIds:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "missing:newOptInOperationIds": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "newOptInOperationIds:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newOptInOperationIds:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newOptInOperationIds:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newOptInOperationIds:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newOptInOperationIds:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newOptInOperationIds:5": {
+      "value": {
+        "public_type": "loushang.coding.package_product_worker_history_checkpoint.CodingWorkerHistoryCheckpointV1",
+        "signature": "(journal_revision: 'int', scope_id: 'str', store_id: 'str', attempt_id: 'str', receipt_fingerprint: 'str', previous_digest: 'str', gc_reservation_revision: 'int', backup_topology_revision: 'str', stream_snapshots: 'tuple[CodingWorkerHistoryStreamSnapshotV1, ...]', new_opt_in_operation_ids: 'tuple[str, ...]', new_attempt_ids: 'tuple[str, ...]', new_receipt_fingerprints: 'tuple[str, ...]', opt_in_generation_high_water: 'tuple[tuple[str, int, int, str, str], ...]', supervisor_epoch_high_water: 'tuple[tuple[str, int], ...]', record_digest: 'str', record_version: 'int' = 1) -> None",
+        "fields": [
+          [
+            "journal_revision",
+            "int",
+            true,
+            true,
+            true
+          ],
+          [
+            "scope_id",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "store_id",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "attempt_id",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "receipt_fingerprint",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "previous_digest",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "gc_reservation_revision",
+            "int",
+            true,
+            true,
+            true
+          ],
+          [
+            "backup_topology_revision",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "stream_snapshots",
+            "tuple[CodingWorkerHistoryStreamSnapshotV1, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "new_opt_in_operation_ids",
+            "tuple[str, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "new_attempt_ids",
+            "tuple[str, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "new_receipt_fingerprints",
+            "tuple[str, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "opt_in_generation_high_water",
+            "tuple[tuple[str, int, int, str, str], ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "supervisor_epoch_high_water",
+            "tuple[tuple[str, int], ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "record_digest",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "record_version",
+            "int",
+            true,
+            true,
+            true
+          ]
+        ],
+        "wire": {
+          "attemptId": "11111111111111111111111111111111",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 0,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "11111111111111111111111111111111"
+          ],
+          "newOptInOperationIds": [],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ff051807488833d3343c4ac256aed400449d92e68aba4e11229521d1da21525b",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                359
+              ],
+              "segmentDigests": [
+                "40a879fabe065d8f2c24d36e6f40780cad5080bafa53e6993a7db64e3c6f887e"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 1,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              1
+            ]
+          ],
+          "recordDigest": "f2cdd65bf56357746a57ffcff03bb656aafe98f0a07d2d766b56f06e8e66d7ec"
+        },
+        "repr": "CodingWorkerHistoryCheckpointV1(journal_revision=1, scope_id='scope', store_id='store', attempt_id='11111111111111111111111111111111', receipt_fingerprint='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', previous_digest='', gc_reservation_revision=0, backup_topology_revision='coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', stream_snapshots=(CodingWorkerHistoryStreamSnapshotV1(stem='worker-opt-in', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-activation-receipts', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-activation-state', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-start-gates', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-supervisor', active_generation=0, last_sealed_revision=0, total_revision=1, segment_byte_counts=(359,), segment_digests=('40a879fabe065d8f2c24d36e6f40780cad5080bafa53e6993a7db64e3c6f887e',), fingerprint='ff051807488833d3343c4ac256aed400449d92e68aba4e11229521d1da21525b')), new_opt_in_operation_ids=(), new_attempt_ids=('11111111111111111111111111111111',), new_receipt_fingerprints=('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',), opt_in_generation_high_water=(), supervisor_epoch_high_water=(('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1),), record_digest='f2cdd65bf56357746a57ffcff03bb656aafe98f0a07d2d766b56f06e8e66d7ec', record_version=1)",
+        "has_dict": false,
+        "frozen": {
+          "journal_revision": {
+            "type": "dataclasses.FrozenInstanceError",
+            "message": "cannot assign to field 'journal_revision'",
+            "cause": null
+          },
+          "not_an_existing_field": {
+            "type": "builtins.TypeError",
+            "message": "super(type, obj): obj must be an instance or subtype of type",
+            "cause": null
+          }
+        }
+      }
+    },
+    "newOptInOperationIds:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "missing:newReceiptFingerprints": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "newReceiptFingerprints:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newReceiptFingerprints:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newReceiptFingerprints:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newReceiptFingerprints:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newReceiptFingerprints:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "newReceiptFingerprints:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "newReceiptFingerprints:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "missing:optInGenerationHighWater": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "optInGenerationHighWater:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "optInGenerationHighWater:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "optInGenerationHighWater:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "optInGenerationHighWater:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "optInGenerationHighWater:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "optInGenerationHighWater:5": {
+      "value": {
+        "public_type": "loushang.coding.package_product_worker_history_checkpoint.CodingWorkerHistoryCheckpointV1",
+        "signature": "(journal_revision: 'int', scope_id: 'str', store_id: 'str', attempt_id: 'str', receipt_fingerprint: 'str', previous_digest: 'str', gc_reservation_revision: 'int', backup_topology_revision: 'str', stream_snapshots: 'tuple[CodingWorkerHistoryStreamSnapshotV1, ...]', new_opt_in_operation_ids: 'tuple[str, ...]', new_attempt_ids: 'tuple[str, ...]', new_receipt_fingerprints: 'tuple[str, ...]', opt_in_generation_high_water: 'tuple[tuple[str, int, int, str, str], ...]', supervisor_epoch_high_water: 'tuple[tuple[str, int], ...]', record_digest: 'str', record_version: 'int' = 1) -> None",
+        "fields": [
+          [
+            "journal_revision",
+            "int",
+            true,
+            true,
+            true
+          ],
+          [
+            "scope_id",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "store_id",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "attempt_id",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "receipt_fingerprint",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "previous_digest",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "gc_reservation_revision",
+            "int",
+            true,
+            true,
+            true
+          ],
+          [
+            "backup_topology_revision",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "stream_snapshots",
+            "tuple[CodingWorkerHistoryStreamSnapshotV1, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "new_opt_in_operation_ids",
+            "tuple[str, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "new_attempt_ids",
+            "tuple[str, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "new_receipt_fingerprints",
+            "tuple[str, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "opt_in_generation_high_water",
+            "tuple[tuple[str, int, int, str, str], ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "supervisor_epoch_high_water",
+            "tuple[tuple[str, int], ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "record_digest",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "record_version",
+            "int",
+            true,
+            true,
+            true
+          ]
+        ],
+        "wire": {
+          "attemptId": "11111111111111111111111111111111",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 0,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "11111111111111111111111111111111"
+          ],
+          "newOptInOperationIds": [],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ff051807488833d3343c4ac256aed400449d92e68aba4e11229521d1da21525b",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                359
+              ],
+              "segmentDigests": [
+                "40a879fabe065d8f2c24d36e6f40780cad5080bafa53e6993a7db64e3c6f887e"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 1,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              1
+            ]
+          ],
+          "recordDigest": "f2cdd65bf56357746a57ffcff03bb656aafe98f0a07d2d766b56f06e8e66d7ec"
+        },
+        "repr": "CodingWorkerHistoryCheckpointV1(journal_revision=1, scope_id='scope', store_id='store', attempt_id='11111111111111111111111111111111', receipt_fingerprint='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', previous_digest='', gc_reservation_revision=0, backup_topology_revision='coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', stream_snapshots=(CodingWorkerHistoryStreamSnapshotV1(stem='worker-opt-in', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-activation-receipts', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-activation-state', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-start-gates', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-supervisor', active_generation=0, last_sealed_revision=0, total_revision=1, segment_byte_counts=(359,), segment_digests=('40a879fabe065d8f2c24d36e6f40780cad5080bafa53e6993a7db64e3c6f887e',), fingerprint='ff051807488833d3343c4ac256aed400449d92e68aba4e11229521d1da21525b')), new_opt_in_operation_ids=(), new_attempt_ids=('11111111111111111111111111111111',), new_receipt_fingerprints=('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',), opt_in_generation_high_water=(), supervisor_epoch_high_water=(('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1),), record_digest='f2cdd65bf56357746a57ffcff03bb656aafe98f0a07d2d766b56f06e8e66d7ec', record_version=1)",
+        "has_dict": false,
+        "frozen": {
+          "journal_revision": {
+            "type": "dataclasses.FrozenInstanceError",
+            "message": "cannot assign to field 'journal_revision'",
+            "cause": null
+          },
+          "not_an_existing_field": {
+            "type": "builtins.TypeError",
+            "message": "super(type, obj): obj must be an instance or subtype of type",
+            "cause": null
+          }
+        }
+      }
+    },
+    "optInGenerationHighWater:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "missing:previousDigest": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "previousDigest:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "previousDigest:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "previousDigest:2": {
+      "value": {
+        "public_type": "loushang.coding.package_product_worker_history_checkpoint.CodingWorkerHistoryCheckpointV1",
+        "signature": "(journal_revision: 'int', scope_id: 'str', store_id: 'str', attempt_id: 'str', receipt_fingerprint: 'str', previous_digest: 'str', gc_reservation_revision: 'int', backup_topology_revision: 'str', stream_snapshots: 'tuple[CodingWorkerHistoryStreamSnapshotV1, ...]', new_opt_in_operation_ids: 'tuple[str, ...]', new_attempt_ids: 'tuple[str, ...]', new_receipt_fingerprints: 'tuple[str, ...]', opt_in_generation_high_water: 'tuple[tuple[str, int, int, str, str], ...]', supervisor_epoch_high_water: 'tuple[tuple[str, int], ...]', record_digest: 'str', record_version: 'int' = 1) -> None",
+        "fields": [
+          [
+            "journal_revision",
+            "int",
+            true,
+            true,
+            true
+          ],
+          [
+            "scope_id",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "store_id",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "attempt_id",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "receipt_fingerprint",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "previous_digest",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "gc_reservation_revision",
+            "int",
+            true,
+            true,
+            true
+          ],
+          [
+            "backup_topology_revision",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "stream_snapshots",
+            "tuple[CodingWorkerHistoryStreamSnapshotV1, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "new_opt_in_operation_ids",
+            "tuple[str, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "new_attempt_ids",
+            "tuple[str, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "new_receipt_fingerprints",
+            "tuple[str, ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "opt_in_generation_high_water",
+            "tuple[tuple[str, int, int, str, str], ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "supervisor_epoch_high_water",
+            "tuple[tuple[str, int], ...]",
+            true,
+            true,
+            true
+          ],
+          [
+            "record_digest",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "record_version",
+            "int",
+            true,
+            true,
+            true
+          ]
+        ],
+        "wire": {
+          "attemptId": "11111111111111111111111111111111",
+          "backupTopologyRevision": "coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "gcReservationRevision": 0,
+          "journalRevision": 1,
+          "newAttemptIds": [
+            "11111111111111111111111111111111"
+          ],
+          "newOptInOperationIds": [],
+          "newReceiptFingerprints": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "optInGenerationHighWater": [],
+          "previousDigest": "",
+          "receiptFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordVersion": 1,
+          "scopeId": "scope",
+          "storeId": "store",
+          "streamSnapshots": [
+            {
+              "activeGeneration": 0,
+              "fingerprint": "929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-opt-in",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-receipts",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-activation-state",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                0
+              ],
+              "segmentDigests": [
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              ],
+              "stem": "worker-start-gates",
+              "totalRevision": 0,
+              "version": 1
+            },
+            {
+              "activeGeneration": 0,
+              "fingerprint": "ff051807488833d3343c4ac256aed400449d92e68aba4e11229521d1da21525b",
+              "lastSealedRevision": 0,
+              "segmentByteCounts": [
+                359
+              ],
+              "segmentDigests": [
+                "40a879fabe065d8f2c24d36e6f40780cad5080bafa53e6993a7db64e3c6f887e"
+              ],
+              "stem": "worker-supervisor",
+              "totalRevision": 1,
+              "version": 1
+            }
+          ],
+          "supervisorEpochHighWater": [
+            [
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              1
+            ]
+          ],
+          "recordDigest": "f2cdd65bf56357746a57ffcff03bb656aafe98f0a07d2d766b56f06e8e66d7ec"
+        },
+        "repr": "CodingWorkerHistoryCheckpointV1(journal_revision=1, scope_id='scope', store_id='store', attempt_id='11111111111111111111111111111111', receipt_fingerprint='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', previous_digest='', gc_reservation_revision=0, backup_topology_revision='coding-product-backup-types:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', stream_snapshots=(CodingWorkerHistoryStreamSnapshotV1(stem='worker-opt-in', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='929d1314df6d0b5ef8f13bb91f0f4b5f980a3f95dabb965c907223607f40918e'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-activation-receipts', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='ba25353266cd6e0660115f472b35ab9228d13d44a8d832e5d642ab7e81ce5a22'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-activation-state', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='d02084396c56cde765ab88c0ba5f5952e6f95f92d7b0806140673ffd682c9e34'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-start-gates', active_generation=0, last_sealed_revision=0, total_revision=0, segment_byte_counts=(0,), segment_digests=('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',), fingerprint='260d5f773e4394ee6af8c924f9b94f781af8ba6376f36a1369bc479225697169'), CodingWorkerHistoryStreamSnapshotV1(stem='worker-supervisor', active_generation=0, last_sealed_revision=0, total_revision=1, segment_byte_counts=(359,), segment_digests=('40a879fabe065d8f2c24d36e6f40780cad5080bafa53e6993a7db64e3c6f887e',), fingerprint='ff051807488833d3343c4ac256aed400449d92e68aba4e11229521d1da21525b')), new_opt_in_operation_ids=(), new_attempt_ids=('11111111111111111111111111111111',), new_receipt_fingerprints=('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',), opt_in_generation_high_water=(), supervisor_epoch_high_water=(('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1),), record_digest='f2cdd65bf56357746a57ffcff03bb656aafe98f0a07d2d766b56f06e8e66d7ec', record_version=1)",
+        "has_dict": false,
+        "frozen": {
+          "journal_revision": {
+            "type": "dataclasses.FrozenInstanceError",
+            "message": "cannot assign to field 'journal_revision'",
+            "cause": null
+          },
+          "not_an_existing_field": {
+            "type": "builtins.TypeError",
+            "message": "super(type, obj): obj must be an instance or subtype of type",
+            "cause": null
+          }
+        }
+      }
+    },
+    "previousDigest:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "previousDigest:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "previousDigest:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "previousDigest:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "missing:receiptFingerprint": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "receiptFingerprint:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "receiptFingerprint:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "receiptFingerprint:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "receiptFingerprint:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "receiptFingerprint:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "receiptFingerprint:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "receiptFingerprint:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "missing:recordVersion": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "recordVersion:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "recordVersion:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "recordVersion:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "recordVersion:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "recordVersion:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "recordVersion:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "recordVersion:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "missing:scopeId": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "scopeId:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "scopeId:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "scopeId:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "scopeId:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "scopeId:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "scopeId:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "scopeId:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "missing:storeId": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "storeId:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "storeId:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "storeId:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "storeId:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "storeId:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "storeId:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "storeId:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "missing:streamSnapshots": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "streamSnapshots:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "streamSnapshots:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "streamSnapshots:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "streamSnapshots:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "streamSnapshots:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "streamSnapshots:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "streamSnapshots:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "missing:supervisorEpochHighWater": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "supervisorEpochHighWater:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "supervisorEpochHighWater:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "supervisorEpochHighWater:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "supervisorEpochHighWater:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "supervisorEpochHighWater:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "supervisorEpochHighWater:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "supervisorEpochHighWater:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint list shape is invalid",
+        "cause": null
+      }
+    },
+    "missing:recordDigest": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker checkpoint record shape is invalid",
+        "cause": null
+      }
+    },
+    "recordDigest:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "recordDigest:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "recordDigest:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "recordDigest:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "recordDigest:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "recordDigest:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "recordDigest:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    },
+    "prefix-before-digest": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker history checkpoint is invalid",
+        "cause": null
+      }
+    }
+  },
+  "CodingWorkerSupervisorKeyBaseV2": {
+    "valid": {
+      "value": {
+        "public_type": "loushang.coding.package_product_worker_supervisor_base_v2.CodingWorkerSupervisorKeyBaseV2",
+        "signature": "(supervisor_key: 'str', last_record: 'WorkerAttemptRecordV1', last_clean_stop_revision: 'int', claims_since_stop: 'int') -> None",
+        "fields": [
+          [
+            "supervisor_key",
+            "str",
+            true,
+            true,
+            true
+          ],
+          [
+            "last_record",
+            "WorkerAttemptRecordV1",
+            true,
+            true,
+            true
+          ],
+          [
+            "last_clean_stop_revision",
+            "int",
+            true,
+            true,
+            true
+          ],
+          [
+            "claims_since_stop",
+            "int",
+            true,
+            true,
+            true
+          ]
+        ],
+        "wire": {
+          "claimsSinceStop": 1,
+          "lastCleanStopRevision": 0,
+          "lastRecord": {
+            "attemptId": "11111111111111111111111111111111",
+            "failureCode": null,
+            "identityFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "phase": "claimed",
+            "priorAttemptRevision": 0,
+            "recordRevision": 1,
+            "recordVersion": 1,
+            "restartOrdinal": 1,
+            "supervisorEpoch": 1,
+            "supervisorKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "supervisorKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "repr": "CodingWorkerSupervisorKeyBaseV2(supervisor_key='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', last_record=WorkerAttemptRecordV1(supervisor_key='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', identity_fingerprint='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', attempt_id='11111111111111111111111111111111', supervisor_epoch=1, phase='claimed', record_revision=1, prior_attempt_revision=0, restart_ordinal=1, failure_code=None, record_version=1), last_clean_stop_revision=0, claims_since_stop=1)",
+        "has_dict": false,
+        "frozen": {
+          "supervisor_key": {
+            "type": "dataclasses.FrozenInstanceError",
+            "message": "cannot assign to field 'supervisor_key'",
+            "cause": null
+          },
+          "not_an_existing_field": {
+            "type": "builtins.TypeError",
+            "message": "super(type, obj): obj must be an instance or subtype of type",
+            "cause": null
+          }
+        }
+      }
+    },
+    "non-object": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key fields changed",
+        "cause": null
+      }
+    },
+    "unknown-key": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key fields changed",
+        "cause": null
+      }
+    },
+    "missing:claimsSinceStop": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key fields changed",
+        "cause": null
+      }
+    },
+    "claimsSinceStop:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "claimsSinceStop:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "claimsSinceStop:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "claimsSinceStop:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "claimsSinceStop:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "claimsSinceStop:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "claimsSinceStop:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "missing:lastCleanStopRevision": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key fields changed",
+        "cause": null
+      }
+    },
+    "lastCleanStopRevision:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "lastCleanStopRevision:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "lastCleanStopRevision:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "lastCleanStopRevision:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "lastCleanStopRevision:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "lastCleanStopRevision:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "lastCleanStopRevision:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "missing:lastRecord": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key fields changed",
+        "cause": null
+      }
+    },
+    "lastRecord:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Worker attempt record fields are invalid",
+        "cause": null
+      }
+    },
+    "lastRecord:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Worker attempt record fields are invalid",
+        "cause": null
+      }
+    },
+    "lastRecord:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Worker attempt record fields are invalid",
+        "cause": null
+      }
+    },
+    "lastRecord:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Worker attempt record fields are invalid",
+        "cause": null
+      }
+    },
+    "lastRecord:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Worker attempt record fields are invalid",
+        "cause": null
+      }
+    },
+    "lastRecord:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Worker attempt record fields are invalid",
+        "cause": null
+      }
+    },
+    "lastRecord:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Worker attempt record fields are invalid",
+        "cause": null
+      }
+    },
+    "missing:supervisorKey": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key fields changed",
+        "cause": null
+      }
+    },
+    "supervisorKey:0": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "supervisorKey:1": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "supervisorKey:2": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "supervisorKey:3": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "supervisorKey:4": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "supervisorKey:5": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    },
+    "supervisorKey:6": {
+      "error": {
+        "type": "builtins.ValueError",
+        "message": "Coding Worker Supervisor V2 key state is invalid",
+        "cause": null
+      }
+    }
+  }
+}

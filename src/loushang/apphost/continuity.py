@@ -21,6 +21,18 @@ from loushang.appservice import (
     AppServiceV1,
     create_appservice_recovery_attempt,
 )
+from loushang.foundation._owned_tasks import (
+    _join_preserving_cancellation,
+)
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _observe_background_result,
+)
+from loushang.foundation._owned_tasks import (
+    _task_failed_or_cancelled as _runtime_task_needs_retry,
+)
+from loushang.foundation._owned_tasks import (
+    _task_failed_or_cancelled as _void_task_needs_retry,
+)
 
 from .application import (
     HostedApplicationError,
@@ -585,40 +597,10 @@ def _report(
     )
 
 
-async def _join_report(
-    task: asyncio.Task[HostedApplicationContinuityShutdownReportV1],
-) -> HostedApplicationContinuityShutdownReportV1:
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as error:
-            if caller is None or caller.cancelling() == 0:
-                break
-            cancellation = error
-    result = task.result()
-    if cancellation is not None:
-        raise cancellation
-    return result
+_join_report = _join_preserving_cancellation
 
 
-async def _join_runtime(
-    task: asyncio.Task[HostedApplicationContinuityRuntimeV1],
-) -> HostedApplicationContinuityRuntimeV1:
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as error:
-            if caller is None or caller.cancelling() == 0:
-                break
-            cancellation = error
-    result = task.result()
-    if cancellation is not None:
-        raise cancellation
-    return result
+_join_runtime = _join_preserving_cancellation
 
 
 async def _join_void(task: asyncio.Task[None]) -> None:
@@ -642,21 +624,6 @@ def _report_task_needs_retry(
     return task.done() and (
         task.cancelled() or task.exception() is not None or not task.result().completed
     )
-
-
-def _runtime_task_needs_retry(
-    task: asyncio.Task[HostedApplicationContinuityRuntimeV1],
-) -> bool:
-    return task.done() and (task.cancelled() or task.exception() is not None)
-
-
-def _void_task_needs_retry(task: asyncio.Task[object]) -> bool:
-    return task.done() and (task.cancelled() or task.exception() is not None)
-
-
-def _observe_background_result(task: asyncio.Task[object]) -> None:
-    if not task.cancelled():
-        task.exception()
 
 
 __all__ = [

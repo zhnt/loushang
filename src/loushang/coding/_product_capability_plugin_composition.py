@@ -5,11 +5,9 @@ from __future__ import annotations
 import os
 import stat
 from collections.abc import Callable, Mapping
-from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
@@ -30,9 +28,8 @@ from loushang.harness.package_product.product_runtime import (
 from loushang.harness.plugin_authoring.contribution_admission import (
     prepare_owner_contribution_candidate,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_directory,
-    windows_flush_directory,
+from loushang.harness.resources.packages._private_tree_windows import (
+    prepare_private_windows_directory_chain,
 )
 from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
 from loushang.harness.resources.plugins.contribution_types import (
@@ -119,56 +116,11 @@ def _prepare_product_approval_state_root(state_root: Path) -> Path:
 def _prepare_windows_product_approval_state_root(state_root: Path) -> Path:
     if not isinstance(state_root, Path) or not state_root.is_absolute():
         raise ValueError("Coding Product approval state root is invalid")
-    target = state_root / "product-private"
-    missing: list[str] = []
-    existing = target
-    while not existing.exists():
-        if existing.parent == existing or len(missing) >= 8:
-            raise ValueError("Coding Product approval state parent is unavailable")
-        missing.append(existing.name)
-        existing = existing.parent
-    with (
-        ExitStack() as stack,
-        WindowsPrivateDirectoryAcl() as private_acl,
-        WindowsPrivateDirectoryAcl(inherit_children=True) as leaf_acl,
-    ):
-        parent_fd = open_windows_directory(existing, read_control=True)
-        stack.callback(os.close, parent_fd)
-        identity = os.fstat(parent_fd)
-        if (identity.st_dev, identity.st_ino) != (
-            existing.stat().st_dev,
-            existing.stat().st_ino,
-        ):
-            raise OSError("Coding Product approval state parent changed")
-        if not missing:
-            leaf_acl.validate(parent_fd)
-        for index, name in enumerate(reversed(missing)):
-            acl = leaf_acl if index == len(missing) - 1 else private_acl
-            created = False
-            try:
-                child_fd = open_windows_directory(
-                    name,
-                    dir_fd=parent_fd,
-                    create_new=True,
-                    security_descriptor=acl.security_descriptor,
-                    read_control=True,
-                )
-                created = True
-            except FileExistsError:
-                child_fd = open_windows_directory(
-                    name, dir_fd=parent_fd, read_control=True
-                )
-            stack.callback(os.close, child_fd)
-            acl.validate(child_fd)
-            if created:
-                windows_flush_directory(parent_fd)
-            parent_fd = child_fd
-        if (identity.st_dev, identity.st_ino) != (
-            existing.stat().st_dev,
-            existing.stat().st_ino,
-        ):
-            raise OSError("Coding Product approval state parent changed")
-    return target
+    return prepare_private_windows_directory_chain(
+        state_root / "product-private",
+        max_missing=8,
+        label="Coding Product approval state",
+    )
 
 
 @dataclass(slots=True)

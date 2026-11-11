@@ -750,6 +750,8 @@ def test_fenced_product_startup_records_effective_selection(
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    # Fix the project-native Resource root independently of ancestor guidance.
+    (workspace / "AGENTS.md").write_text("Test project guidance\n", encoding="utf-8")
     skill_root = workspace / "skills" / "review"
     skill_root.mkdir(parents=True)
     (skill_root / "SKILL.md").write_text(
@@ -948,6 +950,8 @@ def test_disabled_base_keeps_capability_and_catalog_evidence_exact(
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    # Fix the project-native Resource root independently of ancestor guidance.
+    (workspace / "AGENTS.md").write_text("Test project guidance\n", encoding="utf-8")
     skill_root = workspace / "skills" / "review"
     skill_root.mkdir(parents=True)
     (skill_root / "SKILL.md").write_text(

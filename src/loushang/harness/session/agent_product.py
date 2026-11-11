@@ -196,6 +196,9 @@ from loushang.harness.session.output_artifacts import (
     SessionOutputPersistingExecService,
     persist_session_command_outputs,
 )
+from loushang.harness.session.plugin_lifecycle._publication import (
+    _OwnerPublicationHooks,
+)
 from loushang.harness.session.request_evidence import (
     SessionRequestEvidenceRuntime,
 )
@@ -276,6 +279,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
     """Bind Product callbacks to the existing standard session runtimes."""
 
     resource_bundle: ResourceBundle | None
+
+    _owner_publication_hooks: tuple[_OwnerPublicationHooks, ...] = ()
 
     async def prompt(
         self,
@@ -411,7 +416,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
         capability_runtime: StagedResourceCompositionCandidate,
         execute_compaction: ProductCompactionExecutor,
         single_call_capacity_probe: (
-            Callable[[CompactionPreparation, object, PreparedRequestLimits | None], bool]
+            Callable[
+                [CompactionPreparation, object, PreparedRequestLimits | None], bool
+            ]
             | None
         ) = None,
         execute_branch_summary: BranchSummaryExecutor,
@@ -461,7 +468,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
             ResourceCatalogRefreshBootstrapFactory | None
         ) = None,
         resource_catalog_refresh_lock: ResourceCatalogRefreshGatePort | None = None,
+        owner_publication_hooks: tuple[_OwnerPublicationHooks, ...] = (),
     ) -> None:
+        self._owner_publication_hooks = owner_publication_hooks
         self.agent = agent
         self._session_default_model = agent.model
         self.session_manager = session_manager
@@ -2513,10 +2522,13 @@ class AgentProductSession(AgentSessionAdapterMixin):
     ) -> None:
         """Product hook for write-ahead exact-owner retirement evidence."""
 
-        del owner_generations
+        for publication in self._owner_publication_hooks:
+            publication.prepare_from(owner_generations, self._staged_resource_candidate)
 
     def _commit_session_owner_generation_evidence(self) -> None:
-        """Product hook sealing write-ahead evidence after publication."""
+        """Seal registered exact-owner evidence after graph publication."""
+        for publication in self._owner_publication_hooks:
+            publication.commit_after_graph()
 
     def _restore_initial_resource_publication(self, previous: object) -> None:
         if not isinstance(previous, tuple) or len(previous) != 3:

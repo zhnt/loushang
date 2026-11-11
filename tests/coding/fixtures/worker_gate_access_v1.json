@@ -1,0 +1,184 @@
+{
+  "empty-current": {
+    "trace": [
+      [
+        "guard-enter",
+        false
+      ],
+      "current",
+      [
+        "guard-exit",
+        false
+      ]
+    ],
+    "result": null,
+    "error": null
+  },
+  "empty-attempts": {
+    "trace": [
+      [
+        "guard-enter",
+        false
+      ],
+      "current",
+      "current",
+      [
+        "guard-exit",
+        false
+      ]
+    ],
+    "result": [],
+    "error": null
+  },
+  "late-current": {
+    "trace": [
+      [
+        "guard-enter",
+        false
+      ],
+      "current",
+      [
+        "guard-exit",
+        false
+      ]
+    ],
+    "result": null,
+    "error": null
+  },
+  "late-attempts": {
+    "trace": [
+      [
+        "guard-enter",
+        false
+      ],
+      "current",
+      "current",
+      [
+        "guard-exit",
+        false
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "OSError",
+        "late currentness failure",
+        null,
+        false
+      ]
+    ]
+  },
+  "v2-current": {
+    "trace": [
+      [
+        "guard-enter",
+        false
+      ],
+      "current",
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "store",
+        "store"
+      ],
+      [
+        "guard-exit",
+        false
+      ]
+    ],
+    "result": {
+      "attemptId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "workerIdentityFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "identity": {
+        "bootId": "00000000-0000-0000-0000-000000000001",
+        "pid": 123,
+        "pidNamespaceDevice": 1,
+        "pidNamespaceInode": 2,
+        "startTicks": 456,
+        "userId": 1000
+      },
+      "journalRevision": 4,
+      "nativeClosureDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "phase": "bound",
+      "policyFingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "receiptFingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "recordVersion": 1,
+      "scopeId": "scope",
+      "recordDigest": "1a86677225efdf0092b30e40907d01cc3eca6f513a76e81362d3dcd8aa352c42"
+    },
+    "error": null
+  },
+  "v2-attempts": {
+    "trace": [
+      [
+        "guard-enter",
+        false
+      ],
+      "current",
+      [
+        "scope",
+        "scope"
+      ],
+      [
+        "store",
+        "store"
+      ],
+      "current",
+      [
+        "guard-exit",
+        false
+      ]
+    ],
+    "result": [
+      {
+        "attemptId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "workerIdentityFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "identity": {
+          "bootId": "00000000-0000-0000-0000-000000000001",
+          "pid": 123,
+          "pidNamespaceDevice": 1,
+          "pidNamespaceInode": 2,
+          "startTicks": 456,
+          "userId": 1000
+        },
+        "journalRevision": 4,
+        "nativeClosureDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "phase": "bound",
+        "policyFingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "receiptFingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "recordVersion": 1,
+        "scopeId": "scope",
+        "recordDigest": "1a86677225efdf0092b30e40907d01cc3eca6f513a76e81362d3dcd8aa352c42"
+      }
+    ],
+    "error": null
+  },
+  "changed-scope": {
+    "trace": [
+      [
+        "guard-enter",
+        false
+      ],
+      "current",
+      [
+        "scope",
+        "changed-after-construction"
+      ],
+      [
+        "guard-exit",
+        false
+      ]
+    ],
+    "result": null,
+    "error": [
+      [
+        "CodingWorkerStartGateJournalError",
+        "coding_worker_start_gate_v2_owner_changed",
+        "coding_worker_start_gate_v2_owner_changed",
+        false
+      ]
+    ]
+  }
+}

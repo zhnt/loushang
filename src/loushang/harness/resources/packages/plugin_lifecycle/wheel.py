@@ -18,7 +18,7 @@ from email.parser import BytesParser
 from email.policy import compat32
 from hashlib import new as new_digest
 from hashlib import sha256
-from typing import BinaryIO, Literal, NoReturn, cast
+from typing import BinaryIO, Literal, NoReturn
 
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
@@ -29,6 +29,15 @@ from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     AuthenticatedSourceEnvelopeV1,
     BoundedAcquisitionReceiptV1,
     PackageQuarantineCleanupTargetV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _exact_dict as _exact_dict,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _nonempty_string as _wire_string,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_int as _wire_int,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -1344,32 +1353,6 @@ def _require_nonnegative(value: int, *, name: str) -> None:
 def _require_sha256(value: str, *, name: str) -> None:
     if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
-
-
-def _exact_dict(
-    value: object,
-    *,
-    fields: set[str],
-    name: str,
-) -> dict[str, object]:
-    if not isinstance(value, Mapping):
-        raise TypeError(f"{name} must be an object")
-    document = dict(value)
-    if set(document) != fields:
-        raise ValueError(f"{name} fields do not match the versioned schema")
-    return cast(dict[str, object], document)
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an integer")
-    return value
-
-
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise TypeError(f"{name} must be a non-empty string")
-    return value
 
 
 _INSPECTION_BUDGET_V1_SCHEMA = RecordSchema(

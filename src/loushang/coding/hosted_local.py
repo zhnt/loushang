@@ -3,16 +3,28 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
 
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection
-from loushang.apphost.application import HostedApplicationError
 from loushang.apphost.continuity import HostedApplicationContinuityRuntimeV1
-from loushang.apphost.local import HostedLocalRuntimeV1
+from loushang.apphost.local import (
+    HostedLocalRuntimeV1,
+    _LocalApplicationStartup,
+)
+from loushang.apphost.local import (
+    _failed as _failed,
+)
+from loushang.apphost.local import (
+    _LocalLaunchFacts as _LocalLaunchFacts,
+)
+from loushang.apphost.local import (
+    _spawn as _spawn,
+)
+from loushang.apphost.local import (
+    _wait as _wait_shared,
+)
 from loushang.appserver.framing import require_timeout
 from loushang.appserver.local_record import (
     LocalConnectionDirectoryV1,
@@ -29,22 +41,6 @@ from .hosted_bootstrap import (
 )
 from .hosted_continuity import CodingHostedContinuityAttemptV1
 from .hosted_session import CodingHostedProductRuntimeFactoryForSession
-
-
-class _LocalLaunchFacts(Protocol):
-    """Only facts consumed by the shared local application lifetime."""
-
-    @property
-    def connection_root(self) -> Path: ...
-
-    @property
-    def endpoint(self) -> str: ...
-
-    @property
-    def session_discovery(self) -> bool: ...
-
-    @property
-    def scopes(self) -> tuple[LocalRecordScopeV1, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,15 +90,18 @@ class CodingLocalLaunchV1:
 
     def describe(self) -> dict[str, object]:
         return {
-            **self.application.describe(profile=(
-                AppConnectionProfileV1.LOCAL_DISCOVERY if self.session_discovery
-                else AppConnectionProfileV1.LOCAL
-            )),
+            **self.application.describe(
+                profile=(
+                    AppConnectionProfileV1.LOCAL_DISCOVERY
+                    if self.session_discovery
+                    else AppConnectionProfileV1.LOCAL
+                )
+            ),
             "endpoint": self.endpoint,
         }
 
 
-class CodingLocalCommandV1:
+class CodingLocalCommandV1(_LocalApplicationStartup):
     """Own startup until the ready AppHost deployment adopts the application.
 
     Before handoff, retain the G13 attempt and any late application. Afterwards
@@ -131,7 +130,9 @@ class CodingLocalCommandV1:
             package_product_runtime_factory_for_session
         )
         self._directory = LocalConnectionDirectoryV1(launch.connection_root)
-        self._attempt = self._create_attempt(launch, model=model, stream_fn=stream_fn, tools=tools)
+        self._attempt = self._create_attempt(
+            launch, model=model, stream_fn=stream_fn, tools=tools
+        )
         self._application: HostedApplicationContinuityRuntimeV1 | None = None
         self._local: HostedLocalRuntimeV1 | None = None
         self._startup_timeout, self._timeout = startup_timeout, settlement_timeout
@@ -164,12 +165,19 @@ class CodingLocalCommandV1:
         prepare_coding_hosted_session_roots(self._launch.application)
 
     def _create_attempt(
-        self, launch: _LocalLaunchFacts, *, model: Model | ModelSelection | None,
-        stream_fn: StreamFn | None, tools: list[ToolDefinition] | None,
+        self,
+        launch: _LocalLaunchFacts,
+        *,
+        model: Model | ModelSelection | None,
+        stream_fn: StreamFn | None,
+        tools: list[ToolDefinition] | None,
     ) -> CodingHostedContinuityAttemptV1:
         assert type(launch) is CodingLocalLaunchV1
         return create_coding_hosted_attempt(
-            launch.application, model=model, stream_fn=stream_fn, tools=tools,
+            launch.application,
+            model=model,
+            stream_fn=stream_fn,
+            tools=tools,
             session_discovery=launch.session_discovery,
             owned_transcripts=True,
             package_product_runtime_factory_for_session=(
@@ -177,180 +185,16 @@ class CodingLocalCommandV1:
             ),
         )
 
-    @property
-    def cleanup_pending(self) -> bool:
-        return not self._settled
+    def _check_retry_budget(self, value: float) -> None:
+        _require_budget(value)
 
-    async def start(self) -> None:
-        """Keep the original ready-on-return entrypoint."""
-        if self._one_step or self._closing or self._start_task is not None:
-            raise HostedApplicationError("coding_local_closed")
-        self._one_step = True
-        await self._prepare()
-        await self._activate()
+    _startup_error_prefix = "coding_local"
 
-    async def prepare(self, *, deadline: float | None = None) -> None:
-        """Recover the actual Product and prepare transport without clients."""
-        if self._one_step:
-            raise HostedApplicationError("coding_local_closed")
-        await self._prepare(deadline=deadline)
+    def _prepare_unavailable(self) -> bool:
+        return self._closing or self._start_task is not None
 
-    async def _prepare(self, *, deadline: float | None = None) -> None:
-        if self._closing or self._start_task is not None:
-            raise HostedApplicationError("coding_local_closed")
-        if deadline is not None and (
-            type(deadline) not in (int, float) or not 0 < deadline <= 1e12
-        ):
-            raise ValueError("invalid local startup deadline")
-        self._startup_deadline = asyncio.get_running_loop().time() + self._startup_timeout
-        if deadline is not None:
-            self._startup_deadline = min(self._startup_deadline, deadline)
-        try:
-            self._remaining_startup()
-            self._start_task = _spawn(self._start_once())
-            done, _ = await asyncio.wait(
-                {self._start_task}, timeout=self._remaining_startup()
-            )
-            if not done:
-                raise HostedApplicationError("coding_local_startup_timeout")
-            await asyncio.shield(self._start_task)
-            self._remaining_startup()
-            if not self._prepared:
-                raise HostedApplicationError("coding_local_closed")
-        except BaseException:
-            await self.close()
-            raise
-
-    async def _start_once(self) -> None:
-        self._remaining_startup()
-        await asyncio.to_thread(self._prepare_session_roots)
-        self._remaining_startup()
-        self._application = await self._attempt.open()
-        self._remaining_startup()
-        self._local = HostedLocalRuntimeV1(
-            self._application,
-            self._directory,
-            self._launch.endpoint,
-            scopes=self._launch.scopes,
-            settlement_timeout=self._timeout,
-            session_discovery=self._launch.session_discovery,
-            session_execution=self._session_execution(),
-            connection_instance=self._connection_instance(),
-            mux_management=self._mux_management(),
-        )
-        self._application = None  # AppHost has adopted both application and directory.
-        await self._local.prepare(deadline=self._startup_deadline)
-        self._remaining_startup()
-        self._prepared = True
-
-    async def activate(self) -> None:
-        """Activate a prepared deployment; does not renew its startup budget."""
-        if self._one_step:
-            raise HostedApplicationError("coding_local_closed")
-        await self._activate()
-
-    async def _activate(self) -> None:
-        if (self._closing or not self._prepared or self._activate_task is not None
-                or self._start_task is None or not self._start_task.done() or _failed(self._start_task)):
-            raise HostedApplicationError("coding_local_closed")
-        try:
-            self._remaining_startup()
-            self._activate_task = _spawn(self._activate_once())
-            done, _ = await asyncio.wait(
-                {self._activate_task}, timeout=self._remaining_startup()
-            )
-            if not done:
-                raise HostedApplicationError("coding_local_startup_timeout")
-            await asyncio.shield(self._activate_task)
-            self._remaining_startup()
-            if self._local is None or not self._local.accepting:
-                raise HostedApplicationError("coding_local_closed")
-        except BaseException:
-            await self.close()
-            raise
-
-    async def _activate_once(self) -> None:
-        self._remaining_startup()
-        assert self._local is not None
-        await self._local.activate()
-        self._remaining_startup()
-
-    def _remaining_startup(self) -> float:
-        if self._closing or self._startup_deadline is None:
-            raise HostedApplicationError("coding_local_closed")
-        remaining = self._startup_deadline - asyncio.get_running_loop().time()
-        if remaining <= 0:
-            raise HostedApplicationError("coding_local_startup_timeout")
-        return remaining
-
-    async def wait_closed(self) -> None:
-        if self._local is None:
-            raise HostedApplicationError("coding_local_not_ready")
-        await self._local.wait_closed()
-        await self.close()
-
-    async def run(self, *, ready: Callable[[], None] | None = None) -> None:
-        try:
-            await self.start()
-            if ready is not None:
-                ready()
-            await self.wait_closed()
-        finally:
-            await self.close()
-
-    async def close(self, *, retry_timeout: float | None = None) -> None:
-        if retry_timeout is not None:
-            _require_budget(retry_timeout)
-        if self._settled:
-            return
-        self.fence()
-        if self._deadline is None:
-            self._deadline = asyncio.get_running_loop().time() + self._timeout
-        task = self._close_task
-        if task is None or _failed(task):
-            if retry_timeout is not None:
-                self._deadline = asyncio.get_running_loop().time() + retry_timeout
-            task = self._close_task = _spawn(self._close_once(retry_timeout))
-        await asyncio.shield(task)
-
-    def fence(self) -> None:
-        """Revoke startup and client admission without creating a cleanup task."""
-        self._closing = True
-        if self._local is not None:
-            # Fence lower-level activation before scheduling our close task.
-            # An already queued activate must not publish in the intervening turn.
-            self._local.fence()
-
-    async def _close_once(self, retry_timeout: float | None) -> None:
-        assert self._deadline is not None
-        if self._local is not None:
-            # Do not await the outer startup task first: it can itself be
-            # waiting for this adopted deployment's start/close settlement.
-            await self._local.close(retry_timeout=retry_timeout)
-        if self._start_task is not None:
-            await _wait(self._start_task, self._deadline, ignore_failure=True)
-        if self._activate_task is not None:
-            await _wait(self._activate_task, self._deadline, ignore_failure=True)
-        if self._local is None:
-            self._directory.close()
-            await self._phase(
-                "application",
-                self._application.close
-                if self._application is not None
-                else self._attempt.close,
-            )
-        self._settled = True
-
-    async def _phase(
-        self, name: str, operation: Callable[[], Coroutine[object, object, None]]
-    ) -> None:
-        assert self._deadline is not None
-        task = self._phases.get(name)
-        if task is None or _failed(task):
-            if asyncio.get_running_loop().time() >= self._deadline:
-                raise HostedApplicationError("coding_local_cleanup_incomplete")
-            task = self._phases[name] = _spawn(operation())
-        await _wait(task, self._deadline)
+    def _startup_accepting(self) -> bool:
+        return self._local is not None and self._local.accepting
 
 
 def _require_budget(value: float) -> None:
@@ -359,44 +203,12 @@ def _require_budget(value: float) -> None:
         raise ValueError("Coding local budget exceeds profile bound")
 
 
-def _failed(task: asyncio.Task[None]) -> bool:
-    return task.done() and (task.cancelled() or task.exception() is not None)
-
-
 async def _wait(
     task: asyncio.Task[None], deadline: float, *, ignore_failure: bool = False
 ) -> None:
-    if not task.done():
-        await asyncio.wait(
-            {task}, timeout=max(0, deadline - asyncio.get_running_loop().time())
-        )
-    if not task.done() or (not ignore_failure and _failed(task)):
-        raise HostedApplicationError("coding_local_cleanup_incomplete")
-
-
-def _spawn(work: Coroutine[object, object, None]) -> asyncio.Task[None]:
-    published = asyncio.get_running_loop().create_future()
-
-    async def invoke() -> None:
-        await published
-        await work
-
-    def finished(task: asyncio.Task[None]) -> None:
-        work.close()
-        if not task.cancelled():
-            task.exception()
-
-    invocation = invoke()
-    try:
-        task = asyncio.create_task(invocation)
-    except BaseException:
-        invocation.close()
-        work.close()
-        raise
-    task.add_done_callback(finished)
-    if not published.done():
-        published.set_result(None)
-    return task
+    await _wait_shared(
+        task, deadline, ignore_failure=ignore_failure, error_prefix="coding_local"
+    )
 
 
 __all__ = ["CodingLocalLaunchV1", "CodingLocalCommandV1"]

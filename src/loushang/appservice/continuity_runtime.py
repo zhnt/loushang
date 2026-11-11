@@ -16,6 +16,12 @@ from loushang.appserver.protocol import (
     SessionIdentityV1,
     SessionOpenSpecV1,
 )
+from loushang.foundation._owned_tasks import (
+    _join_preserving_cancellation,
+)
+from loushang.foundation._owned_tasks import (
+    _observe_task_result as _observe_background_result,
+)
 
 from .continuity import (
     APPLICATION_CONTINUITY_VERSION,
@@ -455,25 +461,7 @@ def create_appservice_recovery_attempt(
 _OwnedResult = TypeVar("_OwnedResult")
 
 
-async def _join_owned(task: asyncio.Task[_OwnedResult]) -> _OwnedResult:
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as error:
-            if caller is None or caller.cancelling() == 0:
-                break
-            cancellation = error
-    result = task.result()
-    if cancellation is not None:
-        raise cancellation
-    return result
-
-
-def _observe_background_result(task: asyncio.Task[object]) -> None:
-    if not task.cancelled():
-        task.exception()
+_join_owned = _join_preserving_cancellation
 
 
 def _error(code: AppErrorCodeV1) -> AppServiceError:

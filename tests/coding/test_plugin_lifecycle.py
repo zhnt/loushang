@@ -63,6 +63,7 @@ from loushang.harness.resources.plugins import (
 from loushang.harness.runtime.registration import (
     OwnerGenerationRetirementReceipt,
 )
+from loushang.harness.session.plugin_lifecycle import _owner_lease as owner_lease_module
 
 
 def _materializer(root: Path) -> CodingPackageMaterializer:
@@ -1042,7 +1043,7 @@ def test_same_session_owner_reenters_until_its_last_process_lease_closes(
             self.underlying.release()
 
     monkeypatch.setattr(
-        plugin_lifecycle_module,
+        owner_lease_module,
         "_PROCESS_SESSION_OWNER_LEASES_LOCK",
         ObservableLock(plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK),
     )
@@ -1180,7 +1181,7 @@ def test_session_owner_unlock_failure_drops_invalid_process_authority(
 
     failed_release_completed = threading.Event()
     allow_old_wrapper_check = threading.Event()
-    release_owner_lease = plugin_lifecycle_module._release_session_owner_lease
+    release_owner_lease = owner_lease_module._release_session_owner_lease
 
     def release_then_pause(*args, **kwargs) -> None:
         try:
@@ -1191,7 +1192,7 @@ def test_session_owner_unlock_failure_drops_invalid_process_authority(
             raise
 
     monkeypatch.setattr(
-        plugin_lifecycle_module,
+        owner_lease_module,
         "_release_session_owner_lease",
         release_then_pause,
     )

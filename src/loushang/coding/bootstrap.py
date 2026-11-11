@@ -39,7 +39,6 @@ from loushang.coding._capability_plugin_composition import (
     create_coding_capability_plugin_composition_request,
     prepare_coding_capability_plugin_composition,
 )
-from loushang.coding._cleanup import run_cleanup_steps
 from loushang.coding._external_data_product_composition import (
     CodingExternalDataProductCompilation,
     compile_coding_external_data_product_selection,
@@ -243,6 +242,13 @@ from loushang.harness.session import (
 )
 from loushang.harness.session import (
     prepare_agent_session_services as prepare_standard_agent_session_services,
+)
+from loushang.harness.session._cleanup import (
+    get_session_construction_cleanup as get_session_construction_cleanup,
+)
+from loushang.harness.session._cleanup import (
+    retain_session_construction_failure,
+    run_cleanup_steps,
 )
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.session.product_composition_assembly import (
@@ -1869,6 +1875,8 @@ def _create_agent_session(
             )
             raise
 
+    constructed_session: AgentSession | None = None
+
     def _create_session(
         capability_runtime: StagedResourceCompositionCandidate,
         side_question_binding: LegacySideQuestionBinding | None,
@@ -1883,6 +1891,7 @@ def _create_agent_session(
         package_product_inventory: PackageProductLifecycleInventoryPort | None,
         package_product_lifecycle_mode: PackageProductLifecycleMode,
     ) -> AgentSession:
+        nonlocal constructed_session
         if len(prepared_resource_catalog_adapters) != 1:
             raise RuntimeError(
                 "Initial Resource Catalog projection adapter is unavailable"
@@ -2597,6 +2606,7 @@ def _create_agent_session(
             )
             raise
         process_session = child_session
+        constructed_session = child_session
         return child_session
 
     construction_binding = replace(
@@ -2656,6 +2666,9 @@ def _create_agent_session(
             ),
         )
     except BaseException as error:
+        cleanup = get_session_construction_cleanup(error)
+        if cleanup is not None and cleanup.owns_session(constructed_session):
+            raise
         failure_custodian = coding_capability_plugin_failure_custodian(error)
         capability_plugin_cleanup: Callable[[], None] | None
         capability_management_cleanup: Callable[[], None] | None
@@ -2720,67 +2733,74 @@ def _create_agent_session(
             )
         run_cleanup_steps(error, cleanup_steps)
         raise
-    result.session.cwd_bound_services_audit = (
-        result.configuration.cwd_bound_services_audit
-    )
-    if enable_multiagent:
-        from loushang.coding.multiagent import (
-            CodingSubagentFactory,
-            install_coding_multiagent_session,
+    try:
+        result.session.cwd_bound_services_audit = (
+            result.configuration.cwd_bound_services_audit
         )
-        from loushang.coding.worktree import CodingGitWorktreeLeasePort
+        if enable_multiagent:
+            from loushang.coding.multiagent import (
+                CodingSubagentFactory,
+                install_coding_multiagent_session,
+            )
+            from loushang.coding.worktree import CodingGitWorktreeLeasePort
 
-        assert multiagent_types is not None
-        selected_capability_plugin_ids = (
-            frozenset(result.session._coding_capability_plugin_assembly.tool_owners)
-            if result.session._coding_capability_plugin_assembly is not None
-            else frozenset()
-        )
-        install_coding_multiagent_session(
-            result.session,
-            child_factory=CodingSubagentFactory(
-                session_dir=session_manager.get_session_dir(),
-                cwd=session_manager.get_cwd(),
-                tool_registry=(session_tool_registry or WorkspaceToolRegistry()),
-                default_model_provider=lambda: result.session.agent.model,
-                services=services,
-                approval_resolver=approval_resolver,
-                host_environment=session_host_environment,
-                selected_exact_tool_names=(
-                    *(
-                        product_base_compilation.tool_names
-                        if product_base_compilation is not None
-                        else coding_base_plugin_assembly.tool_names
-                        if coding_base_plugin_assembly is not None
-                        else ()
-                    ),
-                    *(
-                        CODING_LSP_EXACT_OWNER_TOOL_NAMES
-                        if "coding.lsp.default" in selected_capability_plugin_ids
-                        else ()
-                    ),
-                    *(
-                        CODING_ARCH_EXACT_OWNER_TOOL_NAMES
-                        if "coding.arch.default" in selected_capability_plugin_ids
-                        else ()
-                    ),
-                ),
-                workspace_leases=CodingGitWorktreeLeasePort(
+            assert multiagent_types is not None
+            selected_capability_plugin_ids = (
+                frozenset(result.session._coding_capability_plugin_assembly.tool_owners)
+                if result.session._coding_capability_plugin_assembly is not None
+                else frozenset()
+            )
+            install_coding_multiagent_session(
+                result.session,
+                child_factory=CodingSubagentFactory(
+                    session_dir=session_manager.get_session_dir(),
                     cwd=session_manager.get_cwd(),
-                    exec_service=services.exec_service,
+                    tool_registry=(session_tool_registry or WorkspaceToolRegistry()),
+                    default_model_provider=lambda: result.session.agent.model,
+                    services=services,
+                    approval_resolver=approval_resolver,
+                    host_environment=session_host_environment,
+                    selected_exact_tool_names=(
+                        *(
+                            product_base_compilation.tool_names
+                            if product_base_compilation is not None
+                            else coding_base_plugin_assembly.tool_names
+                            if coding_base_plugin_assembly is not None
+                            else ()
+                        ),
+                        *(
+                            CODING_LSP_EXACT_OWNER_TOOL_NAMES
+                            if "coding.lsp.default" in selected_capability_plugin_ids
+                            else ()
+                        ),
+                        *(
+                            CODING_ARCH_EXACT_OWNER_TOOL_NAMES
+                            if "coding.arch.default" in selected_capability_plugin_ids
+                            else ()
+                        ),
+                    ),
+                    workspace_leases=CodingGitWorktreeLeasePort(
+                        cwd=session_manager.get_cwd(),
+                        exec_service=services.exec_service,
+                    ),
+                    runtime_builder=partial(
+                        _create_agent_session_runtime,
+                        stream_fn=stream_fn,
+                        agent_factory=agent_factory,
+                        tool_policy_evaluator=tool_policy_evaluator,
+                        composition_set=resolved_composition_set,
+                    ),
                 ),
-                runtime_builder=partial(
-                    _create_agent_session_runtime,
-                    stream_fn=stream_fn,
-                    agent_factory=agent_factory,
-                    tool_policy_evaluator=tool_policy_evaluator,
-                    composition_set=resolved_composition_set,
-                ),
-            ),
-            agent_types=multiagent_types,
-            register_tools=enable_multiagent_tools,
-        )
-    return result.session
+                agent_types=multiagent_types,
+                register_tools=enable_multiagent_tools,
+            )
+        return result.session
+    except BaseException as error:
+        retained = retain_session_construction_failure(error, result.session)
+        if retained is error:
+            raise
+        raise retained from error
+
 
 
 def _session_manager_plugin_owner_id(session_manager: SessionManager) -> str:
@@ -3168,13 +3188,20 @@ def create_agent_session_result(
         lsp_baseline_environment=lsp_baseline_environment,
         lsp_read_text=lsp_read_text,
     )
-    return build_standard_agent_session_result(
-        session,
-        resource_bundle=session.resource_bundle,
-        diagnostics_service=resolved_services.diagnostics_service,
-        session_id=session.session_id,
-        cwd_bound_services_audit=session.cwd_bound_services_audit,
-    )
+    try:
+        return build_standard_agent_session_result(
+            session,
+            resource_bundle=session.resource_bundle,
+            diagnostics_service=resolved_services.diagnostics_service,
+            session_id=session.session_id,
+            cwd_bound_services_audit=session.cwd_bound_services_audit,
+        )
+    except BaseException as error:
+        retained = retain_session_construction_failure(error, session)
+        if retained is error:
+            raise
+        raise retained from error
+
 
 
 def _default_package_materializer(

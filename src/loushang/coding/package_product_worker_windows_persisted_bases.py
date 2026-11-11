@@ -7,22 +7,18 @@ owner can consider switching readers. This reader grants no cutover or deletion.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.package_product._worker_windows_attempt import (
+    read_windows_product_worker_persisted_bases,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    windows_listdir_at,
-)
 
-from .package_legacy_windows_receipt import (
-    _read_file,
-    _require_no_named_directory_streams,
-    _require_simple_attributes,
-)
+from .package_legacy_windows_receipt import _receipt_io
 from .package_product_worker_windows_base_files import (
     WINDOWS_WORKER_BASE_FILES,
     WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
@@ -38,7 +34,7 @@ from .package_product_worker_windows_checkpoint import (
     _MAX_BYTES as _MAX_CHECKPOINT_BYTES,
 )
 from .package_product_worker_windows_gc_history import (
-    _require_known_windows_worker_state_names,
+    _history_names,
 )
 from .package_product_worker_windows_launch_intent_base import (
     CodingWindowsWorkerLaunchIntentSemanticBaseV1,
@@ -181,104 +177,50 @@ def _read_coding_windows_worker_persisted_bases_under_gc_guard(
         or root < 0
     ):
         raise ValueError("Windows Worker persisted bases require their Product")
-    product.assert_root_gc_authority_current()
-    with WindowsPrivateDirectoryAcl() as acl:
-        acl.validate(root)
-        _require_simple_attributes(os.fstat(root), directory=True)
-        _require_no_named_directory_streams(root)
-        if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
-            raise ValueError("Windows Worker persisted root changed")
-        names = tuple(windows_listdir_at(root))
-        if require_cutover:
-            if names.count(WINDOWS_WORKER_HISTORY_CUTOVER_NAME) != 1:
-                raise ValueError("Windows Worker cutover marker is absent")
-            known_names = tuple(
-                name for name in names if name != WINDOWS_WORKER_HISTORY_CUTOVER_NAME
-            )
-        else:
-            known_names = names
-        _require_known_windows_worker_state_names(known_names)
-        if any(name.casefold().endswith(".stage") for name in names):
-            raise ValueError("Windows Worker persisted stage remains")
-        checkpoint_raw = _read_file(
-            root, acl, _CHECKPOINT_NAME, maximum_bytes=_MAX_CHECKPOINT_BYTES
-        )
-        if checkpoint_raw is None:
-            raise ValueError("Windows Worker persisted checkpoint is absent")
-        checkpoint = CodingWindowsWorkerHistoryCheckpointV1.from_bytes(checkpoint_raw)
-        raw_bases = tuple(
-            _read_file(root, acl, name, maximum_bytes=_MAX_BASE_BYTES)
-            for _, name in WINDOWS_WORKER_BASE_FILES
-        )
-        if any(raw is None for raw in raw_bases):
-            raise ValueError("Windows Worker persisted base is absent")
-        opt_in, receipt, supervisor, c5, launch_intent, native = (
-            raw for raw in raw_bases if raw is not None
-        )
-        result = CodingWindowsWorkerPersistedBasesV1(
+    return read_windows_product_worker_persisted_bases(
+        product,
+        root,
+        require_cutover=require_cutover,
+        io=_receipt_io,
+        history_names=_history_names(),
+        checkpoint_name=_CHECKPOINT_NAME,
+        base_files=WINDOWS_WORKER_BASE_FILES,
+        cutover_name=WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
+        limits=lambda: (_MAX_CHECKPOINT_BYTES, _MAX_BASE_BYTES, _MAX_CUTOVER_BYTES),
+        decode_checkpoint=CodingWindowsWorkerHistoryCheckpointV1.from_bytes,
+        make_result=lambda checkpoint, raw: CodingWindowsWorkerPersistedBasesV1(
             checkpoint=checkpoint,
-            opt_in=CodingWindowsWorkerOptInSemanticBaseV1.from_bytes(opt_in),
-            receipt=CodingWindowsWorkerReceiptSemanticBaseV1.from_bytes(receipt),
-            supervisor=CodingWindowsWorkerSupervisorSemanticBaseV1.from_bytes(
-                supervisor
-            ),
-            c5=CodingWindowsWorkerC5SemanticBaseV1.from_bytes(c5),
+            opt_in=CodingWindowsWorkerOptInSemanticBaseV1.from_bytes(raw[0]),
+            receipt=CodingWindowsWorkerReceiptSemanticBaseV1.from_bytes(raw[1]),
+            supervisor=CodingWindowsWorkerSupervisorSemanticBaseV1.from_bytes(raw[2]),
+            c5=CodingWindowsWorkerC5SemanticBaseV1.from_bytes(raw[3]),
             launch_intent=CodingWindowsWorkerLaunchIntentSemanticBaseV1.from_bytes(
-                launch_intent
+                raw[4]
             ),
             native_provisioning=CodingWindowsWorkerNativeProvisioningSemanticBaseV1.from_bytes(
-                native
+                raw[5]
             ),
-        )
-        cutover = None
-        cutover_raw = None
-        if require_cutover:
-            from .package_product_worker_windows_history_cutover_record import (
-                CodingWindowsWorkerHistoryCutoverRecordV1,
-            )
+        ),
+        cutover_codec=_persisted_cutover_codec,
+    )
 
-            cutover_raw = _read_file(
-                root,
-                acl,
-                WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
-                maximum_bytes=_MAX_CUTOVER_BYTES,
-            )
-            if cutover_raw is None:
-                raise ValueError("Windows Worker cutover marker is absent")
-            cutover = CodingWindowsWorkerHistoryCutoverRecordV1.from_bytes(cutover_raw)
-            cutover.require_persisted_bases(result)
-        if (
-            _read_file(
-                root,
-                acl,
-                _CHECKPOINT_NAME,
-                maximum_bytes=_MAX_CHECKPOINT_BYTES,
-            )
-            != checkpoint_raw
-            or tuple(
-                _read_file(root, acl, name, maximum_bytes=_MAX_BASE_BYTES)
-                for _, name in WINDOWS_WORKER_BASE_FILES
-            )
-            != raw_bases
-            or (
-                require_cutover
-                and _read_file(
-                    root,
-                    acl,
-                    WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
-                    maximum_bytes=_MAX_CUTOVER_BYTES,
-                )
-                != cutover_raw
-            )
-            or tuple(windows_listdir_at(root)) != names
-            or not os.path.samestat(os.fstat(root), product.state_root.lstat())
-        ):
-            raise ValueError("Windows Worker persisted bases changed")
-        acl.validate(root)
-        _require_simple_attributes(os.fstat(root), directory=True)
-        _require_no_named_directory_streams(root)
-    product.assert_root_gc_authority_current()
-    return result, cutover
+
+def _persisted_cutover_codec() -> Callable[
+    [bytes, CodingWindowsWorkerPersistedBasesV1],
+    CodingWindowsWorkerHistoryCutoverRecordV1,
+]:
+    from .package_product_worker_windows_history_cutover_record import (
+        CodingWindowsWorkerHistoryCutoverRecordV1,
+    )
+
+    def decode(
+        raw: bytes, bases: CodingWindowsWorkerPersistedBasesV1
+    ) -> CodingWindowsWorkerHistoryCutoverRecordV1:
+        cutover = CodingWindowsWorkerHistoryCutoverRecordV1.from_bytes(raw)
+        cutover.require_persisted_bases(bases)
+        return cutover
+
+    return decode
 
 
 def read_coding_windows_worker_persisted_bases(

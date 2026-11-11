@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from dataclasses import asdict, dataclass
 from hashlib import sha256
-from typing import Literal
+from typing import Literal, cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -21,16 +21,11 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
-from loushang.harness.worker.gated_start import (
-    WorkerNativeGroupStatus,
-    worker_native_group_status_after_restart,
-)
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 
-from .package_product_worker_installed_native import (
-    open_coding_product_installed_worker_release_reader,
+from .package_product_worker_native_release import (
+    CodingWorkerNativeReleaseError as CodingWorkerNativeReleaseError,
 )
-from .package_product_worker_native_release import CodingWorkerNativeReleaseError
 from .package_product_worker_payload import (
     _DIR_FLAGS,
     CodingWorkerPayloadDebtPlanV1,
@@ -44,7 +39,6 @@ from .package_product_worker_receipt import (
     read_coding_product_worker_receipt_record,
 )
 from .package_product_worker_start_gate_journal import (
-    CodingWorkerStartGateJournal,
     CodingWorkerStartGateRecordV1,
 )
 
@@ -97,8 +91,7 @@ class CodingWorkerGatedRecoveryReviewV1:
     @property
     def settlement_candidate(self) -> bool:
         return (
-            self.same_boot_settlement_candidate
-            or self.prior_boot_settlement_candidate
+            self.same_boot_settlement_candidate or self.prior_boot_settlement_candidate
         )
 
 
@@ -122,7 +115,9 @@ class CodingWorkerOrphanRuntimeReviewV1:
                     "reviewVersion": 1,
                     "attemptId": gated.attempt_id,
                     "gateRecord": (
-                        None if gated.gate_record is None else gated.gate_record.to_dict()
+                        None
+                        if gated.gate_record is None
+                        else gated.gate_record.to_dict()
                     ),
                     "attemptRecord": (
                         None
@@ -246,9 +241,7 @@ def repair_coding_product_worker_orphan_runtime(
             "coding_worker_orphan_runtime_review_stale"
         )
     if not current.repair_candidate or current.orphan_lease is None:
-        raise CodingWorkerGatedRecoveryError(
-            "coding_worker_orphan_runtime_unproven"
-        )
+        raise CodingWorkerGatedRecoveryError("coding_worker_orphan_runtime_unproven")
     product.epoch_runtime.registry.repair_orphan(current.orphan_lease.lease_id)
     return current.orphan_lease
 
@@ -276,9 +269,10 @@ def settle_coding_product_worker_gated_attempt(
     own plan and the newly settled Supervisor record before removing bytes.
     """
 
-    if type(expected_review) is not CodingWorkerGatedRecoveryReviewV1 or type(
-        expected_plan
-    ) is not CodingWorkerPayloadDebtPlanV1:
+    if (
+        type(expected_review) is not CodingWorkerGatedRecoveryReviewV1
+        or type(expected_plan) is not CodingWorkerPayloadDebtPlanV1
+    ):
         raise TypeError("Worker gated recovery requires exact review and debt plan")
     with _offline(product):
         current = _review_offline(product, attempt_id=expected_review.attempt_id)
@@ -333,41 +327,15 @@ def settle_coding_product_worker_gated_attempt(
 def _review_offline(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerGatedRecoveryReviewV1:
-    gate = CodingWorkerStartGateJournal(product).current(attempt_id)
-    attempt = open_coding_product_worker_supervisor_journal(product).status(attempt_id)
-    if (
-        gate is not None
-        and attempt is not None
-        and gate.worker_identity_fingerprint != attempt.identity_fingerprint
-    ):
-        raise CodingWorkerGatedRecoveryError(
-            "coding_worker_start_gate_supervisor_mismatch"
-        )
-    native_current = False
-    if gate is not None:
-        try:
-            closure = open_coding_product_installed_worker_release_reader(
-                product
-            ).current_closure()
-        except CodingWorkerNativeReleaseError:
-            pass
-        else:
-            native_current = (
-                sha256(canonical_json_bytes(closure.to_dict())).hexdigest()
-                == gate.native_closure_digest
-            )
-    group_status: GatedGroupStatus = "unobserved"
-    if gate is not None and gate.identity is not None:
-        observed: WorkerNativeGroupStatus = worker_native_group_status_after_restart(
-            gate.identity
-        )
-        group_status = observed
-    return CodingWorkerGatedRecoveryReviewV1(
-        attempt_id=attempt_id,
-        gate_record=gate,
-        attempt_record=attempt,
-        native_closure_current=native_current,
-        group_status=group_status,
+    from loushang.harness.package_product._linux_worker_history import (
+        review_gated_offline,
+    )
+
+    from .package_product_worker_history_retention import _history_proof_bindings
+
+    return cast(
+        CodingWorkerGatedRecoveryReviewV1,
+        review_gated_offline(_history_proof_bindings(), product, attempt_id=attempt_id),
     )
 
 

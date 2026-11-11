@@ -6,6 +6,10 @@ from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationSnapshotV1,
 )
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
+from loushang.harness.worker.history._retention import (
+    gc_revision_refs,
+    matching_gc_revision_refs,
+)
 
 
 def coding_worker_gc_revision_refs(
@@ -13,11 +17,7 @@ def coding_worker_gc_revision_refs(
 ) -> frozenset[PluginPackageRevisionRefV1]:
     """Extract Package revision pins from a versioned owner snapshot."""
 
-    return frozenset(
-        item.candidate.package_revision
-        for item in snapshot.active
-        if item.candidate is not None
-    )
+    return gc_revision_refs(snapshot)
 
 
 def matching_coding_worker_gc_revision_refs(
@@ -32,20 +32,10 @@ def matching_coding_worker_gc_revision_refs(
     observation is not an attempt-level absence proof or prune authorization.
     """
 
-    return tuple(
-        sorted(
-            (
-                item
-                for item in reservations
-                if item.plugin_id == plugin_id
-                and item.package_content_digest == package_content_digest
-            ),
-            key=lambda item: (
-                item.dependency_lock_digest,
-                item.package_source_identity,
-                item.plugin_version or "",
-            ),
-        )
+    return matching_gc_revision_refs(
+        plugin_id=plugin_id,
+        package_content_digest=package_content_digest,
+        reservations=reservations,
     )
 
 

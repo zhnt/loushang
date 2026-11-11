@@ -566,10 +566,12 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "loushang.apphost",
         "loushang.coding.apphost_product",
         "loushang.coding.product_plan",
+        "loushang.harness.runtime",
         "re",
         "typing",
     }
-    assert _imports(TARGET_COMPOSITION) == expected_imports
+    composition_imports = _imports(TARGET_COMPOSITION)
+    assert composition_imports - {"loushang.foundation._owned_tasks"} == expected_imports
     for path in Path("src/loushang").rglob("*.py"):
         if path not in {
             TARGET_COMPOSITION,

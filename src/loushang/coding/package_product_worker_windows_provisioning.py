@@ -10,6 +10,10 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
+from loushang.harness.package_product._worker_windows_attempt import (
+    WindowsProductWorkerProvisioningAccess,
+    read_windows_product_worker_attempts,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
     WindowsLocalWheelProductSessionOwner,
@@ -47,7 +51,9 @@ from .package_product_worker_windows_provisioning_journal import (
 )
 
 
-class CodingWindowsProductWorkerProvisioningStateStore:
+class CodingWindowsProductWorkerProvisioningStateStore(
+    WindowsProductWorkerProvisioningAccess
+):
     """Bind one exact LPAC attempt to the current Product state root."""
 
     def __init__(
@@ -203,44 +209,14 @@ class CodingWindowsProductWorkerProvisioningStateStore:
             raise ValueError("Windows Worker Product launch intent is invalid")
 
     def load(self) -> Mapping[str, object] | None:
-        with self._product.gc_gate.guard():
-            self._product.assert_root_gc_authority_current()
-            self._require_launch_intent(
-                self._product,
-                receipt=self._receipt,
-                worker_request=self._worker_request,
-            )
-            self._product.assert_session_runtime_current(self._runtime)
-            self._require_store_current()
-            with (
-                self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
-            ):
-                current = self._journal.load(directory_fd=root)
-            self._product.assert_root_gc_authority_current()
-            return current
+        return super().load()
 
     def compare_and_swap(
         self, *, expected_revision: int, document: Mapping[str, object]
     ) -> bool:
-        with self._product.gc_gate.guard(require_write=True):
-            self._product.assert_root_gc_authority_current()
-            self._require_launch_intent(
-                self._product,
-                receipt=self._receipt,
-                worker_request=self._worker_request,
-            )
-            self._product.assert_session_runtime_current(self._runtime)
-            self._require_store_current(desired_phase=document.get("phase"), write=True)
-            with (
-                self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
-            ):
-                committed = self._journal.compare_and_swap(
-                    expected_revision=expected_revision,
-                    document=document,
-                    directory_fd=root,
-                )
-            self._product.assert_root_gc_authority_current()
-            return committed
+        return super().compare_and_swap(
+            expected_revision=expected_revision, document=document
+        )
 
     def _require_store_current(
         self, *, desired_phase: object | None = None, write: bool = False
@@ -327,14 +303,12 @@ def inspect_coding_windows_product_worker_provisioning_attempts(
         or product.policy.product_id != "coding"
     ):
         raise OSError("Windows Worker Product recovery inventory is unavailable")
-    with product.gc_gate.guard():
-        product.assert_root_gc_authority_current()
-        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-            attempts = inspect_windows_worker_provisioning_attempts(
-                product.state_root, directory_fd=root
-            )
-        product.assert_root_gc_authority_current()
-        return attempts
+    return read_windows_product_worker_attempts(
+        product,
+        inspect_attempts=lambda state_root, root: (
+            inspect_windows_worker_provisioning_attempts(state_root, directory_fd=root)
+        ),
+    )
 
 
 __all__ = [

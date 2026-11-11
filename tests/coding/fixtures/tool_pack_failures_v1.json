@@ -1,0 +1,139 @@
+{
+  "stage:removed": {
+    "error": {
+      "type": "builtins.RuntimeError",
+      "message": "injected staging failure",
+      "code": null
+    },
+    "notes": [],
+    "context": null,
+    "cause": null,
+    "events": [
+      "stage:document_outline",
+      "fail:inspect_symbol",
+      "rollback:document_outline"
+    ],
+    "lease_states": [
+      "disposed"
+    ]
+  },
+  "stage:failed_retryable": {
+    "error": {
+      "type": "builtins.RuntimeError",
+      "message": "injected staging failure",
+      "code": null
+    },
+    "notes": [
+      "Coding LSP Tool staging rollback remains incomplete"
+    ],
+    "context": null,
+    "cause": null,
+    "events": [
+      "stage:document_outline",
+      "fail:inspect_symbol",
+      "rollback:document_outline"
+    ],
+    "lease_states": [
+      "failed_retryable"
+    ]
+  },
+  "stage:cancelled": {
+    "error": {
+      "type": "asyncio.exceptions.CancelledError",
+      "message": "rollback interrupted",
+      "code": null
+    },
+    "notes": [],
+    "context": {
+      "type": "builtins.RuntimeError",
+      "message": "injected staging failure",
+      "code": null
+    },
+    "cause": null,
+    "events": [
+      "stage:document_outline",
+      "fail:inspect_symbol",
+      "rollback:document_outline"
+    ],
+    "lease_states": [
+      "staged"
+    ]
+  },
+  "projection": {
+    "error": {
+      "type": "builtins.ValueError",
+      "message": "second definition rejected",
+      "code": null
+    },
+    "events": []
+  },
+  "slot:base": {
+    "has_instance_dict": false,
+    "unbound": {
+      "type": "builtins.RuntimeError",
+      "message": "Coding base Tool registration is not yet bound",
+      "code": null
+    },
+    "invalid": {
+      "type": "builtins.TypeError",
+      "message": "Coding base Tool registration port is invalid",
+      "code": null
+    },
+    "same_tool": true,
+    "same_owner": true,
+    "enabled": false,
+    "same_source": true,
+    "same_result": true,
+    "rebind": {
+      "type": "builtins.RuntimeError",
+      "message": "Coding base Tool registration is already bound",
+      "code": null
+    }
+  },
+  "slot:lsp": {
+    "has_instance_dict": false,
+    "unbound": {
+      "type": "builtins.RuntimeError",
+      "message": "Coding LSP Tool registration is not yet bound",
+      "code": null
+    },
+    "invalid": {
+      "type": "builtins.TypeError",
+      "message": "Coding LSP Tool registration port is invalid",
+      "code": null
+    },
+    "same_tool": true,
+    "same_owner": true,
+    "enabled": false,
+    "same_source": true,
+    "same_result": true,
+    "rebind": {
+      "type": "builtins.RuntimeError",
+      "message": "Coding LSP Tool registration is already bound",
+      "code": null
+    }
+  },
+  "slot:arch": {
+    "has_instance_dict": false,
+    "unbound": {
+      "type": "builtins.RuntimeError",
+      "message": "Coding Arch Tool registration is not yet bound",
+      "code": null
+    },
+    "invalid": {
+      "type": "builtins.TypeError",
+      "message": "Coding Arch Tool registration port is invalid",
+      "code": null
+    },
+    "same_tool": true,
+    "same_owner": true,
+    "enabled": false,
+    "same_source": true,
+    "same_result": true,
+    "rebind": {
+      "type": "builtins.RuntimeError",
+      "message": "Coding Arch Tool registration is already bound",
+      "code": null
+    }
+  }
+}

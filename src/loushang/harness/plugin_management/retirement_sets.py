@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, replace
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import Literal, Protocol
 
-from loushang.foundation.json import JsonValueError, require_json_mapping
+from loushang.foundation.json import (
+    _unique_json_object_hook,
+)
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
@@ -26,7 +29,20 @@ from loushang.harness.plugin_management.retirement import (
     PluginRetirementIntentV1,
     PluginRetirementRecordCodecError,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
+
+from .records import (
+    _record_document,
+    _require_nonempty,
+    _require_positive_integer,
+)
+from .records import (
+    _require_digest as _require_sha256,
+)
 
 PLUGIN_OWNER_RETIREMENT_TARGET_VERSION = 1
 PLUGIN_OWNER_RETIREMENT_PLAN_VERSION = 1
@@ -145,41 +161,15 @@ class PluginOwnerRetirementTargetV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginOwnerRetirementTargetV1:
-        document = _wire_object(value, name="Plugin owner retirement target")
-        _wire_exact_fields(
-            document,
-            keys={
-                "contributionIds",
-                "ownerGenerationReference",
-                "ownerReference",
-                "retirementHandle",
-                "targetId",
-                "targetVersion",
-            },
+        document = _decode_document(
+            value,
             name="Plugin owner retirement target",
-        )
-        _wire_version(
-            document.get("targetVersion"),
-            expected=PLUGIN_OWNER_RETIREMENT_TARGET_VERSION,
+            schema=_PLUGINOWNERRETIREMENTTARGET_SCHEMA,
+            version=PLUGIN_OWNER_RETIREMENT_TARGET_VERSION,
+            version_field="targetVersion",
         )
         try:
-            return cls(
-                target_id=_wire_string(document["targetId"], name="target id"),
-                owner_reference=_wire_string(
-                    document["ownerReference"], name="owner reference"
-                ),
-                owner_generation_reference=_wire_string(
-                    document["ownerGenerationReference"],
-                    name="owner generation reference",
-                ),
-                retirement_handle=_wire_string(
-                    document["retirementHandle"], name="retirement handle"
-                ),
-                contribution_ids=_wire_string_tuple(
-                    document["contributionIds"], name="contribution ids"
-                ),
-                target_version=PLUGIN_OWNER_RETIREMENT_TARGET_VERSION,
-            )
+            return _PLUGINOWNERRETIREMENTTARGET_SCHEMA.decode(cls, document)
         except PluginRetirementSetRecordCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -257,41 +247,19 @@ class PluginOwnerRetirementPlanV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginOwnerRetirementPlanV1:
-        document = _wire_object(value, name="Plugin owner retirement plan")
-        _wire_exact_fields(
-            document,
-            keys={
-                "ownerClosureReference",
-                "planId",
-                "planVersion",
-                "retirementId",
-                "targets",
-            },
+        document = _decode_document(
+            value,
             name="Plugin owner retirement plan",
-        )
-        _wire_version(
-            document.get("planVersion"),
-            expected=PLUGIN_OWNER_RETIREMENT_PLAN_VERSION,
+            schema=_PLUGINOWNERRETIREMENTPLAN_SCHEMA,
+            version=PLUGIN_OWNER_RETIREMENT_PLAN_VERSION,
+            version_field="planVersion",
         )
         try:
             targets_value = document["targets"]
             if not isinstance(targets_value, list):
                 raise ValueError("Owner retirement targets must be a JSON array")
-            return cls(
-                plan_id=_wire_string(document["planId"], name="plan id"),
-                retirement_id=_wire_string(
-                    document["retirementId"], name="retirement id"
-                ),
-                owner_closure_reference=_wire_string(
-                    document["ownerClosureReference"],
-                    name="owner closure reference",
-                ),
-                targets=tuple(
-                    PluginOwnerRetirementTargetV1.from_dict(target)
-                    for target in targets_value
-                ),
-                plan_version=PLUGIN_OWNER_RETIREMENT_PLAN_VERSION,
-            )
+            document["targets"] = targets_value
+            return _PLUGINOWNERRETIREMENTPLAN_SCHEMA.decode(cls, document)
         except PluginRetirementSetRecordCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -343,25 +311,12 @@ class PluginOwnerRetirementOutcomeV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginOwnerRetirementOutcomeV1:
-        document = _wire_object(value, name="Plugin owner retirement outcome")
-        _wire_exact_fields(
-            document,
-            keys={
-                "attempt",
-                "disposition",
-                "idempotencyKey",
-                "operationId",
-                "outcomeVersion",
-                "ownerOutcomeReference",
-                "resultCode",
-                "retirementId",
-                "targetId",
-            },
+        document = _decode_document(
+            value,
             name="Plugin owner retirement outcome",
-        )
-        _wire_version(
-            document.get("outcomeVersion"),
-            expected=PLUGIN_OWNER_RETIREMENT_OUTCOME_VERSION,
+            schema=_PLUGINOWNERRETIREMENTOUTCOME_SCHEMA,
+            version=PLUGIN_OWNER_RETIREMENT_OUTCOME_VERSION,
+            version_field="outcomeVersion",
         )
         try:
             disposition = _wire_string(
@@ -370,24 +325,8 @@ class PluginOwnerRetirementOutcomeV1:
             )
             if disposition not in _OUTCOME_DISPOSITIONS:
                 raise ValueError("Unsupported owner retirement outcome disposition")
-            return cls(
-                retirement_id=_wire_string(
-                    document["retirementId"], name="retirement id"
-                ),
-                target_id=_wire_string(document["targetId"], name="target id"),
-                operation_id=_wire_string(document["operationId"], name="operation id"),
-                idempotency_key=_wire_string(
-                    document["idempotencyKey"], name="idempotency key"
-                ),
-                attempt=_wire_integer(document["attempt"], name="attempt"),
-                disposition=cast(PluginOwnerRetirementDisposition, disposition),
-                result_code=_wire_string(document["resultCode"], name="result code"),
-                owner_outcome_reference=_wire_string(
-                    document["ownerOutcomeReference"],
-                    name="owner outcome reference",
-                ),
-                outcome_version=PLUGIN_OWNER_RETIREMENT_OUTCOME_VERSION,
-            )
+            document["disposition"] = disposition
+            return _PLUGINOWNERRETIREMENTOUTCOME_SCHEMA.decode(cls, document)
         except PluginRetirementSetRecordCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -482,22 +421,12 @@ class PluginRetirementSetEventV1:
 
     @classmethod
     def from_dict(cls, value: object) -> PluginRetirementSetEventV1:
-        document = _wire_object(value, name="Plugin retirement set event")
-        _wire_exact_fields(
-            document,
-            keys={
-                "eventKind",
-                "intent",
-                "journalRevision",
-                "outcome",
-                "plan",
-                "recordVersion",
-            },
+        document = _decode_document(
+            value,
             name="Plugin retirement set event",
-        )
-        _wire_version(
-            document.get("recordVersion"),
-            expected=PLUGIN_RETIREMENT_SET_EVENT_VERSION,
+            schema=_PLUGINRETIREMENTSETEVENT_SCHEMA,
+            version=PLUGIN_RETIREMENT_SET_EVENT_VERSION,
+            version_field="recordVersion",
         )
         try:
             event_kind = _wire_string(
@@ -505,28 +434,8 @@ class PluginRetirementSetEventV1:
             )
             if event_kind not in {"opened", "plan_committed", "outcome_recorded"}:
                 raise ValueError("Unsupported Plugin retirement set event kind")
-            return cls(
-                journal_revision=_wire_integer(
-                    document["journalRevision"], name="journal revision"
-                ),
-                event_kind=cast(PluginRetirementSetEventKind, event_kind),
-                intent=(
-                    None
-                    if document["intent"] is None
-                    else PluginRetirementIntentV1.from_dict(document["intent"])
-                ),
-                plan=(
-                    None
-                    if document["plan"] is None
-                    else PluginOwnerRetirementPlanV1.from_dict(document["plan"])
-                ),
-                outcome=(
-                    None
-                    if document["outcome"] is None
-                    else PluginOwnerRetirementOutcomeV1.from_dict(document["outcome"])
-                ),
-                record_version=PLUGIN_RETIREMENT_SET_EVENT_VERSION,
-            )
+            document["eventKind"] = event_kind
+            return _PLUGINRETIREMENTSETEVENT_SCHEMA.decode(cls, document)
         except PluginRetirementSetRecordCodecError:
             raise
         except (PluginRetirementRecordCodecError, TypeError, ValueError) as exc:
@@ -960,13 +869,9 @@ def decode_plugin_retirement_set_capture(
     )
 
 
-def _unique_capture_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Retirement set capture has duplicate JSON keys")
-        result[key] = value
-    return result
+_unique_capture_object = _unique_json_object_hook(
+    lambda: "Retirement set capture has duplicate JSON keys",
+)
 
 
 def owner_retirement_target_id(
@@ -1111,31 +1016,6 @@ def _derive_state(
     return "retiring"
 
 
-def _wire_object(value: object, *, name: str) -> dict[str, object]:
-    try:
-        return cast(dict[str, object], require_json_mapping(value, name=name))
-    except JsonValueError as exc:
-        raise _invalid_record(str(exc)) from exc
-
-
-def _wire_exact_fields(value: dict[str, object], *, keys: set[str], name: str) -> None:
-    actual = set(value)
-    if actual != keys:
-        missing = sorted(keys - actual)
-        unknown = sorted(actual - keys)
-        raise _invalid_record(
-            f"{name} fields do not match; missing={missing!r}, unknown={unknown!r}"
-        )
-
-
-def _wire_version(value: object, *, expected: int) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value != expected:
-        raise PluginRetirementSetRecordCodecError(
-            "Unsupported Plugin retirement set record version",
-            code="unsupported_plugin_retirement_set_record_version",
-        )
-
-
 def _wire_string(value: object, *, name: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{name} must be a non-empty string")
@@ -1152,25 +1032,6 @@ def _wire_string_tuple(value: object, *, name: str) -> tuple[str, ...]:
     if not isinstance(value, list):
         raise ValueError(f"{name} must be a JSON array")
     return tuple(_wire_string(item, name=name) for item in value)
-
-
-def _require_nonempty(value: str, *, name: str) -> None:
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{name} must be a non-empty string")
-
-
-def _require_sha256(value: str, *, name: str) -> None:
-    if (
-        not isinstance(value, str)
-        or len(value) != 64
-        or any(character not in "0123456789abcdef" for character in value)
-    ):
-        raise ValueError(f"{name} must be a lowercase SHA-256 digest")
-
-
-def _require_positive_integer(value: int, *, name: str) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        raise ValueError(f"{name} must be a positive integer")
 
 
 def _require_sorted_unique_nonempty_strings(
@@ -1251,3 +1112,74 @@ __all__ = [
     "owner_retirement_plan_id",
     "owner_retirement_target_id",
 ]
+
+
+_PLUGINOWNERRETIREMENTTARGET_SCHEMA = RecordSchema.for_dataclass(
+    PluginOwnerRetirementTargetV1,
+    _wire_string,
+    RecordField("contribution_ids", "contribution ids", _wire_string_tuple),
+    RecordField("target_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINOWNERRETIREMENTPLAN_SCHEMA = RecordSchema.for_dataclass(
+    PluginOwnerRetirementPlanV1,
+    _wire_string,
+    RecordField(
+        "targets",
+        decoder=lambda value: tuple(
+            (PluginOwnerRetirementTargetV1.from_dict(target) for target in value)
+        ),
+    ),
+    RecordField("plan_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINOWNERRETIREMENTOUTCOME_SCHEMA = RecordSchema.for_dataclass(
+    PluginOwnerRetirementOutcomeV1,
+    _wire_string,
+    RecordField("attempt", "attempt", _wire_integer),
+    RecordField("disposition", decoder=lambda value: value),
+    RecordField("outcome_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_PLUGINRETIREMENTSETEVENT_SCHEMA = RecordSchema.for_dataclass(
+    PluginRetirementSetEventV1,
+    _wire_string,
+    RecordField("journal_revision", "journal revision", _wire_integer),
+    RecordField("event_kind", decoder=lambda value: value),
+    RecordField(
+        "intent",
+        decoder=lambda value: (
+            None if value is None else PluginRetirementIntentV1.from_dict(value)
+        ),
+    ),
+    RecordField(
+        "plan",
+        decoder=lambda value: (
+            None if value is None else PluginOwnerRetirementPlanV1.from_dict(value)
+        ),
+    ),
+    RecordField(
+        "outcome",
+        decoder=lambda value: (
+            None if value is None else PluginOwnerRetirementOutcomeV1.from_dict(value)
+        ),
+    ),
+    RecordField("record_version", decoder=int),
+    derive_labels=True,
+)
+
+
+_decode_document = partial(
+    _record_document,
+    invalid_record=_invalid_record,
+    unsupported_version=lambda: PluginRetirementSetRecordCodecError(
+        "Unsupported Plugin retirement set record version",
+        code="unsupported_plugin_retirement_set_record_version",
+    ),
+)

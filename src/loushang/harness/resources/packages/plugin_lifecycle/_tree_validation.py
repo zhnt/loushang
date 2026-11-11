@@ -1,45 +1,54 @@
-"""Shared tree observation rules; native handles stay with platform readers."""
+"""Package-specific values and errors over shared tree observation."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import AbstractContextManager
-from dataclasses import dataclass
-from hashlib import sha256
-from typing import Literal, Protocol
+from loushang.harness.resources.packages._tree_observation import (
+    CollectedTree,
+    ExpectedTreeFile,
+    TreeDirectoryReadPort,
+    TreeEntryObservation,
+    TreeFileReadPort,
+    TreeObservationError,
+)
+from loushang.harness.resources.packages._tree_observation import (
+    collect_tree as _observe_tree,
+)
 
 from ._materialization_shared import IdentityMap
-from .store_settlements import NativeIdentity
 from .tree_transfer import PackageVerifiedTreeEntryV1, PackageVerifiedTreeManifestV1
 
-ObservedContents = dict[str, tuple[int, str]]
-CollectedTree = tuple[ObservedContents, IdentityMap, IdentityMap]
+_ERRORS = {
+    "unexpected_directory": "Published Package tree has an unexpected directory",
+    "directory_identity": "Published Package directory identity changed",
+    "unexpected_file": "Published Package tree has an unexpected file",
+    "file_identity": "Published Package file identity changed",
+    "file_size_exceeded": "Published Package file exceeds verified size",
+    "entry_type": "Published Package tree entry type changed",
+    "empty_directory": "Published Package tree contains an empty directory",
+    "directory_set": "Published Package directory set changed",
+    "file_set": "Published Package file set changed",
+}
 
 
-@dataclass(frozen=True, slots=True)
-class TreeEntryObservation:
-    name: str
-    kind: Literal["directory", "file", "other"]
-    identity: NativeIdentity
-    link_count: int
-
-
-class TreeFileReadPort(Protocol):
-    def read(self, max_bytes: int) -> bytes: ...
-
-    def identity_and_links(self) -> tuple[NativeIdentity, int]: ...
-
-
-class TreeDirectoryReadPort(Protocol):
-    def identity(self) -> NativeIdentity: ...
-
-    def entries(self) -> AbstractContextManager[Iterator[TreeEntryObservation]]: ...
-
-    def open_directory(
-        self, name: str,
-    ) -> AbstractContextManager[TreeDirectoryReadPort]: ...
-
-    def file_reader(self, name: str) -> AbstractContextManager[TreeFileReadPort]: ...
+def collect_tree(
+    root: TreeDirectoryReadPort,
+    expected: dict[str, PackageVerifiedTreeEntryV1],
+    *,
+    directory_identities: IdentityMap | None,
+    file_identities: IdentityMap | None,
+    allow_partial: bool = False,
+) -> CollectedTree:
+    expected_files: dict[str, ExpectedTreeFile] = dict(expected)
+    try:
+        return _observe_tree(
+            root,
+            expected_files,
+            directory_identities=directory_identities,
+            file_identities=file_identities,
+            allow_partial=allow_partial,
+        )
+    except TreeObservationError as error:
+        raise OSError(_ERRORS[error.code]) from None
 
 
 def validate_tree_contents(
@@ -65,82 +74,11 @@ def validate_tree_contents(
     return observed_directories, observed_files
 
 
-def collect_tree(
-    root: TreeDirectoryReadPort,
-    expected: dict[str, PackageVerifiedTreeEntryV1],
-    *,
-    directory_identities: IdentityMap | None,
-    file_identities: IdentityMap | None,
-    allow_partial: bool = False,
-) -> CollectedTree:
-    observed: ObservedContents = {}
-    observed_directories: IdentityMap = {}
-    observed_files: IdentityMap = {}
-    expected_directories = {
-        "/".join(parts[:depth])
-        for logical_path in expected
-        for parts in (tuple(logical_path.split("/")),)
-        for depth in range(1, len(parts))
-    }
-
-    def visit(directory: TreeDirectoryReadPort, prefix: tuple[str, ...]) -> None:
-        saw_entry = False
-        with directory.entries() as entries:
-            for member in entries:
-                saw_entry = True
-                parts = prefix + (member.name,)
-                logical_path = "/".join(parts)
-                if member.kind == "directory":
-                    if logical_path not in expected_directories:
-                        raise OSError("Published Package tree has an unexpected directory")
-                    if (
-                        directory_identities is not None
-                        and member.identity != directory_identities.get(parts)
-                    ):
-                        raise OSError("Published Package directory identity changed")
-                    with directory.open_directory(member.name) as child:
-                        if child.identity() != member.identity:
-                            raise OSError("Published Package directory identity changed")
-                        observed_directories[parts] = member.identity
-                        visit(child, parts)
-                elif member.kind == "file":
-                    entry = expected.get(logical_path)
-                    if entry is None or member.link_count != 1:
-                        raise OSError("Published Package tree has an unexpected file")
-                    if (
-                        file_identities is not None
-                        and member.identity != file_identities.get(parts)
-                    ):
-                        raise OSError("Published Package file identity changed")
-                    with directory.file_reader(member.name) as reader:
-                        digest = sha256()
-                        byte_count = 0
-                        while chunk := reader.read(64 * 1024):
-                            digest.update(chunk)
-                            byte_count += len(chunk)
-                            if byte_count > entry.byte_count:
-                                raise OSError("Published Package file exceeds verified size")
-                        identity, link_count = reader.identity_and_links()
-                        if identity != member.identity or link_count != 1:
-                            raise OSError("Published Package file identity changed")
-                    observed[logical_path] = (byte_count, digest.hexdigest())
-                    observed_files[parts] = member.identity
-                else:
-                    raise OSError("Published Package tree entry type changed")
-        if not saw_entry and prefix and not allow_partial:
-            raise OSError("Published Package tree contains an empty directory")
-
-    visit(root, ())
-    if (
-        not allow_partial
-        and directory_identities is not None
-        and set(observed_directories) != set(directory_identities)
-    ):
-        raise OSError("Published Package directory set changed")
-    if (
-        not allow_partial
-        and file_identities is not None
-        and set(observed_files) != set(file_identities)
-    ):
-        raise OSError("Published Package file set changed")
-    return observed, observed_directories, observed_files
+__all__ = [
+    "CollectedTree",
+    "TreeDirectoryReadPort",
+    "TreeEntryObservation",
+    "TreeFileReadPort",
+    "collect_tree",
+    "validate_tree_contents",
+]

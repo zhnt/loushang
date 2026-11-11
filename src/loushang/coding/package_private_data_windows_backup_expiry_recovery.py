@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-import os
-
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_directory,
-    windows_listdir_at,
+from loushang.harness.plugin_management.private_data_deletion import (
+    latest_deleted_target_receipt,
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     inspect_windows_product_private_directory_identity,
@@ -25,11 +21,13 @@ from .package_private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryPlanV1,
 )
 from .package_private_data_restore_records import CodingArchPrivateDataRestorePlanV1
-from .package_private_data_windows_backup import _directory_identity
 from .package_private_data_windows_deletion_journal import (
     CodingWindowsArchPrivateDataDeletionTransaction,
 )
-from .package_private_data_windows_preview import _capture_windows_target_snapshot
+from .package_private_data_windows_preview import (
+    _capture_windows_target_snapshot,
+    _native_io,
+)
 from .package_private_data_windows_restore_journal import (
     CodingWindowsArchPrivateDataRestoreTransaction,
 )
@@ -63,21 +61,10 @@ def require_windows_arch_backup_expiry_recovery_authority(
         deletion_events = deletion.events()
     finally:
         deletion._close()
-    latest_deletion = next(
-        (
-            item
-            for item in reversed(deletion_events)
-            if item.plan.installation_key == plan.installation_key
-        ),
-        None,
+    deletion_receipt = latest_deleted_target_receipt(
+        deletion_events, plan.installation_key, plan.source_target_id
     )
-    if (
-        latest_deletion is None
-        or latest_deletion.phase != "completed"
-        or latest_deletion.target.target_id != plan.source_target_id
-        or latest_deletion.receipt is None
-        or latest_deletion.receipt.disposition != "deleted"
-    ):
+    if deletion_receipt is None:
         raise ValueError("Windows Coding Arch backup expiry deletion changed")
 
     confirmations, staged = restore._scan_confirmations()
@@ -94,7 +81,7 @@ def require_windows_arch_backup_expiry_recovery_authority(
         or confirmation is None
         or confirmation.installation_key != plan.installation_key
         or confirmation.backup_id != plan.backup_id
-        or confirmation.deletion_receipt_id != latest_deletion.receipt.receipt_id
+        or confirmation.deletion_receipt_id != deletion_receipt.receipt_id
         or confirmation.restore_completion_digest != plan.restore_completion_digest
         or confirmation.restored_target_id != plan.restored_target_id
     ):
@@ -131,23 +118,12 @@ def require_windows_arch_backup_expiry_recovery_authority(
     parent_identity = inspect_windows_product_private_directory_identity(root.parent)
     if parent_identity != publication.parent_identity:
         raise ValueError("Windows Coding Arch backup expiry restore parent changed")
-    with WindowsPrivateDirectoryAcl() as acl:
-        parent_fd = open_windows_directory(
-            root.parent, share_delete=False, read_control=True
-        )
-        try:
-            acl.validate(parent_fd)
-            if (
-                _directory_identity(parent_fd) != parent_identity
-                or root.name not in windows_listdir_at(parent_fd)
-                or any(
-                    name.startswith(".arch-restore-")
-                    for name in windows_listdir_at(parent_fd)
-                )
-            ):
-                raise ValueError("Windows Coding Arch backup expiry restore has debt")
-        finally:
-            os.close(parent_fd)
+    _native_io.require_recovery_parent_view(
+        root,
+        parent_identity,
+        stage_prefix=".arch-restore-",
+        changed="Windows Coding Arch backup expiry restore has debt",
+    )
     bound_root = inspect_coding_windows_arch_installation_root(
         layout, plan.installation_key, state_root=product.state_root
     )

@@ -1,0 +1,501 @@
+{
+  "proof_present": {
+    "attempts": [
+      [
+        "returned",
+        null
+      ]
+    ],
+    "phases": [
+      "started"
+    ],
+    "remaining": [
+      "<tombstone>",
+      "<tombstone>/one",
+      "<tombstone>/two"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "generation"
+      ],
+      [
+        "acl_enter"
+      ],
+      [
+        "open",
+        "."
+      ],
+      [
+        "acl",
+        "."
+      ],
+      [
+        "fstat",
+        "."
+      ],
+      [
+        "list",
+        "."
+      ],
+      [
+        "capture",
+        "<tombstone>"
+      ],
+      [
+        "acl",
+        "."
+      ],
+      [
+        "fstat",
+        "."
+      ],
+      [
+        "close",
+        "."
+      ],
+      [
+        "acl_exit"
+      ]
+    ],
+    "all_owned_fds_closed": true
+  },
+  "proof_absent": {
+    "attempts": [
+      [
+        "returned",
+        null
+      ]
+    ],
+    "phases": [
+      "started"
+    ],
+    "remaining": [],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "generation"
+      ],
+      [
+        "acl_enter"
+      ],
+      [
+        "open",
+        "."
+      ],
+      [
+        "acl",
+        "."
+      ],
+      [
+        "fstat",
+        "."
+      ],
+      [
+        "list",
+        "."
+      ],
+      [
+        "acl",
+        "."
+      ],
+      [
+        "fstat",
+        "."
+      ],
+      [
+        "close",
+        "."
+      ],
+      [
+        "acl_exit"
+      ]
+    ],
+    "all_owned_fds_closed": true
+  },
+  "proof_wrong_receipt": {
+    "attempts": [
+      [
+        "ValueError",
+        "Windows Coding Arch tombstone root receipt changed"
+      ]
+    ],
+    "phases": [
+      "started"
+    ],
+    "remaining": [
+      "<tombstone>",
+      "<tombstone>/one",
+      "<tombstone>/two"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "generation"
+      ]
+    ],
+    "all_owned_fds_closed": true
+  },
+  "proof_wrong_generation": {
+    "attempts": [
+      [
+        "ValueError",
+        "Windows Coding Arch tombstone root receipt changed"
+      ]
+    ],
+    "phases": [
+      "started"
+    ],
+    "remaining": [
+      "<tombstone>",
+      "<tombstone>/one",
+      "<tombstone>/two"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "generation"
+      ]
+    ],
+    "all_owned_fds_closed": true
+  },
+  "proof_root_visible": {
+    "attempts": [
+      [
+        "ValueError",
+        "Windows Coding Arch tombstone state changed"
+      ]
+    ],
+    "phases": [
+      "started"
+    ],
+    "remaining": [
+      "arch",
+      "arch/one",
+      "arch/two"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "generation"
+      ],
+      [
+        "acl_enter"
+      ],
+      [
+        "open",
+        "."
+      ],
+      [
+        "acl",
+        "."
+      ],
+      [
+        "fstat",
+        "."
+      ],
+      [
+        "list",
+        "."
+      ],
+      [
+        "close",
+        "."
+      ],
+      [
+        "acl_exit"
+      ]
+    ],
+    "all_owned_fds_closed": true
+  },
+  "proof_bad_members": {
+    "attempts": [
+      [
+        "ValueError",
+        "Windows Coding Arch tombstone bytes changed"
+      ]
+    ],
+    "phases": [
+      "started"
+    ],
+    "remaining": [
+      "<tombstone>",
+      "<tombstone>/one",
+      "<tombstone>/two"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "generation"
+      ],
+      [
+        "acl_enter"
+      ],
+      [
+        "open",
+        "."
+      ],
+      [
+        "acl",
+        "."
+      ],
+      [
+        "fstat",
+        "."
+      ],
+      [
+        "list",
+        "."
+      ],
+      [
+        "capture",
+        "<tombstone>"
+      ],
+      [
+        "close",
+        "."
+      ],
+      [
+        "acl_exit"
+      ]
+    ],
+    "all_owned_fds_closed": true
+  },
+  "proof_foreign_member": {
+    "attempts": [
+      [
+        "ValueError",
+        "Windows Coding Arch tombstone bytes changed"
+      ]
+    ],
+    "phases": [
+      "started"
+    ],
+    "remaining": [
+      "<tombstone>",
+      "<tombstone>/foreign",
+      "<tombstone>/one",
+      "<tombstone>/two"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "generation"
+      ],
+      [
+        "acl_enter"
+      ],
+      [
+        "open",
+        "."
+      ],
+      [
+        "acl",
+        "."
+      ],
+      [
+        "fstat",
+        "."
+      ],
+      [
+        "list",
+        "."
+      ],
+      [
+        "capture",
+        "<tombstone>"
+      ],
+      [
+        "close",
+        "."
+      ],
+      [
+        "acl_exit"
+      ]
+    ],
+    "all_owned_fds_closed": true
+  },
+  "proof_parent_after": {
+    "attempts": [
+      [
+        "ValueError",
+        "Windows Coding Arch tombstone parent changed"
+      ]
+    ],
+    "phases": [
+      "started"
+    ],
+    "remaining": [
+      "<tombstone>",
+      "<tombstone>/one",
+      "<tombstone>/two"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "generation"
+      ],
+      [
+        "acl_enter"
+      ],
+      [
+        "open",
+        "."
+      ],
+      [
+        "acl",
+        "."
+      ],
+      [
+        "fstat",
+        "."
+      ],
+      [
+        "list",
+        "."
+      ],
+      [
+        "capture",
+        "<tombstone>"
+      ],
+      [
+        "acl",
+        "."
+      ],
+      [
+        "fstat",
+        "."
+      ],
+      [
+        "close",
+        "."
+      ],
+      [
+        "acl_exit"
+      ]
+    ],
+    "all_owned_fds_closed": true
+  },
+  "proof_acl": {
+    "attempts": [
+      [
+        "PermissionError",
+        "injected:proof_acl"
+      ]
+    ],
+    "phases": [
+      "started"
+    ],
+    "remaining": [
+      "<tombstone>",
+      "<tombstone>/one",
+      "<tombstone>/two"
+    ],
+    "trace": [
+      [
+        "attempt",
+        0
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "inspect_parent"
+      ],
+      [
+        "generation"
+      ],
+      [
+        "acl_enter"
+      ],
+      [
+        "open",
+        "."
+      ],
+      [
+        "acl",
+        "."
+      ],
+      [
+        "close",
+        "."
+      ],
+      [
+        "acl_exit"
+      ]
+    ],
+    "all_owned_fds_closed": true
+  }
+}

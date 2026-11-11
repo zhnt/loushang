@@ -58,6 +58,11 @@ from loushang.harness.plugin_management.package_records import (
 from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1,
     PluginPackageRevisionRefV1,
+    _require_nonempty,
+    _require_nonnegative_integer,
+)
+from loushang.harness.plugin_management.records import (
+    _require_digest as _require_sha256,
 )
 from loushang.harness.plugin_management.retirement import PluginRetirementError
 from loushang.harness.plugin_management.retirement_sets import (
@@ -1554,25 +1559,6 @@ def _instance_sort_key(
         instance_revision_ref.instance_id,
         instance_revision_ref.revision,
     )
-
-
-def _require_nonempty(value: str, *, name: str) -> None:
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{name} must be a non-empty string")
-
-
-def _require_sha256(value: str, *, name: str) -> None:
-    if (
-        not isinstance(value, str)
-        or len(value) != 64
-        or any(character not in "0123456789abcdef" for character in value)
-    ):
-        raise ValueError(f"{name} must be a lowercase SHA-256 digest")
-
-
-def _require_nonnegative_integer(value: int, *, name: str) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise ValueError(f"{name} must be a non-negative integer")
 
 
 def _conflict(path: Path, message: str) -> PluginPackageLifecycleError:

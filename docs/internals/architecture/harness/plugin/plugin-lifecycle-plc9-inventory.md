@@ -1274,7 +1274,7 @@ not discover an unnamed deletion target in the deletion change itself.
 | `src/loushang/harness/resources/plugins/safe_files.py` compatibility import | Formerly re-exported neutral safe-file capture to Plugin manifest and author SDK validation | deleted | both internal users now import `loushang.harness.resources._safe_files` directly; architecture tests require the Plugin-local alias to be absent |
 | `src/loushang/harness/resources/plugins/import_realm.py::PluginImportRealm` | named “compatibility” but is the active fail-closed gate for verified in-process imports | retain | retain until in-process topology is removed by a separate architecture decision; never delete or bypass based on naming alone |
 | `src/loushang/harness/extensions/loader.py::_adapt_legacy_extension_object` | synthesizes legacy Extension handlers/Tools during load | decision-required, then migrate/delete | exact Product caller inventory, parity through canonical Extension declarations/owners, and rollback fixture are accepted |
-| `src/loushang/coding/_plugin_lifecycle.py::CodingPluginLifecycle.publish_session_owner_generations` | Product publication entrypoint now requires previously prepared owner-generation evidence; direct publish no longer synthesizes preparation | retain entrypoint, compatibility branch deleted | Session production paths prepare exact receipts before publication; new unprepared publication is refused without a journal write, while historical published-first records still replay and retire |
+| `src/loushang/harness/session/plugin_lifecycle/_membership.py::_PluginSessionLifecycle.publish_session_owner_generations` | Coding retains the inherited `CodingPluginLifecycle.publish_session_owner_generations` entrypoint; its shared implementation requires previously prepared owner-generation evidence; direct publish no longer synthesizes preparation | retain entrypoint, compatibility branch deleted | Session production paths prepare exact receipts before publication; new unprepared publication is refused without a journal write, while historical published-first records still replay and retire |
 | `src/loushang/harness/plugin_management/continuity_adapter.py::PluginInstanceLedgerContinuityFamilyAuthority` | Product/domain adapter binds Continuity family lifetime to generic Instance/Package ledgers without peer state | retain | retain while Continuity uses this exact contract; replacement requires equivalent domain conformance and recovery evidence |
 | `src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.remove_remote_source`, `forget_remote_source`, and `forget_plugin_binding` | mutable cache/source-binding compatibility deletion can bypass Plugin retirement/GC/replay evidence | narrow for non-Plugin; route/refuse Plugin-bound targets | exact Plugin-bound caller inventory is empty, replay/pin/rollback tests pass, and architecture guard rejects future bypass |
 
@@ -1344,3 +1344,7 @@ Any PLC9 change that adds, migrates, or deletes a row must include:
 
 Directory-wide exemptions and prose-only claims are not acceptable inventory
 updates.
+
+The builtin, removed and general legacy-review modules use shared `RecordSchema`.
+Their module-level `disabled_plugins` strings exclude a field handled by each
+original explicit codec; this metadata adds no enablement reader or writer.

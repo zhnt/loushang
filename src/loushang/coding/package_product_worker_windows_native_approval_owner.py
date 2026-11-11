@@ -6,8 +6,9 @@ Hosting rechecks the actual backend material at native capture.
 
 from __future__ import annotations
 
-import os
-
+from loushang.harness.package_product._windows_worker_backend_release import (
+    current_windows_backend_approval,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -16,6 +17,7 @@ from .package_product_worker_native_approval import (
     CodingWorkerNativeApprovalDecisionV1,
 )
 from .package_product_worker_windows_backend_release import (
+    _require_candidate_product,
     review_coding_windows_worker_backend_release,
 )
 from .package_product_worker_windows_native_approval_journal import (
@@ -27,16 +29,7 @@ class CodingWindowsWorkerNativeApprovalOwner:
     """Review, record, and revoke one Product scope's native approval."""
 
     def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None:
-        if (
-            os.name != "nt"
-            or type(product) is not WindowsLocalWheelProductSessionOwner
-            or product.policy.product_id != "coding"
-            or not any(
-                binding.source_trust_class == "local-worker-candidate"
-                for binding in product.policy.bindings
-            )
-        ):
-            raise ValueError("Windows Worker candidate Product owner is required")
+        _require_candidate_product(product)
         product.assert_root_gc_authority_current()
         self._product = product
         self._journal = CodingWindowsWorkerNativeApprovalJournal(
@@ -45,14 +38,7 @@ class CodingWindowsWorkerNativeApprovalOwner:
         )
 
     def current(self) -> CodingWorkerNativeApprovalDecisionV1 | None:
-        with self._product.gc_gate.guard():
-            self._product.assert_root_gc_authority_current()
-            with (
-                self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
-            ):
-                decision = self._journal.current(directory_fd=root)
-            self._product.assert_root_gc_authority_current()
-            return decision
+        return current_windows_backend_approval(self._product, self._journal)
 
     def approve(
         self,

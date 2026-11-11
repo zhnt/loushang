@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from hashlib import sha256
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
 )
@@ -91,13 +92,9 @@ def parse_coding_legacy_desired_evidence(
     )
 
 
-def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Coding legacy desired state has duplicate JSON keys")
-        result[key] = value
-    return result
+_unique_object = _unique_json_object_hook(
+    lambda: 'Coding legacy desired state has duplicate JSON keys',
+)
 
 
 __all__ = [

@@ -1,0 +1,3631 @@
+{
+  "origin": "verified original archived source; per-class path guard; exclusive creation",
+  "values": {
+    "CodingWorkerSupervisorSemanticBaseV2": {
+      "module": "loushang.coding.package_product_worker_supervisor_base_v2",
+      "name": "CodingWorkerSupervisorSemanticBaseV2",
+      "wire": {
+        "currentAttempts": [],
+        "cutoffRevision": 3,
+        "firstRetainedGeneration": 1,
+        "keyStates": [
+          {
+            "claimsSinceStop": 1,
+            "lastCleanStopRevision": 0,
+            "lastRecord": {
+              "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "failureCode": "test_failure",
+              "identityFingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "phase": "process_settled",
+              "priorAttemptRevision": 2,
+              "recordRevision": 3,
+              "recordVersion": 1,
+              "restartOrdinal": 1,
+              "supervisorEpoch": 1,
+              "supervisorKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "supervisorKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        ],
+        "retiredAttemptIds": [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        "retiredSealedDigest": "0a7b43cb992da2e4d5fbe78cbc414d537b758fe1cfc957c3202800fad74ead9b",
+        "scopeId": "scope",
+        "version": 2
+      },
+      "outcomes": {
+        "valid": {
+          "type": "loushang.coding.package_product_worker_supervisor_base_v2.CodingWorkerSupervisorSemanticBaseV2",
+          "bytes": "7b2263757272656e74417474656d707473223a5b5d2c226375746f66665265766973696f6e223a332c22666972737452657461696e656447656e65726174696f6e223a312c226b6579537461746573223a5b7b22636c61696d7353696e636553746f70223a312c226c617374436c65616e53746f705265766973696f6e223a302c226c6173745265636f7264223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226661696c757265436f6465223a22746573745f6661696c757265222c226964656e7469747946696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c227068617365223a2270726f636573735f736574746c6564222c227072696f72417474656d70745265766973696f6e223a322c227265636f72645265766973696f6e223a332c227265636f726456657273696f6e223a312c22726573746172744f7264696e616c223a312c2273757065727669736f7245706f6368223a312c2273757065727669736f724b6579223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2273757065727669736f724b6579223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d5d2c2272657469726564417474656d7074496473223a5b226161616161616161616161616161616161616161616161616161616161616161225d2c22726574697265645365616c6564446967657374223a2230613762343363623939326461326534643566626537386362633431346435333762373538666531636663393537633332303238303066616437346561643962222c2273636f70654964223a2273636f7065222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerSupervisorSemanticBaseV2(scope_id='scope', first_retained_generation=1, cutoff_revision=3, retired_sealed_digest='0a7b43cb992da2e4d5fbe78cbc414d537b758fe1cfc957c3202800fad74ead9b', current_attempts=(), key_states=(CodingWorkerSupervisorKeyBaseV2(supervisor_key='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', last_record=WorkerAttemptRecordV1(supervisor_key='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', identity_fingerprint='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', attempt_id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', supervisor_epoch=1, phase='process_settled', record_revision=3, prior_attempt_revision=2, restart_ordinal=1, failure_code='test_failure', record_version=1), last_clean_stop_revision=0, claims_since_stop=1),), retired_attempt_ids=('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',), version=2)"
+        },
+        "empty": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": null
+          }
+        },
+        "non-object": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "not-bytes": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": null
+          }
+        },
+        "invalid-utf8": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.UnicodeDecodeError",
+              "message": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+              "cause": null
+            }
+          }
+        },
+        "deep-recursion": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.RecursionError",
+              "message": "maximum recursion depth exceeded while decoding a JSON array from a unicode string",
+              "cause": null
+            }
+          }
+        },
+        "noncanonical": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base encoding changed",
+              "cause": null
+            }
+          }
+        },
+        "unknown-key": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "duplicate-key": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base encoding changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:currentAttempts": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "currentAttempts:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "currentAttempts:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "currentAttempts:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "currentAttempts:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "currentAttempts:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "currentAttempts:5": {
+          "type": "loushang.coding.package_product_worker_supervisor_base_v2.CodingWorkerSupervisorSemanticBaseV2",
+          "bytes": "7b2263757272656e74417474656d707473223a5b5d2c226375746f66665265766973696f6e223a332c22666972737452657461696e656447656e65726174696f6e223a312c226b6579537461746573223a5b7b22636c61696d7353696e636553746f70223a312c226c617374436c65616e53746f705265766973696f6e223a302c226c6173745265636f7264223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226661696c757265436f6465223a22746573745f6661696c757265222c226964656e7469747946696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c227068617365223a2270726f636573735f736574746c6564222c227072696f72417474656d70745265766973696f6e223a322c227265636f72645265766973696f6e223a332c227265636f726456657273696f6e223a312c22726573746172744f7264696e616c223a312c2273757065727669736f7245706f6368223a312c2273757065727669736f724b6579223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2273757065727669736f724b6579223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d5d2c2272657469726564417474656d7074496473223a5b226161616161616161616161616161616161616161616161616161616161616161225d2c22726574697265645365616c6564446967657374223a2230613762343363623939326461326534643566626537386362633431346435333762373538666531636663393537633332303238303066616437346561643962222c2273636f70654964223a2273636f7065222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerSupervisorSemanticBaseV2(scope_id='scope', first_retained_generation=1, cutoff_revision=3, retired_sealed_digest='0a7b43cb992da2e4d5fbe78cbc414d537b758fe1cfc957c3202800fad74ead9b', current_attempts=(), key_states=(CodingWorkerSupervisorKeyBaseV2(supervisor_key='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', last_record=WorkerAttemptRecordV1(supervisor_key='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', identity_fingerprint='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', attempt_id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', supervisor_epoch=1, phase='process_settled', record_revision=3, prior_attempt_revision=2, restart_ordinal=1, failure_code='test_failure', record_version=1), last_clean_stop_revision=0, claims_since_stop=1),), retired_attempt_ids=('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',), version=2)"
+        },
+        "currentAttempts:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:cutoffRevision": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:firstRetainedGeneration": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:keyStates": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "keyStates:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "keyStates:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "keyStates:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "keyStates:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "keyStates:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "keyStates:5": {
+          "type": "loushang.coding.package_product_worker_supervisor_base_v2.CodingWorkerSupervisorSemanticBaseV2",
+          "bytes": "7b2263757272656e74417474656d707473223a5b5d2c226375746f66665265766973696f6e223a332c22666972737452657461696e656447656e65726174696f6e223a312c226b6579537461746573223a5b5d2c2272657469726564417474656d7074496473223a5b226161616161616161616161616161616161616161616161616161616161616161225d2c22726574697265645365616c6564446967657374223a2230613762343363623939326461326534643566626537386362633431346435333762373538666531636663393537633332303238303066616437346561643962222c2273636f70654964223a2273636f7065222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerSupervisorSemanticBaseV2(scope_id='scope', first_retained_generation=1, cutoff_revision=3, retired_sealed_digest='0a7b43cb992da2e4d5fbe78cbc414d537b758fe1cfc957c3202800fad74ead9b', current_attempts=(), key_states=(), retired_attempt_ids=('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',), version=2)"
+        },
+        "keyStates:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:retiredAttemptIds": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:retiredSealedDigest": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:scopeId": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:6": {
+          "type": "loushang.coding.package_product_worker_supervisor_base_v2.CodingWorkerSupervisorSemanticBaseV2",
+          "bytes": "7b2263757272656e74417474656d707473223a5b5d2c226375746f66665265766973696f6e223a332c22666972737452657461696e656447656e65726174696f6e223a312c226b6579537461746573223a5b7b22636c61696d7353696e636553746f70223a312c226c617374436c65616e53746f705265766973696f6e223a302c226c6173745265636f7264223a7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226661696c757265436f6465223a22746573745f6661696c757265222c226964656e7469747946696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c227068617365223a2270726f636573735f736574746c6564222c227072696f72417474656d70745265766973696f6e223a322c227265636f72645265766973696f6e223a332c227265636f726456657273696f6e223a312c22726573746172744f7264696e616c223a312c2273757065727669736f7245706f6368223a312c2273757065727669736f724b6579223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c2273757065727669736f724b6579223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d5d2c2272657469726564417474656d7074496473223a5b226161616161616161616161616161616161616161616161616161616161616161225d2c22726574697265645365616c6564446967657374223a2230613762343363623939326461326534643566626537386362633431346435333762373538666531636663393537633332303238303066616437346561643962222c2273636f70654964223a2277726f6e67222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerSupervisorSemanticBaseV2(scope_id='wrong', first_retained_generation=1, cutoff_revision=3, retired_sealed_digest='0a7b43cb992da2e4d5fbe78cbc414d537b758fe1cfc957c3202800fad74ead9b', current_attempts=(), key_states=(CodingWorkerSupervisorKeyBaseV2(supervisor_key='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', last_record=WorkerAttemptRecordV1(supervisor_key='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', identity_fingerprint='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', attempt_id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', supervisor_epoch=1, phase='process_settled', record_revision=3, prior_attempt_revision=2, restart_ordinal=1, failure_code='test_failure', record_version=1), last_clean_stop_revision=0, claims_since_stop=1),), retired_attempt_ids=('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',), version=2)"
+        },
+        "missing:version": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "version:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Supervisor V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Supervisor V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        }
+      }
+    },
+    "CodingWorkerOptInSemanticBaseV2": {
+      "module": "loushang.coding.package_product_worker_opt_in_base_v2",
+      "name": "CodingWorkerOptInSemanticBaseV2",
+      "wire": {
+        "cutoffRevision": 2,
+        "firstRetainedGeneration": 1,
+        "latestDecisions": [
+          {
+            "action": "revoke",
+            "decisionDigest": "ffe4999c9f1beb6f48484148b616f1db00c9f14f0a8c024dc0856656834c5969",
+            "generation": 2,
+            "journalRevision": 2,
+            "killSwitchGeneration": 1,
+            "operationId": "revoke-a2",
+            "optIn": null,
+            "pluginId": "plugin-a",
+            "recordVersion": 1,
+            "scopeId": "scope"
+          }
+        ],
+        "retiredOperationIds": [
+          "allow-a1",
+          "revoke-a2"
+        ],
+        "retiredSealedDigest": "bf982d29fd37c57b7996b275f6e5f8f5a330119e533d6049a395e4afb868b0f4",
+        "scopeId": "scope",
+        "version": 2
+      },
+      "outcomes": {
+        "valid": {
+          "type": "loushang.coding.package_product_worker_opt_in_base_v2.CodingWorkerOptInSemanticBaseV2",
+          "bytes": "7b226375746f66665265766973696f6e223a322c22666972737452657461696e656447656e65726174696f6e223a312c226c61746573744465636973696f6e73223a5b7b22616374696f6e223a227265766f6b65222c226465636973696f6e446967657374223a2266666534393939633966316265623666343834383431343862363136663164623030633966313466306138633032346463303835363635363833346335393639222c2267656e65726174696f6e223a322c226a6f75726e616c5265766973696f6e223a322c226b696c6c53776974636847656e65726174696f6e223a312c226f7065726174696f6e4964223a227265766f6b652d6132222c226f7074496e223a6e756c6c2c22706c7567696e4964223a22706c7567696e2d61222c227265636f726456657273696f6e223a312c2273636f70654964223a2273636f7065227d5d2c22726574697265644f7065726174696f6e496473223a5b22616c6c6f772d6131222c227265766f6b652d6132225d2c22726574697265645365616c6564446967657374223a2262663938326432396664333763353762373939366232373566366535663866356133333031313965353333643630343961333935653461666238363862306634222c2273636f70654964223a2273636f7065222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerOptInSemanticBaseV2(scope_id='scope', first_retained_generation=1, cutoff_revision=2, retired_sealed_digest='bf982d29fd37c57b7996b275f6e5f8f5a330119e533d6049a395e4afb868b0f4', latest_decisions=(CodingWorkerOptInDecisionV1(journal_revision=2, scope_id='scope', plugin_id='plugin-a', operation_id='revoke-a2', generation=2, kill_switch_generation=1, action='revoke', opt_in=None, decision_digest='ffe4999c9f1beb6f48484148b616f1db00c9f14f0a8c024dc0856656834c5969', record_version=1),), retired_operation_ids=('allow-a1', 'revoke-a2'), version=2)"
+        },
+        "empty": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": null
+          }
+        },
+        "non-object": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "not-bytes": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": null
+          }
+        },
+        "invalid-utf8": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.UnicodeDecodeError",
+              "message": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+              "cause": null
+            }
+          }
+        },
+        "deep-recursion": {
+          "error": {
+            "type": "builtins.RecursionError",
+            "message": "maximum recursion depth exceeded while decoding a JSON array from a unicode string",
+            "cause": null
+          }
+        },
+        "noncanonical": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base encoding changed",
+              "cause": null
+            }
+          }
+        },
+        "unknown-key": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "duplicate-key": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base encoding changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:cutoffRevision": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:firstRetainedGeneration": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:latestDecisions": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "latestDecisions:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "latestDecisions:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "latestDecisions:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "latestDecisions:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "latestDecisions:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "latestDecisions:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "latestDecisions:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:retiredOperationIds": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredOperationIds:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredOperationIds:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredOperationIds:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredOperationIds:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredOperationIds:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredOperationIds:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredOperationIds:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:retiredSealedDigest": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:scopeId": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:version": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "version:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker opt-in V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker opt-in V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        }
+      }
+    },
+    "CodingWorkerReceiptSemanticBaseV2": {
+      "module": "loushang.coding.package_product_worker_receipt_base_v2",
+      "name": "CodingWorkerReceiptSemanticBaseV2",
+      "wire": {
+        "firstRetainedGeneration": 1,
+        "lastIssueSequence": 2,
+        "retiredReceiptFingerprints": [
+          "2fa38b5954258165d824d37521a7a8db6d406d8a525da09c303bdec3a4b5e1b6",
+          "5a4ff68d51917065cafc76abefc0a701ee56e52fe36d498865597c54692f1345"
+        ],
+        "retiredSealedDigest": "b429332347bfe9ea960fd3b90b1069d11132853282e53b1cdb41699b914a1dba",
+        "scopeId": "scope-1",
+        "version": 2
+      },
+      "outcomes": {
+        "valid": {
+          "type": "loushang.coding.package_product_worker_receipt_base_v2.CodingWorkerReceiptSemanticBaseV2",
+          "bytes": "7b22666972737452657461696e656447656e65726174696f6e223a312c226c617374497373756553657175656e6365223a322c22726574697265645265636569707446696e6765727072696e7473223a5b2232666133386235393534323538313635643832346433373532316137613864623664343036643861353235646130396333303362646563336134623565316236222c2235613466663638643531393137303635636166633736616265666330613730316565353665353266653336643439383836353539376335343639326631333435225d2c22726574697265645365616c6564446967657374223a2262343239333332333437626665396561393630666433623930623130363964313131333238353332383265353362316364623431363939623931346131646261222c2273636f70654964223a2273636f70652d31222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerReceiptSemanticBaseV2(scope_id='scope-1', first_retained_generation=1, last_issue_sequence=2, retired_sealed_digest='b429332347bfe9ea960fd3b90b1069d11132853282e53b1cdb41699b914a1dba', retired_receipt_fingerprints=('2fa38b5954258165d824d37521a7a8db6d406d8a525da09c303bdec3a4b5e1b6', '5a4ff68d51917065cafc76abefc0a701ee56e52fe36d498865597c54692f1345'), version=2)"
+        },
+        "empty": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": null
+          }
+        },
+        "non-object": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "not-bytes": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": null
+          }
+        },
+        "invalid-utf8": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.UnicodeDecodeError",
+              "message": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+              "cause": null
+            }
+          }
+        },
+        "deep-recursion": {
+          "error": {
+            "type": "builtins.RecursionError",
+            "message": "maximum recursion depth exceeded while decoding a JSON array from a unicode string",
+            "cause": null
+          }
+        },
+        "noncanonical": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base encoding changed",
+              "cause": null
+            }
+          }
+        },
+        "unknown-key": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "duplicate-key": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base encoding changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:firstRetainedGeneration": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:lastIssueSequence": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "lastIssueSequence:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "lastIssueSequence:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "lastIssueSequence:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "lastIssueSequence:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "lastIssueSequence:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "lastIssueSequence:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "lastIssueSequence:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:retiredReceiptFingerprints": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredReceiptFingerprints:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredReceiptFingerprints:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredReceiptFingerprints:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredReceiptFingerprints:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredReceiptFingerprints:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredReceiptFingerprints:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredReceiptFingerprints:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:retiredSealedDigest": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:scopeId": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:6": {
+          "type": "loushang.coding.package_product_worker_receipt_base_v2.CodingWorkerReceiptSemanticBaseV2",
+          "bytes": "7b22666972737452657461696e656447656e65726174696f6e223a312c226c617374497373756553657175656e6365223a322c22726574697265645265636569707446696e6765727072696e7473223a5b2232666133386235393534323538313635643832346433373532316137613864623664343036643861353235646130396333303362646563336134623565316236222c2235613466663638643531393137303635636166633736616265666330613730316565353665353266653336643439383836353539376335343639326631333435225d2c22726574697265645365616c6564446967657374223a2262343239333332333437626665396561393630666433623930623130363964313131333238353332383265353362316364623431363939623931346131646261222c2273636f70654964223a2277726f6e67222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerReceiptSemanticBaseV2(scope_id='wrong', first_retained_generation=1, last_issue_sequence=2, retired_sealed_digest='b429332347bfe9ea960fd3b90b1069d11132853282e53b1cdb41699b914a1dba', retired_receipt_fingerprints=('2fa38b5954258165d824d37521a7a8db6d406d8a525da09c303bdec3a4b5e1b6', '5a4ff68d51917065cafc76abefc0a701ee56e52fe36d498865597c54692f1345'), version=2)"
+        },
+        "missing:version": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "version:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker receipt V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker receipt V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        }
+      }
+    },
+    "CodingWorkerStartGateSemanticBaseV2": {
+      "module": "loushang.coding.package_product_worker_start_gate_base_v2",
+      "name": "CodingWorkerStartGateSemanticBaseV2",
+      "wire": {
+        "currentRecords": [
+          {
+            "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "identity": {
+              "bootId": "00000000-0000-0000-0000-000000000001",
+              "pid": 123,
+              "pidNamespaceDevice": 1,
+              "pidNamespaceInode": 2,
+              "startTicks": 456,
+              "userId": 1000
+            },
+            "journalRevision": 2,
+            "nativeClosureDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "phase": "bound",
+            "policyFingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "receiptFingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "recordDigest": "f5ba65946793ba1d367c8c691326e303a5740abfd526aabe373c55dee167c02b",
+            "recordVersion": 1,
+            "scopeId": "scope",
+            "workerIdentityFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          {
+            "attemptId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "identity": null,
+            "journalRevision": 3,
+            "nativeClosureDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "phase": "intent",
+            "policyFingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "receiptFingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "recordDigest": "ade147531fe784a4299aa6a50e5e52b624ead2423c43b599294a474fd7ef68f5",
+            "recordVersion": 1,
+            "scopeId": "scope",
+            "workerIdentityFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        ],
+        "cutoffRevision": 3,
+        "firstRetainedGeneration": 1,
+        "retiredAttemptIds": [],
+        "retiredSealedDigest": "eb7eb28e5f6f0f2b53def76a2e6726753741b5fe7c1ef371dd8d813b246cbabc",
+        "scopeId": "scope",
+        "version": 2
+      },
+      "outcomes": {
+        "valid": {
+          "type": "loushang.coding.package_product_worker_start_gate_base_v2.CodingWorkerStartGateSemanticBaseV2",
+          "bytes": "7b2263757272656e745265636f726473223a5b7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226964656e74697479223a7b22626f6f744964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22706964223a3132332c227069644e616d657370616365446576696365223a312c227069644e616d657370616365496e6f6465223a322c2273746172745469636b73223a3435362c22757365724964223a313030307d2c226a6f75726e616c5265766973696f6e223a322c226e6174697665436c6f73757265446967657374223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c227068617365223a22626f756e64222c22706f6c69637946696e6765727072696e74223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c227265636569707446696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c227265636f7264446967657374223a2266356261363539343637393362613164333637633863363931333236653330336135373430616266643532366161626533373363353564656531363763303262222c227265636f726456657273696f6e223a312c2273636f70654964223a2273636f7065222c22776f726b65724964656e7469747946696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c7b22617474656d70744964223a226262626262626262626262626262626262626262626262626262626262626262222c226964656e74697479223a6e756c6c2c226a6f75726e616c5265766973696f6e223a332c226e6174697665436c6f73757265446967657374223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c227068617365223a22696e74656e74222c22706f6c69637946696e6765727072696e74223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c227265636569707446696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c227265636f7264446967657374223a2261646531343735333166653738346134323939616136613530653565353262363234656164323432336334336235393932393461343734666437656636386635222c227265636f726456657273696f6e223a312c2273636f70654964223a2273636f7065222c22776f726b65724964656e7469747946696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d5d2c226375746f66665265766973696f6e223a332c22666972737452657461696e656447656e65726174696f6e223a312c2272657469726564417474656d7074496473223a5b5d2c22726574697265645365616c6564446967657374223a2265623765623238653566366630663262353364656637366132653637323637353337343162356665376331656633373164643864383133623234366362616263222c2273636f70654964223a2273636f7065222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerStartGateSemanticBaseV2(scope_id='scope', first_retained_generation=1, cutoff_revision=3, retired_sealed_digest='eb7eb28e5f6f0f2b53def76a2e6726753741b5fe7c1ef371dd8d813b246cbabc', current_records=(CodingWorkerStartGateRecordV1(journal_revision=2, phase='bound', attempt_id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', worker_identity_fingerprint='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', receipt_fingerprint='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', policy_fingerprint='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', scope_id='scope', native_closure_digest='ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', identity=WorkerNativeProcessIdentityV1(pid=123, start_ticks=456, boot_id='00000000-0000-0000-0000-000000000001', user_id=1000, pid_namespace_device=1, pid_namespace_inode=2), record_digest='f5ba65946793ba1d367c8c691326e303a5740abfd526aabe373c55dee167c02b'), CodingWorkerStartGateRecordV1(journal_revision=3, phase='intent', attempt_id='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', worker_identity_fingerprint='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', receipt_fingerprint='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', policy_fingerprint='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', scope_id='scope', native_closure_digest='ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', identity=None, record_digest='ade147531fe784a4299aa6a50e5e52b624ead2423c43b599294a474fd7ef68f5')), retired_attempt_ids=(), version=2)"
+        },
+        "empty": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": null
+          }
+        },
+        "non-object": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "not-bytes": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": null
+          }
+        },
+        "invalid-utf8": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.UnicodeDecodeError",
+              "message": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+              "cause": null
+            }
+          }
+        },
+        "deep-recursion": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.RecursionError",
+              "message": "maximum recursion depth exceeded while decoding a JSON array from a unicode string",
+              "cause": null
+            }
+          }
+        },
+        "noncanonical": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base encoding changed",
+              "cause": null
+            }
+          }
+        },
+        "unknown-key": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "duplicate-key": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base encoding changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:currentRecords": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "currentRecords:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "currentRecords:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "currentRecords:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "currentRecords:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "currentRecords:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "currentRecords:5": {
+          "type": "loushang.coding.package_product_worker_start_gate_base_v2.CodingWorkerStartGateSemanticBaseV2",
+          "bytes": "7b2263757272656e745265636f726473223a5b5d2c226375746f66665265766973696f6e223a332c22666972737452657461696e656447656e65726174696f6e223a312c2272657469726564417474656d7074496473223a5b5d2c22726574697265645365616c6564446967657374223a2265623765623238653566366630663262353364656637366132653637323637353337343162356665376331656633373164643864383133623234366362616263222c2273636f70654964223a2273636f7065222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerStartGateSemanticBaseV2(scope_id='scope', first_retained_generation=1, cutoff_revision=3, retired_sealed_digest='eb7eb28e5f6f0f2b53def76a2e6726753741b5fe7c1ef371dd8d813b246cbabc', current_records=(), retired_attempt_ids=(), version=2)"
+        },
+        "currentRecords:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:cutoffRevision": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:firstRetainedGeneration": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:retiredAttemptIds": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:5": {
+          "type": "loushang.coding.package_product_worker_start_gate_base_v2.CodingWorkerStartGateSemanticBaseV2",
+          "bytes": "7b2263757272656e745265636f726473223a5b7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226964656e74697479223a7b22626f6f744964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22706964223a3132332c227069644e616d657370616365446576696365223a312c227069644e616d657370616365496e6f6465223a322c2273746172745469636b73223a3435362c22757365724964223a313030307d2c226a6f75726e616c5265766973696f6e223a322c226e6174697665436c6f73757265446967657374223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c227068617365223a22626f756e64222c22706f6c69637946696e6765727072696e74223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c227265636569707446696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c227265636f7264446967657374223a2266356261363539343637393362613164333637633863363931333236653330336135373430616266643532366161626533373363353564656531363763303262222c227265636f726456657273696f6e223a312c2273636f70654964223a2273636f7065222c22776f726b65724964656e7469747946696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c7b22617474656d70744964223a226262626262626262626262626262626262626262626262626262626262626262222c226964656e74697479223a6e756c6c2c226a6f75726e616c5265766973696f6e223a332c226e6174697665436c6f73757265446967657374223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c227068617365223a22696e74656e74222c22706f6c69637946696e6765727072696e74223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c227265636569707446696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c227265636f7264446967657374223a2261646531343735333166653738346134323939616136613530653565353262363234656164323432336334336235393932393461343734666437656636386635222c227265636f726456657273696f6e223a312c2273636f70654964223a2273636f7065222c22776f726b65724964656e7469747946696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d5d2c226375746f66665265766973696f6e223a332c22666972737452657461696e656447656e65726174696f6e223a312c2272657469726564417474656d7074496473223a5b5d2c22726574697265645365616c6564446967657374223a2265623765623238653566366630663262353364656637366132653637323637353337343162356665376331656633373164643864383133623234366362616263222c2273636f70654964223a2273636f7065222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerStartGateSemanticBaseV2(scope_id='scope', first_retained_generation=1, cutoff_revision=3, retired_sealed_digest='eb7eb28e5f6f0f2b53def76a2e6726753741b5fe7c1ef371dd8d813b246cbabc', current_records=(CodingWorkerStartGateRecordV1(journal_revision=2, phase='bound', attempt_id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', worker_identity_fingerprint='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', receipt_fingerprint='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', policy_fingerprint='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', scope_id='scope', native_closure_digest='ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', identity=WorkerNativeProcessIdentityV1(pid=123, start_ticks=456, boot_id='00000000-0000-0000-0000-000000000001', user_id=1000, pid_namespace_device=1, pid_namespace_inode=2), record_digest='f5ba65946793ba1d367c8c691326e303a5740abfd526aabe373c55dee167c02b'), CodingWorkerStartGateRecordV1(journal_revision=3, phase='intent', attempt_id='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', worker_identity_fingerprint='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', receipt_fingerprint='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', policy_fingerprint='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', scope_id='scope', native_closure_digest='ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', identity=None, record_digest='ade147531fe784a4299aa6a50e5e52b624ead2423c43b599294a474fd7ef68f5')), retired_attempt_ids=(), version=2)"
+        },
+        "retiredAttemptIds:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:retiredSealedDigest": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:scopeId": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:6": {
+          "type": "loushang.coding.package_product_worker_start_gate_base_v2.CodingWorkerStartGateSemanticBaseV2",
+          "bytes": "7b2263757272656e745265636f726473223a5b7b22617474656d70744964223a226161616161616161616161616161616161616161616161616161616161616161222c226964656e74697479223a7b22626f6f744964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22706964223a3132332c227069644e616d657370616365446576696365223a312c227069644e616d657370616365496e6f6465223a322c2273746172745469636b73223a3435362c22757365724964223a313030307d2c226a6f75726e616c5265766973696f6e223a322c226e6174697665436c6f73757265446967657374223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c227068617365223a22626f756e64222c22706f6c69637946696e6765727072696e74223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c227265636569707446696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c227265636f7264446967657374223a2266356261363539343637393362613164333637633863363931333236653330336135373430616266643532366161626533373363353564656531363763303262222c227265636f726456657273696f6e223a312c2273636f70654964223a2273636f7065222c22776f726b65724964656e7469747946696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c7b22617474656d70744964223a226262626262626262626262626262626262626262626262626262626262626262222c226964656e74697479223a6e756c6c2c226a6f75726e616c5265766973696f6e223a332c226e6174697665436c6f73757265446967657374223a2266666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666222c227068617365223a22696e74656e74222c22706f6c69637946696e6765727072696e74223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c227265636569707446696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c227265636f7264446967657374223a2261646531343735333166653738346134323939616136613530653565353262363234656164323432336334336235393932393461343734666437656636386635222c227265636f726456657273696f6e223a312c2273636f70654964223a2273636f7065222c22776f726b65724964656e7469747946696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d5d2c226375746f66665265766973696f6e223a332c22666972737452657461696e656447656e65726174696f6e223a312c2272657469726564417474656d7074496473223a5b5d2c22726574697265645365616c6564446967657374223a2265623765623238653566366630663262353364656637366132653637323637353337343162356665376331656633373164643864383133623234366362616263222c2273636f70654964223a2277726f6e67222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerStartGateSemanticBaseV2(scope_id='wrong', first_retained_generation=1, cutoff_revision=3, retired_sealed_digest='eb7eb28e5f6f0f2b53def76a2e6726753741b5fe7c1ef371dd8d813b246cbabc', current_records=(CodingWorkerStartGateRecordV1(journal_revision=2, phase='bound', attempt_id='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', worker_identity_fingerprint='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', receipt_fingerprint='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', policy_fingerprint='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', scope_id='scope', native_closure_digest='ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', identity=WorkerNativeProcessIdentityV1(pid=123, start_ticks=456, boot_id='00000000-0000-0000-0000-000000000001', user_id=1000, pid_namespace_device=1, pid_namespace_inode=2), record_digest='f5ba65946793ba1d367c8c691326e303a5740abfd526aabe373c55dee167c02b'), CodingWorkerStartGateRecordV1(journal_revision=3, phase='intent', attempt_id='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', worker_identity_fingerprint='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', receipt_fingerprint='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', policy_fingerprint='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', scope_id='scope', native_closure_digest='ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', identity=None, record_digest='ade147531fe784a4299aa6a50e5e52b624ead2423c43b599294a474fd7ef68f5')), retired_attempt_ids=(), version=2)"
+        },
+        "missing:version": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "version:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker Start Gate V2 base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker Start Gate V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        }
+      }
+    },
+    "CodingWorkerActivationSemanticBaseV2": {
+      "module": "loushang.coding.package_product_worker_activation_base_v2",
+      "name": "CodingWorkerActivationSemanticBaseV2",
+      "wire": {
+        "cutoffRevision": 2,
+        "firstRetainedGeneration": 1,
+        "lastRecord": {
+          "document": {
+            "attempts": {
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:1": {
+                "attemptId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "bootIdentity": "boot-a",
+                "cleanupContractVersion": 1,
+                "cleanupDebt": null,
+                "cleanupSettlement": null,
+                "domainRetired": false,
+                "evidenceAuthorityFingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "evidenceAuthorityId": "evidence-a",
+                "hostIdentity": "host-a",
+                "owner": "hosting",
+                "ownerGeneration": 1,
+                "phase": "registered",
+                "policyFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "protocolTerminal": false,
+                "readiness": "pending",
+                "receiptFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "required": false,
+                "restartOrdinal": 0
+              }
+            },
+            "killSwitchGeneration": 0,
+            "killSwitchPriorGeneration": 0,
+            "killSwitchState": "open",
+            "publications": {},
+            "restartBudget": 3,
+            "stateRevision": 2,
+            "stateVersion": 2
+          },
+          "documentDigest": "4fed7e39bd787550c8803e25211573338987bf2bf6428d8803e163630a8cb95e",
+          "journalRevision": 2,
+          "recordVersion": 1
+        },
+        "retiredAttemptIds": [],
+        "retiredSealedDigest": "986fa198cb8c9ce965d40a9e1a46284fe65e8acb6c0b0f2a309fb393c25bc753",
+        "scopeId": "scope",
+        "version": 2
+      },
+      "outcomes": {
+        "valid": {
+          "type": "loushang.coding.package_product_worker_activation_base_v2.CodingWorkerActivationSemanticBaseV2",
+          "bytes": "7b226375746f66665265766973696f6e223a322c22666972737452657461696e656447656e65726174696f6e223a312c226c6173745265636f7264223a7b22646f63756d656e74223a7b22617474656d707473223a7b22616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161613a62626262626262626262626262626262626262626262626262626262626262623a31223a7b22617474656d70744964223a226262626262626262626262626262626262626262626262626262626262626262222c22626f6f744964656e74697479223a22626f6f742d61222c22636c65616e7570436f6e747261637456657273696f6e223a312c22636c65616e757044656274223a6e756c6c2c22636c65616e7570536574746c656d656e74223a6e756c6c2c22646f6d61696e52657469726564223a66616c73652c2265766964656e6365417574686f7269747946696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2265766964656e6365417574686f726974794964223a2265766964656e63652d61222c22686f73744964656e74697479223a22686f73742d61222c226f776e6572223a22686f7374696e67222c226f776e657247656e65726174696f6e223a312c227068617365223a2272656769737465726564222c22706f6c69637946696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c2270726f746f636f6c5465726d696e616c223a66616c73652c2272656164696e657373223a2270656e64696e67222c227265636569707446696e6765727072696e74223a2261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c227265717569726564223a66616c73652c22726573746172744f7264696e616c223a307d7d2c226b696c6c53776974636847656e65726174696f6e223a302c226b696c6c5377697463685072696f7247656e65726174696f6e223a302c226b696c6c5377697463685374617465223a226f70656e222c227075626c69636174696f6e73223a7b7d2c2272657374617274427564676574223a332c2273746174655265766973696f6e223a322c22737461746556657273696f6e223a327d2c22646f63756d656e74446967657374223a2234666564376533396264373837353530633838303365323532313135373333333839383762663262663634323864383830336531363336333061386362393565222c226a6f75726e616c5265766973696f6e223a322c227265636f726456657273696f6e223a317d2c2272657469726564417474656d7074496473223a5b5d2c22726574697265645365616c6564446967657374223a2239383666613139386362386339636539363564343061396531613436323834666536356538616362366330623066326133303966623339336332356263373533222c2273636f70654964223a2273636f7065222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerActivationSemanticBaseV2(scope_id='scope', first_retained_generation=1, cutoff_revision=2, retired_sealed_digest='986fa198cb8c9ce965d40a9e1a46284fe65e8acb6c0b0f2a309fb393c25bc753', last_record=_StateRecord(journal_revision=2, document={'attempts': {'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:1': {'attemptId': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'bootIdentity': 'boot-a', 'cleanupContractVersion': 1, 'cleanupDebt': None, 'cleanupSettlement': None, 'domainRetired': False, 'evidenceAuthorityFingerprint': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'evidenceAuthorityId': 'evidence-a', 'hostIdentity': 'host-a', 'owner': 'hosting', 'ownerGeneration': 1, 'phase': 'registered', 'policyFingerprint': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'protocolTerminal': False, 'readiness': 'pending', 'receiptFingerprint': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'required': False, 'restartOrdinal': 0}}, 'killSwitchGeneration': 0, 'killSwitchPriorGeneration': 0, 'killSwitchState': 'open', 'publications': {}, 'restartBudget': 3, 'stateRevision': 2, 'stateVersion': 2}, document_digest='4fed7e39bd787550c8803e25211573338987bf2bf6428d8803e163630a8cb95e'), retired_attempt_ids=(), version=2)"
+        },
+        "empty": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": null
+          }
+        },
+        "non-object": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "not-bytes": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": null
+          }
+        },
+        "invalid-utf8": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.UnicodeDecodeError",
+              "message": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+              "cause": null
+            }
+          }
+        },
+        "deep-recursion": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.RecursionError",
+              "message": "maximum recursion depth exceeded while decoding a JSON array from a unicode string",
+              "cause": null
+            }
+          }
+        },
+        "noncanonical": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base encoding changed",
+              "cause": null
+            }
+          }
+        },
+        "unknown-key": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "duplicate-key": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base encoding changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:cutoffRevision": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "cutoffRevision:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:firstRetainedGeneration": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "firstRetainedGeneration:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:lastRecord": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "lastRecord:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Worker activation state record fields are invalid",
+              "cause": null
+            }
+          }
+        },
+        "lastRecord:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Worker activation state record fields are invalid",
+              "cause": null
+            }
+          }
+        },
+        "lastRecord:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Worker activation state record fields are invalid",
+              "cause": null
+            }
+          }
+        },
+        "lastRecord:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Worker activation state record fields are invalid",
+              "cause": null
+            }
+          }
+        },
+        "lastRecord:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Worker activation state record fields are invalid",
+              "cause": null
+            }
+          }
+        },
+        "lastRecord:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Worker activation state record fields are invalid",
+              "cause": null
+            }
+          }
+        },
+        "lastRecord:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Worker activation state record fields are invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:retiredAttemptIds": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredAttemptIds:5": {
+          "type": "loushang.coding.package_product_worker_activation_base_v2.CodingWorkerActivationSemanticBaseV2",
+          "bytes": "7b226375746f66665265766973696f6e223a322c22666972737452657461696e656447656e65726174696f6e223a312c226c6173745265636f7264223a7b22646f63756d656e74223a7b22617474656d707473223a7b22616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161613a62626262626262626262626262626262626262626262626262626262626262623a31223a7b22617474656d70744964223a226262626262626262626262626262626262626262626262626262626262626262222c22626f6f744964656e74697479223a22626f6f742d61222c22636c65616e7570436f6e747261637456657273696f6e223a312c22636c65616e757044656274223a6e756c6c2c22636c65616e7570536574746c656d656e74223a6e756c6c2c22646f6d61696e52657469726564223a66616c73652c2265766964656e6365417574686f7269747946696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2265766964656e6365417574686f726974794964223a2265766964656e63652d61222c22686f73744964656e74697479223a22686f73742d61222c226f776e6572223a22686f7374696e67222c226f776e657247656e65726174696f6e223a312c227068617365223a2272656769737465726564222c22706f6c69637946696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c2270726f746f636f6c5465726d696e616c223a66616c73652c2272656164696e657373223a2270656e64696e67222c227265636569707446696e6765727072696e74223a2261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c227265717569726564223a66616c73652c22726573746172744f7264696e616c223a307d7d2c226b696c6c53776974636847656e65726174696f6e223a302c226b696c6c5377697463685072696f7247656e65726174696f6e223a302c226b696c6c5377697463685374617465223a226f70656e222c227075626c69636174696f6e73223a7b7d2c2272657374617274427564676574223a332c2273746174655265766973696f6e223a322c22737461746556657273696f6e223a327d2c22646f63756d656e74446967657374223a2234666564376533396264373837353530633838303365323532313135373333333839383762663262663634323864383830336531363336333061386362393565222c226a6f75726e616c5265766973696f6e223a322c227265636f726456657273696f6e223a317d2c2272657469726564417474656d7074496473223a5b5d2c22726574697265645365616c6564446967657374223a2239383666613139386362386339636539363564343061396531613436323834666536356538616362366330623066326133303966623339336332356263373533222c2273636f70654964223a2273636f7065222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerActivationSemanticBaseV2(scope_id='scope', first_retained_generation=1, cutoff_revision=2, retired_sealed_digest='986fa198cb8c9ce965d40a9e1a46284fe65e8acb6c0b0f2a309fb393c25bc753', last_record=_StateRecord(journal_revision=2, document={'attempts': {'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:1': {'attemptId': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'bootIdentity': 'boot-a', 'cleanupContractVersion': 1, 'cleanupDebt': None, 'cleanupSettlement': None, 'domainRetired': False, 'evidenceAuthorityFingerprint': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'evidenceAuthorityId': 'evidence-a', 'hostIdentity': 'host-a', 'owner': 'hosting', 'ownerGeneration': 1, 'phase': 'registered', 'policyFingerprint': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'protocolTerminal': False, 'readiness': 'pending', 'receiptFingerprint': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'required': False, 'restartOrdinal': 0}}, 'killSwitchGeneration': 0, 'killSwitchPriorGeneration': 0, 'killSwitchState': 'open', 'publications': {}, 'restartBudget': 3, 'stateRevision': 2, 'stateVersion': 2}, document_digest='4fed7e39bd787550c8803e25211573338987bf2bf6428d8803e163630a8cb95e'), retired_attempt_ids=(), version=2)"
+        },
+        "retiredAttemptIds:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "missing:retiredSealedDigest": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "retiredSealedDigest:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "missing:scopeId": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "scopeId:6": {
+          "type": "loushang.coding.package_product_worker_activation_base_v2.CodingWorkerActivationSemanticBaseV2",
+          "bytes": "7b226375746f66665265766973696f6e223a322c22666972737452657461696e656447656e65726174696f6e223a312c226c6173745265636f7264223a7b22646f63756d656e74223a7b22617474656d707473223a7b22616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161613a62626262626262626262626262626262626262626262626262626262626262623a31223a7b22617474656d70744964223a226262626262626262626262626262626262626262626262626262626262626262222c22626f6f744964656e74697479223a22626f6f742d61222c22636c65616e7570436f6e747261637456657273696f6e223a312c22636c65616e757044656274223a6e756c6c2c22636c65616e7570536574746c656d656e74223a6e756c6c2c22646f6d61696e52657469726564223a66616c73652c2265766964656e6365417574686f7269747946696e6765727072696e74223a2264646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464222c2265766964656e6365417574686f726974794964223a2265766964656e63652d61222c22686f73744964656e74697479223a22686f73742d61222c226f776e6572223a22686f7374696e67222c226f776e657247656e65726174696f6e223a312c227068617365223a2272656769737465726564222c22706f6c69637946696e6765727072696e74223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c2270726f746f636f6c5465726d696e616c223a66616c73652c2272656164696e657373223a2270656e64696e67222c227265636569707446696e6765727072696e74223a2261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c227265717569726564223a66616c73652c22726573746172744f7264696e616c223a307d7d2c226b696c6c53776974636847656e65726174696f6e223a302c226b696c6c5377697463685072696f7247656e65726174696f6e223a302c226b696c6c5377697463685374617465223a226f70656e222c227075626c69636174696f6e73223a7b7d2c2272657374617274427564676574223a332c2273746174655265766973696f6e223a322c22737461746556657273696f6e223a327d2c22646f63756d656e74446967657374223a2234666564376533396264373837353530633838303365323532313135373333333839383762663262663634323864383830336531363336333061386362393565222c226a6f75726e616c5265766973696f6e223a322c227265636f726456657273696f6e223a317d2c2272657469726564417474656d7074496473223a5b5d2c22726574697265645365616c6564446967657374223a2239383666613139386362386339636539363564343061396531613436323834666536356538616362366330623066326133303966623339336332356263373533222c2273636f70654964223a2277726f6e67222c2276657273696f6e223a327d",
+          "repr": "CodingWorkerActivationSemanticBaseV2(scope_id='wrong', first_retained_generation=1, cutoff_revision=2, retired_sealed_digest='986fa198cb8c9ce965d40a9e1a46284fe65e8acb6c0b0f2a309fb393c25bc753', last_record=_StateRecord(journal_revision=2, document={'attempts': {'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:1': {'attemptId': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'bootIdentity': 'boot-a', 'cleanupContractVersion': 1, 'cleanupDebt': None, 'cleanupSettlement': None, 'domainRetired': False, 'evidenceAuthorityFingerprint': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'evidenceAuthorityId': 'evidence-a', 'hostIdentity': 'host-a', 'owner': 'hosting', 'ownerGeneration': 1, 'phase': 'registered', 'policyFingerprint': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'protocolTerminal': False, 'readiness': 'pending', 'receiptFingerprint': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'required': False, 'restartOrdinal': 0}}, 'killSwitchGeneration': 0, 'killSwitchPriorGeneration': 0, 'killSwitchState': 'open', 'publications': {}, 'restartBudget': 3, 'stateRevision': 2, 'stateVersion': 2}, document_digest='4fed7e39bd787550c8803e25211573338987bf2bf6428d8803e163630a8cb95e'), retired_attempt_ids=(), version=2)"
+        },
+        "missing:version": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base fields changed",
+              "cause": null
+            }
+          }
+        },
+        "version:0": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:1": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:2": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:3": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:4": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:5": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        },
+        "version:6": {
+          "error": {
+            "type": "builtins.ValueError",
+            "message": "Coding Worker C5 V2 semantic base bytes are invalid",
+            "cause": {
+              "type": "builtins.ValueError",
+              "message": "Coding Worker C5 V2 semantic base is invalid",
+              "cause": null
+            }
+          }
+        }
+      }
+    }
+  }
+}

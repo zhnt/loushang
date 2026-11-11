@@ -17,6 +17,7 @@ from importlib.machinery import ModuleSpec, PathFinder
 from pathlib import Path
 from typing import Literal
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.resources.plugins.dependencies import (
     PluginPythonDistributionLock,
     canonical_python_distribution_name,
@@ -626,13 +627,9 @@ def _resolve_existing_path(path: str | Path) -> Path | None:
         return None
 
 
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    document: dict[str, object] = {}
-    for key, value in pairs:
-        if key in document:
-            raise ValueError("Duplicate installed-distribution metadata field")
-        document[key] = value
-    return document
+_unique_json_object = _unique_json_object_hook(
+    lambda: 'Duplicate installed-distribution metadata field',
+)
 
 
 def _valid_top_level_package(value: object) -> bool:

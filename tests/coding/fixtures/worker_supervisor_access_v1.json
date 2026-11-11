@@ -1,0 +1,337 @@
+{
+  "origin": "original archived source; public class path guard; exclusive capture",
+  "cases": {
+    "construct": {
+      "trace": [],
+      "result": null,
+      "error": null,
+      "files": [],
+      "active_cleared": true
+    },
+    "empty": {
+      "trace": [
+        [
+          "guard-enter",
+          false
+        ],
+        "current",
+        "current",
+        [
+          "guard-exit",
+          false
+        ]
+      ],
+      "result": null,
+      "error": null,
+      "files": [],
+      "active_cleared": true
+    },
+    "claim": {
+      "trace": [
+        [
+          "guard-enter",
+          true
+        ],
+        "current",
+        [
+          "scope",
+          "scope"
+        ],
+        [
+          "store",
+          "store"
+        ],
+        "current",
+        [
+          "guard-exit",
+          true
+        ]
+      ],
+      "result": {
+        "attemptId": "11111111111111111111111111111111",
+        "failureCode": null,
+        "identityFingerprint": "81f9bec131127f601e533eeaab226884d2a3c74db7a83d31977eb77089d7fcc8",
+        "phase": "claimed",
+        "priorAttemptRevision": 0,
+        "recordRevision": 1,
+        "recordVersion": 1,
+        "restartOrdinal": 1,
+        "supervisorEpoch": 1,
+        "supervisorKey": "e2f4bb356d05458ee0d5157dc14c873e0ac56605a202d4f7c45f735e60ae579c"
+      },
+      "error": null,
+      "files": [
+        "worker-supervisor.head.json",
+        "worker-supervisor.jsonl",
+        "worker-supervisor.jsonl.lock"
+      ],
+      "active_cleared": true
+    },
+    "late-current": {
+      "trace": [
+        [
+          "guard-enter",
+          true
+        ],
+        "current",
+        [
+          "scope",
+          "scope"
+        ],
+        [
+          "store",
+          "store"
+        ],
+        "current",
+        [
+          "guard-exit",
+          true
+        ],
+        [
+          "guard-enter",
+          false
+        ],
+        "current",
+        "current",
+        [
+          "guard-exit",
+          false
+        ]
+      ],
+      "result": {
+        "attemptId": "11111111111111111111111111111111",
+        "failureCode": null,
+        "identityFingerprint": "81f9bec131127f601e533eeaab226884d2a3c74db7a83d31977eb77089d7fcc8",
+        "phase": "claimed",
+        "priorAttemptRevision": 0,
+        "recordRevision": 1,
+        "recordVersion": 1,
+        "restartOrdinal": 1,
+        "supervisorEpoch": 1,
+        "supervisorKey": "e2f4bb356d05458ee0d5157dc14c873e0ac56605a202d4f7c45f735e60ae579c"
+      },
+      "error": [
+        [
+          "OSError",
+          "late currentness failure",
+          null,
+          false
+        ]
+      ],
+      "files": [
+        "worker-supervisor.head.json",
+        "worker-supervisor.jsonl",
+        "worker-supervisor.jsonl.lock"
+      ],
+      "active_cleared": true
+    },
+    "failed-transition": {
+      "trace": [
+        [
+          "guard-enter",
+          true
+        ],
+        "current",
+        [
+          "scope",
+          "scope"
+        ],
+        [
+          "store",
+          "store"
+        ],
+        "current",
+        [
+          "guard-exit",
+          true
+        ],
+        [
+          "guard-enter",
+          true
+        ],
+        "current",
+        [
+          "guard-exit",
+          true
+        ]
+      ],
+      "result": {
+        "attemptId": "11111111111111111111111111111111",
+        "failureCode": null,
+        "identityFingerprint": "81f9bec131127f601e533eeaab226884d2a3c74db7a83d31977eb77089d7fcc8",
+        "phase": "claimed",
+        "priorAttemptRevision": 0,
+        "recordRevision": 1,
+        "recordVersion": 1,
+        "restartOrdinal": 1,
+        "supervisorEpoch": 1,
+        "supervisorKey": "e2f4bb356d05458ee0d5157dc14c873e0ac56605a202d4f7c45f735e60ae579c"
+      },
+      "error": [
+        [
+          "WorkerSupervisorJournalError",
+          "Worker attempt compare-and-swap failed",
+          "worker_attempt_cas_conflict",
+          false
+        ]
+      ],
+      "files": [
+        "worker-supervisor.head.json",
+        "worker-supervisor.jsonl",
+        "worker-supervisor.jsonl.lock"
+      ],
+      "active_cleared": true
+    },
+    "v2": {
+      "trace": [
+        [
+          "guard-enter",
+          false
+        ],
+        "current",
+        [
+          "scope",
+          "scope"
+        ],
+        [
+          "store",
+          "store"
+        ],
+        "current",
+        [
+          "guard-exit",
+          false
+        ]
+      ],
+      "result": {
+        "attemptId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "failureCode": null,
+        "identityFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "phase": "launching",
+        "priorAttemptRevision": 4,
+        "recordRevision": 5,
+        "recordVersion": 1,
+        "restartOrdinal": 2,
+        "supervisorEpoch": 2,
+        "supervisorKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "error": null,
+      "files": [
+        "worker-activation-receipts.g00000001.head.json",
+        "worker-activation-receipts.g00000001.jsonl",
+        "worker-activation-receipts.head.json",
+        "worker-activation-receipts.jsonl",
+        "worker-activation-receipts.segments.json",
+        "worker-activation-state.g00000001.head.json",
+        "worker-activation-state.g00000001.jsonl",
+        "worker-activation-state.head.json",
+        "worker-activation-state.jsonl",
+        "worker-activation-state.segments.json",
+        "worker-history-checkpoint-owner.json",
+        "worker-history-checkpoints.head.json",
+        "worker-history-checkpoints.jsonl",
+        "worker-history-v2-index.candidate.json",
+        "worker-history-v2-owner.json",
+        "worker-history-v2-preparation.json",
+        "worker-history-v2-worker-activation-receipts.base.json",
+        "worker-history-v2-worker-activation-receipts.cutover.json",
+        "worker-history-v2-worker-activation-state.base.json",
+        "worker-history-v2-worker-activation-state.cutover.json",
+        "worker-history-v2-worker-opt-in.base.json",
+        "worker-history-v2-worker-opt-in.cutover.json",
+        "worker-history-v2-worker-start-gates.base.json",
+        "worker-history-v2-worker-start-gates.cutover.json",
+        "worker-history-v2-worker-supervisor.base.json",
+        "worker-history-v2-worker-supervisor.cutover.json",
+        "worker-opt-in.g00000001.head.json",
+        "worker-opt-in.g00000001.jsonl",
+        "worker-opt-in.head.json",
+        "worker-opt-in.jsonl",
+        "worker-opt-in.segments.json",
+        "worker-start-gates.g00000001.head.json",
+        "worker-start-gates.g00000001.jsonl",
+        "worker-start-gates.head.json",
+        "worker-start-gates.jsonl",
+        "worker-start-gates.segments.json",
+        "worker-supervisor.g00000001.head.json",
+        "worker-supervisor.g00000001.jsonl",
+        "worker-supervisor.head.json",
+        "worker-supervisor.jsonl",
+        "worker-supervisor.jsonl.lock",
+        "worker-supervisor.segments.json"
+      ],
+      "active_cleared": true
+    },
+    "changed-scope": {
+      "trace": [
+        [
+          "guard-enter",
+          false
+        ],
+        "current",
+        [
+          "scope",
+          "changed-after-construction"
+        ],
+        [
+          "guard-exit",
+          false
+        ]
+      ],
+      "result": null,
+      "error": [
+        [
+          "WorkerSupervisorJournalError",
+          "Worker Supervisor V2 owner changed",
+          "worker_supervisor_journal_corrupt",
+          false
+        ]
+      ],
+      "files": [
+        "worker-activation-receipts.g00000001.head.json",
+        "worker-activation-receipts.g00000001.jsonl",
+        "worker-activation-receipts.head.json",
+        "worker-activation-receipts.jsonl",
+        "worker-activation-receipts.segments.json",
+        "worker-activation-state.g00000001.head.json",
+        "worker-activation-state.g00000001.jsonl",
+        "worker-activation-state.head.json",
+        "worker-activation-state.jsonl",
+        "worker-activation-state.segments.json",
+        "worker-history-checkpoint-owner.json",
+        "worker-history-checkpoints.head.json",
+        "worker-history-checkpoints.jsonl",
+        "worker-history-v2-index.candidate.json",
+        "worker-history-v2-owner.json",
+        "worker-history-v2-preparation.json",
+        "worker-history-v2-worker-activation-receipts.base.json",
+        "worker-history-v2-worker-activation-receipts.cutover.json",
+        "worker-history-v2-worker-activation-state.base.json",
+        "worker-history-v2-worker-activation-state.cutover.json",
+        "worker-history-v2-worker-opt-in.base.json",
+        "worker-history-v2-worker-opt-in.cutover.json",
+        "worker-history-v2-worker-start-gates.base.json",
+        "worker-history-v2-worker-start-gates.cutover.json",
+        "worker-history-v2-worker-supervisor.base.json",
+        "worker-history-v2-worker-supervisor.cutover.json",
+        "worker-opt-in.g00000001.head.json",
+        "worker-opt-in.g00000001.jsonl",
+        "worker-opt-in.head.json",
+        "worker-opt-in.jsonl",
+        "worker-opt-in.segments.json",
+        "worker-start-gates.g00000001.head.json",
+        "worker-start-gates.g00000001.jsonl",
+        "worker-start-gates.head.json",
+        "worker-start-gates.jsonl",
+        "worker-start-gates.segments.json",
+        "worker-supervisor.g00000001.head.json",
+        "worker-supervisor.g00000001.jsonl",
+        "worker-supervisor.head.json",
+        "worker-supervisor.jsonl",
+        "worker-supervisor.jsonl.lock",
+        "worker-supervisor.segments.json"
+      ],
+      "active_cleared": true
+    }
+  }
+}

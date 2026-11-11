@@ -6,7 +6,6 @@ cannot replace the original journals, permit a fresh attempt, or delete bytes.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from dataclasses import asdict, dataclass
@@ -15,9 +14,14 @@ from hashlib import sha256
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
+from loushang.harness.worker.history._base_codec import _BaseWireMethods, _unchanged
 
 from .package_legacy_windows_receipt import (
     read_windows_private_receipt,
@@ -77,8 +81,17 @@ def _semantic_digest(semantic: CodingWindowsWorkerHistorySemanticReadV1) -> str:
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsWorkerHistoryPreparationV1:
+class CodingWindowsWorkerHistoryPreparationV1(_BaseWireMethods):
     """A no-authority commitment to exact source and semantic identities."""
+
+    _wire_label = "Windows Worker history preparation"
+    _wire_lists = ()
+    _wire_invalid_bytes = _wire_invalid_fields = _wire_invalid_encoding = "is invalid"
+    _wire_errors = (TypeError, UnicodeError, ValueError)
+
+    @classmethod
+    def _wire_maximum(cls) -> int:
+        return _MAX_RECORD_BYTES
 
     source_snapshot: CodingWindowsWorkerHistorySourceSnapshotV1
     semantic_digest: str
@@ -130,33 +143,6 @@ class CodingWindowsWorkerHistoryPreparationV1:
             record_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
         )
 
-    @classmethod
-    def from_bytes(cls, raw: bytes) -> CodingWindowsWorkerHistoryPreparationV1:
-        if type(raw) is not bytes or not raw or len(raw) > _MAX_RECORD_BYTES:
-            raise ValueError("Windows Worker history preparation is invalid")
-        try:
-            value = json.loads(raw)
-            if type(value) is not dict or set(value) != {
-                "recordVersion",
-                "semanticDigest",
-                "sourceSnapshot",
-                "recordDigest",
-            }:
-                raise ValueError("Windows Worker history preparation is invalid")
-            record = cls(
-                source_snapshot=CodingWindowsWorkerHistorySourceSnapshotV1.from_dict(
-                    value["sourceSnapshot"]
-                ),
-                semantic_digest=value["semanticDigest"],
-                record_digest=value["recordDigest"],
-                record_version=value["recordVersion"],
-            )
-            if record.to_bytes() != raw:
-                raise ValueError("Windows Worker history preparation is invalid")
-            return record
-        except (TypeError, UnicodeError, ValueError) as exc:
-            raise ValueError("Windows Worker history preparation is invalid") from exc
-
     def require_semantic_read(
         self, semantic: CodingWindowsWorkerHistorySemanticReadV1
     ) -> None:
@@ -166,6 +152,18 @@ class CodingWindowsWorkerHistoryPreparationV1:
             or _semantic_digest(semantic) != self.semantic_digest
         ):
             raise ValueError("Windows Worker history semantic read changed")
+
+
+CodingWindowsWorkerHistoryPreparationV1._wire_schema = RecordSchema.for_dataclass(
+    CodingWindowsWorkerHistoryPreparationV1,
+    _unchanged,
+    RecordField(
+        "source_snapshot",
+        decoder=lambda value: CodingWindowsWorkerHistorySourceSnapshotV1.from_dict(
+            value
+        ),
+    ),
+)
 
 
 def prepare_coding_windows_worker_history(

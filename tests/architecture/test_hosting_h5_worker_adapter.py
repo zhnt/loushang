@@ -4,9 +4,7 @@ import ast
 import re
 from pathlib import Path
 
-SPECIFICATION = Path(
-    "docs/internals/architecture/hosting/harness-worker-adapter-h5.md"
-)
+SPECIFICATION = Path("docs/internals/architecture/hosting/harness-worker-adapter-h5.md")
 ADAPTER = Path("src/loushang/harness/worker/hosting_adapter.py")
 SELECTION = Path("src/loushang/harness/worker/owner_selection.py")
 SESSION = Path("src/loushang/harness/worker/session.py")
@@ -129,12 +127,19 @@ def test_h5_adapter_is_not_composed_by_non_worker_production_modules() -> None:
         "WorkerHostingActivationV1",
         "WorkerSessionOwnerRouter",
     }
+    # A63 retains the earlier explicit Product query; it never selects H5c routing.
+    accepted_consumers = {
+        HARNESS_ROOT / "session/_worker_operator_query.py": {
+            "HostingManagedWorkerSessionAdapter"
+        }
+    }
     consumers: set[Path] = set()
     for path in HARNESS_ROOT.rglob("*.py"):
         if path.is_relative_to(WORKER_ROOT):
             continue
         source = path.read_text(encoding="utf-8")
-        if any(name in source for name in forbidden_names):
+        names = forbidden_names - accepted_consumers.get(path, set())
+        if any(name in source for name in names):
             consumers.add(path)
     assert consumers == set()
 
@@ -144,4 +149,6 @@ def test_h5_adapter_is_not_composed_by_non_worker_production_modules() -> None:
         for path in Path("src/loushang/hosting").rglob("*.py")
         for imported in _imports(path)
     }
-    assert not any(imported.startswith("loushang.harness") for imported in hosting_imports)
+    assert not any(
+        imported.startswith("loushang.harness") for imported in hosting_imports
+    )

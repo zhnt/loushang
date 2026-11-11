@@ -416,7 +416,7 @@ def test_G17_AUTHORITY_unverifiable_real_resume_is_not_missing(tmp_path, monkeyp
         else:
             def unreadable(*_args, **_kwargs):
                 raise PermissionError("private-read-sentinel")
-            monkeypatch.setattr("loushang.coding.hosted_catalog.load_agent_transcript_header", unreadable)
+            monkeypatch.setattr("loushang.harness.transcript.jsonl_file.load_agent_transcript_header", unreadable)
         attempt = create_coding_hosted_attempt(launch, session_discovery=True)
         app = await attempt.open()
         try:

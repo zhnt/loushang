@@ -9,6 +9,9 @@ from typing import Any
 import pytest
 
 import loushang.coding.package_product_worker_windows_crash_stage_retirement as retirement
+import loushang.coding.package_product_worker_windows_stage_retirement as stage_retirement
+import loushang.coding.package_product_worker_windows_stage_review as stage_review
+import loushang.harness.package_product._worker_windows_attempt as worker_attempt
 from loushang.coding.package_product_worker_windows_crash_stage_review import (
     CodingWindowsWorkerCrashStageReviewV1,
 )
@@ -231,17 +234,19 @@ def test_windows_crash_stage_retirement_resumes_after_root_delete(
         assert not state["stage_present"]
 
     monkeypatch.setattr(retirement, "WindowsLocalWheelProductSessionOwner", Product)
-    monkeypatch.setattr(
-        retirement,
-        "os",
-        SimpleNamespace(
-            name="nt",
-            fstat=lambda _fd: object(),
-            path=SimpleNamespace(samestat=lambda _a, _b: True),
-        ),
+    os_port = SimpleNamespace(
+        name="nt",
+        fstat=lambda _fd: object(),
+        path=SimpleNamespace(samestat=lambda _a, _b: True),
     )
-    monkeypatch.setattr(retirement, "WindowsPrivateDirectoryAcl", acl_guard)
-    monkeypatch.setattr(retirement, "_require_direct", lambda *_a, **_k: None)
+    monkeypatch.setattr(retirement, "os", os_port)
+    monkeypatch.setattr(worker_attempt, "os", os_port)
+    monkeypatch.setattr(worker_attempt, "WindowsPrivateDirectoryAcl", acl_guard)
+    monkeypatch.setattr(
+        stage_review,
+        "_inspection",
+        lambda: SimpleNamespace(require_direct=lambda *_a, **_k: None),
+    )
     monkeypatch.setattr(retirement, "_require_no_other_retirement", lambda *_a: None)
     monkeypatch.setattr(
         retirement,
@@ -257,7 +262,7 @@ def test_windows_crash_stage_retirement_resumes_after_root_delete(
     monkeypatch.setattr(retirement, "_read_intent_under_gc_guard", lambda *_a: object())
     monkeypatch.setattr(retirement, "_remove_remaining_stage", delete_stage)
     monkeypatch.setattr(
-        retirement,
+        stage_retirement,
         "read_windows_private_receipt",
         lambda path, **_k: stored.get(path),
     )

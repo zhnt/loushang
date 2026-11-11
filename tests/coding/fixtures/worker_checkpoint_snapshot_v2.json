@@ -1,0 +1,266 @@
+[
+  {
+    "snapshots": [
+      {
+        "activeGeneration": 1,
+        "fingerprint": "4e05107fc496dbf3a701ac1f2c994228a51797e816a5a3bd880416c4f20f8f15",
+        "lastSealedRevision": 2,
+        "segmentByteCounts": [
+          836,
+          1112
+        ],
+        "segmentDigests": [
+          "c4b41e8fd26c30b3d1fd4d4b5f206a41bbd989aa1db5b482ee814be5063b6e66",
+          "03bbac388e215ba241db31974c45b7860da95984611a3b1a3e178cc11a3c24f1"
+        ],
+        "stem": "worker-opt-in",
+        "totalRevision": 4,
+        "version": 1
+      },
+      {
+        "activeGeneration": 1,
+        "fingerprint": "10db6928ec0e1eb19b4f89f953632ebb8d3c8403c1676360a1b2d7f625b9487b",
+        "lastSealedRevision": 1,
+        "segmentByteCounts": [
+          1739,
+          0
+        ],
+        "segmentDigests": [
+          "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        ],
+        "stem": "worker-activation-receipts",
+        "totalRevision": 1,
+        "version": 1
+      },
+      {
+        "activeGeneration": 1,
+        "fingerprint": "80908421d631483aaad5d592d288038484f6f3ae408bde5053d8cf7f64750f4f",
+        "lastSealedRevision": 2,
+        "segmentByteCounts": [
+          1345,
+          1944
+        ],
+        "segmentDigests": [
+          "0bfdfb7539279ac6cf1ada731d753fff5b81fb3fc867b24f326c50c4134322a6",
+          "e22ccc54734915c0e29d6942af5b4602a20fe26910cb03c336e32442391c0ffd"
+        ],
+        "stem": "worker-activation-state",
+        "totalRevision": 5,
+        "version": 1
+      },
+      {
+        "activeGeneration": 1,
+        "fingerprint": "9a0af0332b04d6bd8124307ae37df6cb1b913207fcba229cd08ebdfa175f8bb0",
+        "lastSealedRevision": 3,
+        "segmentByteCounts": [
+          1867,
+          709
+        ],
+        "segmentDigests": [
+          "5c8994674bdc74d627b88a494a71f75c77b7f5a1ad329d8e4a38cc97939914be",
+          "96aee0afcc8f8665c7a406302a12889f8d86a43b022166b40a22d42ea57c6b84"
+        ],
+        "stem": "worker-start-gates",
+        "totalRevision": 4,
+        "version": 1
+      },
+      {
+        "activeGeneration": 1,
+        "fingerprint": "3fe22c36d2403131265d937636f566be769114f88040db78ca3d512b3a016b3b",
+        "lastSealedRevision": 3,
+        "segmentByteCounts": [
+          1161,
+          758
+        ],
+        "segmentDigests": [
+          "3c12fc9766c436ab5a15677d97339710991c2b57f13ff6cced0df9c3d99c37f4",
+          "df8f6f88c232132726e0693c2bd94afad4af4cbd02e2d06f594279634d5f1db1"
+        ],
+        "stem": "worker-supervisor",
+        "totalRevision": 5,
+        "version": 1
+      }
+    ]
+  },
+  {
+    "snapshots": [
+      {
+        "activeGeneration": 1,
+        "fingerprint": "4e05107fc496dbf3a701ac1f2c994228a51797e816a5a3bd880416c4f20f8f15",
+        "lastSealedRevision": 2,
+        "segmentByteCounts": [
+          836,
+          1112
+        ],
+        "segmentDigests": [
+          "c4b41e8fd26c30b3d1fd4d4b5f206a41bbd989aa1db5b482ee814be5063b6e66",
+          "03bbac388e215ba241db31974c45b7860da95984611a3b1a3e178cc11a3c24f1"
+        ],
+        "stem": "worker-opt-in",
+        "totalRevision": 4,
+        "version": 1
+      },
+      {
+        "activeGeneration": 1,
+        "fingerprint": "10db6928ec0e1eb19b4f89f953632ebb8d3c8403c1676360a1b2d7f625b9487b",
+        "lastSealedRevision": 1,
+        "segmentByteCounts": [
+          1739,
+          0
+        ],
+        "segmentDigests": [
+          "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        ],
+        "stem": "worker-activation-receipts",
+        "totalRevision": 1,
+        "version": 1
+      },
+      {
+        "activeGeneration": 1,
+        "fingerprint": "80908421d631483aaad5d592d288038484f6f3ae408bde5053d8cf7f64750f4f",
+        "lastSealedRevision": 2,
+        "segmentByteCounts": [
+          1345,
+          1944
+        ],
+        "segmentDigests": [
+          "0bfdfb7539279ac6cf1ada731d753fff5b81fb3fc867b24f326c50c4134322a6",
+          "e22ccc54734915c0e29d6942af5b4602a20fe26910cb03c336e32442391c0ffd"
+        ],
+        "stem": "worker-activation-state",
+        "totalRevision": 5,
+        "version": 1
+      },
+      {
+        "activeGeneration": 1,
+        "fingerprint": "9a0af0332b04d6bd8124307ae37df6cb1b913207fcba229cd08ebdfa175f8bb0",
+        "lastSealedRevision": 3,
+        "segmentByteCounts": [
+          1867,
+          709
+        ],
+        "segmentDigests": [
+          "5c8994674bdc74d627b88a494a71f75c77b7f5a1ad329d8e4a38cc97939914be",
+          "96aee0afcc8f8665c7a406302a12889f8d86a43b022166b40a22d42ea57c6b84"
+        ],
+        "stem": "worker-start-gates",
+        "totalRevision": 4,
+        "version": 1
+      },
+      {
+        "activeGeneration": 1,
+        "fingerprint": "3fe22c36d2403131265d937636f566be769114f88040db78ca3d512b3a016b3b",
+        "lastSealedRevision": 3,
+        "segmentByteCounts": [
+          1161,
+          758
+        ],
+        "segmentDigests": [
+          "3c12fc9766c436ab5a15677d97339710991c2b57f13ff6cced0df9c3d99c37f4",
+          "df8f6f88c232132726e0693c2bd94afad4af4cbd02e2d06f594279634d5f1db1"
+        ],
+        "stem": "worker-supervisor",
+        "totalRevision": 5,
+        "version": 1
+      }
+    ]
+  },
+  {
+    "extension": true
+  },
+  {
+    "snapshots": [
+      {
+        "activeGeneration": 1,
+        "fingerprint": "af7d0d5fc867fc937a030c3c5067b13d9fd6269f6711a539e0893ba4da4bc5b8",
+        "lastSealedRevision": 2,
+        "segmentByteCounts": [
+          836,
+          1668
+        ],
+        "segmentDigests": [
+          "c4b41e8fd26c30b3d1fd4d4b5f206a41bbd989aa1db5b482ee814be5063b6e66",
+          "0f0356499812fdea25f7877d4a18aecdf4186b9aed3a25c4988780d0f84f6439"
+        ],
+        "stem": "worker-opt-in",
+        "totalRevision": 5,
+        "version": 1
+      },
+      {
+        "activeGeneration": 1,
+        "fingerprint": "10db6928ec0e1eb19b4f89f953632ebb8d3c8403c1676360a1b2d7f625b9487b",
+        "lastSealedRevision": 1,
+        "segmentByteCounts": [
+          1739,
+          0
+        ],
+        "segmentDigests": [
+          "acfa61a3d44a3169fecd2a5dd3095e20ea00f5d25f0dd483f6d0104516b62e3c",
+          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        ],
+        "stem": "worker-activation-receipts",
+        "totalRevision": 1,
+        "version": 1
+      },
+      {
+        "activeGeneration": 1,
+        "fingerprint": "80908421d631483aaad5d592d288038484f6f3ae408bde5053d8cf7f64750f4f",
+        "lastSealedRevision": 2,
+        "segmentByteCounts": [
+          1345,
+          1944
+        ],
+        "segmentDigests": [
+          "0bfdfb7539279ac6cf1ada731d753fff5b81fb3fc867b24f326c50c4134322a6",
+          "e22ccc54734915c0e29d6942af5b4602a20fe26910cb03c336e32442391c0ffd"
+        ],
+        "stem": "worker-activation-state",
+        "totalRevision": 5,
+        "version": 1
+      },
+      {
+        "activeGeneration": 1,
+        "fingerprint": "9a0af0332b04d6bd8124307ae37df6cb1b913207fcba229cd08ebdfa175f8bb0",
+        "lastSealedRevision": 3,
+        "segmentByteCounts": [
+          1867,
+          709
+        ],
+        "segmentDigests": [
+          "5c8994674bdc74d627b88a494a71f75c77b7f5a1ad329d8e4a38cc97939914be",
+          "96aee0afcc8f8665c7a406302a12889f8d86a43b022166b40a22d42ea57c6b84"
+        ],
+        "stem": "worker-start-gates",
+        "totalRevision": 4,
+        "version": 1
+      },
+      {
+        "activeGeneration": 1,
+        "fingerprint": "3fe22c36d2403131265d937636f566be769114f88040db78ca3d512b3a016b3b",
+        "lastSealedRevision": 3,
+        "segmentByteCounts": [
+          1161,
+          758
+        ],
+        "segmentDigests": [
+          "3c12fc9766c436ab5a15677d97339710991c2b57f13ff6cced0df9c3d99c37f4",
+          "df8f6f88c232132726e0693c2bd94afad4af4cbd02e2d06f594279634d5f1db1"
+        ],
+        "stem": "worker-supervisor",
+        "totalRevision": 5,
+        "version": 1
+      }
+    ]
+  },
+  {
+    "extension": true
+  },
+  {
+    "extension": false
+  },
+  {
+    "extension": false
+  }
+]

@@ -879,6 +879,15 @@ success. It never writes an Approval decision or returns the accepted token to
 Product code. Before PLC3, an executable accepted arm therefore still follows
 the Coordinator's typed `execution_not_consumed` aggregate abort fence.
 
+The later Product coordination driver `PluginDeclarationHost.resolve_for_product()`
+constructs this same Host and calls `resolve()` once, then at most once more after
+asking an explicitly supplied Product issuer about the returned pending subjects.
+It requires that issuer; it does not infer approval, sign or consume a decision,
+return an accepted token, or call preflight/terminal ports directly. The existing
+`resolve()` remains the sole declaration composition entry described above. The
+journal owns persistence and the Product issuer retains decision authority.
+Denied/rejected/still-pending results retain the Product error/diagnostic contract.
+
 PLC1B removes or privatizes the current top-level
 `build_execution_approval_subject`, `PluginPreflight`, direct `finalize()`, and
 `rollback()` entry points. Callers receive proposed subjects only through

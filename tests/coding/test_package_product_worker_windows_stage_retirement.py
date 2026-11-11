@@ -55,12 +55,19 @@ def test_stage_retirement_bridges_exact_identity_to_native_delete(
         calls: list[tuple[int, tuple[int, int, int, int, int], bool]] = []
 
         def capture(
-            value: int, *, expected_identity: tuple[int, int, int, int, int], directory: bool
+            value: int,
+            *,
+            expected_identity: tuple[int, int, int, int, int],
+            directory: bool,
         ) -> None:
             calls.append((value, expected_identity, directory))
 
-        monkeypatch.setattr(retirement, "windows_delete_open_entry", capture)
-        retirement._delete_open_stage_entry(
+        from loushang.harness.worker.payload import (
+            _windows_stage_retirement as stage_io,
+        )
+
+        monkeypatch.setattr(stage_io, "windows_delete_open_entry", capture)
+        retirement._retirement().delete_open_stage_entry(
             descriptor, expected=expected, directory=directory
         )
         assert calls == [
@@ -79,7 +86,7 @@ def test_stage_retirement_bridges_exact_identity_to_native_delete(
         with pytest.raises(
             CodingWindowsWorkerStageRetirementError, match="file_changed"
         ):
-            retirement._delete_open_stage_entry(
+            retirement._retirement().delete_open_stage_entry(
                 descriptor,
                 expected=(expected[0], expected[1] + 1, *expected[2:]),
                 directory=directory,
@@ -213,7 +220,9 @@ def test_windows_worker_retired_history_requires_all_owner_fingerprints(
     monkeypatch.setattr(retirement, "_read_receipt", lambda *_: receipt)
     monkeypatch.setattr(retirement, "_read_root_delete_intent", lambda *_: receipt)
     monkeypatch.setattr(retirement, "_read_intent_under_gc_guard", lambda *_: intent)
-    monkeypatch.setattr(retirement, "_partial_retirement_artifact_present", lambda *_: False)
+    monkeypatch.setattr(
+        retirement, "_partial_retirement_artifact_present", lambda *_: False
+    )
     retirement._require_completed_retirement_under_gc_guard(None, attempt)  # type: ignore[arg-type]
     with pytest.raises(
         CodingWindowsWorkerStageRetirementError,

@@ -13,6 +13,9 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Protocol
 
+from loushang.foundation._owned_tasks import (
+    _observe_task_result,
+)
 from loushang.harness.approval import ActorBoundApprovalResolver, DenyApprovalResolver
 from loushang.harness.approval.ports import ApprovalResolver
 from loushang.harness.multiagent import (
@@ -201,10 +204,7 @@ class _AgentSessionChild:
             task.add_done_callback(self._observe_dispose)
         return await asyncio.shield(task)
 
-    @staticmethod
-    def _observe_dispose(task: asyncio.Task[SubagentDisposeResult]) -> None:
-        if not task.cancelled():
-            task.exception()
+    _observe_dispose = staticmethod(_observe_task_result)
 
     async def _dispose_owned(self) -> SubagentDisposeResult:
         try:

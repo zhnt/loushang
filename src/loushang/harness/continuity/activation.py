@@ -39,6 +39,9 @@ class CallbackPreparedActivationLease:
         self._disposition = disposition
         self._consume = consume
         self._abort = abort
+        self._initialize_lifecycle()
+
+    def _initialize_lifecycle(self) -> None:
         self._consumed = False
         self._consume_attempted = False
         self._closed = False
@@ -67,6 +70,7 @@ class CallbackPreparedActivationLease:
             raise ActivationLeaseStateError(
                 "activation lease has already been consumed"
             )
+        complete = self._admit_consume()
         # This synchronous state change is the lease linearization point.  An
         # abort that starts after it joins this attempt; an abort that starts
         # first sets ``_abort_requested`` and prevents publication.
@@ -78,10 +82,13 @@ class CallbackPreparedActivationLease:
             if inspect.isawaitable(result):
                 result = await result
             self._consumed = True
+            self._activation_consumed()
             return result
         finally:
             self._consuming = False
             self._consume_done.set()
+            if complete is not None:
+                complete()
 
     async def abort(self) -> None:
         if self._closed:
@@ -91,6 +98,8 @@ class CallbackPreparedActivationLease:
         self._abort_requested = True
         if self._consuming:
             await asyncio.shield(self._consume_done.wait())
+        if self._closed:
+            return
         if self._consumed:
             self._closed = True
             return
@@ -117,6 +126,16 @@ class CallbackPreparedActivationLease:
         if inspect.isawaitable(result):
             await result
         self._closed = True
+        self._activation_aborted()
+
+    def _admit_consume(self) -> Callable[[], None] | None:
+        return None
+
+    def _activation_consumed(self) -> None:
+        pass
+
+    def _activation_aborted(self) -> None:
+        pass
 
     async def close(self) -> None:
         await self.abort()

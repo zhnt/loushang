@@ -46,6 +46,9 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
+from loushang.foundation._owned_tasks import (
+    _observe_task_result,
+)
 from loushang.foundation.json import JSONValue, require_json_mapping, require_json_value
 from loushang.harness.capabilities import (
     CapabilityBundleProvider,
@@ -1120,10 +1123,7 @@ class _CurrentSessionCommitter(
         self._sealed_verification_task = task
         task.add_done_callback(self._finish_sealed_verification)
 
-    @staticmethod
-    def _finish_sealed_verification(task: asyncio.Task[None]) -> None:
-        if not task.cancelled():
-            task.exception()
+    _finish_sealed_verification = staticmethod(_observe_task_result)
 
     async def commit_prepared_request(self, request: PreparedModelRequest) -> None:
         if self._sealed_verification_task is not None:

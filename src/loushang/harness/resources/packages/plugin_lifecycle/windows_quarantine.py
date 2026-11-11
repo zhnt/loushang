@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import os
 import stat
+from collections.abc import Iterator
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from struct import unpack_from
 from typing import Any, NoReturn
+
+from loushang.harness.resources.packages._private_directory import (
+    _is_link_or_reparse,
+    _PrivateStateErrorFactory,
+    _validate_existing_private_directory,
+)
 
 _MAX_STREAM_INFO_BYTES = 64 * 1024
 _STREAM_INFO_HEADER_BYTES = 24
@@ -503,6 +511,7 @@ def _open_directory_path(
     share_delete: bool,
     writable: bool,
     read_control: bool,
+    compatibility_pin: tuple[os.stat_result, _PrivateStateErrorFactory] | None = None,
 ) -> int:
     import ctypes
     import msvcrt
@@ -522,8 +531,12 @@ def _open_directory_path(
     create_file.restype = wintypes.HANDLE
     handle = create_file(
         str(path),
-        (_DIRECTORY_OWNER_ACCESS if writable else _DIRECTORY_READ_ACCESS)
-        | (_READ_CONTROL if read_control else 0),
+        0x00000081
+        if compatibility_pin is not None
+        else (
+            (_DIRECTORY_OWNER_ACCESS if writable else _DIRECTORY_READ_ACCESS)
+            | (_READ_CONTROL if read_control else 0)
+        ),
         (
             _FILE_SHARE_READ
             | _FILE_SHARE_WRITE
@@ -539,7 +552,31 @@ def _open_directory_path(
         _raise_last_windows_error()
     raw_handle = int(handle)
     descriptor: int | None = None
+    raw_owned = True
     try:
+        if compatibility_pin is not None:
+            expected, error_factory = compatibility_pin
+            is_directory, is_reparse = _handle_entry_kind(raw_handle)
+            if not is_directory or is_reparse:
+                raise OSError("private state path is not a direct directory")
+            raw_owned = False
+            descriptor = _descriptor_from_handle(
+                raw_handle, write=False, check_close=False
+            )
+            opened = os.fstat(descriptor)
+            if (
+                not stat.S_ISDIR(opened.st_mode)
+                or _is_link_or_reparse(opened)
+                or not os.path.samestat(expected, opened)
+            ):
+                raise OSError("private state directory handle identity changed")
+            current = _validate_existing_private_directory(
+                path,
+                error_factory=error_factory,
+            )
+            if not os.path.samestat(expected, current):
+                raise OSError("private state directory identity changed while pinning")
+            return descriptor
         descriptor = getattr(msvcrt, "open_osfhandle")(
             raw_handle,
             os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOINHERIT", 0),
@@ -552,10 +589,10 @@ def _open_directory_path(
             raise OSError("Windows quarantine directory identity changed")
         return descriptor
     except BaseException:
-        if descriptor is None:
-            _close_handle(raw_handle)
-        else:
+        if descriptor is not None:
             os.close(descriptor)
+        elif raw_owned:
+            _close_handle(raw_handle, checked=compatibility_pin is None)
         raise
 
 
@@ -757,7 +794,9 @@ def _handle_entry_kind(raw_handle: int) -> tuple[bool, bool]:
     return is_directory, is_reparse
 
 
-def _descriptor_from_handle(raw_handle: int, *, write: bool) -> int:
+def _descriptor_from_handle(
+    raw_handle: int, *, write: bool, check_close: bool = True
+) -> int:
     import msvcrt
 
     try:
@@ -768,7 +807,7 @@ def _descriptor_from_handle(raw_handle: int, *, write: bool) -> int:
             | getattr(os, "O_NOINHERIT", 0),
         )
     except BaseException:
-        _close_handle(raw_handle)
+        _close_handle(raw_handle, checked=check_close)
         raise
 
 
@@ -797,7 +836,7 @@ def _final_path(directory_fd: int) -> str:
     return buffer.value
 
 
-def _close_handle(raw_handle: int) -> None:
+def _close_handle(raw_handle: int, *, checked: bool = True) -> None:
     import ctypes
     from ctypes import wintypes
 
@@ -805,7 +844,7 @@ def _close_handle(raw_handle: int) -> None:
     close_handle = kernel32.CloseHandle
     close_handle.argtypes = (wintypes.HANDLE,)
     close_handle.restype = wintypes.BOOL
-    if not close_handle(wintypes.HANDLE(raw_handle)):
+    if not close_handle(wintypes.HANDLE(raw_handle)) and checked:
         _raise_last_windows_error()
 
 
@@ -911,3 +950,25 @@ __all__ = [
     "windows_stat_at",
     "windows_unlink_at",
 ]
+
+
+@contextmanager
+def _open_windows_private_directory_pin(
+    path: Path,
+    expected: os.stat_result,
+    *,
+    error_factory: _PrivateStateErrorFactory,
+) -> Iterator[int]:
+    """Original compatibility pin:0x81, no delete sharing, single FD custody."""
+
+    descriptor = _open_directory_path(
+        path,
+        share_delete=False,
+        writable=False,
+        read_control=False,
+        compatibility_pin=(expected, error_factory),
+    )
+    try:
+        yield descriptor
+    finally:
+        os.close(descriptor)

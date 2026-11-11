@@ -479,15 +479,15 @@ def test_root_owns_native_resume_preparation_and_delivery(tmp_path, monkeypatch,
                     await operation
                 assert failed.value.original_owner is native_sessions[0]
                 assert not native_sessions[0].session_manager._lifecycle_session._disposed
-                assert root._resume_cleanup_debts == [failed.value]
+                assert root.lifecycle._retained_preparation_debts == [failed.value]
                 await root.dispose_session_runtime()
                 assert native_sessions[0].session_manager._lifecycle_session._disposed
-                assert not root._resume_cleanup_debts
+                assert not root.lifecycle._retained_preparation_debts
             elif mode == "host_bind_failed":
                 with pytest.raises(OSError, match="original host binding failed"):
                     await operation
                 assert native_sessions[0].session_manager._lifecycle_session._disposed
-                assert not root._resume_prepared_operations
+                assert not root.lifecycle._retained_prepared_operations
             else:
                 prepared = await operation
                 candidate = prepared.continuation.session
@@ -569,7 +569,7 @@ def test_root_owns_native_resume_preparation_and_delivery(tmp_path, monkeypatch,
                 elif mode == "abort_failed":
                     with pytest.raises(OSError, match="candidate cleanup failed"):
                         await prepared.abort()
-                    assert prepared._operation in root._resume_prepared_operations
+                    assert prepared._operation in root.lifecycle._retained_prepared_operations
                     assert not candidate.session_manager._lifecycle_session._disposed
                     await root.dispose_session_runtime()
                     assert candidate.session_manager._lifecycle_session._disposed
@@ -586,8 +586,8 @@ def test_root_owns_native_resume_preparation_and_delivery(tmp_path, monkeypatch,
             await root.dispose_session_runtime()
             issuer.dispose()
         assert root.current_session is None
-        assert not root._resume_activation_tasks
-        assert not root._resume_delivery_tasks
-        assert not root._resume_prepared_operations
+        assert not root.lifecycle._retained_preparation_tasks
+        assert not root.lifecycle._retained_delivery_tasks
+        assert not root.lifecycle._retained_prepared_operations
 
     asyncio.run(scenario())

@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 import loushang.coding.package_private_data_windows_backup_expiry_journal as journal
+import loushang.harness.plugin_management._private_data_expiry_windows as core
 from loushang.coding.package_private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,
     CodingArchPrivateDataBackupExpiryPlanV1,
@@ -22,6 +23,9 @@ from loushang.coding.package_private_data_deletion_preview import (
 )
 from loushang.coding.package_private_data_windows_archive_snapshot import (
     CodingWindowsArchBackupArchiveSnapshotV1,
+)
+from loushang.harness.plugin_management._private_data_expiry import (
+    validate_expiry_history,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
@@ -99,19 +103,24 @@ def _events() -> tuple[journal.CodingWindowsArchBackupExpiryEventV1, ...]:
 def test_windows_expiry_events_require_exact_sequence_and_archive() -> None:
     events = _events()
     _, _, archive = _candidate()
-    journal._validate_sequence(events)
+    validate_expiry_history(events, label="Windows Coding Arch")
     for event in events:
         assert (
             journal.CodingWindowsArchBackupExpiryEventV1.from_dict(event.to_dict())
             == event
         )
     with pytest.raises(ValueError, match="history changed"):
-        journal._validate_sequence((events[0], replace(events[2], revision=2)))
+        validate_expiry_history(
+            (events[0], replace(events[2], revision=2)), label="Windows Coding Arch"
+        )
     with pytest.raises(ValueError, match="history overlaps"):
-        journal._validate_sequence((events[0], replace(events[0], revision=2)))
+        validate_expiry_history(
+            (events[0], replace(events[0], revision=2)), label="Windows Coding Arch"
+        )
     with pytest.raises(ValueError, match="history changed"):
-        journal._validate_sequence(
-            (events[0], events[1], replace(events[3], revision=3))
+        validate_expiry_history(
+            (events[0], events[1], replace(events[3], revision=3)),
+            label="Windows Coding Arch",
         )
     with pytest.raises(ValueError, match="archive changed"):
         replace(
@@ -137,11 +146,11 @@ def test_windows_expiry_confirm_and_start_are_replayable_under_product_gate(
         "_preview_locked",
         lambda self, restore, key, backup_id, confirmation_id: plan,
     )
-    monkeypatch.setattr(journal, "windows_listdir_at", lambda state_fd: tuple(saved))
+    monkeypatch.setattr(core, "windows_listdir_at", lambda state_fd: tuple(saved))
     monkeypatch.setattr(
-        journal,
-        "read_windows_private_receipt",
-        lambda path, maximum_bytes: saved.get(path.name),
+        type(journal.CodingWindowsArchBackupExpiryTransaction._receipt_io),
+        "read_private_receipt",
+        lambda self, path, maximum_bytes: saved.get(path.name),
     )
 
     def publish(path: Path, raw: bytes, *, maximum_bytes: int) -> None:
@@ -154,9 +163,9 @@ def test_windows_expiry_confirm_and_start_are_replayable_under_product_gate(
         saved[path.name] = raw
 
     monkeypatch.setattr(
-        journal,
-        "write_windows_private_receipt",
-        publish,
+        type(journal.CodingWindowsArchBackupExpiryTransaction._receipt_io),
+        "write_private_receipt",
+        lambda self, path, raw, **kwargs: publish(path, raw, **kwargs),
     )
     transaction = journal.CodingWindowsArchBackupExpiryTransaction(
         SimpleNamespace(),  # type: ignore[arg-type]

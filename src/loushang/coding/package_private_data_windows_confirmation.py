@@ -6,17 +6,18 @@ deletion receipt and grants no filesystem deletion authority by itself.
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.harness.journal.codec import decode_json_record
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.plugin_management.private_data_confirmation import (
     PluginPrivateDataConfirmationRecordV1,
+    accept_windows_private_confirmation,
 )
 from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionConfirmationV1,
@@ -34,8 +35,9 @@ from .package_installation_private_data import (
     inspect_coding_windows_arch_installation_root,
 )
 from .package_legacy_windows_receipt import (
+    _MAX_RECEIPT_BYTES,
+    _receipt_io,
     read_windows_private_receipt,
-    write_windows_private_receipt,
 )
 from .package_private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1
 from .package_private_data_windows_preview import (
@@ -129,26 +131,16 @@ class CodingWindowsArchPrivateDataConfirmationOwner:
                 raise ValueError("Windows Coding Arch confirmation is too large")
             path = self._record_path(confirmation)
             with self.product.epoch_runtime.borrow_product_state_root_descriptor():
-                existing = read_windows_private_receipt(
+                return accept_windows_private_confirmation(
                     path,
+                    payload,
+                    record,
+                    io=_receipt_io,
                     maximum_bytes=_MAX_CONFIRMATION_BYTES,
-                    allow_unpublished_stage=True,
+                    write_maximum_bytes=_MAX_RECEIPT_BYTES,
+                    decode=self._decode,
+                    label="Windows Coding Arch",
                 )
-                if existing is not None:
-                    if self._decode(existing) != record:
-                        raise ValueError(
-                            "Windows Coding Arch confirmation ID was reused"
-                        )
-                    return record
-                write_windows_private_receipt(path, payload)
-                if (
-                    read_windows_private_receipt(
-                        path, maximum_bytes=_MAX_CONFIRMATION_BYTES
-                    )
-                    != payload
-                ):
-                    raise ValueError("Windows Coding Arch confirmation changed")
-            return record
 
     def is_confirmed(
         self,
@@ -208,26 +200,17 @@ class CodingWindowsArchPrivateDataConfirmationOwner:
 
     @staticmethod
     def _decode(raw: bytes) -> PluginPrivateDataConfirmationRecordV1:
-        try:
-            document = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_object)
-            record = PluginPrivateDataConfirmationRecordV1.from_dict(document)
-        except (TypeError, UnicodeError, ValueError) as exc:
-            raise ValueError("Windows Coding Arch confirmation is invalid") from exc
+        record = decode_json_record(
+            raw,
+            PluginPrivateDataConfirmationRecordV1.from_dict,
+            label="Windows Coding Arch confirmation",
+        )
         if (
             record.record_revision != 1
             or raw != canonical_json_bytes(record.to_dict()) + b"\n"
         ):
             raise ValueError("Windows Coding Arch confirmation is noncanonical")
         return record
-
-
-def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Windows Coding Arch confirmation has duplicate fields")
-        result[key] = value
-    return result
 
 
 __all__ = ["CodingWindowsArchPrivateDataConfirmationOwner"]

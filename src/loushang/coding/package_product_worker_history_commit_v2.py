@@ -7,9 +7,15 @@ locks in fixed order. The owner file is the only authority transition.
 
 from __future__ import annotations
 
+from typing import cast
+
 from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
+)
+from loushang.harness.worker.history._publication import HistoryPublication
+from loushang.harness.worker.history._read_v2 import (
+    _MAX_INDEX_BYTES as _MAX_INDEX_BYTES,
 )
 
 from .package_product_worker_history_cutover_v2 import (
@@ -20,11 +26,9 @@ from .package_product_worker_history_preflight_v2 import (
 )
 from .package_product_worker_history_prepared_v2 import (
     CodingWorkerPreparedProductCutoverV2,
-    require_coding_worker_v2_retained_reference_closure,
 )
 from .package_product_worker_history_read_v2 import (
-    read_coding_worker_v2_retained_history,
-    verify_coding_worker_v2_precommit_history,
+    _HISTORY_READER,
 )
 from .package_product_worker_history_stage_v2 import (
     read_coding_worker_v2_preparation,
@@ -34,11 +38,9 @@ from .package_product_worker_history_stream_snapshot import (
 )
 from .package_product_worker_history_v2_names import (
     PREPARATION_INTENT_NAME,
-    PRODUCT_OWNER_INDEX_NAME,
 )
-from .package_product_worker_receipt_base_v2 import CodingWorkerReceiptReplayV2
 
-_MAX_INDEX_BYTES = 4096
+_HISTORY_PUBLICATION = HistoryPublication(_HISTORY_READER)
 
 
 class CodingWorkerV2OwnerCommitError(RuntimeError):
@@ -48,58 +50,22 @@ class CodingWorkerV2OwnerCommitError(RuntimeError):
 
 
 def _owner_bytes(rooted: RootedFile) -> bytes | None:
-    try:
-        return rooted.sibling(PRODUCT_OWNER_INDEX_NAME).read_bytes(
-            max_bytes=_MAX_INDEX_BYTES
-        )
-    except FileNotFoundError:
-        return None
+    return _HISTORY_PUBLICATION.owner_bytes(rooted, max_index_bytes=_MAX_INDEX_BYTES)
 
 
 def commit_coding_worker_v2_owner_under_guard(
     rooted: RootedFile, *, prepared: CodingWorkerPreparedProductCutoverV2
 ) -> CodingWorkerProductCutoverIndexV2:
     """Publish one durable owner; a retry may only accept that exact owner."""
-
-    if type(prepared) is not CodingWorkerPreparedProductCutoverV2:
-        raise ValueError("Coding Worker V2 prepared history is invalid")
-    for stem in CODING_WORKER_HISTORY_STREAM_STEMS:
-        try:
-            rooted.sibling(stem + ".jsonl.lock").acquire_lock(
-                exclusive=True, suffix="", create=False
-            )
-        except FileNotFoundError as exc:
-            raise CodingWorkerV2OwnerCommitError(
-                "coding_worker_v2_stream_lock_missing"
-            ) from exc
-
-    expected = prepared.index.to_bytes()
-    existing = _owner_bytes(rooted)
-    if existing is not None:
-        if existing != expected:
-            raise CodingWorkerV2OwnerCommitError("coding_worker_v2_owner_changed")
-    else:
-        verified = tuple(
-            verify_coding_worker_v2_precommit_history(
-                rooted, stem=stem, prepared=prepared
-            )
-            for stem in CODING_WORKER_HISTORY_STREAM_STEMS
-        )
-        receipt_replay = verified[1].replay
-        if not isinstance(receipt_replay, CodingWorkerReceiptReplayV2):
-            raise CodingWorkerV2OwnerCommitError(
-                "coding_worker_v2_receipt_replay_changed"
-            )
-        require_coding_worker_v2_retained_reference_closure(
-            opt_in_base=prepared.semantic_bases[0],
-            opt_in_segments=verified[0].segments,
-            retained_receipts=receipt_replay.retained_records,
-        )
-        rooted.sibling(PRODUCT_OWNER_INDEX_NAME).create_new(expected)
-
-    for stem in CODING_WORKER_HISTORY_STREAM_STEMS:
-        read_coding_worker_v2_retained_history(rooted, stem=stem)
-    return prepared.index
+    return cast(
+        CodingWorkerProductCutoverIndexV2,
+        _HISTORY_PUBLICATION.commit_under_guard(
+            rooted,
+            prepared=prepared,
+            error_type=CodingWorkerV2OwnerCommitError,
+            max_index_bytes=_MAX_INDEX_BYTES,
+        ),
+    )
 
 
 def commit_coding_product_worker_v2_owner(
@@ -115,8 +81,7 @@ def commit_coding_product_worker_v2_owner(
         or type(first_retained_generations) is not tuple
         or len(first_retained_generations) != len(CODING_WORKER_HISTORY_STREAM_STEMS)
         or any(
-            type(item) is not int or item < 1
-            for item in first_retained_generations[:4]
+            type(item) is not int or item < 1 for item in first_retained_generations[:4]
         )
         or type(first_retained_generations[4]) is not int
         or first_retained_generations[4] < 0
@@ -131,8 +96,7 @@ def commit_coding_product_worker_v2_owner(
         with product.gc_gate.guard(require_write=True):
             product.assert_root_gc_authority_current()
             with product.pinned_state_root_gc_read() as root_fd:
-                file_io = RootedFileIO(product.state_root, root_fd)
-                try:
+                with RootedFileIO(product.state_root, root_fd) as file_io:
                     with file_io.bind(
                         product.state_root / PREPARATION_INTENT_NAME, durable=True
                     ) as rooted:
@@ -163,8 +127,6 @@ def commit_coding_product_worker_v2_owner(
                         result = commit_coding_worker_v2_owner_under_guard(
                             rooted, prepared=prepared
                         )
-                finally:
-                    file_io.cleanup()
             product.assert_root_gc_authority_current()
             return result
 

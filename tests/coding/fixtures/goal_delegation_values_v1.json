@@ -1,0 +1,2740 @@
+{
+  "metadata": {
+    "frame_sha256": "72e2a4bcaaa1683f9f4bfae0c56552989244abe15b9a2e01fbe26da81ec9672b",
+    "observer_sha256": "b6486004f8cb53887242af76782191f57560cbbcbb94325e3d2f2e026f08302b",
+    "raw_sources": {
+      "api": {
+        "path": "values-raw-original-1/api.json",
+        "sha256": "52304a0b3eff9bd5eb214631ddd8d641d494faf05a1da3ee88fa41660d0298c2"
+      },
+      "choice-allow-empty-int": {
+        "path": "values-raw-original-1/choice-allow-empty-int.json",
+        "sha256": "3583d0546e0434add241b1041d4c2f56aee21676340f6e5477fb91e467b49ccc"
+      },
+      "choice-fresh": {
+        "path": "values-raw-original-1/choice-fresh.json",
+        "sha256": "d62cab1de5c0709495ed133c550963eb611f6eb1d507b77cfcfadcb61ec49d44"
+      },
+      "choice-fresh-target": {
+        "path": "values-raw-original-1/choice-fresh-target.json",
+        "sha256": "df68c282d302476003ec9d0137446ee92eb4f7009b9b75ee737339430a97c090"
+      },
+      "choice-inherit": {
+        "path": "values-raw-original-1/choice-inherit.json",
+        "sha256": "056f4113db67ce63b0e59fc062e8b461a61d4412dd3b761f0e224a3731ae75f9"
+      },
+      "choice-inherit-empty-tier": {
+        "path": "values-raw-original-1/choice-inherit-empty-tier.json",
+        "sha256": "998dd4d84396df3394f18d5bc7b834f454f03976a4e05050e9410d2fba64ab07"
+      },
+      "choice-reason-control": {
+        "path": "values-raw-original-2/choice-reason-control.json",
+        "sha256": "d2fa5c441b5d4d1e242c6c0c75647b4caba48782461f601c84f4852a005e8e2f"
+      },
+      "choice-reuse": {
+        "path": "values-raw-original-1/choice-reuse.json",
+        "sha256": "45d07c544412ed37914d44d34ab7af4148e32dbd0961d39d70394d1da9b630c4"
+      },
+      "choice-reuse-missing": {
+        "path": "values-raw-original-1/choice-reuse-missing.json",
+        "sha256": "e50c023ce62695ee9cc4ea49ead24344e924ab4f53c63fe8c46c2cc354a90074"
+      },
+      "confirm-bool-revision": {
+        "path": "values-raw-original-1/confirm-bool-revision.json",
+        "sha256": "a7b3e88f6b48e056dd1e8cdad2d8bab8556b56fa124b5fbf5eb20ae9329db04f"
+      },
+      "confirm-float-revision": {
+        "path": "values-raw-original-1/confirm-float-revision.json",
+        "sha256": "869d1711db5742e0d71593ea8a19d3240644456b234c230d5f511c500875ca24"
+      },
+      "confirm-missing-field": {
+        "path": "values-raw-original-1/confirm-missing-field.json",
+        "sha256": "d97915445af34233257e71fc93b81eccc5152090f319bb340789b0e0e43b9892"
+      },
+      "confirm-revision-changed": {
+        "path": "values-raw-original-1/confirm-revision-changed.json",
+        "sha256": "c16da64bf2c01d55780345fbc6ef831ed3ed66db2f5dee7622acf0093388a702"
+      },
+      "confirm-unknown-mode": {
+        "path": "values-raw-original-1/confirm-unknown-mode.json",
+        "sha256": "83d292d79fb52c7a6bfec943a049513f141605113a8fb041dfcf2e52058482a7"
+      },
+      "policy-default": {
+        "path": "values-raw-original-1/policy-default.json",
+        "sha256": "e0db45493dd2380aac721f13c1ef3c819a3aba223cc9f02123c300c8ced612e4"
+      },
+      "policy-invalid-limits": {
+        "path": "values-raw-original-1/policy-invalid-limits.json",
+        "sha256": "295d795365d4813ea59807b185d77f465126332adc208d0ae8ab3b2f59dc9aca"
+      },
+      "prepare-default": {
+        "path": "values-raw-original-1/prepare-default.json",
+        "sha256": "650b92d688a1cde84d6200c9984af97815820bc84d81fc67234c5253047d6f53"
+      },
+      "prepare-fresh": {
+        "path": "values-raw-original-1/prepare-fresh.json",
+        "sha256": "650b92d688a1cde84d6200c9984af97815820bc84d81fc67234c5253047d6f53"
+      },
+      "prepare-independent": {
+        "path": "values-raw-original-1/prepare-independent.json",
+        "sha256": "f744612d008b8a8e3c92fc33d9a5d2388359447560498aab00bf2a4643b56bee"
+      },
+      "prepare-inherit": {
+        "path": "values-raw-original-1/prepare-inherit.json",
+        "sha256": "3c709b0a4c336ca0a92b5ab49df32fb8b856f315a0573654d7485c59199ddb31"
+      },
+      "prepare-reuse": {
+        "path": "values-raw-original-1/prepare-reuse.json",
+        "sha256": "c42a9ae435c10d6f56d84129d84c64c7024332dc1dd181f6004e695b784ce02f"
+      },
+      "report-invalid-role": {
+        "path": "values-raw-original-1/report-invalid-role.json",
+        "sha256": "48a9b0a35e2e5130980eabc0c8ed6172416711b240cc8549203ff97c190848a4"
+      },
+      "report-publish-failure": {
+        "path": "values-raw-original-1/report-publish-failure.json",
+        "sha256": "23ac81a954d69b49c8523a01f54fa105664c6f29a310e45f8076c8b6b7757f55"
+      },
+      "report-put-failure": {
+        "path": "values-raw-original-1/report-put-failure.json",
+        "sha256": "0d6b91542a6c4fbaa14d9ee8546187849c5f92590d92099bb8a436711df028d1"
+      },
+      "report-read-failure": {
+        "path": "values-raw-original-1/report-read-failure.json",
+        "sha256": "0920918311ff7292d9d2a5bfdaa2e98b9084b304a0d3b782d5e9aeb7fee628ed"
+      },
+      "report-valid": {
+        "path": "values-raw-original-1/report-valid.json",
+        "sha256": "f05affe79ed44358c0ae8bc55702a69ca775e9946b38e8b42c74ca05b463f166"
+      },
+      "report-wrong-authority": {
+        "path": "values-raw-original-1/report-wrong-authority.json",
+        "sha256": "1f9043e6801c4040e818cf08a49843942991b47ff5257663575289a50d248fce"
+      },
+      "view-permissive": {
+        "path": "values-raw-original-1/view-permissive.json",
+        "sha256": "be89d7ba603341274863b1b7674d32f8582c77ae16f315e1de067f8fa73c5fd0"
+      }
+    },
+    "resource_count": 13,
+    "scope": "Original28 values/API/wire; actual 3CodeDTOs and DelegatedSessions ctor/context builder with controlled parent/child facts; original planning.publish_report encoder and recorded BlobStore/Context ports. No real SDK model/child/Store or new Core publisher execution is claimed.",
+    "source_count": 1966,
+    "source_head": "a442f3c7ac10e425b2a65d850bacbe9e86607bff"
+  },
+  "observations": {
+    "api": {
+      "result": {
+        "api": {
+          "loushang.coding.adapters._goal_delegation.DelegatedSessions": {
+            "class": "loushang.coding.adapters._goal_delegation.DelegatedSessions",
+            "constructor": "(owner, profile, blobs, reader, source_identity, approval_resolver, additional_tool_policy=None)",
+            "methods": {
+              "close": {
+                "annotations": {},
+                "signature": "(self)"
+              },
+              "confirm": {
+                "annotations": {},
+                "signature": "(self, value)"
+              },
+              "model_data": {
+                "annotations": {},
+                "signature": "(session)"
+              },
+              "prepare": {
+                "annotations": {},
+                "signature": "(self, basis, operation, spec, turn)"
+              },
+              "release": {
+                "annotations": {},
+                "signature": "(self, ref)"
+              },
+              "select": {
+                "annotations": {},
+                "signature": "(self, choice)"
+              },
+              "views": {
+                "annotations": {},
+                "signature": "(self)"
+              }
+            },
+            "own_annotations": {}
+          },
+          "loushang.coding.adapters._goal_delegation.DelegatedWork": {
+            "class": "loushang.coding.adapters._goal_delegation.DelegatedWork",
+            "constructor": "(family, choice, plan, frozen, prompt)",
+            "methods": {
+              "cancel_and_wait": {
+                "annotations": {},
+                "signature": "(self, operation, context)"
+              },
+              "execute": {
+                "annotations": {},
+                "signature": "(self, operation, context)"
+              }
+            },
+            "own_annotations": {}
+          },
+          "loushang.coding.adapters._goal_delegation.ExecutionContextView": {
+            "class": "loushang.coding.adapters._goal_delegation.ExecutionContextView",
+            "constructor": "(ref: 'AgentRef', session_id: 'str', status: 'str', round_id: 'int', origin_operation_id: 'str | None') -> None",
+            "methods": {},
+            "own_annotations": {
+              "origin_operation_id": "str | None",
+              "ref": "AgentRef",
+              "round_id": "int",
+              "session_id": "str",
+              "status": "str"
+            }
+          },
+          "loushang.coding.adapters._goal_execution_context.SessionChoice": {
+            "class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+            "constructor": "(mode: 'str', target: 'AgentRef | None' = None, tier: 'ForkTier' = <factory>, allow_empty: 'bool' = False, reason: 'str' = 'host_policy') -> None",
+            "methods": {},
+            "own_annotations": {
+              "allow_empty": "bool",
+              "mode": "str",
+              "reason": "str",
+              "target": "AgentRef | None",
+              "tier": "ForkTier"
+            }
+          },
+          "loushang.coding.adapters._goal_execution_context.SessionExecutionPolicy": {
+            "class": "loushang.coding.adapters._goal_execution_context.SessionExecutionPolicy",
+            "constructor": "(choice: 'SessionChoice | None' = None, limits: 'ControlLimits' = <factory>) -> None",
+            "methods": {},
+            "own_annotations": {
+              "choice": "SessionChoice | None",
+              "limits": "ControlLimits"
+            }
+          },
+          "loushang.coding.adapters._goal_repository._RepositoryGoal": {
+            "class": "loushang.coding.adapters._goal_repository._RepositoryGoal",
+            "constructor": "(workspace: 'Path', data_root: 'Path')",
+            "methods": {
+              "advance": {
+                "annotations": {},
+                "signature": "(self, goal_id, **kwargs)"
+              },
+              "attach": {
+                "annotations": {
+                  "max_model_calls": "int | None",
+                  "max_output_tokens": "int | None",
+                  "return": "CodingGoal"
+                },
+                "signature": "(*, session, max_model_calls: 'int | None' = None, max_output_tokens: 'int | None' = None) -> 'CodingGoal'"
+              },
+              "clear_queue": {
+                "annotations": {},
+                "signature": "(self)"
+              },
+              "close": {
+                "annotations": {
+                  "return": "None"
+                },
+                "signature": "(self) -> 'None'"
+              },
+              "controller": {
+                "annotations": {
+                  "return": "GoalController"
+                },
+                "signature": "(self) -> 'GoalController'"
+              },
+              "create": {
+                "annotations": {
+                  "command_id": "str",
+                  "goal_id": "str",
+                  "limit": "int | None"
+                },
+                "signature": "(self, goal_id: 'str', *, command_id: 'str', limit: 'int | None' = None)"
+              },
+              "execution_contexts": {
+                "annotations": {},
+                "signature": "(self)"
+              },
+              "follow_up": {
+                "annotations": {
+                  "goal_id": "str",
+                  "return": "None",
+                  "text": "str"
+                },
+                "signature": "(self, goal_id: 'str', text: 'str', *, images=None) -> 'None'"
+              },
+              "open": {
+                "annotations": {
+                  "data_root": "Path",
+                  "model_planning": "bool",
+                  "return": "CodingGoal",
+                  "session_id": "str | None",
+                  "transcript_retained_until": "datetime | None",
+                  "workspace": "Path"
+                },
+                "signature": "(*, workspace: 'Path', data_root: 'Path', model=None, session_id: 'str | None' = None, stream_fn=None, approval_resolver=None, tool_policy_evaluator=None, model_planning: 'bool' = False, transcript_retained_until: 'datetime | None' = None) -> 'CodingGoal'"
+              },
+              "planning_trace": {
+                "annotations": {
+                  "goal_id": "str",
+                  "return": "dict[str, object]"
+                },
+                "signature": "(self, goal_id: 'str') -> 'dict[str, object]'"
+              },
+              "query": {
+                "annotations": {
+                  "goal_id": "str",
+                  "return": "CodingGoalView"
+                },
+                "signature": "(self, goal_id: 'str') -> 'CodingGoalView'"
+              },
+              "release_execution_context": {
+                "annotations": {},
+                "signature": "(self, ref)"
+              },
+              "review_basis": {
+                "annotations": {},
+                "signature": "(self, goal_id)"
+              },
+              "set_execution_context": {
+                "annotations": {},
+                "signature": "(self, choice)"
+              },
+              "steer": {
+                "annotations": {
+                  "goal_id": "str",
+                  "return": "None",
+                  "text": "str"
+                },
+                "signature": "(self, goal_id: 'str', text: 'str', *, images=None) -> 'None'"
+              },
+              "submit_review": {
+                "annotations": {},
+                "signature": "(self, goal_id, *, command_id, review_id, expected_identity, decision, reviewer, reason, coverage, findings)"
+              },
+              "verify_current": {
+                "annotations": {},
+                "signature": "(self, goal_id, *, command_id, revision, epoch, expected_inventory)"
+              }
+            },
+            "own_annotations": {}
+          },
+          "loushang.coding.adapters.goal.CodingGoal": {
+            "class": "loushang.coding.adapters.goal.CodingGoal",
+            "constructor": "(workspace: 'Path', data_root: 'Path')",
+            "methods": {
+              "advance": {
+                "annotations": {
+                  "command_id": "str",
+                  "epoch": "int",
+                  "goal_id": "str",
+                  "revision": "int"
+                },
+                "signature": "(self, goal_id: 'str', *, command_id: 'str', revision: 'int', epoch: 'int')"
+              },
+              "attach": {
+                "annotations": {
+                  "max_model_calls": "int | None",
+                  "max_output_tokens": "int | None",
+                  "return": "CodingGoal"
+                },
+                "signature": "(*, session, max_model_calls: 'int | None' = None, max_output_tokens: 'int | None' = None) -> 'CodingGoal'"
+              },
+              "clear_queue": {
+                "annotations": {},
+                "signature": "(self)"
+              },
+              "close": {
+                "annotations": {
+                  "return": "None"
+                },
+                "signature": "(self) -> 'None'"
+              },
+              "controller": {
+                "annotations": {
+                  "return": "GoalController"
+                },
+                "signature": "(self) -> 'GoalController'"
+              },
+              "create": {
+                "annotations": {
+                  "command_id": "str",
+                  "goal_id": "str",
+                  "limit": "int | None"
+                },
+                "signature": "(self, goal_id: 'str', *, command_id: 'str', limit: 'int | None' = None)"
+              },
+              "follow_up": {
+                "annotations": {
+                  "goal_id": "str",
+                  "return": "None",
+                  "text": "str"
+                },
+                "signature": "(self, goal_id: 'str', text: 'str', *, images=None) -> 'None'"
+              },
+              "open": {
+                "annotations": {
+                  "data_root": "Path",
+                  "model_planning": "bool",
+                  "return": "CodingGoal",
+                  "session_id": "str | None",
+                  "transcript_retained_until": "datetime | None",
+                  "workspace": "Path"
+                },
+                "signature": "(*, workspace: 'Path', data_root: 'Path', model=None, session_id: 'str | None' = None, stream_fn=None, approval_resolver=None, tool_policy_evaluator=None, model_planning: 'bool' = False, transcript_retained_until: 'datetime | None' = None) -> 'CodingGoal'"
+              },
+              "planning_trace": {
+                "annotations": {
+                  "goal_id": "str",
+                  "return": "dict[str, object]"
+                },
+                "signature": "(self, goal_id: 'str') -> 'dict[str, object]'"
+              },
+              "query": {
+                "annotations": {
+                  "goal_id": "str",
+                  "return": "CodingGoalView"
+                },
+                "signature": "(self, goal_id: 'str') -> 'CodingGoalView'"
+              },
+              "steer": {
+                "annotations": {
+                  "goal_id": "str",
+                  "return": "None",
+                  "text": "str"
+                },
+                "signature": "(self, goal_id: 'str', text: 'str', *, images=None) -> 'None'"
+              }
+            },
+            "own_annotations": {}
+          },
+          "open_repository_goal": {
+            "annotations": {},
+            "function": "loushang.coding.adapters._goal_repository.open_repository_goal",
+            "signature": "(*, task, data_root, model=None, transcript_retained_until=None, execution_policy=None)"
+          }
+        },
+        "wire": {
+          "KEY": "coding_goal_context",
+          "MAPPER": "coding-goal-history/v1",
+          "OPERATION_KIND": "coding.goal.delegated_method",
+          "ROLE": "delegated_method_report",
+          "TOOLS": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "WORKER": "shared_implementation_worker"
+        }
+      }
+    },
+    "choice-allow-empty-int": {
+      "error": {
+        "args": [
+          "invalid Goal history selection"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "loushang.harnesswork.goal.records.GoalError"
+      }
+    },
+    "choice-fresh": {
+      "result": {
+        "class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+        "constructor": "(mode: 'str', target: 'AgentRef | None' = None, tier: 'ForkTier' = <factory>, allow_empty: 'bool' = False, reason: 'str' = 'host_policy') -> None",
+        "fields": [
+          {
+            "annotation": "str",
+            "compare": true,
+            "default": "<MISSING>",
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "mode",
+            "repr": true
+          },
+          {
+            "annotation": "AgentRef | None",
+            "compare": true,
+            "default": null,
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "target",
+            "repr": true
+          },
+          {
+            "annotation": "ForkTier",
+            "compare": true,
+            "default": "<MISSING>",
+            "factory": "loushang.harness.multiagent.context.ForkTier.none",
+            "init": true,
+            "name": "tier",
+            "repr": true
+          },
+          {
+            "annotation": "bool",
+            "compare": true,
+            "default": false,
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "allow_empty",
+            "repr": true
+          },
+          {
+            "annotation": "str",
+            "compare": true,
+            "default": "host_policy",
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "reason",
+            "repr": true
+          }
+        ],
+        "frozen": true,
+        "has_dict": true,
+        "own_annotations": {
+          "allow_empty": "bool",
+          "mode": "str",
+          "reason": "str",
+          "target": "AgentRef | None",
+          "tier": "ForkTier"
+        },
+        "pickle_class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+        "pickle_equal": true,
+        "slots": [],
+        "values": {
+          "class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+          "fields": {
+            "allow_empty": false,
+            "mode": "fresh",
+            "reason": "host_policy",
+            "target": null,
+            "tier": {
+              "class": "loushang.harness.multiagent.context.ForkTier",
+              "fields": {
+                "mode": "none",
+                "turns": null
+              }
+            }
+          }
+        }
+      }
+    },
+    "choice-fresh-target": {
+      "error": {
+        "args": [
+          "new Session must not name an existing child"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "loushang.harnesswork.goal.records.GoalError"
+      }
+    },
+    "choice-inherit": {
+      "result": {
+        "class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+        "constructor": "(mode: 'str', target: 'AgentRef | None' = None, tier: 'ForkTier' = <factory>, allow_empty: 'bool' = False, reason: 'str' = 'host_policy') -> None",
+        "fields": [
+          {
+            "annotation": "str",
+            "compare": true,
+            "default": "<MISSING>",
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "mode",
+            "repr": true
+          },
+          {
+            "annotation": "AgentRef | None",
+            "compare": true,
+            "default": null,
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "target",
+            "repr": true
+          },
+          {
+            "annotation": "ForkTier",
+            "compare": true,
+            "default": "<MISSING>",
+            "factory": "loushang.harness.multiagent.context.ForkTier.none",
+            "init": true,
+            "name": "tier",
+            "repr": true
+          },
+          {
+            "annotation": "bool",
+            "compare": true,
+            "default": false,
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "allow_empty",
+            "repr": true
+          },
+          {
+            "annotation": "str",
+            "compare": true,
+            "default": "host_policy",
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "reason",
+            "repr": true
+          }
+        ],
+        "frozen": true,
+        "has_dict": true,
+        "own_annotations": {
+          "allow_empty": "bool",
+          "mode": "str",
+          "reason": "str",
+          "target": "AgentRef | None",
+          "tier": "ForkTier"
+        },
+        "pickle_class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+        "pickle_equal": true,
+        "slots": [],
+        "values": {
+          "class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+          "fields": {
+            "allow_empty": false,
+            "mode": "inherit",
+            "reason": "bounded reuse",
+            "target": null,
+            "tier": {
+              "class": "loushang.harness.multiagent.context.ForkTier",
+              "fields": {
+                "mode": "last",
+                "turns": 2
+              }
+            }
+          }
+        }
+      }
+    },
+    "choice-inherit-empty-tier": {
+      "error": {
+        "args": [
+          "only inherit selects nonempty history tiers"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "loushang.harnesswork.goal.records.GoalError"
+      }
+    },
+    "choice-reason-control": {
+      "result": {
+        "class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+        "fields": {
+          "allow_empty": false,
+          "mode": "fresh",
+          "reason": "invalid\nreason",
+          "target": null,
+          "tier": {
+            "class": "loushang.harness.multiagent.context.ForkTier",
+            "fields": {
+              "mode": "none",
+              "turns": null
+            }
+          }
+        }
+      }
+    },
+    "choice-reuse": {
+      "result": {
+        "class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+        "constructor": "(mode: 'str', target: 'AgentRef | None' = None, tier: 'ForkTier' = <factory>, allow_empty: 'bool' = False, reason: 'str' = 'host_policy') -> None",
+        "fields": [
+          {
+            "annotation": "str",
+            "compare": true,
+            "default": "<MISSING>",
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "mode",
+            "repr": true
+          },
+          {
+            "annotation": "AgentRef | None",
+            "compare": true,
+            "default": null,
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "target",
+            "repr": true
+          },
+          {
+            "annotation": "ForkTier",
+            "compare": true,
+            "default": "<MISSING>",
+            "factory": "loushang.harness.multiagent.context.ForkTier.none",
+            "init": true,
+            "name": "tier",
+            "repr": true
+          },
+          {
+            "annotation": "bool",
+            "compare": true,
+            "default": false,
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "allow_empty",
+            "repr": true
+          },
+          {
+            "annotation": "str",
+            "compare": true,
+            "default": "host_policy",
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "reason",
+            "repr": true
+          }
+        ],
+        "frozen": true,
+        "has_dict": true,
+        "own_annotations": {
+          "allow_empty": "bool",
+          "mode": "str",
+          "reason": "str",
+          "target": "AgentRef | None",
+          "tier": "ForkTier"
+        },
+        "pickle_class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+        "pickle_equal": true,
+        "slots": [],
+        "values": {
+          "class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+          "fields": {
+            "allow_empty": false,
+            "mode": "reuse",
+            "reason": "host_policy",
+            "target": {
+              "class": "loushang.harness.multiagent.types.AgentRef",
+              "fields": {
+                "incarnation": 3,
+                "path": {
+                  "class": "loushang.harness.multiagent.types.AgentPath",
+                  "fields": {
+                    "parts": [
+                      "root",
+                      "child-fixed"
+                    ]
+                  }
+                }
+              }
+            },
+            "tier": {
+              "class": "loushang.harness.multiagent.context.ForkTier",
+              "fields": {
+                "mode": "none",
+                "turns": null
+              }
+            }
+          }
+        }
+      }
+    },
+    "choice-reuse-missing": {
+      "error": {
+        "args": [
+          "reuse requires an exact AgentRef"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "loushang.harnesswork.goal.records.GoalError"
+      }
+    },
+    "confirm-bool-revision": {
+      "result": {
+        "altered": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": false,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "confirm": true,
+        "frozen": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "selection_revision": 0
+      }
+    },
+    "confirm-float-revision": {
+      "result": {
+        "altered": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0.0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "confirm": true,
+        "frozen": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "selection_revision": 0
+      }
+    },
+    "confirm-missing-field": {
+      "result": {
+        "altered": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "confirm": false,
+        "frozen": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "selection_revision": 0
+      }
+    },
+    "confirm-revision-changed": {
+      "result": {
+        "altered": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 1,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "confirm": false,
+        "frozen": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "selection_revision": 0
+      }
+    },
+    "confirm-unknown-mode": {
+      "result": {
+        "altered": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "unknown-original-mode",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "confirm": true,
+        "frozen": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "selection_revision": 0
+      }
+    },
+    "policy-default": {
+      "result": {
+        "class": "loushang.coding.adapters._goal_execution_context.SessionExecutionPolicy",
+        "constructor": "(choice: 'SessionChoice | None' = None, limits: 'ControlLimits' = <factory>) -> None",
+        "fields": [
+          {
+            "annotation": "SessionChoice | None",
+            "compare": true,
+            "default": null,
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "choice",
+            "repr": true
+          },
+          {
+            "annotation": "ControlLimits",
+            "compare": true,
+            "default": "<MISSING>",
+            "factory": "loushang.harness.multiagent.types.ControlLimits",
+            "init": true,
+            "name": "limits",
+            "repr": true
+          }
+        ],
+        "frozen": true,
+        "has_dict": true,
+        "own_annotations": {
+          "choice": "SessionChoice | None",
+          "limits": "ControlLimits"
+        },
+        "pickle_class": "loushang.coding.adapters._goal_execution_context.SessionExecutionPolicy",
+        "pickle_equal": true,
+        "slots": [],
+        "values": {
+          "class": "loushang.coding.adapters._goal_execution_context.SessionExecutionPolicy",
+          "fields": {
+            "choice": null,
+            "limits": {
+              "class": "loushang.harness.multiagent.types.ControlLimits",
+              "fields": {
+                "max_open_agents": 8,
+                "max_spawn_depth": 3
+              }
+            }
+          }
+        }
+      }
+    },
+    "policy-invalid-limits": {
+      "error": {
+        "args": [
+          "invalid child control limits"
+        ],
+        "cause": null,
+        "context": null,
+        "notes": [],
+        "suppress": false,
+        "type": "loushang.harnesswork.goal.records.GoalError"
+      }
+    },
+    "prepare-default": {
+      "result": {
+        "canonical_wire": {
+          "base64": "eyJiYXNpcyI6eyJlcG9jaCI6MywiZmluZ2VycHJpbnQiOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwiZ29hbF9pZCI6ImdvYWwtZml4ZWQiLCJyZXZpc2lvbiI6Mn0sImhpc3RvcnkiOnsiYWxsb3dfZW1wdHkiOmZhbHNlLCJkaWFnbm9zdGljcyI6W10sImVmZmVjdGl2ZV90aWVyIjoibm9uZSIsIm1hcHBlciI6ImNvZGluZy1nb2FsLWhpc3RvcnkvdjEiLCJtZXNzYWdlc19zaGEyNTYiOiI0ZjUzY2RhMThjMmJhYTBjMDM1NGJiNWY5YTNlY2JlNWVkMTJhYjRkOGUxMWJhODczYzJmMTExNjEyMDJiOTQ1IiwicmVxdWVzdGVkX3RpZXIiOiJub25lIiwic291cmNlX3Nlc3Npb25faWQiOm51bGwsInNvdXJjZV9zdG9yZV9pZGVudGl0eSI6bnVsbCwidHVybnMiOm51bGwsIndhdGVybWFyayI6bnVsbH0sIm1ldGhvZF9pZCI6Im1ldGhvZC1maXhlZCIsIm1vZGUiOiJmcmVzaCIsIm1vZGVsIjp7ImxhYmVsIjoib2ZmbGluZTpvZmZsaW5lOmZpeGVkLW1vZGVsIiwidmFsdWUiOiJvZmZsaW5lOm9mZmxpbmU6Zml4ZWQtbW9kZWwifSwib3BlcmF0aW9uX2lkIjoib3BlcmF0aW9uLWZpeGVkIiwicGxhbl9pZCI6InBsYW4tZml4ZWQiLCJyZWFzb24iOiJob3N0X3BvbGljeSIsInJldXNlIjpudWxsLCJzZWxlY3Rpb25fcmV2aXNpb24iOjAsInN0ZXBfaWQiOiJyZXBhaXIiLCJ0b29scyI6WyJyZWFkIiwiZWRpdCIsIndyaXRlIl0sInZlcnNpb24iOjF9",
+          "length": 744,
+          "sha256": "d1691709700bbb9f777d9bba58f665f2853a6ad36a32043045df3d68e5ac9390"
+        },
+        "choice": {
+          "class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+          "fields": {
+            "allow_empty": false,
+            "mode": "fresh",
+            "reason": "host_policy",
+            "target": null,
+            "tier": {
+              "class": "loushang.harness.multiagent.context.ForkTier",
+              "fields": {
+                "mode": "none",
+                "turns": null
+              }
+            }
+          }
+        },
+        "confirm": true,
+        "frozen": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "operation": {
+          "class": "loushang.harnesswork.types.WorkOperation",
+          "fields": {
+            "domain": "coding",
+            "kind": "coding.goal.delegated_method",
+            "operation_id": "operation-fixed",
+            "payload": {
+              "coding_goal_context": {
+                "basis": {
+                  "epoch": 3,
+                  "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "goal_id": "goal-fixed",
+                  "revision": 2
+                },
+                "history": {
+                  "allow_empty": false,
+                  "diagnostics": [],
+                  "effective_tier": "none",
+                  "mapper": "coding-goal-history/v1",
+                  "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                  "requested_tier": "none",
+                  "source_session_id": null,
+                  "source_store_identity": null,
+                  "turns": null,
+                  "watermark": null
+                },
+                "method_id": "method-fixed",
+                "mode": "fresh",
+                "model": {
+                  "label": "offline:offline:fixed-model",
+                  "value": "offline:offline:fixed-model"
+                },
+                "operation_id": "operation-fixed",
+                "plan_id": "plan-fixed",
+                "reason": "host_policy",
+                "reuse": null,
+                "selection_revision": 0,
+                "step_id": "repair",
+                "tools": [
+                  "read",
+                  "edit",
+                  "write"
+                ],
+                "version": 1
+              },
+              "keep": {
+                "nested": [
+                  1,
+                  2
+                ]
+              }
+            },
+            "session_id": "parent-fixed",
+            "source": {}
+          }
+        },
+        "view": [
+          {
+            "class": "loushang.coding.adapters._goal_delegation.ExecutionContextView",
+            "fields": {
+              "origin_operation_id": "origin-fixed",
+              "ref": {
+                "class": "loushang.harness.multiagent.types.AgentRef",
+                "fields": {
+                  "incarnation": 3,
+                  "path": {
+                    "class": "loushang.harness.multiagent.types.AgentPath",
+                    "fields": {
+                      "parts": [
+                        "root",
+                        "child-fixed"
+                      ]
+                    }
+                  }
+                }
+              },
+              "round_id": 2,
+              "session_id": "child-fixed",
+              "status": "completed"
+            }
+          }
+        ],
+        "work_class": "loushang.coding.adapters._goal_delegation.DelegatedWork",
+        "work_frozen": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        }
+      }
+    },
+    "prepare-fresh": {
+      "result": {
+        "canonical_wire": {
+          "base64": "eyJiYXNpcyI6eyJlcG9jaCI6MywiZmluZ2VycHJpbnQiOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwiZ29hbF9pZCI6ImdvYWwtZml4ZWQiLCJyZXZpc2lvbiI6Mn0sImhpc3RvcnkiOnsiYWxsb3dfZW1wdHkiOmZhbHNlLCJkaWFnbm9zdGljcyI6W10sImVmZmVjdGl2ZV90aWVyIjoibm9uZSIsIm1hcHBlciI6ImNvZGluZy1nb2FsLWhpc3RvcnkvdjEiLCJtZXNzYWdlc19zaGEyNTYiOiI0ZjUzY2RhMThjMmJhYTBjMDM1NGJiNWY5YTNlY2JlNWVkMTJhYjRkOGUxMWJhODczYzJmMTExNjEyMDJiOTQ1IiwicmVxdWVzdGVkX3RpZXIiOiJub25lIiwic291cmNlX3Nlc3Npb25faWQiOm51bGwsInNvdXJjZV9zdG9yZV9pZGVudGl0eSI6bnVsbCwidHVybnMiOm51bGwsIndhdGVybWFyayI6bnVsbH0sIm1ldGhvZF9pZCI6Im1ldGhvZC1maXhlZCIsIm1vZGUiOiJmcmVzaCIsIm1vZGVsIjp7ImxhYmVsIjoib2ZmbGluZTpvZmZsaW5lOmZpeGVkLW1vZGVsIiwidmFsdWUiOiJvZmZsaW5lOm9mZmxpbmU6Zml4ZWQtbW9kZWwifSwib3BlcmF0aW9uX2lkIjoib3BlcmF0aW9uLWZpeGVkIiwicGxhbl9pZCI6InBsYW4tZml4ZWQiLCJyZWFzb24iOiJob3N0X3BvbGljeSIsInJldXNlIjpudWxsLCJzZWxlY3Rpb25fcmV2aXNpb24iOjAsInN0ZXBfaWQiOiJyZXBhaXIiLCJ0b29scyI6WyJyZWFkIiwiZWRpdCIsIndyaXRlIl0sInZlcnNpb24iOjF9",
+          "length": 744,
+          "sha256": "d1691709700bbb9f777d9bba58f665f2853a6ad36a32043045df3d68e5ac9390"
+        },
+        "choice": {
+          "class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+          "fields": {
+            "allow_empty": false,
+            "mode": "fresh",
+            "reason": "host_policy",
+            "target": null,
+            "tier": {
+              "class": "loushang.harness.multiagent.context.ForkTier",
+              "fields": {
+                "mode": "none",
+                "turns": null
+              }
+            }
+          }
+        },
+        "confirm": true,
+        "frozen": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "operation": {
+          "class": "loushang.harnesswork.types.WorkOperation",
+          "fields": {
+            "domain": "coding",
+            "kind": "coding.goal.delegated_method",
+            "operation_id": "operation-fixed",
+            "payload": {
+              "coding_goal_context": {
+                "basis": {
+                  "epoch": 3,
+                  "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "goal_id": "goal-fixed",
+                  "revision": 2
+                },
+                "history": {
+                  "allow_empty": false,
+                  "diagnostics": [],
+                  "effective_tier": "none",
+                  "mapper": "coding-goal-history/v1",
+                  "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                  "requested_tier": "none",
+                  "source_session_id": null,
+                  "source_store_identity": null,
+                  "turns": null,
+                  "watermark": null
+                },
+                "method_id": "method-fixed",
+                "mode": "fresh",
+                "model": {
+                  "label": "offline:offline:fixed-model",
+                  "value": "offline:offline:fixed-model"
+                },
+                "operation_id": "operation-fixed",
+                "plan_id": "plan-fixed",
+                "reason": "host_policy",
+                "reuse": null,
+                "selection_revision": 0,
+                "step_id": "repair",
+                "tools": [
+                  "read",
+                  "edit",
+                  "write"
+                ],
+                "version": 1
+              },
+              "keep": {
+                "nested": [
+                  1,
+                  2
+                ]
+              }
+            },
+            "session_id": "parent-fixed",
+            "source": {}
+          }
+        },
+        "view": [
+          {
+            "class": "loushang.coding.adapters._goal_delegation.ExecutionContextView",
+            "fields": {
+              "origin_operation_id": "origin-fixed",
+              "ref": {
+                "class": "loushang.harness.multiagent.types.AgentRef",
+                "fields": {
+                  "incarnation": 3,
+                  "path": {
+                    "class": "loushang.harness.multiagent.types.AgentPath",
+                    "fields": {
+                      "parts": [
+                        "root",
+                        "child-fixed"
+                      ]
+                    }
+                  }
+                }
+              },
+              "round_id": 2,
+              "session_id": "child-fixed",
+              "status": "completed"
+            }
+          }
+        ],
+        "work_class": "loushang.coding.adapters._goal_delegation.DelegatedWork",
+        "work_frozen": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        }
+      }
+    },
+    "prepare-independent": {
+      "result": {
+        "before": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "distinct": true,
+        "operation": {
+          "class": "loushang.harnesswork.types.WorkOperation",
+          "fields": {
+            "domain": "coding",
+            "kind": "coding.goal.delegated_method",
+            "operation_id": "operation-fixed",
+            "payload": {
+              "coding_goal_context": {
+                "basis": {
+                  "epoch": 3,
+                  "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "goal_id": "goal-fixed",
+                  "revision": 2
+                },
+                "history": {
+                  "allow_empty": false,
+                  "diagnostics": [
+                    "operation-only"
+                  ],
+                  "effective_tier": "none",
+                  "mapper": "coding-goal-history/v1",
+                  "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                  "requested_tier": "none",
+                  "source_session_id": null,
+                  "source_store_identity": null,
+                  "turns": null,
+                  "watermark": null
+                },
+                "method_id": "method-fixed",
+                "mode": "fresh",
+                "model": {
+                  "label": "offline:offline:fixed-model",
+                  "value": "offline:offline:fixed-model"
+                },
+                "operation_id": "operation-fixed",
+                "plan_id": "plan-fixed",
+                "reason": "host_policy",
+                "reuse": null,
+                "selection_revision": 0,
+                "step_id": "repair",
+                "tools": [
+                  "read",
+                  "edit",
+                  "write"
+                ],
+                "version": 1
+              },
+              "keep": {
+                "nested": [
+                  1,
+                  2
+                ]
+              }
+            },
+            "session_id": "parent-fixed",
+            "source": {}
+          }
+        },
+        "original_operation": {
+          "class": "loushang.harnesswork.types.WorkOperation",
+          "fields": {
+            "domain": "coding",
+            "kind": "original-kind",
+            "operation_id": "operation-fixed",
+            "payload": {
+              "keep": {
+                "nested": [
+                  1,
+                  2
+                ]
+              }
+            },
+            "session_id": "parent-fixed",
+            "source": {}
+          }
+        },
+        "returned": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "work": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [
+              "work-only"
+            ],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "fresh",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        }
+      }
+    },
+    "prepare-inherit": {
+      "result": {
+        "canonical_wire": {
+          "base64": "eyJiYXNpcyI6eyJlcG9jaCI6MywiZmluZ2VycHJpbnQiOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwiZ29hbF9pZCI6ImdvYWwtZml4ZWQiLCJyZXZpc2lvbiI6Mn0sImhpc3RvcnkiOnsiYWxsb3dfZW1wdHkiOmZhbHNlLCJkaWFnbm9zdGljcyI6WyJyZW5kZXJlZF9wcmVmaXhfdW5hdmFpbGFibGUiXSwiZWZmZWN0aXZlX3RpZXIiOiJsYXN0IiwibWFwcGVyIjoiY29kaW5nLWdvYWwtaGlzdG9yeS92MSIsIm1lc3NhZ2VzX3NoYTI1NiI6ImNkMjRkYzIyMWM0N2ZkM2RmMWNkZGFiMmE3MjE5NzMxMzNjYzA3NTc2ZGI5MjBhM2I2Nzg3ZWJkMDU1NTk1YWQiLCJyZXF1ZXN0ZWRfdGllciI6Imxhc3QiLCJzb3VyY2Vfc2Vzc2lvbl9pZCI6InBhcmVudC1maXhlZCIsInNvdXJjZV9zdG9yZV9pZGVudGl0eSI6InN0b3JlLWZpeGVkIiwidHVybnMiOjEsIndhdGVybWFyayI6Im1lc3NhZ2UtMSJ9LCJtZXRob2RfaWQiOiJtZXRob2QtZml4ZWQiLCJtb2RlIjoiaW5oZXJpdCIsIm1vZGVsIjp7ImxhYmVsIjoib2ZmbGluZTpvZmZsaW5lOmZpeGVkLW1vZGVsIiwidmFsdWUiOiJvZmZsaW5lOm9mZmxpbmU6Zml4ZWQtbW9kZWwifSwib3BlcmF0aW9uX2lkIjoib3BlcmF0aW9uLWZpeGVkIiwicGxhbl9pZCI6InBsYW4tZml4ZWQiLCJyZWFzb24iOiJob3N0X3BvbGljeSIsInJldXNlIjpudWxsLCJzZWxlY3Rpb25fcmV2aXNpb24iOjAsInN0ZXBfaWQiOiJyZXBhaXIiLCJ0b29scyI6WyJyZWFkIiwiZWRpdCIsIndyaXRlIl0sInZlcnNpb24iOjF9",
+          "length": 798,
+          "sha256": "34826e27235bbe774441e6d3a732f6b27ae23bef83861d65cc9f2ddbe0c7d0d0"
+        },
+        "choice": {
+          "class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+          "fields": {
+            "allow_empty": false,
+            "mode": "inherit",
+            "reason": "host_policy",
+            "target": null,
+            "tier": {
+              "class": "loushang.harness.multiagent.context.ForkTier",
+              "fields": {
+                "mode": "last",
+                "turns": 1
+              }
+            }
+          }
+        },
+        "confirm": true,
+        "frozen": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [
+              "rendered_prefix_unavailable"
+            ],
+            "effective_tier": "last",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "cd24dc221c47fd3df1cddab2a721973133cc07576db920a3b6787ebd055595ad",
+            "requested_tier": "last",
+            "source_session_id": "parent-fixed",
+            "source_store_identity": "store-fixed",
+            "turns": 1,
+            "watermark": "message-1"
+          },
+          "method_id": "method-fixed",
+          "mode": "inherit",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "operation": {
+          "class": "loushang.harnesswork.types.WorkOperation",
+          "fields": {
+            "domain": "coding",
+            "kind": "coding.goal.delegated_method",
+            "operation_id": "operation-fixed",
+            "payload": {
+              "coding_goal_context": {
+                "basis": {
+                  "epoch": 3,
+                  "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "goal_id": "goal-fixed",
+                  "revision": 2
+                },
+                "history": {
+                  "allow_empty": false,
+                  "diagnostics": [
+                    "rendered_prefix_unavailable"
+                  ],
+                  "effective_tier": "last",
+                  "mapper": "coding-goal-history/v1",
+                  "messages_sha256": "cd24dc221c47fd3df1cddab2a721973133cc07576db920a3b6787ebd055595ad",
+                  "requested_tier": "last",
+                  "source_session_id": "parent-fixed",
+                  "source_store_identity": "store-fixed",
+                  "turns": 1,
+                  "watermark": "message-1"
+                },
+                "method_id": "method-fixed",
+                "mode": "inherit",
+                "model": {
+                  "label": "offline:offline:fixed-model",
+                  "value": "offline:offline:fixed-model"
+                },
+                "operation_id": "operation-fixed",
+                "plan_id": "plan-fixed",
+                "reason": "host_policy",
+                "reuse": null,
+                "selection_revision": 0,
+                "step_id": "repair",
+                "tools": [
+                  "read",
+                  "edit",
+                  "write"
+                ],
+                "version": 1
+              },
+              "keep": {
+                "nested": [
+                  1,
+                  2
+                ]
+              }
+            },
+            "session_id": "parent-fixed",
+            "source": {}
+          }
+        },
+        "view": [
+          {
+            "class": "loushang.coding.adapters._goal_delegation.ExecutionContextView",
+            "fields": {
+              "origin_operation_id": "origin-fixed",
+              "ref": {
+                "class": "loushang.harness.multiagent.types.AgentRef",
+                "fields": {
+                  "incarnation": 3,
+                  "path": {
+                    "class": "loushang.harness.multiagent.types.AgentPath",
+                    "fields": {
+                      "parts": [
+                        "root",
+                        "child-fixed"
+                      ]
+                    }
+                  }
+                }
+              },
+              "round_id": 2,
+              "session_id": "child-fixed",
+              "status": "completed"
+            }
+          }
+        ],
+        "work_class": "loushang.coding.adapters._goal_delegation.DelegatedWork",
+        "work_frozen": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [
+              "rendered_prefix_unavailable"
+            ],
+            "effective_tier": "last",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "cd24dc221c47fd3df1cddab2a721973133cc07576db920a3b6787ebd055595ad",
+            "requested_tier": "last",
+            "source_session_id": "parent-fixed",
+            "source_store_identity": "store-fixed",
+            "turns": 1,
+            "watermark": "message-1"
+          },
+          "method_id": "method-fixed",
+          "mode": "inherit",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": null,
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        }
+      }
+    },
+    "prepare-reuse": {
+      "result": {
+        "canonical_wire": {
+          "base64": "eyJiYXNpcyI6eyJlcG9jaCI6MywiZmluZ2VycHJpbnQiOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwiZ29hbF9pZCI6ImdvYWwtZml4ZWQiLCJyZXZpc2lvbiI6Mn0sImhpc3RvcnkiOnsiYWxsb3dfZW1wdHkiOmZhbHNlLCJkaWFnbm9zdGljcyI6W10sImVmZmVjdGl2ZV90aWVyIjoibm9uZSIsIm1hcHBlciI6ImNvZGluZy1nb2FsLWhpc3RvcnkvdjEiLCJtZXNzYWdlc19zaGEyNTYiOiI0ZjUzY2RhMThjMmJhYTBjMDM1NGJiNWY5YTNlY2JlNWVkMTJhYjRkOGUxMWJhODczYzJmMTExNjEyMDJiOTQ1IiwicmVxdWVzdGVkX3RpZXIiOiJub25lIiwic291cmNlX3Nlc3Npb25faWQiOm51bGwsInNvdXJjZV9zdG9yZV9pZGVudGl0eSI6bnVsbCwidHVybnMiOm51bGwsIndhdGVybWFyayI6bnVsbH0sIm1ldGhvZF9pZCI6Im1ldGhvZC1maXhlZCIsIm1vZGUiOiJyZXVzZSIsIm1vZGVsIjp7ImxhYmVsIjoib2ZmbGluZTpvZmZsaW5lOmZpeGVkLW1vZGVsIiwidmFsdWUiOiJvZmZsaW5lOm9mZmxpbmU6Zml4ZWQtbW9kZWwifSwib3BlcmF0aW9uX2lkIjoib3BlcmF0aW9uLWZpeGVkIiwicGxhbl9pZCI6InBsYW4tZml4ZWQiLCJyZWFzb24iOiJob3N0X3BvbGljeSIsInJldXNlIjp7Im9yaWdpbl9vcGVyYXRpb25faWQiOiJvcmlnaW4tZml4ZWQiLCJwcmlvcl9vcGVyYXRpb25faWQiOiJwcmlvci1maXhlZCIsInByaW9yX3JvdW5kIjoyLCJyZWYiOnsiaW5jYXJuYXRpb24iOjMsInBhdGgiOiIvcm9vdC9jaGlsZC1maXhlZCJ9LCJzZXNzaW9uX2lkIjoiY2hpbGQtZml4ZWQifSwic2VsZWN0aW9uX3JldmlzaW9uIjowLCJzdGVwX2lkIjoicmVwYWlyIiwidG9vbHMiOlsicmVhZCIsImVkaXQiLCJ3cml0ZSJdLCJ2ZXJzaW9uIjoxfQ==",
+          "length": 907,
+          "sha256": "cf10adf163e48c6c022e10c09d2aeb34c5339097458b6b68d68c92c6d960c94f"
+        },
+        "choice": {
+          "class": "loushang.coding.adapters._goal_execution_context.SessionChoice",
+          "fields": {
+            "allow_empty": false,
+            "mode": "reuse",
+            "reason": "host_policy",
+            "target": {
+              "class": "loushang.harness.multiagent.types.AgentRef",
+              "fields": {
+                "incarnation": 3,
+                "path": {
+                  "class": "loushang.harness.multiagent.types.AgentPath",
+                  "fields": {
+                    "parts": [
+                      "root",
+                      "child-fixed"
+                    ]
+                  }
+                }
+              }
+            },
+            "tier": {
+              "class": "loushang.harness.multiagent.context.ForkTier",
+              "fields": {
+                "mode": "none",
+                "turns": null
+              }
+            }
+          }
+        },
+        "confirm": true,
+        "frozen": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "reuse",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": {
+            "origin_operation_id": "origin-fixed",
+            "prior_operation_id": "prior-fixed",
+            "prior_round": 2,
+            "ref": {
+              "incarnation": 3,
+              "path": "/root/child-fixed"
+            },
+            "session_id": "child-fixed"
+          },
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        },
+        "operation": {
+          "class": "loushang.harnesswork.types.WorkOperation",
+          "fields": {
+            "domain": "coding",
+            "kind": "coding.goal.delegated_method",
+            "operation_id": "operation-fixed",
+            "payload": {
+              "coding_goal_context": {
+                "basis": {
+                  "epoch": 3,
+                  "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "goal_id": "goal-fixed",
+                  "revision": 2
+                },
+                "history": {
+                  "allow_empty": false,
+                  "diagnostics": [],
+                  "effective_tier": "none",
+                  "mapper": "coding-goal-history/v1",
+                  "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                  "requested_tier": "none",
+                  "source_session_id": null,
+                  "source_store_identity": null,
+                  "turns": null,
+                  "watermark": null
+                },
+                "method_id": "method-fixed",
+                "mode": "reuse",
+                "model": {
+                  "label": "offline:offline:fixed-model",
+                  "value": "offline:offline:fixed-model"
+                },
+                "operation_id": "operation-fixed",
+                "plan_id": "plan-fixed",
+                "reason": "host_policy",
+                "reuse": {
+                  "origin_operation_id": "origin-fixed",
+                  "prior_operation_id": "prior-fixed",
+                  "prior_round": 2,
+                  "ref": {
+                    "incarnation": 3,
+                    "path": "/root/child-fixed"
+                  },
+                  "session_id": "child-fixed"
+                },
+                "selection_revision": 0,
+                "step_id": "repair",
+                "tools": [
+                  "read",
+                  "edit",
+                  "write"
+                ],
+                "version": 1
+              },
+              "keep": {
+                "nested": [
+                  1,
+                  2
+                ]
+              }
+            },
+            "session_id": "parent-fixed",
+            "source": {}
+          }
+        },
+        "view": [
+          {
+            "class": "loushang.coding.adapters._goal_delegation.ExecutionContextView",
+            "fields": {
+              "origin_operation_id": "origin-fixed",
+              "ref": {
+                "class": "loushang.harness.multiagent.types.AgentRef",
+                "fields": {
+                  "incarnation": 3,
+                  "path": {
+                    "class": "loushang.harness.multiagent.types.AgentPath",
+                    "fields": {
+                      "parts": [
+                        "root",
+                        "child-fixed"
+                      ]
+                    }
+                  }
+                }
+              },
+              "round_id": 2,
+              "session_id": "child-fixed",
+              "status": "completed"
+            }
+          }
+        ],
+        "work_class": "loushang.coding.adapters._goal_delegation.DelegatedWork",
+        "work_frozen": {
+          "basis": {
+            "epoch": 3,
+            "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "goal_id": "goal-fixed",
+            "revision": 2
+          },
+          "history": {
+            "allow_empty": false,
+            "diagnostics": [],
+            "effective_tier": "none",
+            "mapper": "coding-goal-history/v1",
+            "messages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requested_tier": "none",
+            "source_session_id": null,
+            "source_store_identity": null,
+            "turns": null,
+            "watermark": null
+          },
+          "method_id": "method-fixed",
+          "mode": "reuse",
+          "model": {
+            "label": "offline:offline:fixed-model",
+            "value": "offline:offline:fixed-model"
+          },
+          "operation_id": "operation-fixed",
+          "plan_id": "plan-fixed",
+          "reason": "host_policy",
+          "reuse": {
+            "origin_operation_id": "origin-fixed",
+            "prior_operation_id": "prior-fixed",
+            "prior_round": 2,
+            "ref": {
+              "incarnation": 3,
+              "path": "/root/child-fixed"
+            },
+            "session_id": "child-fixed"
+          },
+          "selection_revision": 0,
+          "step_id": "repair",
+          "tools": [
+            "read",
+            "edit",
+            "write"
+          ],
+          "version": 1
+        }
+      }
+    },
+    "report-invalid-role": {
+      "result": {
+        "error": {
+          "args": [
+            "invalid evidence role"
+          ],
+          "cause": null,
+          "context": null,
+          "notes": [],
+          "suppress": false,
+          "type": "loushang.coding.adapters._work_evidence.EvidenceReplayError"
+        },
+        "facts": [],
+        "report": {
+          "child_ref": {
+            "incarnation": 3,
+            "path": "/root/child-fixed"
+          },
+          "child_session_id": "child-fixed",
+          "context": {
+            "mode": "fresh",
+            "selection_revision": 0
+          },
+          "operation_id": "operation-fixed",
+          "origin_operation_id": "origin-fixed",
+          "round_id": 2,
+          "run_id": "run-fixed",
+          "session_id": "parent-fixed",
+          "terminal": "completed",
+          "version": 1
+        },
+        "trace": [
+          {
+            "put": {
+              "bytes": {
+                "base64": "eyJjaGlsZF9yZWYiOnsiaW5jYXJuYXRpb24iOjMsInBhdGgiOiIvcm9vdC9jaGlsZC1maXhlZCJ9LCJjaGlsZF9zZXNzaW9uX2lkIjoiY2hpbGQtZml4ZWQiLCJjb250ZXh0Ijp7Im1vZGUiOiJmcmVzaCIsInNlbGVjdGlvbl9yZXZpc2lvbiI6MH0sIm9wZXJhdGlvbl9pZCI6Im9wZXJhdGlvbi1maXhlZCIsIm9yaWdpbl9vcGVyYXRpb25faWQiOiJvcmlnaW4tZml4ZWQiLCJyb3VuZF9pZCI6MiwicnVuX2lkIjoicnVuLWZpeGVkIiwic2Vzc2lvbl9pZCI6InBhcmVudC1maXhlZCIsInRlcm1pbmFsIjoiY29tcGxldGVkIiwidmVyc2lvbiI6MX0=",
+                "length": 308,
+                "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb"
+              },
+              "metadata": {
+                "kind": "coding-goal-input",
+                "logical_name": "goal/run-fixed/.json",
+                "media_type": "application/octet-stream",
+                "source": "coding-goal:trusted-input"
+              }
+            }
+          },
+          {
+            "read": {
+              "blobId": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+              "createdAt": 1.0,
+              "disclosure": "private",
+              "kind": "coding-goal-input",
+              "logicalName": "goal/run-fixed/.json",
+              "mediaType": "application/octet-stream",
+              "sessionId": "parent-fixed",
+              "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+              "sizeBytes": 308,
+              "source": "coding-goal:trusted-input"
+            }
+          }
+        ]
+      }
+    },
+    "report-publish-failure": {
+      "result": {
+        "error": {
+          "args": [
+            "controlled report publish failure"
+          ],
+          "cause": null,
+          "context": null,
+          "notes": [],
+          "suppress": false,
+          "type": "builtins.RuntimeError"
+        },
+        "facts": [],
+        "report": {
+          "child_ref": {
+            "incarnation": 3,
+            "path": "/root/child-fixed"
+          },
+          "child_session_id": "child-fixed",
+          "context": {
+            "mode": "fresh",
+            "selection_revision": 0
+          },
+          "operation_id": "operation-fixed",
+          "origin_operation_id": "origin-fixed",
+          "round_id": 2,
+          "run_id": "run-fixed",
+          "session_id": "parent-fixed",
+          "terminal": "completed",
+          "version": 1
+        },
+        "trace": [
+          {
+            "put": {
+              "bytes": {
+                "base64": "eyJjaGlsZF9yZWYiOnsiaW5jYXJuYXRpb24iOjMsInBhdGgiOiIvcm9vdC9jaGlsZC1maXhlZCJ9LCJjaGlsZF9zZXNzaW9uX2lkIjoiY2hpbGQtZml4ZWQiLCJjb250ZXh0Ijp7Im1vZGUiOiJmcmVzaCIsInNlbGVjdGlvbl9yZXZpc2lvbiI6MH0sIm9wZXJhdGlvbl9pZCI6Im9wZXJhdGlvbi1maXhlZCIsIm9yaWdpbl9vcGVyYXRpb25faWQiOiJvcmlnaW4tZml4ZWQiLCJyb3VuZF9pZCI6MiwicnVuX2lkIjoicnVuLWZpeGVkIiwic2Vzc2lvbl9pZCI6InBhcmVudC1maXhlZCIsInRlcm1pbmFsIjoiY29tcGxldGVkIiwidmVyc2lvbiI6MX0=",
+                "length": 308,
+                "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb"
+              },
+              "metadata": {
+                "kind": "coding-goal-input",
+                "logical_name": "goal/run-fixed/delegated_method_report.json",
+                "media_type": "application/octet-stream",
+                "source": "coding-goal:trusted-input"
+              }
+            }
+          },
+          {
+            "read": {
+              "blobId": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+              "createdAt": 1.0,
+              "disclosure": "private",
+              "kind": "coding-goal-input",
+              "logicalName": "goal/run-fixed/delegated_method_report.json",
+              "mediaType": "application/octet-stream",
+              "sessionId": "parent-fixed",
+              "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+              "sizeBytes": 308,
+              "source": "coding-goal:trusted-input"
+            }
+          },
+          {
+            "publish": {
+              "class": "loushang.harnesswork.types.WorkEventFact",
+              "fields": {
+                "delivery_hint": "coalesce",
+                "kind": "WorkEvidenceReported",
+                "payload": {
+                  "evidence": {
+                    "blob": {
+                      "blobId": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+                      "createdAt": 1.0,
+                      "disclosure": "private",
+                      "kind": "coding-goal-input",
+                      "logicalName": "goal/run-fixed/delegated_method_report.json",
+                      "mediaType": "application/octet-stream",
+                      "sessionId": "parent-fixed",
+                      "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+                      "sizeBytes": 308,
+                      "source": "coding-goal:trusted-input"
+                    },
+                    "reported_step_id": "repair",
+                    "role": "delegated_method_report",
+                    "version": 1
+                  }
+                },
+                "source_event_ref": null
+              }
+            }
+          }
+        ]
+      }
+    },
+    "report-put-failure": {
+      "result": {
+        "error": {
+          "args": [
+            "controlled report put failure"
+          ],
+          "cause": null,
+          "context": null,
+          "notes": [],
+          "suppress": false,
+          "type": "builtins.OSError"
+        },
+        "facts": [],
+        "report": {
+          "child_ref": {
+            "incarnation": 3,
+            "path": "/root/child-fixed"
+          },
+          "child_session_id": "child-fixed",
+          "context": {
+            "mode": "fresh",
+            "selection_revision": 0
+          },
+          "operation_id": "operation-fixed",
+          "origin_operation_id": "origin-fixed",
+          "round_id": 2,
+          "run_id": "run-fixed",
+          "session_id": "parent-fixed",
+          "terminal": "completed",
+          "version": 1
+        },
+        "trace": [
+          {
+            "put": {
+              "bytes": {
+                "base64": "eyJjaGlsZF9yZWYiOnsiaW5jYXJuYXRpb24iOjMsInBhdGgiOiIvcm9vdC9jaGlsZC1maXhlZCJ9LCJjaGlsZF9zZXNzaW9uX2lkIjoiY2hpbGQtZml4ZWQiLCJjb250ZXh0Ijp7Im1vZGUiOiJmcmVzaCIsInNlbGVjdGlvbl9yZXZpc2lvbiI6MH0sIm9wZXJhdGlvbl9pZCI6Im9wZXJhdGlvbi1maXhlZCIsIm9yaWdpbl9vcGVyYXRpb25faWQiOiJvcmlnaW4tZml4ZWQiLCJyb3VuZF9pZCI6MiwicnVuX2lkIjoicnVuLWZpeGVkIiwic2Vzc2lvbl9pZCI6InBhcmVudC1maXhlZCIsInRlcm1pbmFsIjoiY29tcGxldGVkIiwidmVyc2lvbiI6MX0=",
+                "length": 308,
+                "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb"
+              },
+              "metadata": {
+                "kind": "coding-goal-input",
+                "logical_name": "goal/run-fixed/delegated_method_report.json",
+                "media_type": "application/octet-stream",
+                "source": "coding-goal:trusted-input"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "report-read-failure": {
+      "result": {
+        "error": {
+          "args": [
+            "controlled report read failure"
+          ],
+          "cause": null,
+          "context": null,
+          "notes": [],
+          "suppress": false,
+          "type": "builtins.OSError"
+        },
+        "facts": [],
+        "report": {
+          "child_ref": {
+            "incarnation": 3,
+            "path": "/root/child-fixed"
+          },
+          "child_session_id": "child-fixed",
+          "context": {
+            "mode": "fresh",
+            "selection_revision": 0
+          },
+          "operation_id": "operation-fixed",
+          "origin_operation_id": "origin-fixed",
+          "round_id": 2,
+          "run_id": "run-fixed",
+          "session_id": "parent-fixed",
+          "terminal": "completed",
+          "version": 1
+        },
+        "trace": [
+          {
+            "put": {
+              "bytes": {
+                "base64": "eyJjaGlsZF9yZWYiOnsiaW5jYXJuYXRpb24iOjMsInBhdGgiOiIvcm9vdC9jaGlsZC1maXhlZCJ9LCJjaGlsZF9zZXNzaW9uX2lkIjoiY2hpbGQtZml4ZWQiLCJjb250ZXh0Ijp7Im1vZGUiOiJmcmVzaCIsInNlbGVjdGlvbl9yZXZpc2lvbiI6MH0sIm9wZXJhdGlvbl9pZCI6Im9wZXJhdGlvbi1maXhlZCIsIm9yaWdpbl9vcGVyYXRpb25faWQiOiJvcmlnaW4tZml4ZWQiLCJyb3VuZF9pZCI6MiwicnVuX2lkIjoicnVuLWZpeGVkIiwic2Vzc2lvbl9pZCI6InBhcmVudC1maXhlZCIsInRlcm1pbmFsIjoiY29tcGxldGVkIiwidmVyc2lvbiI6MX0=",
+                "length": 308,
+                "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb"
+              },
+              "metadata": {
+                "kind": "coding-goal-input",
+                "logical_name": "goal/run-fixed/delegated_method_report.json",
+                "media_type": "application/octet-stream",
+                "source": "coding-goal:trusted-input"
+              }
+            }
+          },
+          {
+            "read": {
+              "blobId": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+              "createdAt": 1.0,
+              "disclosure": "private",
+              "kind": "coding-goal-input",
+              "logicalName": "goal/run-fixed/delegated_method_report.json",
+              "mediaType": "application/octet-stream",
+              "sessionId": "parent-fixed",
+              "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+              "sizeBytes": 308,
+              "source": "coding-goal:trusted-input"
+            }
+          }
+        ]
+      }
+    },
+    "report-valid": {
+      "result": {
+        "facts": [
+          {
+            "class": "loushang.harnesswork.types.WorkEventFact",
+            "fields": {
+              "delivery_hint": "coalesce",
+              "kind": "WorkEvidenceReported",
+              "payload": {
+                "evidence": {
+                  "blob": {
+                    "blobId": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+                    "createdAt": 1.0,
+                    "disclosure": "private",
+                    "kind": "coding-goal-input",
+                    "logicalName": "goal/run-fixed/delegated_method_report.json",
+                    "mediaType": "application/octet-stream",
+                    "sessionId": "parent-fixed",
+                    "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+                    "sizeBytes": 308,
+                    "source": "coding-goal:trusted-input"
+                  },
+                  "reported_step_id": "repair",
+                  "role": "delegated_method_report",
+                  "version": 1
+                }
+              },
+              "source_event_ref": null
+            }
+          }
+        ],
+        "report": {
+          "child_ref": {
+            "incarnation": 3,
+            "path": "/root/child-fixed"
+          },
+          "child_session_id": "child-fixed",
+          "context": {
+            "mode": "fresh",
+            "selection_revision": 0
+          },
+          "operation_id": "operation-fixed",
+          "origin_operation_id": "origin-fixed",
+          "round_id": 2,
+          "run_id": "run-fixed",
+          "session_id": "parent-fixed",
+          "terminal": "completed",
+          "version": 1
+        },
+        "trace": [
+          {
+            "put": {
+              "bytes": {
+                "base64": "eyJjaGlsZF9yZWYiOnsiaW5jYXJuYXRpb24iOjMsInBhdGgiOiIvcm9vdC9jaGlsZC1maXhlZCJ9LCJjaGlsZF9zZXNzaW9uX2lkIjoiY2hpbGQtZml4ZWQiLCJjb250ZXh0Ijp7Im1vZGUiOiJmcmVzaCIsInNlbGVjdGlvbl9yZXZpc2lvbiI6MH0sIm9wZXJhdGlvbl9pZCI6Im9wZXJhdGlvbi1maXhlZCIsIm9yaWdpbl9vcGVyYXRpb25faWQiOiJvcmlnaW4tZml4ZWQiLCJyb3VuZF9pZCI6MiwicnVuX2lkIjoicnVuLWZpeGVkIiwic2Vzc2lvbl9pZCI6InBhcmVudC1maXhlZCIsInRlcm1pbmFsIjoiY29tcGxldGVkIiwidmVyc2lvbiI6MX0=",
+                "length": 308,
+                "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb"
+              },
+              "metadata": {
+                "kind": "coding-goal-input",
+                "logical_name": "goal/run-fixed/delegated_method_report.json",
+                "media_type": "application/octet-stream",
+                "source": "coding-goal:trusted-input"
+              }
+            }
+          },
+          {
+            "read": {
+              "blobId": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+              "createdAt": 1.0,
+              "disclosure": "private",
+              "kind": "coding-goal-input",
+              "logicalName": "goal/run-fixed/delegated_method_report.json",
+              "mediaType": "application/octet-stream",
+              "sessionId": "parent-fixed",
+              "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+              "sizeBytes": 308,
+              "source": "coding-goal:trusted-input"
+            }
+          },
+          {
+            "publish": {
+              "class": "loushang.harnesswork.types.WorkEventFact",
+              "fields": {
+                "delivery_hint": "coalesce",
+                "kind": "WorkEvidenceReported",
+                "payload": {
+                  "evidence": {
+                    "blob": {
+                      "blobId": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+                      "createdAt": 1.0,
+                      "disclosure": "private",
+                      "kind": "coding-goal-input",
+                      "logicalName": "goal/run-fixed/delegated_method_report.json",
+                      "mediaType": "application/octet-stream",
+                      "sessionId": "parent-fixed",
+                      "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+                      "sizeBytes": 308,
+                      "source": "coding-goal:trusted-input"
+                    },
+                    "reported_step_id": "repair",
+                    "role": "delegated_method_report",
+                    "version": 1
+                  }
+                },
+                "source_event_ref": null
+              }
+            }
+          }
+        ]
+      }
+    },
+    "report-wrong-authority": {
+      "result": {
+        "error": {
+          "args": [
+            "evidence belongs to another Session authority"
+          ],
+          "cause": null,
+          "context": null,
+          "notes": [],
+          "suppress": false,
+          "type": "loushang.coding.adapters._work_evidence.EvidenceReplayError"
+        },
+        "facts": [],
+        "report": {
+          "child_ref": {
+            "incarnation": 3,
+            "path": "/root/child-fixed"
+          },
+          "child_session_id": "child-fixed",
+          "context": {
+            "mode": "fresh",
+            "selection_revision": 0
+          },
+          "operation_id": "operation-fixed",
+          "origin_operation_id": "origin-fixed",
+          "round_id": 2,
+          "run_id": "run-fixed",
+          "session_id": "parent-fixed",
+          "terminal": "completed",
+          "version": 1
+        },
+        "trace": [
+          {
+            "put": {
+              "bytes": {
+                "base64": "eyJjaGlsZF9yZWYiOnsiaW5jYXJuYXRpb24iOjMsInBhdGgiOiIvcm9vdC9jaGlsZC1maXhlZCJ9LCJjaGlsZF9zZXNzaW9uX2lkIjoiY2hpbGQtZml4ZWQiLCJjb250ZXh0Ijp7Im1vZGUiOiJmcmVzaCIsInNlbGVjdGlvbl9yZXZpc2lvbiI6MH0sIm9wZXJhdGlvbl9pZCI6Im9wZXJhdGlvbi1maXhlZCIsIm9yaWdpbl9vcGVyYXRpb25faWQiOiJvcmlnaW4tZml4ZWQiLCJyb3VuZF9pZCI6MiwicnVuX2lkIjoicnVuLWZpeGVkIiwic2Vzc2lvbl9pZCI6InBhcmVudC1maXhlZCIsInRlcm1pbmFsIjoiY29tcGxldGVkIiwidmVyc2lvbiI6MX0=",
+                "length": 308,
+                "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb"
+              },
+              "metadata": {
+                "kind": "coding-goal-input",
+                "logical_name": "goal/run-fixed/delegated_method_report.json",
+                "media_type": "application/octet-stream",
+                "source": "coding-goal:trusted-input"
+              }
+            }
+          },
+          {
+            "read": {
+              "blobId": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+              "createdAt": 1.0,
+              "disclosure": "private",
+              "kind": "coding-goal-input",
+              "logicalName": "goal/run-fixed/delegated_method_report.json",
+              "mediaType": "application/octet-stream",
+              "sessionId": "other-fixed",
+              "sha256": "38361f1a1557afb2e991112e07cd81c66ce69ea859b625c9a6c88bcafae953fb",
+              "sizeBytes": 308,
+              "source": "coding-goal:trusted-input"
+            }
+          }
+        ]
+      }
+    },
+    "view-permissive": {
+      "result": {
+        "class": "loushang.coding.adapters._goal_delegation.ExecutionContextView",
+        "constructor": "(ref: 'AgentRef', session_id: 'str', status: 'str', round_id: 'int', origin_operation_id: 'str | None') -> None",
+        "fields": [
+          {
+            "annotation": "AgentRef",
+            "compare": true,
+            "default": "<MISSING>",
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "ref",
+            "repr": true
+          },
+          {
+            "annotation": "str",
+            "compare": true,
+            "default": "<MISSING>",
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "session_id",
+            "repr": true
+          },
+          {
+            "annotation": "str",
+            "compare": true,
+            "default": "<MISSING>",
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "status",
+            "repr": true
+          },
+          {
+            "annotation": "int",
+            "compare": true,
+            "default": "<MISSING>",
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "round_id",
+            "repr": true
+          },
+          {
+            "annotation": "str | None",
+            "compare": true,
+            "default": "<MISSING>",
+            "factory": "<MISSING>",
+            "init": true,
+            "name": "origin_operation_id",
+            "repr": true
+          }
+        ],
+        "frozen": true,
+        "has_dict": true,
+        "own_annotations": {
+          "origin_operation_id": "str | None",
+          "ref": "AgentRef",
+          "round_id": "int",
+          "session_id": "str",
+          "status": "str"
+        },
+        "pickle_class": "loushang.coding.adapters._goal_delegation.ExecutionContextView",
+        "pickle_equal": true,
+        "slots": [],
+        "values": {
+          "class": "loushang.coding.adapters._goal_delegation.ExecutionContextView",
+          "fields": {
+            "origin_operation_id": null,
+            "ref": {
+              "class": "loushang.harness.multiagent.types.AgentRef",
+              "fields": {
+                "incarnation": 3,
+                "path": {
+                  "class": "loushang.harness.multiagent.types.AgentPath",
+                  "fields": {
+                    "parts": [
+                      "root",
+                      "child-fixed"
+                    ]
+                  }
+                }
+              }
+            },
+            "round_id": true,
+            "session_id": "",
+            "status": "unknown-status"
+          }
+        }
+      }
+    }
+  }
+}

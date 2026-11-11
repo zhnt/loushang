@@ -1,0 +1,463 @@
+{
+  "operations": [
+    {
+      "name": "initial",
+      "record": {
+        "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "deletionReceiptId": "fixture:deleted",
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+        "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+        "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+        "recordVersion": 1,
+        "revision": 1,
+        "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+      },
+      "expected": {
+        "returned": {
+          "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+          "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+          "recordVersion": 1,
+          "revision": 1,
+          "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+        }
+      },
+      "history": [
+        {
+          "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+          "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+          "recordVersion": 1,
+          "revision": 1,
+          "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+        }
+      ]
+    },
+    {
+      "name": "retry",
+      "record": {
+        "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "deletionReceiptId": "fixture:deleted",
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+        "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+        "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+        "recordVersion": 1,
+        "revision": 1,
+        "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+      },
+      "expected": {
+        "returned": {
+          "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+          "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+          "recordVersion": 1,
+          "revision": 1,
+          "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+        }
+      },
+      "history": [
+        {
+          "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+          "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+          "recordVersion": 1,
+          "revision": 1,
+          "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+        }
+      ]
+    },
+    {
+      "name": "same_result_different_revision",
+      "record": {
+        "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "deletionReceiptId": "fixture:deleted",
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+        "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+        "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+        "recordVersion": 1,
+        "revision": 5,
+        "recordDigest": "e0d2dbb86534a88a93b39a5c560fc89b9b902536e33e2ba5889e86450f106879"
+      },
+      "expected": {
+        "returned": {
+          "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+          "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+          "recordVersion": 1,
+          "revision": 1,
+          "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+        }
+      },
+      "history": [
+        {
+          "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+          "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+          "recordVersion": 1,
+          "revision": 1,
+          "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+        }
+      ]
+    },
+    {
+      "name": "changed_result",
+      "record": {
+        "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "deletionReceiptId": "fixture:deleted",
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "restoredTargetId": "present:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+        "confirmationId": "arch-restore-confirm:aee89b09cc5270d8ea2a93b69416d923c19c9159e06d1aefc4b0413192f5c65e",
+        "recordVersion": 1,
+        "revision": 2,
+        "recordDigest": "b53a21d60ea2eb4137cd9929737453f14d323fcd3363a811ca19e676db731dee"
+      },
+      "expected": {
+        "error_type": "builtins.ValueError",
+        "message": "Coding Arch restore confirmation changed"
+      },
+      "history": [
+        {
+          "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+          "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+          "recordVersion": 1,
+          "revision": 1,
+          "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+        }
+      ]
+    },
+    {
+      "name": "wrong_type",
+      "record": null,
+      "expected": {
+        "error_type": "builtins.TypeError",
+        "message": "Coding Arch restore confirmation is required"
+      },
+      "history": [
+        {
+          "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+          "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+          "recordVersion": 1,
+          "revision": 1,
+          "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+        }
+      ]
+    },
+    {
+      "name": "new_restore_wrong_revision",
+      "record": {
+        "backupId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "deletionReceiptId": "fixture:deleted",
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+        "restoreId": "arch-restore:d4a28bcc76b4356b47840864b3cf90a72f325388de5ec7caaa46b172076232da",
+        "confirmationId": "arch-restore-confirm:7f68197cf2b488133a489590a65db7817d706eed002fc6e455434b7ca74a3acb",
+        "recordVersion": 1,
+        "revision": 5,
+        "recordDigest": "1ae2c3824c773240096b6251622097992874d3ea0d8e04fb0b1bbcba3869e2d8"
+      },
+      "expected": {
+        "error_type": "builtins.ValueError",
+        "message": "Coding Arch restore confirmation revision changed"
+      },
+      "history": [
+        {
+          "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+          "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+          "recordVersion": 1,
+          "revision": 1,
+          "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+        }
+      ]
+    },
+    {
+      "name": "new_restore",
+      "record": {
+        "backupId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "deletionReceiptId": "fixture:deleted",
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+        "restoreId": "arch-restore:d4a28bcc76b4356b47840864b3cf90a72f325388de5ec7caaa46b172076232da",
+        "confirmationId": "arch-restore-confirm:7f68197cf2b488133a489590a65db7817d706eed002fc6e455434b7ca74a3acb",
+        "recordVersion": 1,
+        "revision": 2,
+        "recordDigest": "fdd47f54e9bddb1baf4dc89d5b85619e292d0efe7af9333e10704d9f2049b7e3"
+      },
+      "expected": {
+        "returned": {
+          "backupId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:d4a28bcc76b4356b47840864b3cf90a72f325388de5ec7caaa46b172076232da",
+          "confirmationId": "arch-restore-confirm:7f68197cf2b488133a489590a65db7817d706eed002fc6e455434b7ca74a3acb",
+          "recordVersion": 1,
+          "revision": 2,
+          "recordDigest": "fdd47f54e9bddb1baf4dc89d5b85619e292d0efe7af9333e10704d9f2049b7e3"
+        }
+      },
+      "history": [
+        {
+          "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+          "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+          "recordVersion": 1,
+          "revision": 1,
+          "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+        },
+        {
+          "backupId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:d4a28bcc76b4356b47840864b3cf90a72f325388de5ec7caaa46b172076232da",
+          "confirmationId": "arch-restore-confirm:7f68197cf2b488133a489590a65db7817d706eed002fc6e455434b7ca74a3acb",
+          "recordVersion": 1,
+          "revision": 2,
+          "recordDigest": "fdd47f54e9bddb1baf4dc89d5b85619e292d0efe7af9333e10704d9f2049b7e3"
+        }
+      ]
+    },
+    {
+      "name": "retry_new_restore",
+      "record": {
+        "backupId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "deletionReceiptId": "fixture:deleted",
+        "installationKey": {
+          "installationScope": "workspace",
+          "pluginId": "coding.arch.default",
+          "productId": "coding",
+          "schemaVersion": 1,
+          "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+        "restoreId": "arch-restore:d4a28bcc76b4356b47840864b3cf90a72f325388de5ec7caaa46b172076232da",
+        "confirmationId": "arch-restore-confirm:7f68197cf2b488133a489590a65db7817d706eed002fc6e455434b7ca74a3acb",
+        "recordVersion": 1,
+        "revision": 6,
+        "recordDigest": "52178ff3f17dc7a14dcc5b23589bd282bc0f1922b87332b34d52b7ce5ff4a1f1"
+      },
+      "expected": {
+        "returned": {
+          "backupId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:d4a28bcc76b4356b47840864b3cf90a72f325388de5ec7caaa46b172076232da",
+          "confirmationId": "arch-restore-confirm:7f68197cf2b488133a489590a65db7817d706eed002fc6e455434b7ca74a3acb",
+          "recordVersion": 1,
+          "revision": 2,
+          "recordDigest": "fdd47f54e9bddb1baf4dc89d5b85619e292d0efe7af9333e10704d9f2049b7e3"
+        }
+      },
+      "history": [
+        {
+          "backupId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:0ea3e1340ea59c0c4fdcb7d44319fd9239a5155d21812148433ab7689e2ab79d",
+          "confirmationId": "arch-restore-confirm:ecec49f1e2aca9d0faf6e241c2320854359a07dab2bad21903c25d13d2fd06d4",
+          "recordVersion": 1,
+          "revision": 1,
+          "recordDigest": "98e8378dcc3b372c76864c53f3f71f0b23c26533891cbb10c46a7eaed70ba21b"
+        },
+        {
+          "backupId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "deletionReceiptId": "fixture:deleted",
+          "installationKey": {
+            "installationScope": "workspace",
+            "pluginId": "coding.arch.default",
+            "productId": "coding",
+            "schemaVersion": 1,
+            "scopeId": "workspace:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "restoreCompletionDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "restoredTargetId": "present:38908e7febe4cc1eb83415856c03ecdb8d74086419666455d5c03f46a5d79393",
+          "restoreId": "arch-restore:d4a28bcc76b4356b47840864b3cf90a72f325388de5ec7caaa46b172076232da",
+          "confirmationId": "arch-restore-confirm:7f68197cf2b488133a489590a65db7817d706eed002fc6e455434b7ca74a3acb",
+          "recordVersion": 1,
+          "revision": 2,
+          "recordDigest": "fdd47f54e9bddb1baf4dc89d5b85619e292d0efe7af9333e10704d9f2049b7e3"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,595 @@
+{
+  "disabled:success": {
+    "result": {
+      "error": null
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_lstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "disabled:exists": {
+    "result": {
+      "error": "FileExistsError",
+      "message": "[Errno 17] File exists: '.acceptance.jsonl.bc14475d9cb2ebb94126d880.tmp' -> 'acceptance.jsonl'"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7072696f7220726563656970740a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "disabled:unsafe_parent": {
+    "result": {
+      "error": "CodingLegacyDisabledOnlyAcceptanceError",
+      "message": "Disabled-only Product state directory is unsafe"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": null,
+    "files": [],
+    "mode": 493
+  },
+  "disabled:write_failure": {
+    "result": {
+      "error": "OSError",
+      "message": "[Errno 5] injected publication failure"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": null,
+    "files": [],
+    "mode": 448
+  },
+  "disabled:cleanup_failure": {
+    "result": {
+      "error": "OSError",
+      "message": "[Errno 5] injected cleanup failure"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "disabled:post_permission": {
+    "result": {
+      "error": "CodingLegacyDisabledOnlyAcceptanceError",
+      "message": "Disabled-only Product state directory is unsafe"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_lstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 493
+  },
+  "disabled:post_missing": {
+    "result": {
+      "error": "FileNotFoundError",
+      "message": "[Errno 2] injected parent disappearance"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_lstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "disabled:post_identity_and_missing": {
+    "result": {
+      "error": "CodingLegacyDisabledOnlyAcceptanceError",
+      "message": "Disabled-only Product state directory changed during write"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "disabled:post_identity": {
+    "result": {
+      "error": "CodingLegacyDisabledOnlyAcceptanceError",
+      "message": "Disabled-only Product state directory changed during write"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "builtin:success": {
+    "result": {
+      "error": null
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_lstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "builtin:exists": {
+    "result": {
+      "error": "FileExistsError",
+      "message": "[Errno 17] File exists: '.acceptance.jsonl.6fd0b40fc0cb1228dd19b5e6.tmp' -> 'acceptance.jsonl'"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7072696f7220726563656970740a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "builtin:unsafe_parent": {
+    "result": {
+      "error": "CodingLegacyBuiltinOnlyAcceptanceError",
+      "message": "Builtin-only Product state directory is unsafe"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": null,
+    "files": [],
+    "mode": 493
+  },
+  "builtin:write_failure": {
+    "result": {
+      "error": "OSError",
+      "message": "[Errno 5] injected publication failure"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": null,
+    "files": [],
+    "mode": 448
+  },
+  "builtin:cleanup_failure": {
+    "result": {
+      "error": "OSError",
+      "message": "[Errno 5] injected cleanup failure"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "builtin:post_permission": {
+    "result": {
+      "error": "CodingLegacyBuiltinOnlyAcceptanceError",
+      "message": "Builtin-only Product state directory is unsafe"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_lstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 493
+  },
+  "builtin:post_missing": {
+    "result": {
+      "error": "FileNotFoundError",
+      "message": "[Errno 2] injected parent disappearance"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_lstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "builtin:post_identity_and_missing": {
+    "result": {
+      "error": "CodingLegacyBuiltinOnlyAcceptanceError",
+      "message": "Builtin-only Product state directory changed during write"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "builtin:post_identity": {
+    "result": {
+      "error": "CodingLegacyBuiltinOnlyAcceptanceError",
+      "message": "Builtin-only Product state directory changed during write"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "removed:success": {
+    "result": {
+      "error": null
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_lstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "removed:exists": {
+    "result": {
+      "error": "FileExistsError",
+      "message": "[Errno 17] File exists: '.acceptance.jsonl.9b08b7c7fdf840573f90a957.tmp' -> 'acceptance.jsonl'"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7072696f7220726563656970740a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "removed:unsafe_parent": {
+    "result": {
+      "error": "CodingLegacyRemovedAcceptanceError",
+      "message": "Old removal Product state directory is unsafe"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": null,
+    "files": [],
+    "mode": 493
+  },
+  "removed:write_failure": {
+    "result": {
+      "error": "OSError",
+      "message": "[Errno 5] injected publication failure"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": null,
+    "files": [],
+    "mode": 448
+  },
+  "removed:cleanup_failure": {
+    "result": {
+      "error": "OSError",
+      "message": "[Errno 5] injected cleanup failure"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "removed:post_permission": {
+    "result": {
+      "error": "CodingLegacyRemovedAcceptanceError",
+      "message": "Old removal Product state directory changed during write"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_lstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 493
+  },
+  "removed:post_missing": {
+    "result": {
+      "error": "FileNotFoundError",
+      "message": "[Errno 2] injected parent disappearance"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_lstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "removed:post_identity_and_missing": {
+    "result": {
+      "error": "FileNotFoundError",
+      "message": "[Errno 2] injected parent disappearance"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_lstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  },
+  "removed:post_identity": {
+    "result": {
+      "error": "CodingLegacyRemovedAcceptanceError",
+      "message": "Old removal Product state directory changed during write"
+    },
+    "trace": [
+      "parent_open",
+      "parent_fstat",
+      "parent_lstat",
+      "parent_fstat",
+      "parent_fstat",
+      "atomic_write",
+      "cleanup",
+      "parent_fstat_after",
+      "parent_lstat_after",
+      "parent_close"
+    ],
+    "leaked": false,
+    "payload": "7b22616363657074616e63654964223a202261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2022616363657074616e636556657273696f6e223a20312c2022726576696577223a207b226c6162656c223a2022e697a7e78988c3a9222c20226e6573746564223a205b312c20747275652c206e756c6c5d7d7d0a",
+    "files": [
+      "acceptance.jsonl"
+    ],
+    "mode": 448
+  }
+}

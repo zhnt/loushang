@@ -71,11 +71,7 @@ def coding_legacy_local_data_adoption_settled(
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     runtime = PackageProductPosixFencedRuntimeOwner.open(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
-        read_only=True,
+        **epoch.fenced_runtime_open_kwargs(), read_only=True
     )
     try:
         require_coding_fenced_single_legacy_skill_snapshot(

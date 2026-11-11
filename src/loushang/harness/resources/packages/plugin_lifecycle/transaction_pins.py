@@ -10,6 +10,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
@@ -31,6 +32,18 @@ from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     PackageClosureArtifactRole,
     VerifiedClosurePlanNodeV2,
     VerifiedClosurePlanV2,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _list_value as _wire_list,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _nonempty_string as _wire_string,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _versioned_dict as _exact_dict,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    _wire_int as _wire_int,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -869,34 +882,10 @@ def _require_nonnegative(value: int, *, name: str) -> None:
         raise ValueError(f"{name} must be nonnegative")
 
 
-def _exact_dict(value: object, *, fields: set[str], name: str) -> dict[str, object]:
-    if not isinstance(value, dict) or set(value) != fields:
-        raise ValueError(f"{name} does not match its versioned schema")
-    return value
-
-
-def _wire_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise TypeError(f"{name} must be a non-empty string")
-    return value
-
-
 def _wire_optional_string(value: object, *, name: str) -> str | None:
     if value is None:
         return None
     return _wire_string(value, name=name)
-
-
-def _wire_int(value: object, *, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an integer")
-    return value
-
-
-def _wire_list(value: object, *, name: str) -> list[object]:
-    if not isinstance(value, list):
-        raise TypeError(f"{name} must be a list")
-    return value
 
 
 def _assert_no_duplicate_json_keys(path: Path) -> None:
@@ -905,13 +894,9 @@ def _assert_no_duplicate_json_keys(path: Path) -> None:
             json.loads(line, object_pairs_hook=_unique_json_object)
 
 
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    document: dict[str, object] = {}
-    for key, value in pairs:
-        if key in document:
-            raise ValueError("Package transaction pin has duplicate JSON keys")
-        document[key] = value
-    return document
+_unique_json_object = _unique_json_object_hook(
+    lambda: "Package transaction pin has duplicate JSON keys",
+)
 
 
 __all__ = [
@@ -926,37 +911,27 @@ __all__ = [
 ]
 
 
-_TRANSACTION_PIN_TARGET_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("target_id", "target id"),
-        RecordField("node_id", "node id"),
-        RecordField("role", "target role"),
-        RecordField("distribution", "distribution"),
-        RecordField("version", "version"),
-        RecordField("artifact_digest", "artifact digest"),
-        RecordField("extraction_tree_digest", "tree digest"),
-        RecordField("wheel_evidence_fingerprint", "wheel evidence fingerprint"),
-        RecordField("target_version", "target version", _wire_int),
-    ),
+_TRANSACTION_PIN_TARGET_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageTransactionPinTargetV1,
+    _wire_string,
+    RecordField("role", "target role"),
+    RecordField("extraction_tree_digest", "tree digest"),
+    RecordField("target_version", "target version", _wire_int),
+    derive_labels=True,
 )
 
 
-_TRANSACTION_PIN_RECEIPT_V1_SCHEMA = RecordSchema(
-    text_decoder=_wire_string,
-    fields=(
-        RecordField("receipt_id", "receipt id"),
-        RecordField("pin_request", decoder=PackageTransactionPinRequestV1.from_dict),
-        RecordField("pin_id", "pin id"),
-        RecordField("owner_identity", "owner identity"),
-        RecordField("owner_revision", "owner revision", _wire_int),
-        RecordField("lease_id", "lease id"),
-        RecordField("lease_revision", "lease revision", _wire_int),
-        RecordField("state", "pin state"),
-        RecordField("prior_receipt_id", "prior receipt id", _wire_optional_string),
-        RecordField(
-            "transition_evidence_ref", "transition evidence ref", _wire_optional_string
-        ),
-        RecordField("receipt_version", "receipt version", _wire_int),
+_TRANSACTION_PIN_RECEIPT_V1_SCHEMA = RecordSchema.for_dataclass(
+    PackageTransactionPinReceiptV1,
+    _wire_string,
+    RecordField("pin_request", decoder=PackageTransactionPinRequestV1.from_dict),
+    RecordField("owner_revision", "owner revision", _wire_int),
+    RecordField("lease_revision", "lease revision", _wire_int),
+    RecordField("state", "pin state"),
+    RecordField("prior_receipt_id", "prior receipt id", _wire_optional_string),
+    RecordField(
+        "transition_evidence_ref", "transition evidence ref", _wire_optional_string
     ),
+    RecordField("receipt_version", "receipt version", _wire_int),
+    derive_labels=True,
 )

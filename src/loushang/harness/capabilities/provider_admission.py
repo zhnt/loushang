@@ -842,6 +842,25 @@ def _capability_definition_to_dict(
     }
 
 
+def _admit_provider_for_duration(
+    owner: CapabilityProviderOwnerAuthority,
+    candidate: CapabilityProviderCandidateEnvelope,
+    *,
+    issued_at: int,
+    eligibility_duration: int,
+    admission_duration: int,
+) -> CapabilityProviderAdmissionRecord:
+    eligibility = owner.grant_eligibility(
+        candidate, issued_at=issued_at, expires_at=issued_at + eligibility_duration
+    )
+    return owner.admit(
+        candidate,
+        eligibility=eligibility,
+        issued_at=issued_at,
+        expires_at=issued_at + admission_duration,
+    )
+
+
 class _PostInitValue(Protocol):
     def __post_init__(self) -> None: ...
 

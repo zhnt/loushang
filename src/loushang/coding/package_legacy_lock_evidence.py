@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from hashlib import sha256
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.resources.packages.materializer import (
     _plugin_binding_from_json,
     _plugin_binding_history_key,
@@ -169,13 +170,9 @@ def parse_coding_legacy_local_binding_heads(
     return tuple(selected)
 
 
-def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Coding legacy Package lock has duplicate JSON keys")
-        result[key] = value
-    return result
+_unique_object = _unique_json_object_hook(
+    lambda: 'Coding legacy Package lock has duplicate JSON keys',
+)
 
 
 __all__ = [

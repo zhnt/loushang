@@ -15,6 +15,26 @@ _MAX_ERROR_PATH_SEGMENT_CHARS = 80
 _TRUNCATED_PATH_SUFFIX = "...[truncated]"
 
 
+def _unique_json_object_hook(
+    duplicate_message: Callable[[], str],
+) -> Callable[[list[tuple[str, object]]], dict[str, object]]:
+    """Build a JSON pairs hook; defer caller diagnostics until a duplicate.
+
+    This only constructs objects. The caller keeps parser, scalar and schema
+    policy, including whether nonfinite JSON constants are permitted.
+    """
+
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(duplicate_message())
+            result[key] = value
+        return result
+
+    return unique_object
+
+
 class JsonValueError(TypeError):
     def __init__(self, message: str, *, path: str, value_type: str) -> None:
         super().__init__(message)

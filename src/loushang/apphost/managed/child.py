@@ -16,6 +16,10 @@ from functools import partial
 from threading import Event
 from typing import Any, Literal, Protocol, TypeVar
 
+from loushang.foundation._owned_tasks import (
+    _task_failed_or_cancelled as _failed,
+)
+
 from .contracts import ManagedHandoffPhaseV1
 from .handoff import ManagedChildControlV1
 from .lifecycle import ManagedServiceStateV1
@@ -537,10 +541,6 @@ class ManagedChildApplicationV1:
 def _budget(value: float) -> None:
     if type(value) not in (int, float) or not 0 < value <= 30:
         raise ValueError("invalid managed child budget")
-
-
-def _failed(task: asyncio.Task[Any]) -> bool:
-    return task.done() and (task.cancelled() or task.exception() is not None)
 
 
 async def _wait(task: asyncio.Task[Any], deadline: float, *, ignore_failure: bool = False) -> None:

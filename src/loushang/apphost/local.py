@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Coroutine
+from pathlib import Path
+from typing import Protocol
 
 from loushang.appserver.framing import require_timeout
 from loushang.appserver.local import LocalAppServerV1
@@ -21,7 +23,305 @@ from .application import HostedApplicationError
 from .continuity import HostedApplicationContinuityRuntimeV1
 
 
-class HostedLocalRuntimeV1:
+class _LocalStartup:
+    """Reuse the two existing startup phases; each adopter owns its own state."""
+
+    _startup_error_prefix: str
+    _one_step: bool
+    _closing: bool
+    _prepared: bool
+    _startup_timeout: float
+    _startup_deadline: float | None
+    _start_task: asyncio.Task[None] | None
+    _activate_task: asyncio.Task[None] | None
+    _phases: dict[str, asyncio.Task[None]]
+
+    def _prepare_unavailable(self) -> bool:
+        raise NotImplementedError
+
+    def _startup_accepting(self) -> bool:
+        raise NotImplementedError
+
+    async def _start_once(self) -> None:
+        raise NotImplementedError
+
+    async def _activate_once(self) -> None:
+        raise NotImplementedError
+
+    async def close(self, *, retry_timeout: float | None = None) -> None:
+        raise NotImplementedError
+
+    async def start(self) -> None:
+        """Original one-step entrypoint over the same two owned phases."""
+        if self._one_step or self._closing or self._start_task is not None:
+            raise HostedApplicationError(f"{self._startup_error_prefix}_closed")
+        self._one_step = True
+        await self._prepare()
+        await self._activate()
+
+    async def prepare(self, *, deadline: float | None = None) -> None:
+        """Prepare transport without enabling application client scopes."""
+        if self._one_step:
+            raise HostedApplicationError(f"{self._startup_error_prefix}_closed")
+        await self._prepare(deadline=deadline)
+
+    async def _prepare(self, *, deadline: float | None = None) -> None:
+        if self._prepare_unavailable():
+            raise HostedApplicationError(f"{self._startup_error_prefix}_closed")
+        if deadline is not None and (
+            type(deadline) not in (int, float) or not 0 < deadline <= 1e12
+        ):
+            raise ValueError("invalid local startup deadline")
+        self._startup_deadline = (
+            asyncio.get_running_loop().time() + self._startup_timeout
+        )
+        if deadline is not None:
+            self._startup_deadline = min(self._startup_deadline, deadline)
+        try:
+            self._remaining_startup()
+            self._start_task = _spawn(self._start_once())
+            done, _ = await asyncio.wait(
+                {self._start_task}, timeout=self._remaining_startup()
+            )
+            if not done:
+                raise HostedApplicationError(
+                    f"{self._startup_error_prefix}_startup_timeout"
+                )
+            await asyncio.shield(self._start_task)
+            self._remaining_startup()
+            if not self._prepared:
+                raise HostedApplicationError(f"{self._startup_error_prefix}_closed")
+        except BaseException:
+            await self.close()
+            raise
+
+    async def activate(self) -> None:
+        """Enable scopes and publish transport only after explicit admission."""
+        if self._one_step:
+            raise HostedApplicationError(f"{self._startup_error_prefix}_closed")
+        await self._activate()
+
+    async def _activate(self) -> None:
+        if (
+            self._closing
+            or not self._prepared
+            or self._activate_task is not None
+            or self._start_task is None
+            or not self._start_task.done()
+            or _failed(self._start_task)
+        ):
+            raise HostedApplicationError(f"{self._startup_error_prefix}_closed")
+        try:
+            self._remaining_startup()
+            self._activate_task = _spawn(self._activate_once())
+            done, _ = await asyncio.wait(
+                {self._activate_task}, timeout=self._remaining_startup()
+            )
+            if not done:
+                raise HostedApplicationError(
+                    f"{self._startup_error_prefix}_startup_timeout"
+                )
+            await asyncio.shield(self._activate_task)
+            self._remaining_startup()
+            if not self._startup_accepting():
+                raise HostedApplicationError(f"{self._startup_error_prefix}_closed")
+        except BaseException:
+            await self.close()
+            raise
+
+    def _remaining_startup(self) -> float:
+        if self._closing or self._startup_deadline is None:
+            raise HostedApplicationError(f"{self._startup_error_prefix}_closed")
+        remaining = self._startup_deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise HostedApplicationError(
+                f"{self._startup_error_prefix}_startup_timeout"
+            )
+        return remaining
+
+    async def _run_local_phase(
+        self,
+        name: str,
+        action: Callable[[], Coroutine[object, object, None]],
+        deadline: float,
+    ) -> None:
+        task = self._phases.get(name)
+        if task is None or _failed(task):
+            if asyncio.get_running_loop().time() >= deadline:
+                raise HostedApplicationError(
+                    f"{self._startup_error_prefix}_cleanup_incomplete"
+                )
+            self._phases[name] = task = _spawn(action())
+        await self._wait_for_phase(task, deadline)
+
+    async def _wait_for_phase(self, task: asyncio.Task[None], deadline: float) -> None:
+        await _wait(task, deadline)
+
+
+class _LocalLaunchFacts(Protocol):
+    """Only facts consumed by the shared local application lifetime."""
+
+    @property
+    def connection_root(self) -> Path: ...
+
+    @property
+    def endpoint(self) -> str: ...
+
+    @property
+    def session_discovery(self) -> bool: ...
+
+    @property
+    def scopes(self) -> tuple[LocalRecordScopeV1, ...]: ...
+
+
+class _ApplicationAttempt(Protocol):
+    async def open(self) -> HostedApplicationContinuityRuntimeV1: ...
+    async def close(self) -> None: ...
+
+
+class _LocalApplicationStartup(_LocalStartup):
+    """Own an application attempt until its existing local deployment adopts it.
+
+    This is the same command instance and retained tasks, never a second owner.
+    Product subclasses select launch facts, attempt construction and root policy.
+    """
+
+    _launch: _LocalLaunchFacts
+    _directory: LocalConnectionDirectoryV1
+    _attempt: _ApplicationAttempt
+    _application: HostedApplicationContinuityRuntimeV1 | None
+    _local: HostedLocalRuntimeV1 | None
+    _timeout: float
+    _close_task: asyncio.Task[None] | None
+    _deadline: float | None
+    _settled: bool
+
+    def _prepare_session_roots(self) -> None:
+        raise NotImplementedError
+
+    def _session_execution(self) -> bool:
+        raise NotImplementedError
+
+    def _connection_instance(self) -> str | None:
+        raise NotImplementedError
+
+    def _mux_management(self) -> bool:
+        raise NotImplementedError
+
+    def _check_retry_budget(self, value: float) -> None:
+        _require_budget(value)
+
+    @property
+    def cleanup_pending(self) -> bool:
+        return not self._settled
+
+    async def _start_once(self) -> None:
+        self._remaining_startup()
+        await asyncio.to_thread(self._prepare_session_roots)
+        self._remaining_startup()
+        self._application = await self._attempt.open()
+        self._remaining_startup()
+        self._local = HostedLocalRuntimeV1(
+            self._application,
+            self._directory,
+            self._launch.endpoint,
+            scopes=self._launch.scopes,
+            settlement_timeout=self._timeout,
+            session_discovery=self._launch.session_discovery,
+            session_execution=self._session_execution(),
+            connection_instance=self._connection_instance(),
+            mux_management=self._mux_management(),
+        )
+        self._application = None  # AppHost has adopted both application and directory.
+        await self._local.prepare(deadline=self._startup_deadline)
+        self._remaining_startup()
+        self._prepared = True
+
+    async def _activate_once(self) -> None:
+        self._remaining_startup()
+        assert self._local is not None
+        await self._local.activate()
+        self._remaining_startup()
+
+    async def wait_closed(self) -> None:
+        if self._local is None:
+            raise HostedApplicationError(f"{self._startup_error_prefix}_not_ready")
+        await self._local.wait_closed()
+        await self.close()
+
+    async def run(self, *, ready: Callable[[], None] | None = None) -> None:
+        try:
+            await self.start()
+            if ready is not None:
+                ready()
+            await self.wait_closed()
+        finally:
+            await self.close()
+
+    async def close(self, *, retry_timeout: float | None = None) -> None:
+        if retry_timeout is not None:
+            self._check_retry_budget(retry_timeout)
+        if self._settled:
+            return
+        self.fence()
+        if self._deadline is None:
+            self._deadline = asyncio.get_running_loop().time() + self._timeout
+        task = self._close_task
+        if task is None or _failed(task):
+            if retry_timeout is not None:
+                self._deadline = asyncio.get_running_loop().time() + retry_timeout
+            task = self._close_task = _spawn(self._close_once(retry_timeout))
+        await asyncio.shield(task)
+
+    def fence(self) -> None:
+        """Revoke startup and client admission without creating a cleanup task."""
+        self._closing = True
+        if self._local is not None:
+            # Fence lower-level activation before scheduling our close task.
+            # An already queued activate must not publish in the intervening turn.
+            self._local.fence()
+
+    async def _close_once(self, retry_timeout: float | None) -> None:
+        assert self._deadline is not None
+        if self._local is not None:
+            # Do not await the outer startup task first: it can itself be
+            # waiting for this adopted deployment's start/close settlement.
+            await self._local.close(retry_timeout=retry_timeout)
+        if self._start_task is not None:
+            await _wait(
+                self._start_task,
+                self._deadline,
+                ignore_failure=True,
+                error_prefix=self._startup_error_prefix,
+            )
+        if self._activate_task is not None:
+            await _wait(
+                self._activate_task,
+                self._deadline,
+                ignore_failure=True,
+                error_prefix=self._startup_error_prefix,
+            )
+        if self._local is None:
+            self._directory.close()
+            await self._phase(
+                "application",
+                self._application.close
+                if self._application is not None
+                else self._attempt.close,
+            )
+        self._settled = True
+
+    async def _phase(
+        self, name: str, operation: Callable[[], Coroutine[object, object, None]]
+    ) -> None:
+        assert self._deadline is not None
+        await self._run_local_phase(name, operation, self._deadline)
+
+    async def _wait_for_phase(self, task: asyncio.Task[None], deadline: float) -> None:
+        await _wait(task, deadline, error_prefix=self._startup_error_prefix)
+
+
+class HostedLocalRuntimeV1(_LocalStartup):
     """Fence scopes, settle connections, then close G13 with its lease last.
 
     One monotonic budget covers the entire stop, including the reply attempt.
@@ -47,13 +347,21 @@ class HostedLocalRuntimeV1:
     ) -> None:
         if type(session_discovery) is not bool:
             raise TypeError("invalid discovery activation")
-        if type(session_execution) is not bool or (session_execution and not application.execution_enabled):
-            raise ValueError("execution deployment requires an admitted application capability")
+        if type(session_execution) is not bool or (
+            session_execution and not application.execution_enabled
+        ):
+            raise ValueError(
+                "execution deployment requires an admitted application capability"
+            )
         if type(mux_management) is not bool:
             raise TypeError("invalid managed Mux activation")
-        if mux_management and (application.managed_mux_instance is None
-                               or application.managed_mux_instance != connection_instance):
-            raise ValueError("managed deployment requires its admitted application instance")
+        if mux_management and (
+            application.managed_mux_instance is None
+            or application.managed_mux_instance != connection_instance
+        ):
+            raise ValueError(
+                "managed deployment requires its admitted application instance"
+            )
         for timeout in (startup_timeout, settlement_timeout):
             _require_budget(timeout)
         self._application, self._directory = application, directory
@@ -66,9 +374,15 @@ class HostedLocalRuntimeV1:
             scope_factory=application.open_client_scope,
             request_stop=self._request_stop,
             close_timeout=connection_timeout,
-            discovery_scope_factory=application.open_client_scope if session_discovery else None,
-            execution_scope_factory=application.open_client_scope if session_execution else None,
-            managed_mux_scope_factory=application.open_client_scope if mux_management else None,
+            discovery_scope_factory=application.open_client_scope
+            if session_discovery
+            else None,
+            execution_scope_factory=application.open_client_scope
+            if session_execution
+            else None,
+            managed_mux_scope_factory=application.open_client_scope
+            if mux_management
+            else None,
             mux_closure=mux_management and application.managed_mux_close_enabled,
             instance=connection_instance,
         )
@@ -87,6 +401,14 @@ class HostedLocalRuntimeV1:
         self._closing = False
         self._settled = False
 
+    _startup_error_prefix = "hosted_local"
+
+    def _prepare_unavailable(self) -> bool:
+        return self._start_task is not None or self._closing
+
+    def _startup_accepting(self) -> bool:
+        return self.accepting
+
     @property
     def cleanup_pending(self) -> bool:
         return not self._settled
@@ -103,85 +425,11 @@ class HostedLocalRuntimeV1:
             and not _failed(task)
         )
 
-    async def start(self) -> None:
-        """Original one-step entrypoint over the same two owned phases."""
-        if self._one_step or self._closing or self._start_task is not None:
-            raise HostedApplicationError("hosted_local_closed")
-        self._one_step = True
-        await self._prepare()
-        await self._activate()
-
-    async def prepare(self, *, deadline: float | None = None) -> None:
-        """Prepare transport without enabling application client scopes."""
-        if self._one_step:
-            raise HostedApplicationError("hosted_local_closed")
-        await self._prepare(deadline=deadline)
-
-    async def _prepare(self, *, deadline: float | None = None) -> None:
-        if self._start_task is not None or self._closing:
-            raise HostedApplicationError("hosted_local_closed")
-        if deadline is not None and (
-            type(deadline) not in (int, float) or not 0 < deadline <= 1e12
-        ):
-            raise ValueError("invalid local startup deadline")
-        self._startup_deadline = asyncio.get_running_loop().time() + self._startup_timeout
-        if deadline is not None:
-            self._startup_deadline = min(self._startup_deadline, deadline)
-        try:
-            self._remaining_startup()
-            self._start_task = _spawn(self._start_once())
-            done, _ = await asyncio.wait(
-                {self._start_task}, timeout=self._remaining_startup()
-            )
-            if not done:
-                raise HostedApplicationError("hosted_local_startup_timeout")
-            await asyncio.shield(self._start_task)
-            self._remaining_startup()
-            if not self._prepared:
-                raise HostedApplicationError("hosted_local_closed")
-        except BaseException:
-            await self.close()
-            raise
-
     async def _start_once(self) -> None:
         self._remaining_startup()
         await self._server.prepare(deadline=self._startup_deadline)
         self._remaining_startup()
         self._prepared = True
-
-    async def activate(self) -> None:
-        """Enable scopes and publish transport only after explicit admission."""
-        if self._one_step:
-            raise HostedApplicationError("hosted_local_closed")
-        await self._activate()
-
-    async def _activate(self) -> None:
-        if (self._closing or not self._prepared or self._activate_task is not None
-                or self._start_task is None or not self._start_task.done() or _failed(self._start_task)):
-            raise HostedApplicationError("hosted_local_closed")
-        try:
-            self._remaining_startup()
-            self._activate_task = _spawn(self._activate_once())
-            done, _ = await asyncio.wait(
-                {self._activate_task}, timeout=self._remaining_startup()
-            )
-            if not done:
-                raise HostedApplicationError("hosted_local_startup_timeout")
-            await asyncio.shield(self._activate_task)
-            self._remaining_startup()
-            if not self.accepting:
-                raise HostedApplicationError("hosted_local_closed")
-        except BaseException:
-            await self.close()
-            raise
-
-    def _remaining_startup(self) -> float:
-        if self._closing or self._startup_deadline is None:
-            raise HostedApplicationError("hosted_local_closed")
-        remaining = self._startup_deadline - asyncio.get_running_loop().time()
-        if remaining <= 0:
-            raise HostedApplicationError("hosted_local_startup_timeout")
-        return remaining
 
     async def _activate_once(self) -> None:
         self._remaining_startup()
@@ -277,12 +525,7 @@ class HostedLocalRuntimeV1:
         action: Callable[[], Coroutine[object, object, None]],
         deadline: float,
     ) -> None:
-        task = self._phases.get(name)
-        if task is None or _failed(task):
-            if asyncio.get_running_loop().time() >= deadline:
-                raise HostedApplicationError("hosted_local_cleanup_incomplete")
-            self._phases[name] = task = _spawn(action())
-        await _wait(task, deadline)
+        await self._run_local_phase(name, action, deadline)
 
 
 def _require_budget(timeout: float) -> None:
@@ -296,13 +539,14 @@ async def _wait(
     deadline: float,
     *,
     ignore_failure: bool = False,
+    error_prefix: str = "hosted_local",
 ) -> None:
     if not task.done():
         await asyncio.wait(
             {task}, timeout=max(0.0, deadline - asyncio.get_running_loop().time())
         )
     if not task.done() or (not ignore_failure and _failed(task)):
-        raise HostedApplicationError("hosted_local_cleanup_incomplete")
+        raise HostedApplicationError(f"{error_prefix}_cleanup_incomplete")
 
 
 def _failed(task: asyncio.Task[None]) -> bool:

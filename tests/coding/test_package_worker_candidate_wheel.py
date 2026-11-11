@@ -36,16 +36,18 @@ import loushang.coding.package_product_worker_crash_c5_settlement as crash_c5_mo
 import loushang.coding.package_product_worker_history_checkpoint as checkpoint_module
 import loushang.coding.package_product_worker_history_preflight_v2 as history_preflight_v2_module
 import loushang.coding.package_product_worker_history_retention as history_retention_module
-import loushang.coding.package_product_worker_native_install as native_install_module
 import loushang.coding.package_product_worker_opt_in as opt_in_journal_module
 import loushang.coding.package_product_worker_payload as worker_payload_module
 import loushang.coding.package_product_worker_receipt as receipt_journal_module
-import loushang.coding.package_product_worker_registered_payload_repair as registered_payload_module
 import loushang.coding.package_product_worker_start_gate_journal as gate_journal_module
 import loushang.coding.package_product_worker_start_gate_recovery as gated_recovery_module
 import loushang.coding.session.agent_session as coding_agent_session_module
+import loushang.harness.package_product._linux_worker_history as history_proof_module
+import loushang.harness.package_product._linux_worker_native_release as native_release_custody_module
 import loushang.harness.package_product.product_local_wheel_runtime as local_wheel_runtime_module
 import loushang.harness.package_product.product_root_gc_runtime as root_gc_module
+import loushang.harness.worker.history._checkpoint_commands as checkpoint_commands_module
+import loushang.harness.worker.history._checkpoint_history as checkpoint_history_module
 import loushang.hosting.service_group as service_group_module
 from loushang.agent import Agent, synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
@@ -1557,20 +1559,22 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         product,
                     )
                     moved_stage = product.state_root / "held-stage"
-                    original_verify = native_install_module.verify_coding_product_native_release_descriptor
+                    original_verify = native_release_custody_module._LinuxWorkerNativeReleaseCustody.verify_descriptor
 
                     def replace_stage_after_verify(
-                        root: int, owner: PosixLocalWheelProductSessionOwner
+                        custody: native_release_custody_module._LinuxWorkerNativeReleaseCustody,
+                        root: int,
+                        owner: PosixLocalWheelProductSessionOwner,
                     ) -> tuple[CodingWorkerNativeClosureV1, dict[str, object]]:
-                        result = original_verify(root, owner)
+                        result = original_verify(custody, root, owner)
                         complete_stage.rename(moved_stage)
                         complete_stage.symlink_to(moved_stage, target_is_directory=True)
                         return result
 
                     with monkeypatch.context() as patch:
                         patch.setattr(
-                            native_install_module,
-                            "verify_coding_product_native_release_descriptor",
+                            native_release_custody_module._LinuxWorkerNativeReleaseCustody,
+                            "verify_descriptor",
                             replace_stage_after_verify,
                         )
                         with pytest.raises(
@@ -4744,9 +4748,9 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
 
                     with monkeypatch.context() as patch:
                         patch.setattr(
-                            worker_payload_module,
+                            type(worker_payload_module._STORAGE),
                             "_write_marker",
-                            fail_marker_write,
+                            staticmethod(fail_marker_write),
                         )
                         with pytest.raises(
                             OSError, match="injected marker write failure"
@@ -5321,7 +5325,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                     assert crash_review.same_boot_settlement_candidate
                     with monkeypatch.context() as patch:
                         patch.setattr(
-                            gated_recovery_module,
+                            history_proof_module,
                             "worker_native_group_status_after_restart",
                             lambda _: "present",
                         )
@@ -5847,7 +5851,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                     )
                 with monkeypatch.context() as patch:
                     patch.setattr(
-                        gated_recovery_module,
+                        history_proof_module,
                         "worker_native_group_status_after_restart",
                         lambda _: "present",
                     )
@@ -6326,9 +6330,9 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         )
         with monkeypatch.context() as orphaned_receipt_history:
             orphaned_receipt_history.setattr(
-                history_retention_module,
-                "read_coding_product_worker_receipt_records",
-                lambda _product, **_kwargs: (*retained_receipts, orphan_record),
+                receipt_journal_module._CodingReceiptHistory,
+                "read_records",
+                lambda _journal, **_kwargs: (*retained_receipts, orphan_record),
             )
             unbound_elsewhere = review_coding_product_worker_history_retention(
                 product, attempt_id=attempt_id
@@ -6412,7 +6416,7 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             assert "receipt_references_unverified" in incomplete.missing_proofs
         with monkeypatch.context() as changed_native_observation:
             changed_native_observation.setattr(
-                history_retention_module,
+                history_proof_module,
                 "worker_native_group_status_after_restart",
                 lambda _identity: "present",
             )
@@ -6444,7 +6448,7 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
 
         with monkeypatch.context() as interrupted_initial_head:
             interrupted_initial_head.setattr(
-                checkpoint_module,
+                checkpoint_commands_module,
                 "initialize_coding_worker_active_head",
                 fail_initial_checkpoint_head,
             )
@@ -6500,7 +6504,7 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             expected_generation=latest_opt_in.generation,
         )
         monkeypatch.setattr(checkpoint_module, "_MAX_ACTIVE_RECORDS", 1)
-        original_seal = checkpoint_module.seal_coding_worker_active_segment
+        original_seal = checkpoint_commands_module.seal_coding_worker_active_segment
 
         def interrupt_after_checkpoint_seal(
             *_args: object, **kwargs: object
@@ -6510,7 +6514,7 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
 
         with monkeypatch.context() as interrupted_seal:
             interrupted_seal.setattr(
-                checkpoint_module,
+                checkpoint_commands_module,
                 "seal_coding_worker_active_segment",
                 interrupt_after_checkpoint_seal,
             )
@@ -6530,7 +6534,7 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
 
         with monkeypatch.context() as interrupted_checkpoint:
             interrupted_checkpoint.setattr(
-                checkpoint_module,
+                checkpoint_commands_module,
                 "commit_coding_worker_active_segment",
                 fail_checkpoint_head,
             )
@@ -6568,7 +6572,7 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         )
         with monkeypatch.context() as interrupted_tail:
             interrupted_tail.setattr(
-                checkpoint_module,
+                checkpoint_commands_module,
                 "commit_coding_worker_active_segment",
                 fail_checkpoint_head,
             )
@@ -6615,8 +6619,8 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
 
         with monkeypatch.context() as interrupted_anchor:
             interrupted_anchor.setattr(
-                checkpoint_module,
-                "write_coding_worker_checkpoint_anchor",
+                checkpoint_history_module,
+                "write_checkpoint_anchor",
                 fail_anchor_commit,
             )
             with pytest.raises(OSError, match="checkpoint anchor pause"):
@@ -7022,9 +7026,9 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
 
         with patch.object(service_group_module, "_read_file", changed_boot_read):
             with patch.object(
-                registered_payload_module,
+                type(worker_payload_module._STORAGE),
                 "_remove_verified_stage",
-                crash_after_first_payload_unlink,
+                staticmethod(crash_after_first_payload_unlink),
             ):
                 with pytest.raises(OSError, match="injected registered payload"):
                     repair_coding_product_worker_registered_payload_debt(
@@ -7107,7 +7111,8 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
         gc_writer_finished = Event()
         gc_writer_errors: list[BaseException] = []
         gc_writer_thread: Thread | None = None
-        read_repair_intent = history_preflight_v2_module._read_intent
+        preflight_bindings = history_preflight_v2_module._history_proof_bindings()
+        read_repair_intent = preflight_bindings.registered().read
 
         def competing_gc_cutover_writer() -> None:
             gc_writer_started.set()
@@ -7121,8 +7126,9 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
 
         def read_repair_intent_while_gc_waits(*args, **kwargs):
             nonlocal gc_writer_thread
-            gc_writer_thread = Thread(target=competing_gc_cutover_writer, daemon=True)
-            gc_writer_thread.start()
+            if gc_writer_thread is None:
+                gc_writer_thread = Thread(target=competing_gc_cutover_writer, daemon=True)
+                gc_writer_thread.start()
             assert gc_writer_started.wait(1)
             assert not gc_writer_finished.wait(0.05)
             intent = read_repair_intent(*args, **kwargs)
@@ -7131,8 +7137,11 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
 
         with patch.object(
             history_preflight_v2_module,
-            "_read_intent",
-            read_repair_intent_while_gc_waits,
+            "_history_proof_bindings",
+            lambda: replace(
+                preflight_bindings,
+                registered=lambda: SimpleNamespace(read=read_repair_intent_while_gc_waits),
+            ),
         ):
             stage_coding_product_worker_v2_preparation(
                 product, first_retained_generations=cutoffs
@@ -9603,7 +9612,7 @@ def test_worker_history_review_refuses_swapped_product_state_root(
             return os.listdir(path)
 
     swapping_os = SwappingOs()
-    monkeypatch.setattr(history_retention_module, "os", swapping_os)
+    monkeypatch.setattr(history_proof_module, "os", swapping_os)
     monkeypatch.setattr(local_wheel_runtime_module, "os", swapping_os)
     try:
         with pytest.raises(ValueError, match="state root descriptor changed"):
@@ -9771,14 +9780,16 @@ def test_empty_worker_payload_debt_requires_absent_supervisor_claim(
         )
         remove_empty_stage = worker_payload_module._remove_empty_stage
 
-        def crash_after_removal(root_fd: int, stage_name: str) -> None:
+        def crash_after_removal(_storage, root_fd: int, stage_name: str) -> None:
             remove_empty_stage(root_fd, stage_name)
             if stage_name == f"worker-payload-{crash_attempt}":
                 raise OSError("injected post-remove interruption")
 
         with monkeypatch.context() as patch:
             patch.setattr(
-                worker_payload_module, "_remove_empty_stage", crash_after_removal
+                type(worker_payload_module._STORAGE),
+                "_remove_empty_stage",
+                crash_after_removal,
             )
             with pytest.raises(OSError, match="post-remove interruption"):
                 repair_coding_product_worker_empty_payload_debt(
@@ -9956,6 +9967,7 @@ def test_complete_worker_payload_repair_resumes_partial_deletion(
         replacement_stage.mkdir(mode=0o700)
 
         def interrupted_removal(
+            _storage,
             root_fd: int,
             opened_stage_fd: int,
             stage_name: str,
@@ -9988,7 +10000,9 @@ def test_complete_worker_payload_repair_resumes_partial_deletion(
 
         with monkeypatch.context() as patch:
             patch.setattr(
-                worker_payload_module, "_remove_verified_stage", interrupted_removal
+                type(worker_payload_module._STORAGE),
+                "_remove_verified_stage",
+                interrupted_removal,
             )
             with pytest.raises(OSError, match="partial payload deletion"):
                 repair_coding_product_worker_payload_debt(product, expected_plan=plan)
@@ -10325,6 +10339,7 @@ def test_unmarked_worker_payload_repair_resumes_exact_partial_deletion(
             gc.prepare()
 
         def interrupted_removal(
+            _storage,
             root_fd: int,
             stage_fd: int,
             stage_name: str,
@@ -10355,7 +10370,7 @@ def test_unmarked_worker_payload_repair_resumes_exact_partial_deletion(
 
         with monkeypatch.context() as patch:
             patch.setattr(
-                worker_payload_module,
+                type(worker_payload_module._STORAGE),
                 "_remove_unmarked_repair_remainder",
                 interrupted_removal,
             )

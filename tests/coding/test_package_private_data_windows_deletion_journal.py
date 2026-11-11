@@ -19,9 +19,11 @@ from loushang.coding.package_private_data_deletion_preview import (
 )
 from loushang.coding.package_private_data_windows_deletion_journal import (
     CodingWindowsArchPrivateDataDeletionTransaction,
-    _decode_event,
-    _validate_sequence,
     windows_arch_deletion_receipt_id,
+)
+from loushang.harness.plugin_management._private_data_deletion_windows import (
+    decode_windows_deletion_event,
+    validate_windows_deletion_sequence,
 )
 from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionConfirmationV1,
@@ -82,21 +84,49 @@ def _events(*, present: bool) -> tuple[CodingArchPrivateDataDeletionEventV1, ...
 @pytest.mark.parametrize("present", [False, True])
 def test_windows_deletion_event_chain_requires_exact_phases(present: bool) -> None:
     events = _events(present=present)
-    _validate_sequence(events)
+    validate_windows_deletion_sequence(
+        events,
+        owner_id="coding.arch.private-data:windows-v1",
+        receipt_id=windows_arch_deletion_receipt_id,
+        label="Windows Coding Arch",
+    )
     for event in events:
-        assert _decode_event(canonical_json_bytes(event.to_dict()) + b"\n") == event
+        assert (
+            decode_windows_deletion_event(
+                canonical_json_bytes(event.to_dict()) + b"\n",
+                CodingArchPrivateDataDeletionEventV1,
+                label="Windows Coding Arch",
+            )
+            == event
+        )
     with pytest.raises(ValueError, match="completion has no start"):
-        _validate_sequence(
+        validate_windows_deletion_sequence(
             (events[0], replace(events[-1], revision=2))
             if present
-            else (replace(events[-1], revision=1),)
+            else (replace(events[-1], revision=1),),
+            owner_id="coding.arch.private-data:windows-v1",
+            receipt_id=windows_arch_deletion_receipt_id,
+            label="Windows Coding Arch",
         )
     with pytest.raises(ValueError, match="starts conflict"):
-        _validate_sequence((events[0], replace(events[0], revision=2)))
+        validate_windows_deletion_sequence(
+            (events[0], replace(events[0], revision=2)),
+            owner_id="coding.arch.private-data:windows-v1",
+            receipt_id=windows_arch_deletion_receipt_id,
+            label="Windows Coding Arch",
+        )
     with pytest.raises(ValueError, match="noncanonical"):
-        _decode_event(json.dumps(events[0].to_dict(), indent=2).encode("utf-8"))
+        decode_windows_deletion_event(
+            json.dumps(events[0].to_dict(), indent=2).encode("utf-8"),
+            CodingArchPrivateDataDeletionEventV1,
+            label="Windows Coding Arch",
+        )
     with pytest.raises(ValueError, match="invalid"):
-        _decode_event(b'{"revision":1,"revision":1}')
+        decode_windows_deletion_event(
+            b'{"revision":1,"revision":1}',
+            CodingArchPrivateDataDeletionEventV1,
+            label="Windows Coding Arch",
+        )
 
 
 def test_windows_deletion_transaction_cannot_escape_offline_gate() -> None:
@@ -117,18 +147,26 @@ def test_windows_present_deletion_completes_after_rename(
         -1,
         SimpleNamespace(layout=object(), product=object()),  # type: ignore[arg-type]
     )
-    monkeypatch.setattr(transaction.__class__, "_scan", lambda _self: ((started, renamed), None))
     monkeypatch.setattr(
-        transaction.__class__, "_require_confirmation", lambda _self, _plan, _confirmation: None
+        transaction.__class__, "_scan", lambda _self: ((started, renamed), None)
     )
-    monkeypatch.setattr(transaction.__class__, "_append", lambda _self, _before, _staged, event: event)
+    monkeypatch.setattr(
+        transaction.__class__,
+        "_require_confirmation",
+        lambda _self, _plan, _confirmation: None,
+    )
+    monkeypatch.setattr(
+        transaction.__class__, "_append", lambda _self, _before, _staged, event: event
+    )
     monkeypatch.setattr(
         journal_module,
         "coding_arch_installation_private_data_root",
         lambda _layout, _key: tmp_path / "absent-root",
     )
     monkeypatch.setattr(
-        journal_module, "_require_windows_tombstone", lambda _owner, _started, *, present: None
+        journal_module,
+        "_require_windows_tombstone",
+        lambda _owner, _started, *, present: None,
     )
     assert completed.receipt is not None
     assert transaction.record_completion(started, completed.receipt) == completed

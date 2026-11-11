@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import secrets
-import stat
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
@@ -39,6 +37,12 @@ from loushang.harness.continuity import (
     ProviderQuery,
     build_continuity_hub,
     compose_experience_continuity,
+)
+from loushang.harness.continuity._payload_staging import (
+    _ContinuityPayloadStaging,
+)
+from loushang.harness.continuity._payload_staging import (
+    _PrivateContinuityPayload as _PrivateContinuityPayload,
 )
 from loushang.harness.continuity.plugin_runtime import (
     ContinuityPluginGeneration,
@@ -401,7 +405,8 @@ class CodingContinuityProvider:
             # through real completion rather than just waiter cancellation.
             try:
                 history = await settled_io(
-                    read_coding_resume_header, summary.session_file,
+                    read_coding_resume_header,
+                    summary.session_file,
                 )
             except (OSError, ValueError):
                 rows.append(("History identity", "Unavailable"))
@@ -410,21 +415,29 @@ class CodingContinuityProvider:
                     history_changed = True
                     rows.append(("History identity", "Changed; refresh"))
                 else:
-                    rows.append((
-                        "History identity",
-                        "Coding" if history.product_identity == "coding" else "Unverified",
-                    ))
-                    rows.append((
-                        "Historical composition",
-                        history.composition.set_id
-                        if history.composition is not None else "Legacy unknown",
-                    ))
+                    rows.append(
+                        (
+                            "History identity",
+                            "Coding"
+                            if history.product_identity == "coding"
+                            else "Unverified",
+                        )
+                    )
+                    rows.append(
+                        (
+                            "Historical composition",
+                            history.composition.set_id
+                            if history.composition is not None
+                            else "Legacy unknown",
+                        )
+                    )
                     try:
                         from .runtime.agent_session_runtime import AgentSessionRuntime
 
                         if isinstance(self._runtime, AgentSessionRuntime):
                             snapshot = await AgentSessionRuntime.preview_resume_history(
-                                self._runtime, summary.session_file,
+                                self._runtime,
+                                summary.session_file,
                                 max_bytes=1024 * 1024,
                             )
                         else:
@@ -435,12 +448,15 @@ class CodingContinuityProvider:
                             )
                     except AgentTranscriptFileError as exc:
                         if exc.code != "session_file_too_large":
-                            rows.append(("Recent history", "Bounded preview unavailable"))
+                            rows.append(
+                                ("Recent history", "Bounded preview unavailable")
+                            )
                         else:
                             try:
                                 if isinstance(self._runtime, AgentSessionRuntime):
                                     recent = await AgentSessionRuntime.preview_resume_recent_page(
-                                        self._runtime, summary.session_file,
+                                        self._runtime,
+                                        summary.session_file,
                                     )
                                 else:
                                     recent = await settled_io(
@@ -448,36 +464,43 @@ class CodingContinuityProvider:
                                         summary.session_file,
                                     )
                             except (OSError, ValueError):
-                                rows.append(("Recent history", "Bounded preview unavailable"))
+                                rows.append(
+                                    ("Recent history", "Bounded preview unavailable")
+                                )
                             else:
                                 if not recent.records:
-                                    rows.append(("Recent history", "Bounded preview unavailable"))
-                                elif (
-                                    recent.header_preview.header != history.header
-                                    or (
-                                        summary.authority_fingerprint is not None
-                                        and recent.source_fingerprint
-                                        != summary.authority_fingerprint
+                                    rows.append(
+                                        (
+                                            "Recent history",
+                                            "Bounded preview unavailable",
+                                        )
                                     )
+                                elif recent.header_preview.header != history.header or (
+                                    summary.authority_fingerprint is not None
+                                    and recent.source_fingerprint
+                                    != summary.authority_fingerprint
                                 ):
                                     history_changed = True
                                 else:
-                                    history_text = _readonly_history_text(recent.records)
-                                    rows.append(("Recent history", "Unverified tail preview"))
+                                    history_text = _readonly_history_text(
+                                        recent.records
+                                    )
+                                    rows.append(
+                                        ("Recent history", "Unverified tail preview")
+                                    )
                     except (OSError, ValueError):
                         rows.append(("Recent history", "Bounded preview unavailable"))
                     else:
-                        if (
-                            snapshot.header_preview.header != history.header
-                            or (
-                                summary.authority_fingerprint is not None
-                                and snapshot.source_fingerprint
-                                != summary.authority_fingerprint
-                            )
+                        if snapshot.header_preview.header != history.header or (
+                            summary.authority_fingerprint is not None
+                            and snapshot.source_fingerprint
+                            != summary.authority_fingerprint
                         ):
                             history_changed = True
                         else:
-                            history_text = _readonly_history_text(snapshot.selected_records)
+                            history_text = _readonly_history_text(
+                                snapshot.selected_records
+                            )
                             start_planning = getattr(
                                 self._runtime, "start_configured_resume_planning", None
                             )
@@ -488,7 +511,9 @@ class CodingContinuityProvider:
                                     rows.append(("Resume preparation", "Unavailable"))
                                 else:
                                     if planning_started is True:
-                                        rows.append(("Resume preparation", "In progress"))
+                                        rows.append(
+                                            ("Resume preparation", "In progress")
+                                        )
         inspect_assets = getattr(
             self._runtime,
             "inspect_discovered_session_assets",
@@ -511,8 +536,7 @@ class CodingContinuityProvider:
                 rows.append(("Model", f"{provider}/{model_id}"))
         if summary.authority_fingerprint is not None:
             history_changed = (
-                not session_summary_authority_is_current(summary)
-                or history_changed
+                not session_summary_authority_is_current(summary) or history_changed
             )
         if history_changed:
             history_text = None
@@ -554,7 +578,8 @@ class CodingContinuityProvider:
             stale=(
                 session_summary_revision(summary, indexed.source_revision)
                 != target.revision
-            ) or history_changed,
+            )
+            or history_changed,
         )
 
     async def resolve_history_source(
@@ -1066,9 +1091,7 @@ def _retain_coding_continuity(
 
 def _canonical_continuity_cwd(cwd: str | Path | None) -> str | None:
     return (
-        str(Path(cwd).expanduser().resolve(strict=False))
-        if cwd is not None
-        else None
+        str(Path(cwd).expanduser().resolve(strict=False)) if cwd is not None else None
     )
 
 
@@ -1107,229 +1130,14 @@ def _task_completed_successfully(task: asyncio.Task[object]) -> bool:
     return task.done() and not task.cancelled() and task.exception() is None
 
 
-@dataclass(frozen=True, slots=True)
-class _PrivateContinuityPayload:
-    path: Path
-    file_identity: tuple[int, int]
-    root_identity: tuple[int, int]
-    root_descriptor: int
-    file_descriptor: int  # Pin the inode until identity-checked cleanup finishes.
-
-
-def _write_private_continuity_payload(
-    root: Path,
-    payload: ContinuityActivationPayload,
-) -> _PrivateContinuityPayload:
-    root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    _validate_private_continuity_path_chain(root)
-    if not _supports_continuity_directory_handles():
-        raise OSError(
-            "Secure directory-relative Continuity staging is unavailable "
-            "on this platform"
-        )
-    return _write_private_continuity_payload_at(root, payload)
-
-
-def _write_private_continuity_payload_at(
-    root: Path,
-    payload: ContinuityActivationPayload,
-) -> _PrivateContinuityPayload:
-    root_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-    root_flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
-    root_descriptor = os.open(root, root_flags)
-    descriptor = -1
-    name = ""
-    try:
-        root_status = os.fstat(root_descriptor)
-        path_status = root.lstat()
-        _validate_private_continuity_root(root, root_status)
-        if not os.path.samestat(root_status, path_status):
-            raise OSError("Coding continuity temporary root identity changed")
-        os.fchmod(root_descriptor, 0o700)
-        root_identity = (root_status.st_dev, root_status.st_ino)
-        suffix = _continuity_payload_suffix(payload)
-        file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        file_flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
-        for _attempt in range(128):
-            name = f"continuity-{secrets.token_hex(16)}{suffix}"
-            try:
-                descriptor = os.open(
-                    name,
-                    file_flags,
-                    0o600,
-                    dir_fd=root_descriptor,
-                )
-            except FileExistsError:
-                continue
-            break
-        else:
-            raise FileExistsError("Coding continuity temporary namespace is exhausted")
-        os.fchmod(descriptor, 0o600)
-        _write_continuity_payload_bytes(descriptor, payload.data)
-        status = os.fstat(descriptor)
-        file_identity = (status.st_dev, status.st_ino)
-        return _PrivateContinuityPayload(
-            path=root / name,
-            file_identity=file_identity,
-            root_identity=root_identity,
-            root_descriptor=root_descriptor,
-            file_descriptor=descriptor,
-        )
-    except BaseException:
-        try:
-            if descriptor >= 0:
-                with suppress(OSError):
-                    current = os.stat(
-                        name, dir_fd=root_descriptor, follow_symlinks=False
-                    )
-                    if os.path.samestat(os.fstat(descriptor), current):
-                        os.unlink(name, dir_fd=root_descriptor)
-        finally:
-            try:
-                if descriptor >= 0:
-                    os.close(descriptor)
-            finally:
-                os.close(root_descriptor)
-        raise
-
-
-def _validate_private_continuity_root(
-    root: Path,
-    root_status: os.stat_result,
-) -> None:
-    if (
-        not stat.S_ISDIR(root_status.st_mode)
-        or stat.S_ISLNK(root_status.st_mode)
-        or bool(getattr(root_status, "st_reparse_tag", 0))
-    ):
-        raise OSError("Coding continuity temporary root is unsafe")
-    getuid = getattr(os, "getuid", None)
-    if os.name == "posix" and callable(getuid) and root_status.st_uid != getuid():
-        raise PermissionError(
-            f"Coding continuity temporary root belongs to another user: {root}"
-        )
-
-
-def _validate_private_continuity_path_chain(root: Path) -> None:
-    for directory in (root, *root.parents):
-        metadata = directory.lstat()
-        if (
-            not stat.S_ISDIR(metadata.st_mode)
-            or stat.S_ISLNK(metadata.st_mode)
-            or bool(getattr(metadata, "st_reparse_tag", 0))
-        ):
-            raise OSError("Coding continuity temporary path contains an unsafe link")
-        if (
-            os.name == "posix"
-            and metadata.st_mode & 0o022
-            and not metadata.st_mode & stat.S_ISVTX
-        ):
-            raise PermissionError(
-                "Coding continuity temporary path has a writable ancestor"
-            )
-
-
-def _continuity_payload_suffix(payload: ContinuityActivationPayload) -> str:
-    return (
-        ".loushang.zip"
-        if payload.media_type.endswith("session-bundle+zip")
-        else ".jsonl"
-    )
-
-
-def _write_continuity_payload_bytes(descriptor: int, data: bytes) -> None:
-    view = memoryview(data)
-    while view:
-        written = os.write(descriptor, view)
-        if written < 1:
-            raise OSError("Coding continuity temporary write made no progress")
-        view = view[written:]
-    os.fsync(descriptor)
-
-
-def _supports_continuity_directory_handles() -> bool:
-    supports_dir_fd = getattr(os, "supports_dir_fd", ())
-    return (
-        os.name == "posix"
-        and isinstance(getattr(os, "O_DIRECTORY", None), int)
-        and isinstance(getattr(os, "O_NOFOLLOW", None), int)
-        and os.open in supports_dir_fd
-        and os.stat in supports_dir_fd
-        and os.unlink in supports_dir_fd
-    )
-
-
-def _remove_private_continuity_payload(staged: _PrivateContinuityPayload) -> None:
-    try:
-        root_status = os.fstat(staged.root_descriptor)
-        if (root_status.st_dev, root_status.st_ino) != staged.root_identity:
-            raise OSError("Coding continuity temporary root identity changed")
-        try:
-            status = os.stat(
-                staged.path.name,
-                dir_fd=staged.root_descriptor,
-                follow_symlinks=False,
-            )
-        except FileNotFoundError:
-            return
-        if (
-            stat.S_ISLNK(status.st_mode)
-            or bool(getattr(status, "st_reparse_tag", 0))
-            or (status.st_dev, status.st_ino) != staged.file_identity
-        ):
-            raise OSError("Coding continuity temporary file identity changed")
-        os.unlink(staged.path.name, dir_fd=staged.root_descriptor)
-    finally:
-        try:
-            os.close(staged.file_descriptor)
-        finally:
-            os.close(staged.root_descriptor)
-
-
-async def _remove_private_continuity_payload_atomic(
-    staged: _PrivateContinuityPayload,
-) -> None:
-    task = asyncio.create_task(
-        asyncio.to_thread(_remove_private_continuity_payload, staged)
-    )
-    await await_owned_task(task)
-
-
-async def _write_private_continuity_payload_atomic(
-    root: Path,
-    payload: ContinuityActivationPayload,
-) -> _PrivateContinuityPayload:
-    task = asyncio.create_task(
-        asyncio.to_thread(_write_private_continuity_payload, root, payload)
-    )
-    try:
-        return await asyncio.shield(task)
-    except asyncio.CancelledError as first_cancellation:
-        cancellation = first_cancellation
-        caller = asyncio.current_task()
-        while not task.done():
-            try:
-                await asyncio.shield(task)
-            except asyncio.CancelledError as repeated:
-                if caller is None or caller.cancelling() == 0:
-                    return task.result()
-                cancellation = repeated
-        try:
-            staged = task.result()
-        except BaseException as write_error:
-            cancellation.add_note(
-                "Coding continuity temporary write also failed: "
-                f"{type(write_error).__name__}"
-            )
-            raise cancellation
-        try:
-            await _remove_private_continuity_payload_atomic(staged)
-        except BaseException as cleanup_error:
-            cancellation.add_note(
-                "Coding continuity cancelled-write cleanup also failed: "
-                f"{type(cleanup_error).__name__}"
-            )
-        raise cancellation
+_CONTINUITY_PAYLOAD_STAGING = _ContinuityPayloadStaging(label="Coding continuity")
+_write_private_continuity_payload = _CONTINUITY_PAYLOAD_STAGING.write
+_remove_private_continuity_payload = _CONTINUITY_PAYLOAD_STAGING.remove
+_write_private_continuity_payload_atomic = _CONTINUITY_PAYLOAD_STAGING.write_atomic
+_remove_private_continuity_payload_atomic = _CONTINUITY_PAYLOAD_STAGING.remove_atomic
+_supports_continuity_directory_handles = (
+    _CONTINUITY_PAYLOAD_STAGING.supports_directory_handles
+)
 
 
 async def _retry_coding_continuity_reservation_atomic(
@@ -1391,11 +1199,7 @@ def get_coding_continuity_composition(
     """Return the process-sealed composition without recomposing another scope."""
 
     composition = getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None)
-    return (
-        composition
-        if isinstance(composition, CodingContinuityComposition)
-        else None
-    )
+    return composition if isinstance(composition, CodingContinuityComposition) else None
 
 
 def supports_coding_continuity_secure_staging() -> bool:

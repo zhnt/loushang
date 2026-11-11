@@ -1,0 +1,61 @@
+{
+  "source_module": "loushang.coding.package_product_worker_history_segments",
+  "original_source_sha256": "24e04e14f750cebfacceb5ec698d680aa10e979e8c470287c3bacb96fa073522",
+  "all": [
+    "CodingWorkerHistorySegmentError",
+    "CodingWorkerSealedSegmentV1",
+    "CodingWorkerSegmentManifestV1",
+    "CodingWorkerSegmentedHistoryV1",
+    "CodingWorkerUncommittedActiveAppendV1",
+    "commit_coding_worker_active_segment",
+    "initialize_coding_worker_active_head",
+    "read_coding_worker_segmented_history",
+    "read_coding_worker_uncommitted_active_append",
+    "read_coding_worker_uncommitted_active_tail",
+    "rollback_coding_worker_unpublished_successor",
+    "rollback_coding_worker_uncommitted_active_tail",
+    "seal_coding_worker_active_segment"
+  ],
+  "signatures": {
+    "CodingWorkerHistorySegmentError": "(code: 'str') -> 'None'",
+    "CodingWorkerSealedSegmentV1": "(generation: 'int', first_revision: 'int', last_revision: 'int', byte_count: 'int', digest: 'str') -> None",
+    "CodingWorkerSegmentManifestV1": "(stream_id: 'str', active_generation: 'int', sealed: 'tuple[CodingWorkerSealedSegmentV1, ...]') -> None",
+    "CodingWorkerSegmentedHistoryV1": "(manifest: 'CodingWorkerSegmentManifestV1 | None', segments: 'tuple[bytes, ...]') -> None",
+    "CodingWorkerUncommittedActiveAppendV1": "(committed_history: 'CodingWorkerSegmentedHistoryV1', appended_line: 'bytes') -> None",
+    "commit_coding_worker_active_segment": "(rooted: 'RootedFile', *, stem: 'str', stream_id: 'str', generation: 'int', previous_raw: 'bytes', appended_line: 'bytes') -> 'None'",
+    "initialize_coding_worker_active_head": "(rooted: 'RootedFile', *, stem: 'str', stream_id: 'str') -> 'None'",
+    "read_coding_worker_segmented_history": "(rooted: 'RootedFile', *, stem: 'str', stream_id: 'str', max_segment_bytes: 'int') -> 'CodingWorkerSegmentedHistoryV1'",
+    "read_coding_worker_uncommitted_active_append": "(rooted: 'RootedFile', *, stem: 'str', stream_id: 'str', max_segment_bytes: 'int') -> 'CodingWorkerUncommittedActiveAppendV1'",
+    "read_coding_worker_uncommitted_active_tail": "(rooted: 'RootedFile', *, stem: 'str', stream_id: 'str', max_segment_bytes: 'int') -> 'tuple[CodingWorkerSegmentedHistoryV1, bytes]'",
+    "rollback_coding_worker_unpublished_successor": "(rooted: 'RootedFile', *, stem: 'str', stream_id: 'str', max_segment_bytes: 'int') -> 'bool'",
+    "rollback_coding_worker_uncommitted_active_tail": "(rooted: 'RootedFile', *, stem: 'str', stream_id: 'str', max_segment_bytes: 'int') -> 'CodingWorkerSegmentedHistoryV1'",
+    "seal_coding_worker_active_segment": "(rooted: 'RootedFile', *, stem: 'str', stream_id: 'str', history: 'CodingWorkerSegmentedHistoryV1', last_revision: 'int') -> 'CodingWorkerSegmentManifestV1'",
+    "append_coding_worker_active_record": "(rooted: 'RootedFile', *, stem: 'str', stream_id: 'str', history: 'CodingWorkerSegmentedHistoryV1', last_revision: 'int', line: 'bytes', seal_required: 'bool', seal_error: 'Callable[[CodingWorkerHistorySegmentError], Exception]', append: 'Callable[[str], None]', base_name: 'str | None' = None) -> 'None'",
+    "_head_bytes": "(stream_id: 'str', generation: 'int', raw: 'bytes') -> 'bytes'",
+    "_head_name": "(stem: 'str', generation: 'int') -> 'str'",
+    "_segment_name": "(stem: 'str', generation: 'int') -> 'str'"
+  },
+  "manifest_bytes_hex": "7b2261637469766547656e65726174696f6e223a312c227365616c6564223a5b7b2262797465436f756e74223a342c22646967657374223a2230316430396431396332313339613436616562666235373737383064313233643733393665393732303162633765616432313061326562666638323339646565222c2266697273745265766973696f6e223a312c2267656e65726174696f6e223a302c226c6173745265766973696f6e223a317d5d2c2273747265616d4964223a22776f726b65722d686973746f7279222c2276657273696f6e223a317d",
+  "objects": [
+    {
+      "class": "CodingWorkerSealedSegmentV1",
+      "pickle_protocol4_hex": "800495ae000000000000008c376c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f686973746f72795f7365676d656e7473948c1b436f64696e67576f726b65725365616c65645365676d656e7456319493942981945d94284b004b014b014b048c40303164303964313963323133396134366165626662353737373830643132336437333936653937323031626337656164323130613265626666383233396465659465622e",
+      "repr": "CodingWorkerSealedSegmentV1(generation=0, first_revision=1, last_revision=1, byte_count=4, digest='01d09d19c2139a46aebfb577780d123d7396e97201bc7ead210a2ebff8239dee')"
+    },
+    {
+      "class": "CodingWorkerSegmentManifestV1",
+      "pickle_protocol4_hex": "800495ef000000000000008c376c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f686973746f72795f7365676d656e7473948c1d436f64696e67576f726b65725365676d656e744d616e696665737456319493942981945d94288c0e776f726b65722d686973746f7279944b0168008c1b436f64696e67576f726b65725365616c65645365676d656e7456319493942981945d94284b004b014b014b048c4030316430396431396332313339613436616562666235373737383064313233643733393665393732303162633765616432313061326562666638323339646565946562859465622e",
+      "repr": "CodingWorkerSegmentManifestV1(stream_id='worker-history', active_generation=1, sealed=(CodingWorkerSealedSegmentV1(generation=0, first_revision=1, last_revision=1, byte_count=4, digest='01d09d19c2139a46aebfb577780d123d7396e97201bc7ead210a2ebff8239dee'),))"
+    },
+    {
+      "class": "CodingWorkerSegmentedHistoryV1",
+      "pickle_protocol4_hex": "80049528010000000000008c376c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f686973746f72795f7365676d656e7473948c1e436f64696e67576f726b65725365676d656e746564486973746f727956319493942981945d942868008c1d436f64696e67576f726b65725365676d656e744d616e696665737456319493942981945d94288c0e776f726b65722d686973746f7279944b0168008c1b436f64696e67576f726b65725365616c65645365676d656e7456319493942981945d94284b004b014b014b048c40303164303964313963323133396134366165626662353737373830643132336437333936653937323031626337656164323130613265626666383233396465659465628594656243046f6c640a94430094869465622e",
+      "repr": "CodingWorkerSegmentedHistoryV1(manifest=CodingWorkerSegmentManifestV1(stream_id='worker-history', active_generation=1, sealed=(CodingWorkerSealedSegmentV1(generation=0, first_revision=1, last_revision=1, byte_count=4, digest='01d09d19c2139a46aebfb577780d123d7396e97201bc7ead210a2ebff8239dee'),)), segments=(b'old\\n', b''))"
+    },
+    {
+      "class": "CodingWorkerUncommittedActiveAppendV1",
+      "pickle_protocol4_hex": "80049563010000000000008c376c6f757368616e672e636f64696e672e7061636b6167655f70726f647563745f776f726b65725f686973746f72795f7365676d656e7473948c25436f64696e67576f726b6572556e636f6d6d6974746564416374697665417070656e6456319493942981945d942868008c1e436f64696e67576f726b65725365676d656e746564486973746f727956319493942981945d942868008c1d436f64696e67576f726b65725365676d656e744d616e696665737456319493942981945d94288c0e776f726b65722d686973746f7279944b0168008c1b436f64696e67576f726b65725365616c65645365676d656e7456319493942981945d94284b004b014b014b048c40303164303964313963323133396134366165626662353737373830643132336437333936653937323031626337656164323130613265626666383233396465659465628594656243046f6c640a944300948694656243046e65770a9465622e",
+      "repr": "CodingWorkerUncommittedActiveAppendV1(committed_history=CodingWorkerSegmentedHistoryV1(manifest=CodingWorkerSegmentManifestV1(stream_id='worker-history', active_generation=1, sealed=(CodingWorkerSealedSegmentV1(generation=0, first_revision=1, last_revision=1, byte_count=4, digest='01d09d19c2139a46aebfb577780d123d7396e97201bc7ead210a2ebff8239dee'),)), segments=(b'old\\n', b'')), appended_line=b'new\\n')"
+    }
+  ]
+}

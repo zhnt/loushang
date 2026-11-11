@@ -1,0 +1,1538 @@
+{
+  "receipt:present": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "visible_after",
+      "acl_exit"
+    ],
+    "value": [
+      "decoded"
+    ],
+    "error": null,
+    "active": []
+  },
+  "receipt:absent": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "data_stat",
+      "visible_after",
+      "acl_exit"
+    ],
+    "value": [],
+    "error": null,
+    "active": []
+  },
+  "receipt:missing_lock": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "data_stat",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "CodingWorkerReceiptError",
+        "coding_worker_receipt_lock_missing",
+        "coding_worker_receipt_lock_missing",
+        true
+      ],
+      [
+        "FileNotFoundError",
+        "lock missing",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:orphan": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "CodingWorkerReceiptError",
+        "coding_worker_receipt_orphan_lock",
+        "coding_worker_receipt_orphan_lock",
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:empty_lock": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "visible_after",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": [],
+    "error": null,
+    "active": []
+  },
+  "receipt:uninitialized_file": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "CodingWorkerReceiptError",
+        "coding_worker_receipt_lock_corrupt",
+        "coding_worker_receipt_lock_corrupt",
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:root": {
+    "trace": [
+      "root"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "root",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:acl_init": {
+    "trace": [
+      "root",
+      "acl_init"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_init",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:acl_enter": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_enter",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:acl_validate": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_validate",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:visible_before": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "visible_before",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:lock_stat": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "lock_stat",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:data_stat": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "data_stat",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "data_stat",
+        null,
+        false
+      ],
+      [
+        "FileNotFoundError",
+        "lock missing",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:lock_enter": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "lock_enter",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:validate": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "validate",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:read": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "read",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:decode": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "decode",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:visible_after": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "visible_after",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "visible_after",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:lock_exit": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "lock_exit",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:acl_exit": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "visible_after",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_exit",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:decode_lock_exit": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "lock_exit",
+        null,
+        false
+      ],
+      [
+        "RuntimeError",
+        "decode",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "receipt:decode_acl_exit": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_exit",
+        null,
+        false
+      ],
+      [
+        "RuntimeError",
+        "decode",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:present": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "visible_after",
+      "acl_exit"
+    ],
+    "value": [
+      "decoded"
+    ],
+    "error": null,
+    "active": []
+  },
+  "native_approval:absent": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "data_stat",
+      "visible_after",
+      "acl_exit"
+    ],
+    "value": [],
+    "error": null,
+    "active": []
+  },
+  "native_approval:missing_lock": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "data_stat",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "CodingWorkerNativeApprovalError",
+        "coding_worker_native_approval_lock_missing",
+        "coding_worker_native_approval_lock_missing",
+        true
+      ],
+      [
+        "FileNotFoundError",
+        "lock missing",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:orphan": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "CodingWorkerNativeApprovalError",
+        "coding_worker_native_approval_orphan_lock",
+        "coding_worker_native_approval_orphan_lock",
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:empty_lock": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "visible_after",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": [],
+    "error": null,
+    "active": []
+  },
+  "native_approval:uninitialized_file": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "CodingWorkerNativeApprovalError",
+        "coding_worker_native_approval_lock_corrupt",
+        "coding_worker_native_approval_lock_corrupt",
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:root": {
+    "trace": [
+      "root"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "root",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:acl_init": {
+    "trace": [
+      "root",
+      "acl_init"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_init",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:acl_enter": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_enter",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:acl_validate": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_validate",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:visible_before": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "visible_before",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:lock_stat": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "lock_stat",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:data_stat": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "data_stat",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "data_stat",
+        null,
+        false
+      ],
+      [
+        "FileNotFoundError",
+        "lock missing",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:lock_enter": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "lock_enter",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:validate": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "validate",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:read": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "read",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:decode": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "decode",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:visible_after": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "visible_after",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "visible_after",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:lock_exit": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "lock_exit",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:acl_exit": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "visible_after",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_exit",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:decode_lock_exit": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "lock_exit",
+        null,
+        false
+      ],
+      [
+        "RuntimeError",
+        "decode",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "native_approval:decode_acl_exit": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_exit",
+        null,
+        false
+      ],
+      [
+        "RuntimeError",
+        "decode",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:present": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "visible_after",
+      "acl_exit"
+    ],
+    "value": [
+      "decoded"
+    ],
+    "error": null,
+    "active": []
+  },
+  "opt_in:absent": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "data_stat",
+      "visible_after",
+      "acl_exit"
+    ],
+    "value": [],
+    "error": null,
+    "active": []
+  },
+  "opt_in:missing_lock": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "data_stat",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "CodingWorkerOptInJournalError",
+        "coding_worker_opt_in_lock_missing",
+        "coding_worker_opt_in_lock_missing",
+        true
+      ],
+      [
+        "FileNotFoundError",
+        "lock missing",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:orphan": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "CodingWorkerOptInJournalError",
+        "coding_worker_opt_in_orphan_lock",
+        "coding_worker_opt_in_orphan_lock",
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:empty_lock": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "visible_after",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": [],
+    "error": null,
+    "active": []
+  },
+  "opt_in:uninitialized_file": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "CodingWorkerOptInJournalError",
+        "coding_worker_opt_in_lock_corrupt",
+        "coding_worker_opt_in_lock_corrupt",
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:root": {
+    "trace": [
+      "root"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "root",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:acl_init": {
+    "trace": [
+      "root",
+      "acl_init"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_init",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:acl_enter": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_enter",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:acl_validate": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_validate",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:visible_before": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "visible_before",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:lock_stat": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "lock_stat",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:data_stat": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "data_stat",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "data_stat",
+        null,
+        false
+      ],
+      [
+        "FileNotFoundError",
+        "lock missing",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:lock_enter": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "lock_enter",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:validate": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "validate",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:read": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "read",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:decode": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "decode",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:visible_after": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "visible_after",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "visible_after",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:lock_exit": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "lock_exit",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:acl_exit": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "visible_after",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_exit",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:decode_lock_exit": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "lock_exit",
+        null,
+        false
+      ],
+      [
+        "RuntimeError",
+        "decode",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  },
+  "opt_in:decode_acl_exit": {
+    "trace": [
+      "root",
+      "acl_init",
+      "acl_enter",
+      "acl_validate",
+      "visible_before",
+      "lock_stat",
+      "lock_enter",
+      "validate",
+      "read",
+      "decode",
+      "lock_exit",
+      "acl_exit"
+    ],
+    "value": null,
+    "error": [
+      [
+        "RuntimeError",
+        "acl_exit",
+        null,
+        false
+      ],
+      [
+        "RuntimeError",
+        "decode",
+        null,
+        false
+      ]
+    ],
+    "active": []
+  }
+}

@@ -7,39 +7,25 @@ separate owners and decisions.
 
 from __future__ import annotations
 
-import json
 import os
 import re
-import stat
-from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from typing import cast
 
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.journal import (
-    DURABLE_LOCKED_JOURNAL,
-    SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
     JournalCodecError,
     JournalFileError,
-    JournalLoadPolicy,
-    append_jsonl_record,
-    journal_file_lock,
-    journal_file_read_lock,
-    load_jsonl,
+    JournalRecordCodec,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
-    open_regular_no_follow,
+from loushang.harness.package_product._local_source_catalog import (
+    _PluginWheelSourceCatalog,
+    _WindowsWorkerSourceCatalog,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
-    _PinnedWindowsAuthority,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_regular_file_at,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -53,12 +39,8 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from .package_builtin_wheel import _publish_windows_product_wheel
-from .package_legacy_windows_receipt import (
-    CodingWindowsPrivateReceiptError,
-    read_windows_private_receipt,
-    write_windows_private_receipt,
-)
+from .package_builtin_wheel import _product_source_files as _worker_source_files
+from .package_legacy_windows_receipt import _receipt_io as _worker_receipt_io
 
 _WHEEL_NAME = re.compile(
     r"(?P<plugin>[a-z][a-z0-9]*)-(?P<version>[0-9]+(?:\.[0-9]+){0,2})-"
@@ -258,28 +240,25 @@ _CODEC = FunctionalJournalRecordCodec(
 )
 
 
-class CodingExternalWorkerWheelCatalog:
+class CodingExternalWorkerWheelCatalog(
+    _PluginWheelSourceCatalog[CodingExternalWorkerWheelBindingV1]
+):
     """Pin explicit Linux Worker candidates under a fenced Product Source."""
 
-    def __init__(
-        self,
-        path: Path,
-        *,
-        source_root: Path,
-        store_id: str,
-        namespace_id: str,
-        scope_id: str,
-        read_only: bool = False,
-    ) -> None:
-        if not path.is_absolute() or not source_root.is_absolute():
-            raise ValueError("External Worker Wheel catalog paths must be absolute")
-        self.path = path
-        self.source_root = source_root
-        self.store_id = store_id
-        self.namespace_id = namespace_id
-        self.scope_id = scope_id
-        self._read_only = read_only
-        self._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
+    _label = "External Worker"
+    _path_label = "External Worker Wheel"
+    _error_factory = CodingExternalWorkerWheelError
+    _product_id = "coding"
+    _source_label = "External Worker Wheel"
+    _read_errors = (
+        JournalFileError,
+        JournalCodecError,
+        OSError,
+        TypeError,
+        UnicodeError,
+        ValueError,
+    )
+    _catalog_regular_single_link = True
 
     def capture(
         self,
@@ -306,255 +285,68 @@ class CodingExternalWorkerWheelCatalog:
             raise CodingExternalWorkerWheelError(
                 "External Worker Wheel Source is invalid"
             )
-        try:
-            descriptor = open_regular_no_follow(source)
-            with os.fdopen(descriptor, "rb") as handle:
-                before = os.fstat(handle.fileno())
-                if before.st_size <= 0 or before.st_size > _MAX_WHEEL_BYTES:
-                    raise CodingExternalWorkerWheelError(
-                        "External Worker Wheel exceeds budget"
-                    )
-                body = handle.read(_MAX_WHEEL_BYTES + 1)
-                after = os.fstat(handle.fileno())
-            visible = source.lstat()
-        except OSError as exc:
-            raise CodingExternalWorkerWheelError(
-                "External Worker Wheel Source changed"
-            ) from exc
-        if (
-            not body
-            or len(body) > _MAX_WHEEL_BYTES
-            or _file_identity(before) != _file_identity(after)
-            or _file_identity(before) != _file_identity(visible)
-        ):
-            raise CodingExternalWorkerWheelError("External Worker Wheel Source changed")
-        digest = sha256(body).hexdigest()
-        with journal_file_lock(self.path, "exclusive"):
-            self._assert_epoch(epoch_runtime)
-            records = self._load_unlocked()
-            existing = next(
-                (item for item in records if item.wheel_filename == source.name), None
-            )
-            if existing is not None:
-                if (
-                    existing.artifact_digest != digest
-                    or existing.original_source != str(source)
-                    or existing.admission != admission
-                ):
-                    raise CodingExternalWorkerWheelError(
-                        "External Worker binding conflicts"
-                    )
-                self._verify_controlled(existing)
-                return existing
-            if len(records) >= 125:
-                raise CodingExternalWorkerWheelError(
-                    "External Worker binding limit reached"
-                )
-            record = CodingExternalWorkerWheelBindingV1.create(
-                record_revision=len(records) + 1,
-                store_id=self.store_id,
-                namespace_id=self.namespace_id,
-                scope_id=self.scope_id,
-                original_source=str(source),
-                wheel_filename=source.name,
-                artifact_digest=digest,
-                admission=admission,
-            )
-            self._publish_controlled(record, body)
-            append_jsonl_record(
-                self.path,
-                record,
-                record_codec=_CODEC,
-                format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                durability=self._durability,
-            )
-            epoch_runtime.assert_current()
-            return record
+        return self._capture_validated(
+            source, epoch_runtime=epoch_runtime, admission=admission
+        )
+
+    def _record_codec(self) -> JournalRecordCodec[CodingExternalWorkerWheelBindingV1]:
+        return _CODEC
 
     def records(self) -> tuple[CodingExternalWorkerWheelBindingV1, ...]:
-        if self._read_only:
-            return self.read_records()
-        with journal_file_lock(self.path, "exclusive"):
-            return self._load_unlocked()
+        return super().records()
 
     def read_records(self) -> tuple[CodingExternalWorkerWheelBindingV1, ...]:
-        try:
-            with journal_file_read_lock(self.path, "shared", create_lock=False):
-                return self._load_unlocked(
-                    load_policy=JournalLoadPolicy(
-                        partial_tail="raise", create_lock=False
-                    )
-                )
-        except (
-            JournalFileError,
-            JournalCodecError,
-            OSError,
-            TypeError,
-            UnicodeError,
-            ValueError,
-        ) as exc:
-            raise CodingExternalWorkerWheelError(
-                "External Worker binding catalog is corrupt"
-            ) from exc
+        return super().read_records()
 
-    def extend_policy(
-        self, base: PackageProductLocalWheelPolicy
-    ) -> PackageProductLocalWheelPolicy:
-        if (
-            base.product_id != "coding"
-            or base.source_root != self.source_root
-            or base.project_scope_id != self.scope_id
-        ):
-            raise CodingExternalWorkerWheelError("External Worker Product changed")
-        records = self.records()
-        existing_ids = {item.plugin_id for item in base.bindings}
-        for record in records:
-            if record.plugin_id in existing_ids:
-                raise CodingExternalWorkerWheelError(
-                    "External Worker Plugin id collides"
-                )
-            self._verify_controlled(record)
-        return replace(
-            base,
-            bindings=tuple(
-                sorted(
-                    (
-                        *base.bindings,
-                        *(item.policy_binding(self.source_root) for item in records),
-                    ),
-                    key=lambda item: item.source_identity,
-                )
-            ),
+    def _max_source_bytes(self) -> int:
+        return _MAX_WHEEL_BYTES
+
+    def _new_record(
+        self,
+        source: Path,
+        digest: str,
+        revision: int,
+        *,
+        admission: PackageProductLocalWorkerAdmissionV1 | None,
+    ) -> CodingExternalWorkerWheelBindingV1:
+        return CodingExternalWorkerWheelBindingV1.create(
+            record_revision=revision,
+            store_id=self.store_id,
+            namespace_id=self.namespace_id,
+            scope_id=self.scope_id,
+            original_source=str(source),
+            wheel_filename=source.name,
+            artifact_digest=digest,
+            admission=cast(PackageProductLocalWorkerAdmissionV1, admission),
         )
 
-    def _assert_epoch(
-        self, epoch_runtime: PackageProductPosixFencedRuntimeOwner
-    ) -> None:
-        switch = epoch_runtime.cutover_result.switch_receipt
-        if (
-            epoch_runtime.registry.store_id != self.store_id
-            or switch is None
-            or switch.namespace_id != self.namespace_id
-            or epoch_runtime.prepare_product_source_root() != self.source_root
-        ):
-            raise CodingExternalWorkerWheelError("External Worker epoch changed")
-        epoch_runtime.assert_current()
-
-    def _load_unlocked(
-        self, *, load_policy: JournalLoadPolicy | None = None
-    ) -> tuple[CodingExternalWorkerWheelBindingV1, ...]:
-        try:
-            present = self.path.lstat()
-        except FileNotFoundError:
-            return ()
-        if not stat.S_ISREG(present.st_mode) or present.st_nlink != 1:
-            raise CodingExternalWorkerWheelError(
-                "External Worker binding file is unsafe"
-            )
-        records = load_jsonl(
-            self.path,
-            record_codec=_CODEC,
-            format_profile=SORTED_UNICODE_JSONL_FORMAT,
-            durability=self._durability,
-            load_policy=load_policy or JournalLoadPolicy(partial_tail="raise"),
-        ).records
-        if any(
-            record.record_revision != index
-            or record.store_id != self.store_id
-            or record.namespace_id != self.namespace_id
-            or record.scope_id != self.scope_id
-            for index, record in enumerate(records, start=1)
-        ):
-            raise CodingExternalWorkerWheelError(
-                "External Worker binding chain changed"
-            )
-        names = tuple(item.wheel_filename for item in records)
-        identities = tuple((item.plugin_id, item.version) for item in records)
-        if len(set(names)) != len(records) or len(set(identities)) != len(records):
-            raise CodingExternalWorkerWheelError(
-                "External Worker binding is duplicated"
-            )
-        return records
-
-    def _publish_controlled(
-        self, record: CodingExternalWorkerWheelBindingV1, body: bytes
-    ) -> None:
-        directory = os.open(
-            self.source_root,
-            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-        )
-        try:
-            root = os.fstat(directory)
-            if (
-                not stat.S_ISDIR(root.st_mode)
-                or stat.S_IMODE(root.st_mode) & 0o077
-                or root.st_uid != os.geteuid()
-            ):
-                raise CodingExternalWorkerWheelError("External Worker root is unsafe")
-            staging = f".{record.wheel_filename}.staging"
-            with suppress(FileNotFoundError):
-                os.unlink(staging, dir_fd=directory)
-            descriptor = os.open(
-                staging,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
-                0o600,
-                dir_fd=directory,
-            )
-            try:
-                os.fchmod(descriptor, 0o600)
-                pending = memoryview(body)
-                while pending:
-                    written = os.write(descriptor, pending)
-                    if written <= 0:
-                        raise OSError("External Worker write made no progress")
-                    pending = pending[written:]
-                os.fsync(descriptor)
-            finally:
-                os.close(descriptor)
-            try:
-                with suppress(FileExistsError):
-                    os.link(
-                        staging,
-                        record.wheel_filename,
-                        src_dir_fd=directory,
-                        dst_dir_fd=directory,
-                        follow_symlinks=False,
-                    )
-                os.fsync(directory)
-            finally:
-                os.unlink(staging, dir_fd=directory)
-                os.fsync(directory)
-        finally:
-            os.close(directory)
-        self._verify_controlled(record)
-
-    def _verify_controlled(self, record: CodingExternalWorkerWheelBindingV1) -> None:
-        descriptor = open_regular_no_follow(self.source_root / record.wheel_filename)
-        with os.fdopen(descriptor, "rb") as handle:
-            before = os.fstat(handle.fileno())
-            if (
-                before.st_nlink != 1
-                or before.st_uid != os.geteuid()
-                or stat.S_IMODE(before.st_mode) & 0o077
-                or before.st_size > _MAX_WHEEL_BYTES
-            ):
-                raise CodingExternalWorkerWheelError("External Worker bytes are unsafe")
-            body = handle.read(_MAX_WHEEL_BYTES + 1)
-            after = os.fstat(handle.fileno())
-        if (
-            _file_identity(before) != _file_identity(after)
-            or sha256(body).hexdigest() != record.artifact_digest
-        ):
-            raise CodingExternalWorkerWheelError("External Worker bytes changed")
+    def _admission_conflicts(
+        self,
+        record: CodingExternalWorkerWheelBindingV1,
+        admission: PackageProductLocalWorkerAdmissionV1 | None,
+    ) -> bool:
+        return record.admission != admission
 
 
-class CodingWindowsExternalWorkerWheelCatalog:
+class CodingWindowsExternalWorkerWheelCatalog(
+    _WindowsWorkerSourceCatalog[CodingExternalWorkerWheelBindingV1]
+):
     """Pin inert Worker candidates in immutable Windows Product receipts.
 
     Every revision has one native, ACL-verified receipt. Bounded sequential
     reads refuse gaps and partial stages; no path-based append is trusted as a
     Windows catalog authority.
     """
+
+    _label = "Windows Worker"
+    _source_label = "Windows Worker Wheel"
+    _product_id = "coding"
+    _error_factory = CodingExternalWorkerWheelError
+    _record_type = CodingExternalWorkerWheelBindingV1
+    _receipt_io = _worker_receipt_io
+    _source_files = _worker_source_files
+    _receipt_write_maximum = 4 * 1024 * 1024
+    _publication_label = "external Worker"
 
     def __init__(
         self,
@@ -566,26 +358,14 @@ class CodingWindowsExternalWorkerWheelCatalog:
         namespace_id: str,
         scope_id: str,
     ) -> None:
-        if (
-            not isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
-            or os.name != "nt"
-            or not state_root.is_absolute()
-            or not source_root.is_absolute()
-            or epoch_runtime.registry.store_id != store_id
-            or epoch_runtime.prepare_product_state_root() != state_root
-            or epoch_runtime.prepare_product_source_root() != source_root
-        ):
-            raise CodingExternalWorkerWheelError("Windows Worker Product roots changed")
-        switch = epoch_runtime.cutover_result.switch_receipt
-        if switch is None or switch.namespace_id != namespace_id:
-            raise CodingExternalWorkerWheelError("Windows Worker Product epoch changed")
-        self.epoch_runtime = epoch_runtime
-        self.state_root = state_root
-        self.source_root = source_root
-        self.store_id = store_id
-        self.namespace_id = namespace_id
-        self.scope_id = scope_id
-        epoch_runtime.assert_current()
+        super().__init__(
+            epoch_runtime=epoch_runtime,
+            state_root=state_root,
+            source_root=source_root,
+            store_id=store_id,
+            namespace_id=namespace_id,
+            scope_id=scope_id,
+        )
 
     def capture(
         self,
@@ -608,46 +388,36 @@ class CodingWindowsExternalWorkerWheelCatalog:
             raise CodingExternalWorkerWheelError(
                 "Windows Worker Wheel Source is invalid"
             )
-        try:
-            descriptor = open_regular_no_follow(source)
-            with os.fdopen(descriptor, "rb") as handle:
-                before = os.fstat(handle.fileno())
-                if before.st_size <= 0 or before.st_size > _MAX_WHEEL_BYTES:
-                    raise CodingExternalWorkerWheelError(
-                        "Windows Worker Wheel exceeds budget"
-                    )
-                body = handle.read(_MAX_WHEEL_BYTES + 1)
-                after = os.fstat(handle.fileno())
-            visible = source.lstat()
-        except OSError as exc:
-            raise CodingExternalWorkerWheelError(
-                "Windows Worker Wheel Source changed"
-            ) from exc
-        if (
-            not body
-            or len(body) > _MAX_WHEEL_BYTES
-            or _file_identity(before) != _file_identity(after)
-            or _file_identity(before) != _file_identity(visible)
-        ):
-            raise CodingExternalWorkerWheelError("Windows Worker Wheel Source changed")
-        digest = sha256(body).hexdigest()
-        records = self._records(allow_pending_stage=True)
-        existing = next(
-            (item for item in records if item.wheel_filename == source.name), None
-        )
-        if existing is not None:
-            if (
-                existing.artifact_digest != digest
-                or existing.original_source != str(source)
-                or existing.admission != admission
-            ):
-                raise CodingExternalWorkerWheelError("Windows Worker binding conflicts")
-            self.verify_record(existing)
-            return existing
-        if len(records) >= 125:
-            raise CodingExternalWorkerWheelError("Windows Worker binding limit reached")
-        record = CodingExternalWorkerWheelBindingV1.create(
-            record_revision=len(records) + 1,
+        return self._capture_validated(source, admission=admission)
+
+    def records(self) -> tuple[CodingExternalWorkerWheelBindingV1, ...]:
+        return super().records()
+
+    def verify_record(self, record: CodingExternalWorkerWheelBindingV1) -> None:
+        """Reopen one exact receipt and its Product-controlled Wheel bytes."""
+        super().verify_record(record)
+
+    def extend_policy(
+        self, base: PackageProductLocalWheelPolicy
+    ) -> PackageProductLocalWheelPolicy:
+        return super().extend_policy(base)
+
+    def _max_source_bytes(self) -> int:
+        return _MAX_WHEEL_BYTES
+
+    def _max_record_bytes(self) -> int:
+        return _MAX_WINDOWS_RECORD_BYTES
+
+    def _new_record(
+        self,
+        source: Path,
+        digest: str,
+        revision: int,
+        *,
+        admission: PackageProductLocalWorkerAdmissionV1,
+    ) -> CodingExternalWorkerWheelBindingV1:
+        return CodingExternalWorkerWheelBindingV1.create(
+            record_revision=revision,
             store_id=self.store_id,
             namespace_id=self.namespace_id,
             scope_id=self.scope_id,
@@ -656,208 +426,6 @@ class CodingWindowsExternalWorkerWheelCatalog:
             artifact_digest=digest,
             admission=admission,
         )
-        receipt_bytes = canonical_json_bytes(record.to_dict())
-        if len(receipt_bytes) > _MAX_WINDOWS_RECORD_BYTES:
-            raise CodingExternalWorkerWheelError(
-                "Windows Worker binding exceeds budget"
-            )
-        try:
-            _publish_windows_product_wheel(
-                self.source_root,
-                filename=record.wheel_filename,
-                body=body,
-                label="external Worker",
-            )
-            self._assert_epoch()
-            write_windows_private_receipt(
-                self._record_path(record.record_revision),
-                receipt_bytes,
-            )
-        except CodingWindowsPrivateReceiptError as exc:
-            # A competing writer may have won this revision. Exact replay is
-            # admitted after a fresh native read; a distinct winner conflicts.
-            current = self.records()
-            winner = next(
-                (item for item in current if item.wheel_filename == source.name), None
-            )
-            if winner is not None and winner == record:
-                self.verify_record(winner)
-                return winner
-            raise CodingExternalWorkerWheelError(
-                "Windows Worker binding revision conflicts"
-            ) from exc
-        self._assert_epoch()
-        self.verify_record(record)
-        return record
-
-    def records(self) -> tuple[CodingExternalWorkerWheelBindingV1, ...]:
-        return self._records(allow_pending_stage=False)
-
-    def verify_record(self, record: CodingExternalWorkerWheelBindingV1) -> None:
-        """Reopen one exact receipt and its Product-controlled Wheel bytes."""
-
-        if (
-            not isinstance(record, CodingExternalWorkerWheelBindingV1)
-            or record not in self.records()
-        ):
-            raise CodingExternalWorkerWheelError("Windows Worker binding changed")
-        self._verify_controlled(record)
-        self._assert_epoch()
-
-    def _records(
-        self, *, allow_pending_stage: bool
-    ) -> tuple[CodingExternalWorkerWheelBindingV1, ...]:
-        self._assert_epoch()
-        records: list[CodingExternalWorkerWheelBindingV1] = []
-        missing = False
-        try:
-            for revision in range(1, 127):
-                raw = read_windows_private_receipt(
-                    self._record_path(revision),
-                    maximum_bytes=_MAX_WINDOWS_RECORD_BYTES,
-                    allow_unpublished_stage=allow_pending_stage,
-                )
-                if revision == 126:
-                    if raw is not None:
-                        raise CodingExternalWorkerWheelError(
-                            "Windows Worker binding limit was exceeded"
-                        )
-                    break
-                if raw is None:
-                    missing = True
-                    continue
-                if missing:
-                    raise CodingExternalWorkerWheelError(
-                        "Windows Worker binding revisions have a gap"
-                    )
-                record = CodingExternalWorkerWheelBindingV1.from_dict(
-                    json.loads(raw.decode("utf-8"))
-                )
-                if (
-                    raw != canonical_json_bytes(record.to_dict())
-                    or record.record_revision != revision
-                    or record.store_id != self.store_id
-                    or record.namespace_id != self.namespace_id
-                    or record.scope_id != self.scope_id
-                ):
-                    raise CodingExternalWorkerWheelError(
-                        "Windows Worker binding chain changed"
-                    )
-                records.append(record)
-        except (
-            OSError,
-            TypeError,
-            UnicodeError,
-            ValueError,
-            CodingWindowsPrivateReceiptError,
-        ) as exc:
-            raise CodingExternalWorkerWheelError(
-                "Windows Worker binding catalog is corrupt"
-            ) from exc
-        names = tuple(item.wheel_filename for item in records)
-        identities = tuple((item.plugin_id, item.version) for item in records)
-        if len(set(names)) != len(records) or len(set(identities)) != len(records):
-            raise CodingExternalWorkerWheelError("Windows Worker binding is duplicated")
-        self._assert_epoch()
-        return tuple(records)
-
-    def extend_policy(
-        self, base: PackageProductLocalWheelPolicy
-    ) -> PackageProductLocalWheelPolicy:
-        if (
-            base.product_id != "coding"
-            or base.source_root != self.source_root
-            or base.project_scope_id != self.scope_id
-        ):
-            raise CodingExternalWorkerWheelError("Windows Worker Product changed")
-        records = self.records()
-        existing_ids = {item.plugin_id for item in base.bindings}
-        for record in records:
-            if record.plugin_id in existing_ids:
-                raise CodingExternalWorkerWheelError(
-                    "Windows Worker Plugin id collides"
-                )
-            self._verify_controlled(record)
-        self._assert_epoch()
-        return replace(
-            base,
-            bindings=tuple(
-                sorted(
-                    (
-                        *base.bindings,
-                        *(item.policy_binding(self.source_root) for item in records),
-                    ),
-                    key=lambda item: item.source_identity,
-                )
-            ),
-        )
-
-    def _record_path(self, revision: int) -> Path:
-        return self.state_root / f"external-worker-binding-{revision:03d}.json"
-
-    def _assert_epoch(self) -> None:
-        if (
-            self.epoch_runtime.registry.store_id != self.store_id
-            or self.epoch_runtime.prepare_product_state_root() != self.state_root
-            or self.epoch_runtime.prepare_product_source_root() != self.source_root
-            or self.epoch_runtime.cutover_result.switch_receipt is None
-            or self.epoch_runtime.cutover_result.switch_receipt.namespace_id
-            != self.namespace_id
-        ):
-            raise CodingExternalWorkerWheelError("Windows Worker Product epoch changed")
-        self.epoch_runtime.assert_current()
-
-    def _verify_controlled(self, record: CodingExternalWorkerWheelBindingV1) -> None:
-        pinned = _PinnedWindowsAuthority.open(self.source_root, read_control=True)
-        try:
-            with WindowsPrivateDirectoryAcl() as acl:
-                acl.validate(pinned.descriptor)
-                descriptor = open_windows_regular_file_at(
-                    pinned.descriptor,
-                    record.wheel_filename,
-                    create_new=False,
-                    write=False,
-                    read_control=True,
-                )
-                try:
-                    acl.validate(descriptor)
-                    before = os.fstat(descriptor)
-                    if (
-                        not stat.S_ISREG(before.st_mode)
-                        or before.st_nlink != 1
-                        or before.st_size > _MAX_WHEEL_BYTES
-                    ):
-                        raise CodingExternalWorkerWheelError(
-                            "Windows Worker controlled bytes are unsafe"
-                        )
-                    body = os.read(descriptor, _MAX_WHEEL_BYTES + 1)
-                    after = os.fstat(descriptor)
-                    acl.validate(descriptor)
-                finally:
-                    os.close(descriptor)
-            pinned.assert_visible()
-        finally:
-            pinned.close()
-        if (
-            _file_identity(before) != _file_identity(after)
-            or len(body) != before.st_size
-            or sha256(body).hexdigest() != record.artifact_digest
-        ):
-            raise CodingExternalWorkerWheelError(
-                "Windows Worker controlled bytes changed"
-            )
-
-
-def _file_identity(value: os.stat_result) -> tuple[int, ...]:
-    return (
-        value.st_dev,
-        value.st_ino,
-        value.st_mode,
-        value.st_uid,
-        value.st_size,
-        value.st_mtime_ns,
-        value.st_ctime_ns,
-    )
 
 
 __all__ = [

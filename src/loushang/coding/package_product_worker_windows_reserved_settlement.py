@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -26,7 +25,7 @@ from .package_product_worker_windows_reserved_review import (
     CodingWindowsWorkerReservedNoEffectReviewV1,
     _review_reserved_under_gc_guard,
 )
-from .package_product_worker_windows_stage_review import _require_direct
+from .package_product_worker_windows_stage_review import _require_retirement_root
 
 
 class CodingWindowsWorkerReservedSettlementError(RuntimeError):
@@ -96,12 +95,12 @@ def settle_coding_windows_product_worker_reserved_no_effect(
                     "coding_worker_reserved_settlement_intent_changed"
                 )
             with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-                with WindowsPrivateDirectoryAcl() as acl:
-                    _require_direct(root, acl, directory=True)
-                    if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
-                        raise CodingWindowsWorkerReservedSettlementError(
-                            "coding_worker_reserved_settlement_root_changed"
-                        )
+                _require_retirement_root(
+                    product,
+                    root,
+                    CodingWindowsWorkerReservedSettlementError,
+                    "coding_worker_reserved_settlement_root_changed",
+                )
                 attempts = inspect_windows_worker_provisioning_attempts(
                     product.state_root, directory_fd=root
                 )

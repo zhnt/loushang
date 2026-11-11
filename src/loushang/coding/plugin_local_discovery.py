@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import errno
 import json
-import os
 import re
-import stat
 from typing import Literal
 
 from loushang.harness.plugin_management.current_preview import (
@@ -20,6 +17,9 @@ from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
 from loushang.harness.resources._catalog_records import NativeHostOrigin
+from loushang.harness.resources._loader_discovery_filesystem import (
+    _discover_native_fallback_metadata,
+)
 from loushang.plugin._coding_data_wheel_validation import validate_coding_data_wheel
 
 from ._plugin_lifecycle import resolve_coding_plugin_lifecycle_state_layout
@@ -515,152 +515,42 @@ def blocked_coding_local_discovery(code: str) -> dict[str, object]:
 def _fallback_native_metadata(
     receipt: ResourceCatalogInputReceipt,
 ) -> tuple[list[dict[str, object]], set[str]]:
-    """Recover fixed-depth names from declared roots after Catalog failure.
+    """Recover metadata under the original native discovery owner."""
 
-    These rows have no Catalog identity or selection proof.  The fallback does
-    not read author bytes, descend unrelated directories, or follow symlinks.
-    """
+    return _discover_native_fallback_metadata(
+        receipt,
+        max_rows=_MAX_ROWS,
+        name_pattern=_FALLBACK_NAME,
+        diagnostic_prefix="local_discovery_",
+        authority_error=_NativeFallbackAuthorityError,
+        row_factory=_fallback_native_row,
+    )
 
-    rows: list[dict[str, object]] = []
-    diagnostics: set[str] = {"local_discovery_native_metadata_fallback"}
-    nofollow = getattr(os, "O_NOFOLLOW", None)
-    if nofollow is None:
-        diagnostics.add("local_discovery_native_fallback_unsupported")
-        return rows, diagnostics
-    roots = [(receipt.project_resource_root, "project_local", "workspace")]
-    roots.extend((root, "user_global", "user") for root in receipt.user_resource_roots)
-    if len(roots) > 16:
-        roots = roots[:16]
-        diagnostics.add("local_discovery_source_truncated")
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | nofollow
-    for root, source_class, scope in roots:
-        if len(rows) >= _MAX_ROWS:
-            diagnostics.add("local_discovery_source_truncated")
-            break
-        try:
-            before = root.lstat()
-            if not stat.S_ISDIR(before.st_mode) or root.resolve(strict=True) != root:
-                raise _NativeFallbackAuthorityError("declared root is unsafe")
-            root_fd = os.open(root, flags)
-        except FileNotFoundError:
-            diagnostics.add("local_discovery_native_root_unavailable")
-            continue
-        except OSError as exc:
-            if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
-                raise _NativeFallbackAuthorityError("declared root became a link") from exc
-            diagnostics.add("local_discovery_native_root_unavailable")
-            continue
-        opened = before
-        try:
-            opened = os.fstat(root_fd)
-            if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
-                raise _NativeFallbackAuthorityError("declared root changed on open")
-            for dirname, resource_kind, suffix in (
-                ("skills", "skill", None),
-                ("prompts", "prompt", ".md"),
-                ("themes", "theme", ".json"),
-            ):
-                if len(rows) >= _MAX_ROWS:
-                    diagnostics.add("local_discovery_source_truncated")
-                    break
-                try:
-                    directory_fd = os.open(dirname, flags, dir_fd=root_fd)
-                except FileNotFoundError:
-                    continue
-                except OSError as exc:
-                    if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
-                        try:
-                            current = os.stat(
-                                dirname, dir_fd=root_fd, follow_symlinks=False
-                            )
-                        except OSError:
-                            raise _NativeFallbackAuthorityError(
-                                "native directory changed during open"
-                            ) from exc
-                        if stat.S_ISLNK(current.st_mode):
-                            raise _NativeFallbackAuthorityError(
-                                "native directory became a link"
-                            ) from exc
-                    diagnostics.add("local_discovery_native_root_unavailable")
-                    continue
-                try:
-                    with os.scandir(directory_fd) as entries:
-                        for index, entry in enumerate(entries):
-                            if index >= _MAX_ROWS or len(rows) >= _MAX_ROWS:
-                                diagnostics.add("local_discovery_source_truncated")
-                                break
-                            try:
-                                if suffix is None:
-                                    if not entry.is_dir(follow_symlinks=False):
-                                        diagnostics.add("local_discovery_native_entry_skipped")
-                                        continue
-                                    if _FALLBACK_NAME.fullmatch(entry.name) is None:
-                                        diagnostics.add("local_discovery_native_entry_skipped")
-                                        continue
-                                    child_fd = os.open(entry.name, flags, dir_fd=directory_fd)
-                                    try:
-                                        metadata = os.stat(
-                                            "SKILL.md", dir_fd=child_fd, follow_symlinks=False
-                                        )
-                                    finally:
-                                        os.close(child_fd)
-                                    name = f"{entry.name}/SKILL.md"
-                                else:
-                                    if not entry.name.endswith(suffix):
-                                        continue
-                                    if _FALLBACK_NAME.fullmatch(
-                                        entry.name[: -len(suffix)]
-                                    ) is None:
-                                        diagnostics.add("local_discovery_native_entry_skipped")
-                                        continue
-                                    metadata = os.stat(
-                                        entry.name, dir_fd=directory_fd, follow_symlinks=False
-                                    )
-                                    name = entry.name
-                                if not stat.S_ISREG(metadata.st_mode):
-                                    diagnostics.add("local_discovery_native_entry_skipped")
-                                    continue
-                            except OSError as exc:
-                                if exc.errno == errno.ELOOP:
-                                    raise _NativeFallbackAuthorityError("native child became a link") from exc
-                                diagnostics.add("local_discovery_native_entry_skipped")
-                                continue
-                            rows.append(
-                                {
-                                    "identityKind": "native_resource",
-                                    "pluginId": None,
-                                    "name": name,
-                                    "resourceKind": resource_kind,
-                                    "resourceKinds": [resource_kind],
-                                    "version": None,
-                                    "sourceClass": source_class,
-                                    "sourceScope": scope,
-                                    "candidateFingerprint": None,
-                                    "contentDigest": None,
-                                    "enabled": None,
-                                    "nativeCatalogSelection": "not_checked",
-                                    "productCompatibility": "not_checked",
-                                    "productSelection": "not_checked",
-                                    "discoveryEvidence": "fallback_metadata",
-                                    "diagnosticCodes": ["local_discovery_catalog_unavailable"],
-                                }
-                            )
-                finally:
-                    os.close(directory_fd)
-        finally:
-            os.close(root_fd)
-            try:
-                after = root.lstat()
-                if (
-                    not stat.S_ISDIR(after.st_mode)
-                    or (after.st_dev, after.st_ino) != (opened.st_dev, opened.st_ino)
-                    or root.resolve(strict=True) != root
-                ):
-                    raise _NativeFallbackAuthorityError("declared root changed during read")
-            except OSError as exc:
-                raise _NativeFallbackAuthorityError("declared root disappeared") from exc
-    return rows, diagnostics
 
+def _fallback_native_row(
+    name: str,
+    resource_kind: str,
+    source_class: str,
+    scope: str,
+) -> dict[str, object]:
+    return {
+        "identityKind": "native_resource",
+        "pluginId": None,
+        "name": name,
+        "resourceKind": resource_kind,
+        "resourceKinds": [resource_kind],
+        "version": None,
+        "sourceClass": source_class,
+        "sourceScope": scope,
+        "candidateFingerprint": None,
+        "contentDigest": None,
+        "enabled": None,
+        "nativeCatalogSelection": "not_checked",
+        "productCompatibility": "not_checked",
+        "productSelection": "not_checked",
+        "discoveryEvidence": "fallback_metadata",
+        "diagnosticCodes": ["local_discovery_catalog_unavailable"],
+    }
 
 __all__ = [
     "blocked_coding_local_discovery",

@@ -1903,6 +1903,161 @@ class ProductWorkerActivationCoordinator:
             self._commit_locked(new_state)
             return self.resume_parent_snapshot(context)
 
+    def _resume_parent_if_known(
+        self,
+        context: ResumeEffectParentContextV1,
+    ) -> Mapping[str, object] | None:
+        try:
+            return self.resume_parent_snapshot(context)
+        except _ActivationRejected as error:
+            if error.reason.value == "resume_parent_unknown":
+                return None
+            raise
+
+    def observe_or_enroll_resume_parent(
+        self,
+        *,
+        receipt: ProductWorkerActivationReceiptV1,
+        context: ResumeEffectParentContextV1 | None,
+        failure: Callable[[str], Exception] = RuntimeError,
+    ) -> Mapping[str, object] | None:
+        """Enroll or recover the exact durable parent before payload preparation."""
+
+        if context is None:
+            return None
+        if (
+            type(context) is not ResumeEffectParentContextV1
+            or context.product_id != receipt.policy.product_id
+            or context.owner_id != "harness.worker-activation"
+            or context.scope_digest
+            != self.resume_parent_scope_digest(
+                product_id=receipt.policy.product_id,
+                product_scope_id=receipt.policy.product_scope_id,
+            )
+            or context.contract_digest != self.resume_parent_contract_digest
+        ):
+            raise failure("parent_context_mismatch")
+        existing = ProductWorkerActivationCoordinator._resume_parent_if_known(
+            self, context
+        )
+        if existing is not None:
+            if existing["sealed"] is True:
+                raise failure("parent_already_sealed")
+            return existing
+        state = self.snapshot()
+        revision = state.get("stateRevision")
+        if type(revision) is not int or revision < 1:
+            raise failure("parent_state_invalid")
+        try:
+            self.enroll_resume_parent(
+                context,
+                policy=receipt.policy,
+                expected_state_revision=revision,
+            )
+        except Exception:
+            # A failed durable acknowledgement may still have committed the exact
+            # parent. Re-read the original owner before deciding that it is unknown.
+            recovered = ProductWorkerActivationCoordinator._resume_parent_if_known(
+                self, context
+            )
+            if recovered is None:
+                raise
+            if recovered["sealed"] is True:
+                raise failure("parent_already_sealed")
+            return recovered
+        enrolled = ProductWorkerActivationCoordinator._resume_parent_if_known(
+            self, context
+        )
+        if enrolled is None:
+            raise failure("parent_enrollment_unknown")
+        return enrolled
+
+    def seal_current_resume_parent(
+        self,
+        *,
+        context: ResumeEffectParentContextV1 | None,
+        failure: Callable[[str], Exception] = RuntimeError,
+    ) -> Mapping[str, object] | None:
+        """Seal the exact native membership after Worker C5 publication."""
+
+        if context is None:
+            return None
+        snapshot = ProductWorkerActivationCoordinator._resume_parent_if_known(
+            self, context
+        )
+        if snapshot is None:
+            raise failure("parent_missing")
+        if snapshot["sealed"] is True:
+            return snapshot
+        native_attempts = snapshot["nativeAttempts"]
+        if not isinstance(native_attempts, Mapping) or not native_attempts:
+            raise failure("parent_membership_empty")
+        revision = snapshot["stateRevision"]
+        if type(revision) is not int or revision < 1:
+            raise failure("parent_state_invalid")
+        return self.seal_resume_parent(
+            context,
+            expected_state_revision=revision,
+        )
+
+    def require_resume_parent_settlement(
+        self,
+        context: ResumeEffectParentContextV1,
+        *,
+        receipt: ProductWorkerActivationReceiptV1,
+        failure: Callable[[str], Exception] = RuntimeError,
+    ) -> None:
+        try:
+            snapshot = self.resume_parent_snapshot(context)
+            admission = self.evaluate(receipt.policy, receipt)
+        except (ValueError, _ActivationRejected) as error:
+            raise failure("settlement_unknown") from error
+        native_attempts = snapshot.get("nativeAttempts")
+        if (
+            snapshot.get("sealed") is not True
+            or not isinstance(snapshot.get("membershipDigest"), str)
+            or not isinstance(native_attempts, Mapping)
+            or not native_attempts
+        ):
+            raise failure("settlement_unknown")
+        current_live = admission.get("reason") == "admitted"
+        for raw in native_attempts.values():
+            if not isinstance(raw, Mapping):
+                raise failure("settlement_unknown")
+            phase = raw.get("phase")
+            exact = (
+                raw.get("receiptFingerprint") == receipt.fingerprint
+                and raw.get("policyFingerprint") == receipt.policy.fingerprint
+                and raw.get("ownerGeneration")
+                == receipt.policy.owner_selection_generation
+                and raw.get("cleanupContractVersion") == 2
+            )
+            if not exact:
+                raise failure("settlement_unknown")
+            if phase == "published":
+                if (
+                    not current_live
+                    or raw.get("readiness") != "ready"
+                    or raw.get("cleanupSettlement") is not None
+                    or raw.get("cleanupDebt") is not None
+                    or raw.get("protocolTerminal") is not False
+                    or raw.get("domainRetired") is not False
+                ):
+                    raise failure("settlement_unknown")
+                continue
+            settlement = raw.get("cleanupSettlement")
+            if (
+                phase != "settled"
+                or not isinstance(settlement, Mapping)
+                or settlement.get("settlementVersion") != 2
+                or settlement.get("protocolTerminal") is not True
+                or settlement.get("domainRetired") is not True
+                or settlement.get("treeSettled") is not True
+                or settlement.get("nativeContainmentSettled") is not True
+                or raw.get("cleanupDebt") is not None
+            ):
+                raise failure("settlement_unknown")
+
     def active_attempts(self) -> tuple[Mapping[str, object], ...]:
         self._require_not_reentrant()
         with self._lock:

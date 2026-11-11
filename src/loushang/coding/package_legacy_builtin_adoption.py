@@ -58,12 +58,7 @@ def adopt_coding_first_b_builtin_only(
         if os.name == "nt"
         else PackageProductPosixFencedRuntimeOwner
     )
-    epoch_runtime = epoch_owner_type.open(
-        authority_root=epoch.authority_root,
-        control_root=epoch.control_root,
-        store_id=epoch.store_id,
-        epochs_root_name=epoch.epochs_root_name,
-    )
+    epoch_runtime = epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs())
     try:
         receipt = accept_coding_first_b_builtin_only(
             lifecycle,
