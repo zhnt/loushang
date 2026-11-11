@@ -44,6 +44,8 @@ from loushang.appserver.protocol import (
     SessionSnapshotV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceRequestV1,
+    WorkspaceResultV1,
 )
 
 from ._operations import _observe, _OwnedAppOperations
@@ -363,7 +365,7 @@ class AppClientScopeV1:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return controller
 
-    async def workspace(self, request):
+    async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
         self._require_open()
         return await self._service.workspace(request)
 

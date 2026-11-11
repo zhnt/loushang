@@ -707,6 +707,7 @@ async def test_service_close_is_bounded_and_retries_retained_cleanup_debt() -> N
 def test_in_process_client_satisfies_transport_neutral_contract() -> None:
     assert AppClientV1.__name__ == "AppClientV1"
     for method in (
+        "workspace",
         "create_mux",
         "list_muxes",
         "read_mux",

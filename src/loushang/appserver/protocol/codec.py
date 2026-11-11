@@ -256,6 +256,7 @@ def decode_response(payload: bytes) -> AppResponseV1:
         raise InvalidAppMessageError()
     result_type = _string(root["resultType"])
     raw = root["result"]
+    result: object
     if result_type == "workspaces":
         value = _object(raw, {"workspaces"})
         rows = value["workspaces"]
@@ -270,7 +271,7 @@ def decode_response(payload: bytes) -> AppResponseV1:
         result = _construct(WorkspaceResultV1, workspaces=tuple(workspaces))
     elif result_type == "ack":
         _object(raw, set())
-        result: object = AckV1()
+        result = AckV1()
     elif result_type == "error":
         value = _object(raw, {"code"})
         result = _construct(
@@ -405,8 +406,8 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
     payload = request.payload
     operation = request.operation
     if operation is AppOperationV1.WORKSPACE:
-        query = cast(WorkspaceRequestV1, payload)
-        return {"action": query.action, "path": query.path}
+        workspace = cast(WorkspaceRequestV1, payload)
+        return {"action": workspace.action, "path": workspace.path}
     if operation is AppOperationV1.MUX_CREATE:
         return {"name": cast(MuxCreateV1, payload).name}
     if operation is AppOperationV1.MUX_LIST:
