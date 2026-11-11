@@ -415,7 +415,7 @@ export default interface Resources {
       "title": "Local AppHost",
       "unsupported": "Local managed Host is currently supported on Linux only.",
       "workspace": "Workspace",
-      "workspaceUnavailable": "The Host could not open this workspace."
+      "workspaceUnavailable": "Unable to open this workspace."
     },
     "sidebar": {
       "addProject": "Add project",

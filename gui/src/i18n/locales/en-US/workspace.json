@@ -107,6 +107,6 @@
     "confirm": "Confirm shutdown",
     "selectWorkspace": "Select a workspace",
     "addWorkspace": "Register and open",
-    "workspaceUnavailable": "The Host could not open this workspace."
+    "workspaceUnavailable": "Unable to open this workspace."
   }
 }
