@@ -22,6 +22,7 @@ _STABLE_ID = re.compile(r"[a-z0-9](?:[a-z0-9._-]{0,127})\Z")
 _OPAQUE_ID = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._~-]{0,511})\Z")
 _MUX_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 _FINGERPRINT = re.compile(r"[0-9a-f]{64}\Z")
+_WINDOWS_DRIVE_PATH = re.compile(r"[A-Za-z]:[\\/]")
 
 
 def _require_stable_id(value: str, *, field: str) -> None:
@@ -706,8 +707,8 @@ class WorkspaceRequestV1:
         if self.action in {"list", "projects", "allocate-temporary"}:
             if self.path is not None:
                 raise ValueError("workspace action takes no path")
-        elif (type(self.path) is not str or not self.path.startswith("/")
-              or len(self.path) > 4096 or "\0" in self.path):
+        elif (type(self.path) is not str or len(self.path) > 4096 or "\0" in self.path
+              or not (self.path.startswith("/") or _WINDOWS_DRIVE_PATH.match(self.path))):
             raise ValueError("invalid workspace path")
 
 

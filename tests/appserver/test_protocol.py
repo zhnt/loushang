@@ -337,6 +337,7 @@ def test_protocol_schema_vocabulary_is_closed_and_complete() -> None:
 @pytest.mark.parametrize('action,path', [
     ('list', None), ('projects', None), ('allocate-temporary', None),
     ('register', '/project'), ('open', '/project'), ('unregister', '/project'),
+    ('register', r'C:\Workspace A'), ('open', 'C:/Workspace A'),
 ])
 def test_workspace_requests_roundtrip(action, path):
     request = AppRequestV1('request-1', AppOperationV1.WORKSPACE, WorkspaceRequestV1(action, path))
@@ -349,12 +350,13 @@ def test_workspace_request_rejects_client_paths_for_host_owned_actions(action):
         WorkspaceRequestV1(action, "/project")
 
 
-def test_workspace_results_preserve_host_path_and_admitted_scope():
-    response = AppResponseV1('request-1', WorkspaceResultV1((WorkspaceInfoV1('/project', SessionScopeV1.CWD, 'a' * 64),)))
+@pytest.mark.parametrize('path', ['/project', r'C:\Workspace A'])
+def test_workspace_results_preserve_host_path_and_admitted_scope(path):
+    response = AppResponseV1('request-1', WorkspaceResultV1((WorkspaceInfoV1(path, SessionScopeV1.CWD, 'a' * 64),)))
     assert decode_response(encode_response(response)) == response
 
 
-@pytest.mark.parametrize('path', ['relative', '', '/bad\0path'])
+@pytest.mark.parametrize('path', ['relative', '', '/bad\0path', 'C:relative', r'\relative', r'\\server\share'])
 def test_workspace_request_rejects_invalid_paths_at_protocol_boundary(path):
     with pytest.raises(ValueError):
         WorkspaceRequestV1('open', path)
