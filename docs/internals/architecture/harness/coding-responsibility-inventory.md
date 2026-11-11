@@ -1,5 +1,6 @@
 # Coding 逐文件职责与处置清单 R2
 
+- A145 普通 Worker 待启动、实际 adapter 和操作员查询复用能力绑定或准入投影，Coding 减41行、系统减7行。见[A145](coding-responsibility-convergence-progress.md#a145共用普通worker能力绑定与准入投影)。
 - A144 五类 Windows Worker 离线审阅共用静止锁与 GC 读锁，Coding 减15行、系统增4行。见[A144](coding-responsibility-convergence-progress.md#a144共用windows-worker离线审阅作用域)。
 - A143 Windows Worker 历史身份与无副作用阶段校验归原 Worker History，Coding 减33行、系统增7行。见[A143](coding-responsibility-convergence-progress.md#a143共用windows-worker历史身份校验)。
 - A142 四类 Windows 退休共用根删除意图写入和回读，Coding 减7行、系统增7行。见[A142](coding-responsibility-convergence-progress.md#a142共用windows根删除意图)。
@@ -365,14 +366,14 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_native_release.py](../../../../src/loushang/coding/package_product_worker_native_release.py) | C07 | 201 | M | C07 插件 Worker 执行/持久化/恢复 | 6de1cf22207c | 83 | e35589d29221 |
 | [package_product_worker_no_effect_archive_v2.py](../../../../src/loushang/coding/package_product_worker_no_effect_archive_v2.py) | C07 | 262 | M | C07 插件 Worker 执行/持久化/恢复 | b3710a5bd2ef | 74 | c8b82cab8cd8 |
 | [package_product_worker_no_effect_closure.py](../../../../src/loushang/coding/package_product_worker_no_effect_closure.py) | C07 | 49 | M | C07 插件 Worker 执行/持久化/恢复 | b7b1f104aa6c | 31 | bd9fbeede423 |
-| [package_product_worker_operator_query.py](../../../../src/loushang/coding/package_product_worker_operator_query.py) | C07 | 513 | M | C07 插件 Worker 执行/持久化/恢复 | f36fa09c6341 | 373 | e6d991db695a |
+| [package_product_worker_operator_query.py](../../../../src/loushang/coding/package_product_worker_operator_query.py) | C07 | 513 | M | C07 插件 Worker 执行/持久化/恢复 | f36fa09c6341 | 363 | 81dcd511f4df |
 | [package_product_worker_opt_in.py](../../../../src/loushang/coding/package_product_worker_opt_in.py) | C07 | 910 | M | C07 插件 Worker 执行/持久化/恢复 | 5851cc8774a0 | 208 | 83b52ccb430f |
 | [package_product_worker_opt_in_base_v2.py](../../../../src/loushang/coding/package_product_worker_opt_in_base_v2.py) | C07 | 247 | M | C07 插件 Worker 执行/持久化/恢复 | dbfc16fd08d8 | 49 | 5c95fcd66653 |
 | [package_product_worker_opt_in_owner.py](../../../../src/loushang/coding/package_product_worker_opt_in_owner.py) | C07 | 223 | M | C07 插件 Worker 执行/持久化/恢复 | 3869f1eeacad | 169 | 20a1716593f4 |
 | [package_product_worker_ordinary_bootstrap.py](../../../../src/loushang/coding/package_product_worker_ordinary_bootstrap.py) | C07 | 312 | M | C07 插件 Worker 执行/持久化/恢复 | 7d97151fe500 | 312 | 7d97151fe500 |
 | [package_product_worker_ordinary_error.py](../../../../src/loushang/coding/package_product_worker_ordinary_error.py) | C07 | 12 | M | C07 插件 Worker 执行/持久化/恢复 | 69d14f793272 | 12 | 69d14f793272 |
 | [package_product_worker_payload.py](../../../../src/loushang/coding/package_product_worker_payload.py) | C07 | 2,360 | M | C07 插件 Worker 执行/持久化/恢复 | 331b1fd4706a | 848 | 3608f8bc8296 |
-| [package_product_worker_pending_host.py](../../../../src/loushang/coding/package_product_worker_pending_host.py) | C07 | 473 | M | C07 插件 Worker 执行/持久化/恢复 | 08074e856b21 | 233 | 4ca1a95b2543 |
+| [package_product_worker_pending_host.py](../../../../src/loushang/coding/package_product_worker_pending_host.py) | C07 | 473 | M | C07 插件 Worker 执行/持久化/恢复 | 08074e856b21 | 207 | 576369833240 |
 | [package_product_worker_policy.py](../../../../src/loushang/coding/package_product_worker_policy.py) | C07 | 335 | M | C07 插件 Worker 执行/持久化/恢复 | 1b9092a94b4f | 335 | 1b9092a94b4f |
 | [package_product_worker_posix_gc_history.py](../../../../src/loushang/coding/package_product_worker_posix_gc_history.py) | C07 | 343 | M | C07 插件 Worker 执行/持久化/恢复 | 3e4710cfe431 | 60 | 565127c20648 |
 | [package_product_worker_provider.py](../../../../src/loushang/coding/package_product_worker_provider.py) | C07 | 288 | M | C07 插件 Worker 执行/持久化/恢复 | 33ebd66f42c1 | 288 | 33ebd66f42c1 |
@@ -383,7 +384,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_registered_c5_settlement.py](../../../../src/loushang/coding/package_product_worker_registered_c5_settlement.py) | C07 | 368 | M | C07 插件 Worker 执行/持久化/恢复 | 4e651980106b | 102 | 2bdcfed63608 |
 | [package_product_worker_registered_payload_repair.py](../../../../src/loushang/coding/package_product_worker_registered_payload_repair.py) | C07 | 490 | M | C07 插件 Worker 执行/持久化/恢复 | 154d62d8b4ea | 291 | b01b88bd0bce |
 | [package_product_worker_registered_recovery.py](../../../../src/loushang/coding/package_product_worker_registered_recovery.py) | C07 | 297 | M | C07 插件 Worker 执行/持久化/恢复 | a4f687231e21 | 199 | 7d2b972ff406 |
-| [package_product_worker_resume.py](../../../../src/loushang/coding/package_product_worker_resume.py) | C07 | 281 | M | C07 插件 Worker 执行/持久化/恢复 | 806f3072e7b6 | 175 | 4bd9ac532af4 |
+| [package_product_worker_resume.py](../../../../src/loushang/coding/package_product_worker_resume.py) | C07 | 281 | M | C07 插件 Worker 执行/持久化/恢复 | 806f3072e7b6 | 196 | af6dc6f481ac |
 | [package_product_worker_session_composition.py](../../../../src/loushang/coding/package_product_worker_session_composition.py) | C07 | 635 | M | C07 插件 Worker 执行/持久化/恢复 | 7314a0c57377 | 343 | a7ea4fffc71e |
 | [package_product_worker_start_gate.py](../../../../src/loushang/coding/package_product_worker_start_gate.py) | C07 | 159 | M | C07 插件 Worker 执行/持久化/恢复 | 5c2e41e87360 | 159 | 5c2e41e87360 |
 | [package_product_worker_start_gate_base_v2.py](../../../../src/loushang/coding/package_product_worker_start_gate_base_v2.py) | C07 | 251 | M | C07 插件 Worker 执行/持久化/恢复 | be85b7c1c7ea | 53 | 5656674b82e9 |
@@ -428,7 +429,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_windows_partial_stage_review.py](../../../../src/loushang/coding/package_product_worker_windows_partial_stage_review.py) | C07 | 403 | M | C07 插件 Worker 执行/持久化/恢复 | 8d715c51e57b | 257 | f33ae8c62cb5 |
 | [package_product_worker_windows_payload.py](../../../../src/loushang/coding/package_product_worker_windows_payload.py) | C07 | 726 | M | C07 插件 Worker 执行/持久化/恢复 | 3b269028908c | 498 | 0865d251f129 |
 | [package_product_worker_windows_payload_inventory.py](../../../../src/loushang/coding/package_product_worker_windows_payload_inventory.py) | C07 | 150 | M | C07 插件 Worker 执行/持久化/恢复 | 9464816cc608 | 86 | 7de98ea1fd47 |
-| [package_product_worker_windows_pending_host.py](../../../../src/loushang/coding/package_product_worker_windows_pending_host.py) | C07 | 593 | M | C07 插件 Worker 执行/持久化/恢复 | 543a2c4a6116 | 282 | 60e941e580c3 |
+| [package_product_worker_windows_pending_host.py](../../../../src/loushang/coding/package_product_worker_windows_pending_host.py) | C07 | 593 | M | C07 插件 Worker 执行/持久化/恢复 | 543a2c4a6116 | 256 | 8e9d9ad16cbf |
 | [package_product_worker_windows_persisted_bases.py](../../../../src/loushang/coding/package_product_worker_windows_persisted_bases.py) | C07 | 315 | M | C07 插件 Worker 执行/持久化/恢复 | 28438d7a4fed | 257 | 35f457883c80 |
 | [package_product_worker_windows_provisioning.py](../../../../src/loushang/coding/package_product_worker_windows_provisioning.py) | C07 | 344 | M | C07 插件 Worker 执行/持久化/恢复 | 98ffbd480b88 | 318 | ec020f449488 |
 | [package_product_worker_windows_provisioning_base.py](../../../../src/loushang/coding/package_product_worker_windows_provisioning_base.py) | C07 | 410 | M | C07 插件 Worker 执行/持久化/恢复 | 0e8ef6cd61ab | 121 | 3292f03b8be6 |
@@ -534,7 +535,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C04 | 2 | 2,956 |
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
-| C07 | 112 | 21,377 |
+| C07 | 112 | 21,336 |
 | C08 | 31 | 6,693 |
 | C09 | 34 | 9,523 |
 | C10 | 12 | 5,427 |
@@ -556,4 +557,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 430 | 111,600 |
+| 合计 | 430 | 111,559 |

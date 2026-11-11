@@ -45,8 +45,7 @@ from loushang.harness.transcript import AgentTranscriptDirectoryRuntime
 from loushang.harness.worker.capability_query import (
     CapabilityQueryWorkerAdapter,
     CapabilityWorkerAdmissionV1,
-    CapabilityWorkerAuthorityV1,
-    CapabilityWorkerBindingV1,
+    _binding_for_worker,
 )
 from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
 from loushang.harness.worker.product_activation import (
@@ -165,21 +164,12 @@ class _CodingOperatorQueryPolicy:
     ]:
         identity = request.identity
         owner = coding_worker_query_owner_authority()
-        binding = CapabilityWorkerBindingV1(
-            plugin_id=identity.plugin_id,
-            contribution_id=identity.contribution_id,
-            product_id=identity.product_id,
-            scope_id=identity.scope_id,
-            owner_id=identity.owner_id,
+        binding = _binding_for_worker(
+            identity,
             allowed_capability_ids=(CODING_WORKER_QUERY_CAPABILITY_ID,),
-            authority=CapabilityWorkerAuthorityV1(
-                plugin_revision_digest=identity.plugin_revision_digest,
-                declaration_fingerprint=identity.declaration_fingerprint,
-                owner_generation=identity.owner_generation,
-                product_policy_revision=self.receipt.policy.product_policy_revision,
-                owner_policy_revision=CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
-                revocation_epoch=0,
-            ),
+            product_policy_revision=lambda: self.receipt.policy.product_policy_revision,
+            owner_policy_revision=CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
+            revocation_epoch=0,
         )
         facet_owner = bind_coding_worker_query_facet_owner(
             binding=binding,

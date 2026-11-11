@@ -23,8 +23,9 @@ from loushang.harness.session.capability_composition_inputs import (
 from loushang.harness.worker._ordinary_prepare import _prepare_windows_native_worker
 from loushang.harness.worker.capability_query import (
     CapabilityWorkerAdmissionV1,
-    CapabilityWorkerAuthorityV1,
     CapabilityWorkerBindingV1,
+    _admission_for_worker,
+    _binding_for_worker,
 )
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
@@ -50,6 +51,7 @@ from .package_product_worker_query_consumer import (
 from .package_product_worker_resume import (
     CodingWorkerResumeSettlementBinding,
     _parent_failure,
+    _resume_parent_matches_settlement,
 )
 from .package_product_worker_session_composition import (
     prepare_coding_product_worker_session_inputs,
@@ -193,21 +195,8 @@ def prepare_coding_windows_product_worker_pending_session_inputs(
     if (
         type(receipt_owner) is not CodingWindowsWorkerProductReceiptOwner
         or type(pending_launch) is not CodingWindowsProductWorkerPendingLaunchV1
-        or (
-            resume_parent_context is not None
-            and type(resume_parent_context) is not ResumeEffectParentContextV1
-        )
-        or ((resume_parent_context is None) != (resume_settlement is None))
-        or (
-            resume_settlement is not None
-            and (
-                not isinstance(resume_settlement, CodingWorkerResumeSettlementBinding)
-                or resume_parent_context is None
-                or not resume_settlement.matches(
-                    receipt=receipt,
-                    context=resume_parent_context,
-                )
-            )
+        or not _resume_parent_matches_settlement(
+            receipt, resume_parent_context, resume_settlement
         )
         or pending_launch.receipt_fingerprint != receipt.fingerprint
         or not isinstance(base_policy_binding, CodingWorkerBaseCompositionPolicyBinding)
@@ -223,29 +212,14 @@ def prepare_coding_windows_product_worker_pending_session_inputs(
         )
     base_policy_binding.assert_current()
     identity = pending_launch.identity
-    binding = CapabilityWorkerBindingV1(
-        plugin_id=identity.plugin_id,
-        contribution_id=identity.contribution_id,
-        product_id=identity.product_id,
-        scope_id=identity.scope_id,
-        owner_id=identity.owner_id,
+    binding = _binding_for_worker(
+        identity,
         allowed_capability_ids=(CODING_WORKER_QUERY_CAPABILITY_ID,),
-        authority=CapabilityWorkerAuthorityV1(
-            plugin_revision_digest=identity.plugin_revision_digest,
-            declaration_fingerprint=identity.declaration_fingerprint,
-            owner_generation=identity.owner_generation,
-            product_policy_revision=receipt.policy.product_policy_revision,
-            owner_policy_revision=CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
-            revocation_epoch=0,
-        ),
+        product_policy_revision=lambda: receipt.policy.product_policy_revision,
+        owner_policy_revision=CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
+        revocation_epoch=0,
     )
-    admission = CapabilityWorkerAdmissionV1(
-        binding_fingerprint=binding.fingerprint,
-        authority_fingerprint=binding.authority.fingerprint,
-        worker_identity_fingerprint=identity.fingerprint,
-        worker_attempt_id=identity.attempt_id,
-        worker_supervisor_epoch=identity.supervisor_epoch,
-    )
+    admission = _admission_for_worker(binding, identity)
     host = CodingWindowsProductWorkerPendingHost(
         resolved_providers=resolved_providers,
         provider_owner=provider_owner,

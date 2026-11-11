@@ -127,6 +127,27 @@ class CodingWorkerResumeSettlementBinding:
         )
 
 
+def _resume_parent_matches_settlement(
+    receipt: ProductWorkerActivationReceiptV1,
+    context: ResumeEffectParentContextV1 | None,
+    settlement: CodingWorkerResumeSettlementBinding | None,
+) -> bool:
+    if (
+        (context is not None and type(context) is not ResumeEffectParentContextV1)
+        or ((context is None) != (settlement is None))
+        or (
+            settlement is not None
+            and (
+                not isinstance(settlement, CodingWorkerResumeSettlementBinding)
+                or context is None
+                or not settlement.matches(receipt=receipt, context=context)
+            )
+        )
+    ):
+        return False
+    return True
+
+
 def _snapshot(
     coordinator: ProductWorkerActivationCoordinator,
     context: ResumeEffectParentContextV1,

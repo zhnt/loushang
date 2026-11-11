@@ -9,6 +9,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 
+from .contracts import WorkerLaunchIdentityV1
 from .supervisor import WorkerSupervisor
 
 CAPABILITY_WORKER_AUTHORITY_VERSION = 1
@@ -179,6 +180,45 @@ class CapabilityWorkerAdmissionV1:
         }
 
 
+def _binding_for_worker(
+    identity: WorkerLaunchIdentityV1,
+    *,
+    allowed_capability_ids: tuple[str, ...],
+    product_policy_revision: Callable[[], str],
+    owner_policy_revision: str,
+    revocation_epoch: int,
+) -> CapabilityWorkerBindingV1:
+    return CapabilityWorkerBindingV1(
+        plugin_id=identity.plugin_id,
+        contribution_id=identity.contribution_id,
+        product_id=identity.product_id,
+        scope_id=identity.scope_id,
+        owner_id=identity.owner_id,
+        allowed_capability_ids=allowed_capability_ids,
+        authority=CapabilityWorkerAuthorityV1(
+            plugin_revision_digest=identity.plugin_revision_digest,
+            declaration_fingerprint=identity.declaration_fingerprint,
+            owner_generation=identity.owner_generation,
+            product_policy_revision=product_policy_revision(),
+            owner_policy_revision=owner_policy_revision,
+            revocation_epoch=revocation_epoch,
+        ),
+    )
+
+
+def _admission_for_worker(
+    binding: CapabilityWorkerBindingV1,
+    identity: WorkerLaunchIdentityV1,
+) -> CapabilityWorkerAdmissionV1:
+    return CapabilityWorkerAdmissionV1(
+        binding_fingerprint=binding.fingerprint,
+        authority_fingerprint=binding.authority.fingerprint,
+        worker_identity_fingerprint=identity.fingerprint,
+        worker_attempt_id=identity.attempt_id,
+        worker_supervisor_epoch=identity.supervisor_epoch,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class CapabilityWorkerDescriptorV1:
     capability_id: str
@@ -326,13 +366,7 @@ class CapabilityQueryWorkerAdapter:
                 code="worker_capability_protocol_not_healthy",
             )
         identity = self._supervisor.identity
-        admission = CapabilityWorkerAdmissionV1(
-            binding_fingerprint=self._binding.fingerprint,
-            authority_fingerprint=self._binding.authority.fingerprint,
-            worker_identity_fingerprint=identity.fingerprint,
-            worker_attempt_id=identity.attempt_id,
-            worker_supervisor_epoch=identity.supervisor_epoch,
-        )
+        admission = _admission_for_worker(self._binding, identity)
         self._admission = admission
         return admission
 

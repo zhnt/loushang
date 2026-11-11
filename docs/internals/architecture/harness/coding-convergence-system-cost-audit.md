@@ -631,3 +631,11 @@ Coding 新增119行、删除134行。原 Package Product 新增19行。系统净
 五个入口共用静止锁和 GC 读锁，预留和已结算未启动共用证据读取及候选验证。
 当前430份 Coding 源码111600行、Harness 362092行、1969份系统源码648187行。
 相对 Goal 起点分别净减26155行、净增33773行和净增13393行。见[A144](coding-responsibility-convergence-progress.md#a144共用windows-worker离线审阅作用域)。
+
+
+## A145 共用普通 Worker 能力绑定与准入投影
+
+Coding 新增49行、删除90行。原 Worker Capability 查询新增41行、删除7行。系统净减7行。
+三个绑定构造及三个准入构造分别共用一份投影。两平台的 Resume 配对归原 Coding 绑定。
+当前430份 Coding 源码111559行、Harness 362126行、1969份系统源码648180行。
+相对 Goal 起点分别净减26196行、净增33807行和净增13386行。见[A145](coding-responsibility-convergence-progress.md#a145共用普通worker能力绑定与准入投影)。

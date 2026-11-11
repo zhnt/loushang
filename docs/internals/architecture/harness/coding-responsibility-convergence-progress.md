@@ -35,6 +35,20 @@ START native_revision==2特殊校验在草稿中遗漏。未装Product，生产�
 [A129](key-designs/worker-history-responsibility-convergence.md#a129完整windows退休闭包原型未采用)。
 完整Goal仍active/partial；A129当时仍用A128已接受计量，不以树外原型报减少。
 
+## A145共用普通Worker能力绑定与准入投影
+
+POSIX、Windows 待启动计划和操作员查询共用原 Worker Capability 的绑定构造。两个计划
+与实际 adapter 用同一准入投影。产品策略修订仍在原字段位置读取，adapter 仍先验当前性
+和健康状态再发布准入。两个待启动入口共用原 Coding Resume 配对，各平台的输入校验、
+会话交接和原生准备继续按原顺序执行。
+
+323条受控新旧对照逐字节一致，其中252次故障实际触达，覆盖字段顺序、拒绝、DTO 内容
+及指纹。169项回归、1项 Linux 离线 Product 事务、5项 Graph 交接和192项架构检查通过。
+1项按原非 live 选择规则排除。Windows 原生运行未覆盖。三项独立评审与验证记录存于树外 `a145-pending-worker`。
+
+Coding 减41行，Harness 增34行，系统净减7行。当前 Coding 111559行，系统648180行。
+较 Goal 起点分别减少26196行和增加13386行，距15K还差96559行。P1–P4仍在进行。
+
 ## A144共用Windows Worker离线审阅作用域
 
 完整、部分、崩溃、预留和已结算未启动审阅，由原 Package Product 共用静止锁和 GC 读锁。
