@@ -112,8 +112,8 @@ System tray and notification behavior are not implemented by this asset change.
 
 ## Toolchain
 
-- Node.js 24.22.2
-- npm 11.19.1
+- Node.js 24.x
+- npm 11.x
 - Rust 1.98.1 with rustfmt and Clippy
 - Tauri 2 and React 19, resolved by the committed lock files
 
@@ -123,8 +123,8 @@ Windows SDK.
 
 ## Commands
 
-Node.js includes npm. If the bundled npm differs from the pinned version, run
-`npm install --global npm@11.19.1`. Run all commands from the repository root:
+Node.js includes npm. If the bundled npm is outside the supported major version,
+run `npm install --global npm@11`. Run all commands from the repository root:
 
 ```text
 npm --prefix gui run doctor
