@@ -26,6 +26,7 @@ from loushang.harness.journal import (
     journal_file_read_lock,
     load_jsonl,
 )
+from loushang.harness.journal.jsonl import _journal_io_path
 from loushang.harness.plugin_management.journal_codecs import (
     PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
     PluginDesiredStateJournalTransition,
@@ -321,7 +322,7 @@ class PluginRetirementIntentLedger:
             return self._load_and_replay_unlocked().records
 
     def _load_and_replay_unlocked(self) -> _ReplayedRetirementIntents:
-        if not self._path.exists():
+        if not _journal_io_path(self._path).exists():
             return _empty_replay()
         try:
             snapshot: JsonlSnapshot[None, PluginRetirementIntentRecordV1] = load_jsonl(

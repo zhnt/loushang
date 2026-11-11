@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
+
+import pytest
 
 
 @dataclass(frozen=True)
@@ -832,3 +835,24 @@ def test_record_duplicate_diagnostics_are_lazy_and_keep_the_original_cause():
     assert formatted == ["", ""]
     assert type(caught.value.__cause__) is ValueError
     assert str(caught.value.__cause__) == "record has duplicate fields"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows journal path length")
+def test_windows_journal_uses_long_paths_for_locks_and_records(tmp_path: Path) -> None:
+    from loushang.harness.journal import (
+        JournalDurabilityProfile,
+        append_jsonl_record,
+        journal_file_read_lock,
+        load_jsonl,
+        write_jsonl,
+    )
+
+    root = tmp_path / ("x" * max(16, 239 - len(str(tmp_path))))
+    path = root / "plugin-retirement-intents.jsonl"
+    records = (_Record("one", "first"), _Record("two", "second"))
+    codec = _RecordCodec()
+    write_jsonl(path, records[:1], record_codec=codec)
+    append_jsonl_record(path, records[1], record_codec=codec)
+    with journal_file_read_lock(path, "exclusive", create_lock=False):
+        unlocked = JournalDurabilityProfile(locking=False)
+        assert load_jsonl(path, record_codec=codec, durability=unlocked).records == records
