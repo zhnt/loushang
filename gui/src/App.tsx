@@ -13,6 +13,7 @@ import { ProjectNavigation } from "./ProjectNavigation";
 import type { ProjectNavigationProps } from "./client/projectDirectory";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
+import { readLayoutPreferences, saveLayoutPreferences } from "./layoutPreferences";
 import { isTauri } from "@tauri-apps/api/core";
 import { useSessionHistory } from "./useSessionHistory";
 import { readSidebarPreferences, saveSidebarPreferences, updateSidebarPreferences, sidebarPreferencesKey } from "./client/sidebarPreferences";
@@ -106,11 +107,12 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     if (dialog && !dialog.open) dialog.showModal();
   }
   useEffect(() => { if (hostSettingsRequest > 0) openSettings(); }, [hostSettingsRequest]);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const previousSidebarOpen = useRef(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => readLayoutPreferences().sidebarOpen);
+  const previousSidebarOpen = useRef(sidebarOpen);
   useEffect(() => {
     if (previousSidebarOpen.current !== sidebarOpen) {
       document.querySelector<HTMLButtonElement>(sidebarOpen ? ".brand-actions .frame-icon" : ".collapsed-rail .frame-icon")?.focus({ preventScroll: true });
+      saveLayoutPreferences({ sidebarOpen });
       previousSidebarOpen.current = sidebarOpen;
     }
   }, [sidebarOpen]);

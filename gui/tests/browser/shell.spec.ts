@@ -50,11 +50,8 @@ for (const width of [700, 1440]) {
     await expect(page.locator(".native-frame")).toHaveCount(0);
     await expect(page.locator(".window-controls")).toHaveCount(0);
     expect((await page.locator("main").boundingBox())!.y).toBe(0);
-    await expect(page.locator(".brand-row").getByRole("button", { name: "Toggle sidebar" })).toBeVisible();
-    await page.getByRole("button", { name: "Toggle sidebar" }).click();
     const reopen = page.getByRole("button", { name: "Toggle sidebar" });
     await expect(reopen).toBeVisible();
-    await expect(reopen).toBeFocused();
     const rail = page.getByLabel("Collapsed sidebar", { exact: true });
     await expect(rail).toBeVisible();
     expect((await rail.boundingBox())!.width).toBe(48);
@@ -100,7 +97,13 @@ for (const width of [700, 1440]) {
     await closeSettings.click();
     await expect(accountFooter).toBeFocused();
     await expect(accountFooter).toHaveCSS("outline-style", "none");
-    if (width <= 760) await page.getByRole("button", { name: "Toggle sidebar" }).click();
+    const navigation = page.getByLabel("Workspace and Session navigation", { exact: true });
+    await page.reload();
+    await expect(navigation).toBeVisible();
+    await page.getByRole("button", { name: "Toggle sidebar" }).click();
+    await expect(reopen).toBeFocused();
+    await page.reload();
+    await expect(rail).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath("web-shell.png"), fullPage: true });
   });
@@ -118,6 +121,7 @@ test("desktop shell renders menus and Session history with a simulated native br
   await simulateDesktop(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
+  await page.getByRole("button", { name: "Toggle sidebar" }).click();
   await expect(page.locator(".brand-name")).toHaveText(appName);
   await expect(page.getByRole("heading", { name: "GUI development" })).toBeVisible();
   await expect(page.locator(".native-frame")).toBeVisible();
@@ -219,6 +223,7 @@ test("General and Host share a fixed dialog with scrollable content in a short w
 test("composer keeps controls aligned and uses Enter to send at a narrow width", async ({ page }) => {
   await page.setViewportSize({ width: 700, height: 900 });
   await page.goto("/");
+  await page.getByRole("button", { name: "Toggle sidebar" }).click();
   await page.getByRole("button", { name: "Operational ontology · Idle" }).click();
   const input = page.getByRole("textbox", { name: "Message for Operational ontology" });
   const send = page.getByRole("button", { name: "Send", exact: true });

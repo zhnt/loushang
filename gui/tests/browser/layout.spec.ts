@@ -77,8 +77,8 @@ for (const scenario of scenarios) {
     try {
       await page.goto("http://127.0.0.1:1421");
       await expect(page.getByRole("heading", { name: "GUI development" })).toBeVisible();
-      if (!scenario.rail) await page.getByRole("button", { name: "Toggle sidebar" }).click();
-      else if (scenario.rail !== 280) {
+      if (scenario.rail) await page.getByRole("button", { name: "Toggle sidebar" }).click();
+      if (scenario.rail && scenario.rail !== 280) {
         const separator = page.getByRole("separator", { name: "Sidebar width" });
         const box = (await separator.boundingBox())!;
         await page.mouse.move(box.x + box.width / 2, box.y + 80);
