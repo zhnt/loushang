@@ -811,12 +811,14 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
           <button className="frame-icon" type="button" aria-label={shellText("toggleSidebar")} title={shellText("toggleSidebarHint")} aria-expanded="true" onClick={onToggleSidebar}><PanelIcon side="left" /></button>
         </div>
       </div>
-      <button className="new-session" type="button" onClick={onNewSession}
-        disabled={!newSessionEnabled || newSessionPending}>
-        <UiIcon name="new-session" /> {newSessionPending ? t("workspace:sidebar.creating") : t("workspace:sidebar.newSession")} <kbd aria-hidden="true">+</kbd>
-      </button>
       <div className="workspace-scroll">
       <nav className="sidebar-shortcuts" aria-label={t("workspace:sidebar.shortcuts")}>
+        <button className="new-session" type="button" onClick={onNewSession}
+          disabled={!newSessionEnabled || newSessionPending}>
+          <UiIcon name="new-session" />
+          <span>{t(newSessionPending ? "workspace:sidebar.creating" : "workspace:sidebar.newSession")}</span>
+          <span className="sidebar-add-mark" aria-hidden="true">+</span>
+        </button>
         <button type="button" disabled title={t("workspace:sidebar.prHint")}><UiIcon name="pull-request" /><span>{t("workspace:sidebar.pullRequests")}</span></button>
         <button type="button" disabled title={t("workspace:sidebar.scheduleHint")}><UiIcon name="scheduled" /><span>{t("workspace:sidebar.scheduled")}</span></button>
         <button type="button" disabled title={t("workspace:sidebar.pluginsHint")}><UiIcon name="plugins" /><span>{t("workspace:sidebar.plugins")}</span></button>

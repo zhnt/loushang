@@ -49,6 +49,8 @@ function openHostSettings() {
 }
 
 function installMock(implementation: (command: string, args?: any) => Promise<unknown>) {
+  const pinned = new Set<string>();
+  const chat = (id: string, title: string, scope: string) => ({ id, title, scope, pinned: pinned.has(id) });
   native.invoke.mockImplementation(async (command, args) => {
     if (command === "client_settings") {
       if (args.request.operation === "connections/list") return { selectedId: "local", connections: [
@@ -58,13 +60,19 @@ function installMock(implementation: (command: string, args?: any) => Promise<un
         ...await implementation("environment", args) as object, connectionId: "local",
       };
       if (args.request.operation === "host/request") {
+        if (args.request.request.operation === "preferences") {
+          const { action, session } = args.request.request;
+          if (action === "pin") pinned.add(session);
+          if (action === "unpin") pinned.delete(session);
+          return { pinned: [...pinned], recent: [], selected: "" };
+        }
         if (args.request.request.operation === "workspace") {
           const request = args.request.request;
           if (request.action !== "navigation") return implementation("workspace", request);
           return { projects: [
-            { path: "/workspace", sessions: [{ id: "a", title: "Project A chat" }] },
-            { path: "/previous", sessions: [{ id: "b", title: "Project B chat" }] },
-          ], temporarySessions: [{ id: "scratch", title: "Temporary chat" }] };
+            { path: "/workspace", sessions: [chat("a", "Project A chat", "mux:a")] },
+            { path: "/previous", sessions: [chat("b", "Project B chat", "mux:b")] },
+          ], temporarySessions: [chat("scratch", "Temporary chat", "mux:temp")] };
         }
         return implementation("manage", { request: args.request.request });
       }
@@ -200,6 +208,38 @@ describe("local managed Host presentation", () => {
     }));
     expect(countActions("create-chat")).toBe(2);
     expect(countActions("open")).toBe(0);
+  });
+
+  it("puts pinned project and temporary chats above projects and returns them to their groups", async () => {
+    installMock(async (command) => command === "environment"
+      ? { supported: true, workspace: "" }
+      : { state: "running", errorCode: null });
+    render(<LocalHostGate />);
+    const projects = screen.getByRole("region", { name: "Projects" });
+    const chats = screen.getByRole("region", { name: "Chats" });
+    const pin = await within(projects).findByRole("button", { name: "Pin Project A chat" });
+    pin.focus();
+    fireEvent.click(pin);
+    const pinned = await screen.findByRole("region", { name: "Pinned" });
+    expect(pinned.nextElementSibling).toBe(projects);
+    expect(within(pinned).getByRole("button", { name: "Unpin Project A chat" })).toHaveFocus();
+    expect(within(projects).queryByRole("button", { name: "Project A chat" })).toBeNull();
+    expect(native.invoke).toHaveBeenCalledWith("client_settings", {
+      request: { operation: "host/request", connectionId: "local",
+        request: { operation: "preferences", scope: "mux:a", session: "a", action: "pin" } },
+    });
+    fireEvent.click(within(chats).getByRole("button", { name: "Pin Temporary chat" }));
+    await within(pinned).findByRole("button", { name: "Unpin Temporary chat" });
+    expect(within(chats).queryByRole("button", { name: "Temporary chat" })).toBeNull();
+
+    fireEvent.click(within(pinned).getByRole("button", { name: "Project A chat" }));
+    expect(native.create).toHaveBeenCalledWith("/workspace", "local");
+    fireEvent.click(within(projects).getByRole("button", { name: "workspace" }));
+    fireEvent.click(within(pinned).getByRole("button", { name: "Unpin Project A chat" }));
+    expect(await within(projects).findByRole("button", { name: "Project A chat" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(within(pinned).getByRole("button", { name: "Unpin Temporary chat" }));
+    expect(await within(chats).findByRole("button", { name: "Temporary chat" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Pinned" })).toBeNull();
   });
 
   it("confirms Host stop and preserves the mounted draft across stop and start", async () => {
