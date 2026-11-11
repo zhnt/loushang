@@ -6,29 +6,90 @@ TypeScript own presentation and UI-local state; Tauri/Rust owns desktop
 integration and adapts the accepted App Contract slice. The GUI does not
 own Product, Harness, AppService, or AppHost runtimes.
 
-The default B1 launch is deliberately offline. It provides a Product-neutral UI
-port and a deterministic Mock AppClient with three Workspace kinds, grouped
-Sessions, isolated per-Session drafts, active Run and Task progress, expandable
-Activity details, distinct root/subagent AgentRuns, and read-only ChangeSet
-review through a central Quick Look and the Work Dock. Every sample value is
-labelled as fixture data. It does not read a repository, start a Python backend,
-or request a model. An opt-in B2 native launch can attach to an
-existing AppHost, install one barriered initial Session snapshot, publish
-validated ongoing event rounds with authoritative replacement snapshots, and
-reconnect through a fresh snapshot after transport loss or an event gap. It can
-submit text and interrupt the current execution in that existing Session over
-the same authenticated controller connection. Further cross-language and real-service work
-remains in C1/B2 as described in the
-[engineering plan](../docs/internals/architecture/drafts/gui-engineering-bootstrap-plan.md).
+Both browser and desktop launches use real AppHost data. A disconnected Host
+shows a disconnected shell and Host settings; there is no Mock fallback or
+product fixture mode. Deterministic clients live under `tests/support/` only.
+The browser adapter reuses authenticated AppClient/ExecutionClient contracts;
+React uses the same validated snapshot projection as the native bridge.
 
-## Application icons
+## Shared local storage and browser access
 
-The user-facing product name is `loushang`, configured by Tauri's `productName`
-and window title, the HTML title and the React brand/loading text. Internal
-Cargo/npm package names remain `harness-gui` / `@loushang/harness-gui`, and the
-application identifier stays `ai.loushang.harnessgui`. On Linux, verify the
-application-menu and Dock labels after installing the bundle; an unregistered
-development executable may still be labelled by its binary name.
+`npm --prefix gui run dev` starts Vite in desktop mode and opens the Tauri
+window. Rust reads the saved connections and talks directly to the selected
+Host's HTTP endpoint. The desktop executable and its development entry require
+no Python interpreter. Start the Host's Web endpoint separately for local use.
+
+`npm --prefix gui run dev:web` starts the browser development surface with its
+Python proxy. The proxy reuses or starts one shared adapter per user directory.
+Open Settings → Host to select a workspace and explicitly start/connect its Host
+through the running adapter.
+Both surfaces show the same shell and initial panel layout (native window controls
+remain desktop-only). The development API accepts only same-origin loopback
+requests with the client header. Stopping Vite closes its proxy; the shared adapter and managed Hosts continue
+running so other clients remain connected. The browser development proxy needs
+the installed Python project dependencies. `LOUSHANG_GUI_PYTHON` selects its
+interpreter.
+
+Storage below `LOUSHANG_HOME` (default `~/.loushang`) follows existing ownership:
+
+| Path | Owner and meaning |
+| --- | --- |
+| `models/*.json` | Existing user model registry; unchanged |
+| `auth/<provider>-auth.json` | Existing model OAuth credentials; unchanged |
+| `coding/settings.json` | Existing Coding settings; unchanged |
+| `connections.json` | Client connection targets and last local workspace |
+| `host.json` | Standalone Web listener configuration |
+| `state/web/` | Shared adapter discovery, ownership locks and logs |
+| `data/client-preferences.sqlite3` | Host-side pins, recent visits and selected-session recovery, scoped by mux |
+| `data/`, `state/`, `lmux/` | Existing business, internal and managed-service storage |
+
+Language, appearance and Markdown theme remain independent localStorage
+preferences. Navigation changes use atomic operations so concurrent windows do
+not overwrite each other's pins. Other windows observe changes on the next
+one-second refresh; each open window keeps its own current selection and drafts.
+Account authentication is not implemented yet. A future Host-managed login can
+serve GUI, TUI and browser sessions without exposing credential files to JavaScript.
+
+### Local Web access
+
+Build the Web assets, then run the server without a desktop:
+
+```sh
+npm --prefix gui run build:web
+uv run python -m loushang.coding.web_server --dist gui/dist
+```
+
+The default listener is `127.0.0.1:1422`, accessible only from this machine.
+Open it directly; no login or token is required. The browser reads and writes
+shared configuration through the Host API. Files are stored in the Host machine's
+`~/.loushang`. Provider
+credentials and private AppHost records never enter the browser. Closing the
+server releases its connections without stopping managed Hosts.
+
+Optional `host.json`:
+
+```json
+{"web":{"bind":"127.0.0.1","port":1422,"dist":"/absolute/path/to/gui/dist"}}
+```
+
+The current delivery covers local Web access. Remote deployment and account
+login are deferred; see the [open design questions](../docs/internals/architecture/gui-web-config-open-questions.md).
+
+## Application branding
+
+Change two fields in [Tauri configuration](src-tauri/tauri.conf.json) to build
+a renamed GUI. Both default to `loushang-gui`.
+
+- `productName` sets the desktop window title, tray labels, React shell text,
+  and browser tab title. It can contain spaces.
+- `mainBinaryName` sets the release executable name. Use a portable filename
+  such as `my-studio`, without an extension. Tauri adds `.exe` on Windows.
+
+Run `npm --prefix gui run build` for the desktop and `npm --prefix gui run
+build:web` for a separate Web distribution. Development builds run the Cargo
+target `harness-gui`. Cargo, npm and the application identifier are defined
+independently of branding. Installing distinct branded editions side by side
+requires separate application identities and data paths.
 
 The built-in Loushang artwork replaces the Tauri starter icons for native
 packaging and window defaults. Browser previews use the same artwork as a
@@ -57,33 +118,54 @@ npm --prefix gui run doctor
 npm --prefix gui run bootstrap
 npm --prefix gui run dev:web
 npm --prefix gui run dev
-npm --prefix gui run dev:fixture-native
 npm --prefix gui run test
 npm --prefix gui run check
 npm --prefix gui run build
 ```
 
-`dev:web` starts only the browser shell. `dev` starts the native Tauri window.
+`dev:web` starts the browser shell and real Host adapter. `dev` starts the native Tauri window.
+The native desktop tray groups the user name, Show window / Open Web, current
+Host connection status, Host management, and Quit. Show window restores and
+focuses the existing window. Closing the window hides it to the tray;
+minimizing retains normal OS behavior. Quit (including File > Quit / Ctrl+Q)
+uses the normal connection cleanup path. On Linux, use the tray menu (the
+desktop must provide an AppIndicator-compatible host). If tray initialization
+fails, normal window closing remains available. The browser has no system tray.
+Host connection colors and service lifecycle are separate: green means
+connected, yellow connecting, red disconnected, and grey unknown. A checkmark
+identifies the selected Host. The Open Web action is disabled without a usable
+address and never appends credentials. Menu text follows the interface language.
+Manage Hosts opens the saved Host list. Each Host opens a submenu with its
+service status and controls. A separator precedes Quit.
+Connected Hosts show their name and green dot without redundant status text;
+connecting and disconnected states retain their explanatory labels.
+See [tray acceptance](tests/playback/tray-acceptance.md) for validation scope.
 `test` runs reducer and React playback checks. During rapid B1 development,
 `check` runs only TypeScript type checking and these offline tests, without
 requiring Rust or building assets. Use `check:full` for Rust/native/toolchain
 changes; it retains the toolchain doctor, web build, tests and Rust checks.
 Layout playback and native packaging remain on-demand acceptance commands.
-`build` creates a native
-executable without producing installers. `dev:fixture-native` and
-`build:fixture-native` enable the B1-only Rust invoke/event canary; the command
-is absent from the default native build.
+`build` creates the native executable with the frontend embedded. On Linux,
+run the standalone program using the default Cargo output path:
+
+```sh
+npm --prefix gui run build
+gui/src-tauri/target/release/loushang-gui
+```
+
+Use `build:web` for a separate `gui/dist` to serve in browsers. The Rust
+fixture-bridge feature is retained only for protocol tests.
 
 ## Controlled live launch
 
 The AppHost/desktop launcher may start the built executable with both native
 arguments below. Omitting both opens local Host management in the native app
-(browser development retains the offline fixture). Partial, duplicate or
+(browser development uses the real Host adapter). Partial, duplicate or
 unknown arguments disable live availability rather than falling back with
 ambiguous authority.
 
 ```text
-gui/src-tauri/target/release/harness-gui.exe --loushang-app-record-root C:\path\to\admitted\connection --loushang-mux-name GUI-work
+gui/src-tauri/target/release/loushang-gui.exe --loushang-app-record-root C:\path\to\admitted\connection --loushang-mux-name GUI-work
 ```
 
 Linux also supports the same explicit connection arguments:
@@ -94,14 +176,15 @@ gui/src-tauri/target/debug/harness-gui \
   --loushang-mux-name main
 ```
 
-For a debug build, start `npm run dev:web` in `gui/` first; its configured
+For a debug build, start `npm run dev:web -- --mode desktop` in `gui/` first. Its configured
 WebView URL is `http://localhost:1420`. A standalone packaged build uses the
 embedded frontend. With explicit connection arguments, the Host and Mux must
 already exist through the managed management entry. Reconnect attaches the
 original Mux and reads its existing members.
 
-Without explicit connection arguments, Linux native launch offers local Host
-management. Select an existing absolute Workspace directory, then choose
+Without explicit connection arguments, the native window reads `connections.json`
+and opens even when the selected endpoint is unavailable. With the local Host's
+Web endpoint running, select an existing absolute Workspace directory, then choose
 **Start and connect** or connect to its running Host. Startup uses the existing
 managed coordinator and admitted Mux creation; an empty Mux receives the existing
 default Session initialization. Closing the GUI only disconnects the client.
@@ -109,15 +192,11 @@ Stop and restart require confirmation because they interrupt active executions;
 restart preserves Session history but does not resume an interrupted execution.
 An unconfirmed instance is never automatically replaced.
 
-`npm run dev` selects this checkout's `.venv` Python when available. Native
-launchers can set `LOUSHANG_GUI_PYTHON` to an interpreter containing this checkout
-or an installed Loushang package; the fallback is `python3`. The short-lived
-Product management entrypoint is `loushang.coding.gui_local_host`. Python and Rust
-must come from compatible builds. Managed storage retains its existing private
-directory and trusted-ancestor requirements; do not place its roots under
-group-writable shared directories. Windows and macOS local lifecycle management
-remain unsupported; explicit valid connection modes retain their own platform
-support boundaries.
+Local and remote management requests go to the selected Host API. The browser
+and desktop write the same v1 connection settings using the shared SQLite lock.
+Managed storage retains its existing private-directory and trusted-ancestor
+requirements. Explicit local record arguments continue to use the native
+AppClient on supported platforms.
 
 Linux record admission uses no-follow directory/file descriptors, current-user
 ownership, private 0700/0600 modes, single-link regular files, bounded reads and
@@ -204,10 +283,37 @@ disconnect/resynchronization and cooperative desktop-exit lifecycle. The
 automated integration check additionally submits through the production desktop
 control bridge. Windows display scaling remains outside this slice.
 
-For a standalone offline executable, use `npm --prefix gui run build:fixture-native`
+For a standalone desktop executable, use `npm --prefix gui run build`
 from the repository root. Do not substitute a plain `cargo build`: that bypasses
 the Tauri frontend build and production protocol configuration and can produce a
 window that expects a running localhost development server.
+
+## Ubuntu complete deb test package
+
+Build the current GUI, then package it with CPython, AppHost/AppService, the
+installed Loushang wheel, locked Python dependencies and local Web assets:
+
+```text
+npm --prefix gui ci
+npm --prefix gui run build
+uv run python scripts/gui/build_linux_deb.py
+uv run python scripts/gui/check_deb_package.py dist/deb/loushang_<version>_amd64.deb
+```
+
+Install the generated file with `sudo apt install /absolute/path/to/package.deb`.
+The application menu and `/usr/bin/loushang` use the bundled runtime under
+`/opt/loushang`. Local startup uses the same managed Host entrypoint as the tray;
+GUI close/quit leaves that Host running. A saved remote connection remains
+selected. `loushang --workspace /absolute/path --status` and `--stop` manage the
+local Host. Stop running Hosts before replacing or removing this test package.
+Settings and Session data remain outside the installed program directory.
+
+This Ubuntu 26.10 amd64 candidate declares native system-library dependencies.
+It does not require a system Python/uv/Node installation. It does not register
+a systemd unit or start services during installation. Provider credentials and
+optional external tools/Plugin worker runtimes are not included. The opt-in
+checker extracts the actual deb and verifies relocated imports, real Host
+startup, reuse, stop and restart without provider calls or system installation.
 
 ## Linux portable package candidate
 
@@ -423,9 +529,9 @@ lint exceptions. New required PR checks are not added by these local commands.
 Terminology: Session = 会话; Workspace = 工作区; Task = 任务;
 Run = 运行; Agent = 智能体; Subagent = 子智能体; Review = 审阅.
 The current File/Edit/View/Help row is React-rendered, not a Rust native menu.
-No duplicate Rust dictionary or new menu/tray system is introduced. Future
-native surfaces must reuse the same translation data with a mechanism suitable
-for their initialization timing.
+The native tray receives a presentation projection using the same translation
+resources. Rust uses temporary bilingual startup labels until that projection
+arrives; it does not maintain a duplicate translation dictionary.
 
 See [i18n delivery evidence](tests/playback/i18n-acceptance.md) for the observed
 validation scope and native limitations.

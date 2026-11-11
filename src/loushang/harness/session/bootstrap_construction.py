@@ -327,6 +327,7 @@ class AgentProductConstructionRequest(Generic[AgentT, SessionT, StandardExtensio
     set_scoped_models: Callable[[SessionT, Sequence[object]], None]
     product_tool_pack_id: str = "product.registry"
     extension_tool_pack_id: str = "product.extensions"
+    use_default_model: bool = True
 
 
 @dataclass(frozen=True)
@@ -369,7 +370,7 @@ class AgentProductConstructionRuntime(Generic[AgentT, SessionT, StandardExtensio
             ).system_prompt
             resolved_model = resolve_session_model(
                 request.model,
-                default_selection=settings.default_model,
+                default_selection=settings.default_model if request.use_default_model else None,
                 build_model=request.configuration.model_registry.build_model,
                 endpoint_lookup=(
                     request.configuration.model_registry.ai_registry.get_endpoint
@@ -565,6 +566,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
             None,
         ],
         set_scoped_models: Callable[[SessionT, Sequence[object]], None],
+        use_default_model: bool = True,
     ) -> AgentProductConstructionResult[SessionT, StandardExtensionT]:
         """Build the canonical request and delegate all execution to its owner."""
 
@@ -782,6 +784,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                     explicit_system_prompt=explicit_system_prompt,
                     append_system_prompt=append_system_prompt,
                     model=model,
+                    use_default_model=use_default_model,
                     thinking_level=(
                         settings.thinking_level
                         if thinking_level is None

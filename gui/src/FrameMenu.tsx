@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { appName } from "./branding";
 import type Resources from "./i18n/generated/resources";
 
 export interface FrameActions {
@@ -14,12 +15,13 @@ export interface FrameActions {
   sidebarOpen: boolean;
   environmentOpen?: boolean;
   onClose?: () => void;
+  onQuit?: () => void;
   onSettings?: () => void;
 }
 
 type MenuName = "file" | "edit" | "view" | "help";
 const names: MenuName[] = ["file", "edit", "view", "help"];
-type Label = keyof Resources["shell"];
+type Label = { [Key in keyof Resources["shell"]]: Resources["shell"][Key] extends string ? Key : never }[keyof Resources["shell"]];
 interface MenuEntry { label: Label; action?: () => void; shortcut?: string; checked?: boolean; submenu?: boolean }
 
 export function FrameMenu(actions: FrameActions) {
@@ -44,7 +46,8 @@ export function FrameMenu(actions: FrameActions) {
         return;
       }
       const action = key === "n" ? actions.onNewSession
-        : key === "w" || key === "q" ? actions.onClose
+        : key === "w" ? actions.onClose
+          : key === "q" ? actions.onQuit
           : key === "j" ? actions.onToggleDock
             : key === "[" ? actions.onBack : key === "]" ? actions.onForward
               : key === "/" ? () => { setOpen(null); returnFocus.current = root.current?.querySelector<HTMLButtonElement>('[data-menu="help"]') ?? null; setHelp("shortcuts"); } : undefined;
@@ -52,7 +55,7 @@ export function FrameMenu(actions: FrameActions) {
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
-  }, [actions.onNewSession, actions.onClose, actions.onToggleDock, actions.onBack, actions.onForward, actions.onSettings]);
+  }, [actions.onNewSession, actions.onClose, actions.onQuit, actions.onToggleDock, actions.onBack, actions.onForward, actions.onSettings]);
 
   useEffect(() => {
     const capture = (event: FocusEvent) => {
@@ -119,7 +122,7 @@ export function FrameMenu(actions: FrameActions) {
       [entry("newWindow"), entry("newSession", actions.onNewSession, "Ctrl+N"), entry("temporarySession", undefined, "Ctrl+Shift+N"), entry("newProject")],
       [entry("openFolder", undefined, "Ctrl+O"), entry("focusComposer", actions.onFocusComposer), entry("close", actions.onClose, "Ctrl+W")],
       [entry("settings", actions.onSettings, "Ctrl+,")],
-      [entry("signOut"), entry("quitApp", actions.onClose, "Ctrl+Q")],
+      [entry("signOut"), entry("quitApp", actions.onQuit, "Ctrl+Q")],
     ],
     edit: [
       [entry("undo", undefined, "Ctrl+Z"), entry("redo", undefined, "Ctrl+Shift+Z")],
@@ -171,11 +174,11 @@ export function FrameMenu(actions: FrameActions) {
           {groups[name].map((group, index) => <div className="frame-menu-group" key={index}>
             {index > 0 ? <div role="separator" className="frame-menu-separator" /> : null}
             {group.map((item) => <button key={item.label} role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
-              aria-label={t(item.label)} aria-checked={item.checked} aria-haspopup={item.submenu ? "menu" : undefined}
+              aria-label={t(item.label, { appName })} aria-checked={item.checked} aria-haspopup={item.submenu ? "menu" : undefined}
               disabled={!item.action} title={!item.action ? t("actionUnavailable") : undefined}
               onClick={() => { if (item.action) run(item.action); }}>
               <span className="menu-check" aria-hidden="true">{item.checked ? "✓" : ""}</span>
-              <span className="menu-label">{t(item.label)}</span>
+              <span className="menu-label">{t(item.label, { appName })}</span>
               {item.shortcut ? <kbd aria-hidden="true">{item.shortcut}</kbd> : null}
               {item.submenu ? <span aria-hidden="true">›</span> : null}
             </button>)}
@@ -185,8 +188,8 @@ export function FrameMenu(actions: FrameActions) {
     </nav>
     {copyFailed ? <div role="alert" className="window-error"><span>{t("copyFailed")}</span><button onClick={() => setCopyFailed(false)}>{t("dismiss")}</button></div> : null}
     {help ? <dialog ref={dialog} className="frame-dialog" aria-labelledby="frame-dialog-title" onCancel={() => setHelp(null)} onClose={() => setHelp(null)}>
-      <h2 id="frame-dialog-title">{help === "about" ? t("about") : t("shortcuts")}</h2>
-      {help === "about" ? <><p>{t("aboutDescription")}</p><p>{t("aboutRuntime")}</p></> : <dl>
+      <h2 id="frame-dialog-title">{help === "about" ? t("about", { appName }) : t("shortcuts")}</h2>
+      {help === "about" ? <><p>{t("aboutDescription", { appName })}</p><p>{t("aboutRuntime")}</p></> : <dl>
         <dt>{t("sidebarShortcut")}</dt><dd>{t("toggleSidebar")}</dd>
         <dt>{t("sendShortcut")}</dt><dd>{t("sendMessage")}</dd>
         <dt>{t("newlineShortcut")}</dt><dd>{t("insertNewline")}</dd>

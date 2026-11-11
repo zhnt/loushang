@@ -15,7 +15,8 @@ from secrets import token_hex
 from typing import cast
 
 from loushang.agent.types import StreamFn
-from loushang.ai.model import Model, ModelSelection
+from loushang.ai.model import Model, ModelSelection, normalize_model_selection
+from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.apphost.integrations.session_control import _HostedAgentExecutionWork
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -34,11 +35,12 @@ from loushang.harness.approval import (
     DenyApprovalResolver,
     InteractiveApprovalResolver,
 )
+from loushang.harness.config.agent import SettingsManager
 from loushang.harness.events import RuntimeEvent
+from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.session import SessionControlPort
 from loushang.harness.session.model_selection import (
     apply_session_model_selection,
-    get_session_model_selection,
     iter_available_model_details,
 )
 from loushang.harness.tools.core import ToolDefinition
@@ -57,8 +59,10 @@ from .hosted_session import (
     _TEXT_LIMIT,
     CodingRealHostedSessionV1,
     _observe_close,
+    _resolve_hosted_saved_model,
 )
 from .package_product_runtime import CodingFencedProductApplicationSelection
+from .resume_activation_plan import SessionActivationPlanV1
 from .resume_input_lookup import (
     CodingResumeInputLookupQueryV1,
     CodingResumeInputLookupResultV1,
@@ -71,8 +75,8 @@ from .session.agent_session import AgentSession
 class _DeferredHostedControlV1:
     """Stable control identity that later relays the activated Session."""
 
-    def __init__(self, session_id: str) -> None:
-        self._session_id = session_id
+    def __init__(self, binding: CodingDeferredHostedSessionV1) -> None:
+        self._binding = binding
         self._delegate: SessionControlPort | None = None
         self._listeners: set[Callable[[RuntimeEvent[object]], object]] = set()
         self._unsubscribe: Callable[[], None] | None = None
@@ -80,7 +84,7 @@ class _DeferredHostedControlV1:
 
     @property
     def session_id(self) -> str:
-        return self._session_id
+        return self._binding.identity.session_id
 
     @property
     def session_name(self) -> str | None:
@@ -109,7 +113,7 @@ class _DeferredHostedControlV1:
     def activate(self, control: SessionControlPort) -> None:
         if self._closed or self._delegate is not None:
             raise CodingHostedCatalogError()
-        if control.session_id != self._session_id:
+        if control.session_id != self.session_id:
             raise CodingHostedCatalogError()
 
         async def relay(event: RuntimeEvent[object]) -> None:
@@ -140,14 +144,20 @@ class _DeferredHostedControlV1:
     def is_streaming(self) -> bool:
         return bool(getattr(self._delegate, "is_streaming", False))
 
+    @property
+    def settings_manager(self) -> SettingsManager:
+        return self._binding._services.settings_manager
+
     async def get_model_selection(self) -> ModelSelection | None:
-        return await get_session_model_selection(self._delegate)
+        return normalize_model_selection(self._binding.current_model)
 
     async def get_available_model_details(self) -> list[object]:
-        return await iter_available_model_details(self._delegate)
+        if self._delegate is not None:
+            return await iter_available_model_details(self._delegate)
+        return list(self._binding._services.model_registry.ai_registry.list_models())
 
     async def set_model(self, selection: ModelSelection) -> None:
-        await apply_session_model_selection(self._require_active(), selection)
+        await self._binding.set_model(selection)
 
     @property
     def thinking_level(self) -> object:
@@ -205,7 +215,7 @@ class CodingDeferredHostedSessionV1:
         self._approval.set_request_presenter(
             self._present_approval, dismisser=self._dismiss_approval
         )
-        self._control = _DeferredHostedControlV1(self.identity.session_id)
+        self._control = _DeferredHostedControlV1(self)
         self._active: CodingRealHostedSessionV1 | None = None
         self._planning: ResumePlanningSlot | None = None
         self._activation_lock = asyncio.Lock()
@@ -221,7 +231,70 @@ class CodingDeferredHostedSessionV1:
     def execution_available(self) -> bool:
         return self._close_task is None
 
-    async def start_background_planning(self) -> None:
+    @property
+    def current_model(self) -> Model | None:
+        if self._active is not None:
+            return self._active.current_model
+        self._source.require_current_source()
+        return _resolve_hosted_saved_model(
+            self._source.history_binding.context.model,
+            self._services.model_registry,
+            self._model,
+        )
+
+    async def set_model(self, selection: ModelSelection) -> None:
+        async with self._activation_lock:
+            if self._close_task is not None:
+                raise CodingHostedCatalogError()
+            if self._active is not None:
+                await apply_session_model_selection(self._active.control, selection)
+                return
+            scope, control, digest = ScopedAppServicePortV1.current_resume_subject()
+
+            def require_current() -> None:
+                if self._close_task is not None:
+                    raise CodingHostedCatalogError()
+                scope.require_current_resume_subject(
+                    control, digest, expected_session_id=self.identity.session_id,
+                )
+                self._source.require_current_source()
+
+            require_current()
+            model = self._services.model_registry.build_model(selection)
+            context = self._source.history_binding.context
+            if context.provider_window is not None and not context.provider_window.matches(model):
+                raise ValueError("Selected model is incompatible with the active provider compaction checkpoint")
+            validate_image_input_compatibility(model, context.messages)
+            plan = await self._current_plan()
+            require_current()
+            manager = await self._source.manager_type._load_resume_writer(
+                self._source.record.path, plan=plan, current_owner_inputs=plan.owner_inputs,
+                _factory=self._source.writer_factory,
+            )
+            try:
+                require_current()
+                await manager.append_model_change(
+                    selection.provider, selection.model_id, endpoint_id=selection.endpoint_id,
+                )
+                await self._source.refresh_after_model_change(manager)
+            finally:
+                await manager.dispose_runtime_profile()
+
+    def _plan_subject_digest(self) -> str:
+        return hashlib.sha256(
+            (
+                "coding.hosted.resume-plan/v1\\0"
+                + self.identity.continuity_id
+                + "\\0"
+                + self.identity.session_id
+                + "\\0"
+                + self._source.history.source_fingerprint
+            ).encode()
+        ).hexdigest()
+
+    async def _current_plan(self) -> SessionActivationPlanV1:
+        from .resume_activation_attempt import CodingResumeRecoveryRequired
+        from .resume_activation_plan import plan_coding_resume_async
 
         self._source.require_current_source()
         policy = workspace_tool_runtime_settings(self._services.settings_manager)
@@ -229,16 +302,48 @@ class CodingDeferredHostedSessionV1:
         if raw_policy_engine is None:
             raise CodingHostedCatalogError()
         policy_engine = cast(NativeResumePolicy, raw_policy_engine)
-        digest = hashlib.sha256(
-            (
-                "coding.hosted.resume-plan/v1\0"
-                + self.identity.continuity_id
-                + "\0"
-                + self.identity.session_id
-                + "\0"
-                + self._source.record.projection.reference.revision
-            ).encode()
-        ).hexdigest()
+        plan = await plan_coding_resume_async(
+            self._source.history,
+            resolve_coding_composition_set("coding-standard"),
+            workspace_root=self._source.record.scope.cwd,
+            resource_loader=self._services.resource_loader,
+            subject_digest=self._plan_subject_digest(),
+            policy_digest=policy_engine.configuration_fingerprint(),
+            max_work_units=200,
+            time_budget_seconds=5.0,
+            priority="foreground",
+        )
+        if self._planning is not None:
+            plan = self._planning.current(
+                self._source.history, current_owner_inputs=plan.owner_inputs
+            ) or plan
+            await self._planning.close()
+            self._planning = None
+        if plan.status != "needs_final_validation" or plan.ancestry_digest is None:
+            raise CodingResumeRecoveryRequired("input.plan_unavailable")
+        return plan
+
+    def _load_model_catalog(self) -> None:
+        cwd = self._source.record.scope.cwd
+        inputs = self._services.resource_loader.preview_catalog_input_receipt(cwd)
+        # Match the ordinary bootstrap's nearest project context, then user context.
+        roots_with_context = {fact.root for fact in inputs.context_file_facts if fact.status == "file"}
+        roots = (*inputs.user_resource_roots, *inputs.project_context_roots)
+        project_root = next((root for root in reversed(roots) if root in roots_with_context), cwd)
+        self._services.model_registry.reload_if_project_layer(
+            user_dir=Path.home() / ".loushang" / "models",
+            project_dir=project_root / ".loushang" / "models",
+        )
+
+    async def start_background_planning(self) -> None:
+        self._source.require_current_source()
+        await settled_io(self._load_model_catalog)
+        self._source.require_current_source()
+        policy = workspace_tool_runtime_settings(self._services.settings_manager)
+        raw_policy_engine = policy.policy_engine
+        if raw_policy_engine is None:
+            raise CodingHostedCatalogError()
+        policy_engine = cast(NativeResumePolicy, raw_policy_engine)
         planning = ResumePlanningSlot()
         self._planning = planning
         await planning.start(
@@ -246,7 +351,7 @@ class CodingDeferredHostedSessionV1:
             resolve_coding_composition_set("coding-standard"),
             workspace_root=self._source.record.scope.cwd,
             resource_loader=self._services.resource_loader,
-            subject_digest=digest,
+            subject_digest=self._plan_subject_digest(),
             policy_digest=policy_engine.configuration_fingerprint(),
             max_work_units=200,
             time_budget_seconds=5.0,
@@ -436,7 +541,6 @@ class CodingDeferredHostedSessionV1:
             CodingResumeRecoveryRequired,
         )
         from .resume_activation_attempt_v2 import CodingActivationAttemptV2
-        from .resume_activation_plan import plan_coding_resume_async
         from .resume_continuation import prepare_coding_resume_continuation
 
         async with self._activation_lock:
@@ -458,37 +562,12 @@ class CodingDeferredHostedSessionV1:
             if raw_policy_engine is None:
                 raise CodingHostedCatalogError()
             policy_engine = cast(NativeResumePolicy, raw_policy_engine)
-            plan_subject_digest = hashlib.sha256(
-                (
-                    "coding.hosted.resume-plan/v1\0"
-                    + self.identity.continuity_id
-                    + "\0"
-                    + self.identity.session_id
-                    + "\0"
-                    + self._source.record.projection.reference.revision
-                ).encode()
-            ).hexdigest()
-            plan = await plan_coding_resume_async(
-                self._source.history,
-                resolve_coding_composition_set("coding-standard"),
-                workspace_root=self._source.record.scope.cwd,
-                resource_loader=self._services.resource_loader,
-                subject_digest=plan_subject_digest,
-                policy_digest=policy_engine.configuration_fingerprint(),
-                max_work_units=200,
-                time_budget_seconds=5.0,
-                priority="foreground",
-            )
-            if self._planning is not None:
-                plan = self._planning.current(
-                    self._source.history, current_owner_inputs=plan.owner_inputs
-                ) or plan
-            if plan.status != "needs_final_validation" or plan.ancestry_digest is None:
-                raise CodingResumeRecoveryRequired("input.plan_unavailable")
+            model = self.current_model
+            if model is None:
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            plan = await self._current_plan()
             self._source.require_current_source()
-            if self._planning is not None:
-                await self._planning.close()
-                self._planning = None
+            assert plan.ancestry_digest is not None
             workspace = Path(plan.workspace_root)
 
             require_subject()
@@ -585,7 +664,7 @@ class CodingDeferredHostedSessionV1:
                 require_current_admission=admit,
                 require_current_epoch_settlement=settle,
                 services=self._services,
-                model=self._model,
+                model=model,
                 stream_fn=self._stream_fn,
                 tools=self._tools,
                 output_capture_factory=self._output_capture_factory,
@@ -635,16 +714,17 @@ class CodingDeferredHostedSessionV1:
         await asyncio.shield(task)
 
     async def _close_once(self) -> None:
-        self._control.close()
-        active = self._active
-        if active is not None:
-            await active.close()
-        else:
-            self._approval.end_session()
-            await self._source.close()
-        if self._planning is not None:
-            await self._planning.close()
-        self._interactions.clear()
+        async with self._activation_lock:
+            self._control.close()
+            active = self._active
+            if active is not None:
+                await active.close()
+            else:
+                self._approval.end_session()
+                await self._source.close()
+            if self._planning is not None:
+                await self._planning.close()
+            self._interactions.clear()
 
 
 @dataclass(frozen=True, slots=True)

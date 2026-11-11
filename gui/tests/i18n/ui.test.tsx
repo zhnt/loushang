@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { HarnessGui } from "../../src/App";
-import { createMockAppClient } from "../../src/client/mockAppClient";
+import { createMockAppClient } from "../support/mockAppClient";
 import type { ClientSnapshot, HarnessClientUiPort } from "../../src/client/model";
 
 beforeEach(() => {
@@ -84,6 +84,10 @@ it("localizes live UI and rejected submissions while retaining raw content and t
     snapshot: async () => snapshot,
     subscribe: () => () => {},
     submitText: submit,
+    sessionModels: async () => ({
+      currentId: "test:primary:model",
+      models: [{ id: "test:primary:model", provider: "test", endpointId: "primary", modelId: "model", label: "Test model", supportsThinking: false }],
+    }),
     interrupt: async () => ({ accepted: true }),
   };
   const user = userEvent.setup();

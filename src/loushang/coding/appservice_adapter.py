@@ -30,6 +30,7 @@ from loushang.harness.session import (
     SessionControlPort,
 )
 
+from .model_selection import apply_model_selection
 from .product_plan import CODING_PRODUCT_ID
 
 
@@ -124,6 +125,11 @@ class CodingHostedSessionV1(
         execution_submission: bool = False,
     ) -> None:
         super().__init__(binding, execution_submission=execution_submission)
+
+    async def _apply_selected_model(self, control: SessionControlPort | None, selected: object) -> None:
+        result = await apply_model_selection(control, selected)
+        if result.persistence_error is not None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from result.persistence_error
 
     async def lookup_resume_input(
         self, query: ResumeInputLookupQueryV1,

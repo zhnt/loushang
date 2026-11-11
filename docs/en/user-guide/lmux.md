@@ -162,3 +162,37 @@ remains separate and is not automatically imported or adopted.
 
 See the [lmux contract record](../../internals/architecture/apphost/lmux-contract-m0.md)
 for development and acceptance status.
+
+## Run AppHost as a systemd user service on Linux
+
+Save the [example service unit](systemd-host-unit.md) as
+`~/.config/systemd/user/loushang-host.service`. After installing Loushang, check the absolute
+executable path, workspace, and data paths in the unit. The example uses
+`~/.local/bin/loushang-mux`, the home directory as the workspace, and
+systemd's persistent state and temporary runtime directories.
+To move an existing explicit `serve` deployment under systemd, stop it and
+keep its application and Session paths in the unit. The old `lmux` registry
+and Mux state remain with that deployment.
+
+```sh
+systemctl --user daemon-reload
+loushang-mux service start
+loushang-mux service status
+loushang-mux service logs
+loushang-mux service restart
+loushang-mux service stop
+```
+
+Start and restart wait for the Host to report readiness. Status shows the
+systemd unit state, and logs shows the last 100 journal lines for the unit.
+To verify the example's connection, run
+`loushang-mux --connection-root "$XDG_RUNTIME_DIR/loushang-host/connections" --endpoint workspace list`.
+Systemd waits for process exit on service stop, and the Host handles SIGTERM
+with application cleanup. The existing explicit endpoint `loushang-mux stop`
+continues to acknowledge an application stop request.
+
+Run `systemctl --user enable loushang-host.service` to start it with the user
+manager. Running at boot without a login also requires enabling systemd
+linger for the user. For multiple workspace units, give each unit separate
+connection and application state directories and select it with
+`--unit loushang-host@NAME.service`.

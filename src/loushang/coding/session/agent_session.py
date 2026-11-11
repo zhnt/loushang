@@ -181,6 +181,10 @@ from loushang.harness.transcript import (
     CompactionPreparation,
     CompactionResult,
 )
+from loushang.harness.transcript.kinds import (
+    MODEL_SELECTION_KIND,
+    THINKING_SELECTION_KIND,
+)
 from loushang.harness.workspace.exec import ExecResult, ExecService, ExecUpdateCallback
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
@@ -775,8 +779,10 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         self._coding_composition_plan = coding_composition_plan
         self._coding_composition_record_lock = asyncio.Lock()
         self._init_resume_runtime_state()
-        self._coding_composition_had_entries_at_construction = bool(
-            session_manager.get_entries()
+        # A model can be saved before the session has prepared its first input.
+        self._coding_composition_had_entries_at_construction = any(
+            entry.kind not in {MODEL_SELECTION_KIND, THINKING_SELECTION_KIND}
+            for entry in session_manager.get_entries()
         )
         owner_publication_hooks = self._create_coding_owner_publication_bindings()
         self._coding_lsp_plugin_capture: CapabilityFacetSet | None = None

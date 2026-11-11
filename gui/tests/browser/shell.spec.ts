@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { appName } from "../../src/branding";
 
 const hoverGray = "rgb(236, 236, 235)";
 const focusGray = "rgb(104, 108, 114)";
@@ -7,6 +8,7 @@ async function simulateDesktop(page: Page, managed = false) {
   await page.addInitScript((managed) => {
     Object.assign(window, {
       isTauri: true,
+      __LOUSHANG_MANAGED_TEST__: managed,
       resizeRequests: [] as unknown[],
       __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
       __TAURI_INTERNALS__: {
@@ -21,11 +23,18 @@ async function simulateDesktop(page: Page, managed = false) {
           if (command === "plugin:event|listen") return 1;
           if (command === "fixture_bridge_handshake") throw new Error("Fixture bridge disabled");
           if (managed && command === "offline_account") return { name: "desktop-user", id: "local-preview-account" };
-          if (managed && command === "local_host_environment") return { supported: true, workspace: "/preview" };
-          if (managed && command === "local_host_action") return {
-            state: "exited", workspace: "/preview", errorCode: "unclean_exit", pid: 1234,
-            instanceId: "host-instance-" + "a".repeat(48), serviceInstanceId: "service-instance-" + "b".repeat(48),
-          };
+          if (managed && command === "client_settings") {
+            const { request } = args as { request: { operation: string } };
+            if (request.operation === "connections/list") return {
+              selectedId: "local",
+              connections: [{ id: "local", name: "Local", kind: "local", selected: true, workspace: "/preview" }],
+            };
+            if (request.operation === "environment") return { supported: true, workspace: "/preview", connectionId: "local" };
+            return {
+              state: "exited", workspace: "/preview", errorCode: "unclean_exit", pid: 1234,
+              instanceId: "host-instance-" + "a".repeat(48), serviceInstanceId: "service-instance-" + "b".repeat(48),
+            };
+          }
           return false;
         },
       },
@@ -109,6 +118,7 @@ test("desktop shell renders menus and Session history with a simulated native br
   await simulateDesktop(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
+  await expect(page.locator(".brand-name")).toHaveText(appName);
   await expect(page.getByRole("heading", { name: "GUI development" })).toBeVisible();
   await expect(page.locator(".native-frame")).toBeVisible();
   await page.locator('.window-resize-edge[data-edge="SouthEast"]').click();
@@ -133,7 +143,7 @@ test("desktop shell renders menus and Session history with a simulated native br
   await expect(help).toHaveCSS("background-color", hoverGray);
   await help.press("ArrowDown");
   await expect(page.getByRole("menuitem", { name: "Documentation" })).toBeDisabled();
-  const about = page.getByRole("menuitem", { name: "About loushang" });
+  const about = page.getByRole("menuitem", { name: `About ${appName}` });
   await about.hover();
   await expect(about).toHaveCSS("background-color", hoverGray);
   await page.keyboard.press("Escape");

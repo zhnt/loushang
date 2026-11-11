@@ -13,10 +13,13 @@ from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
 
 from loushang.ai.model import model_selection_ref, normalize_model_selection
+from loushang.ai.model.selection import is_usable_model_selection
 from loushang.ai.types import AssistantMessage
 from loushang.apphost.application import _method_descriptor
 from loushang.apphost.contracts import SessionBindingKeyV1
 from loushang.appserver.protocol import (
+    AppErrorCodeV1,
+    AppServiceError,
     InteractionOutcomeV1,
     SessionEventKindV1,
     SessionEventV1,
@@ -98,6 +101,7 @@ class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
 
     __slots__ = (
         "_binding",
+        "_model_lock",
         "_close_lock",
         "_close_task",
         "_cursor",
@@ -139,6 +143,7 @@ class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
         self._unsubscribed = False
         self._close_task: asyncio.Task[None] | None = None
         self._close_lock = asyncio.Lock()
+        self._model_lock = asyncio.Lock()
         if control is None:
             self._unsubscribe = lambda: None
             return
@@ -190,9 +195,11 @@ class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
 
     async def start_turn(self, text: str) -> None:
         self._require_open()
-        await self._require_operations().prompt(
-            request=self._prompt_request(text),
-        )
+        operations = self._require_operations()
+        if (await self.list_models()).current_id is None or self._model_lock.locked():
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        await operations.prompt(request=self._prompt_request(text))
+
 
     def steer_turn(self, text: str) -> None:
         self._require_open()
@@ -232,45 +239,79 @@ class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
     async def list_models(self) -> SessionModelsV1:
         self._require_open()
         control = self._binding.control
-        active_model = getattr(getattr(control, 'agent', None), 'model', None)
+        active_model = getattr(getattr(control, "agent", None), "model", None)
         selection = normalize_model_selection(active_model)
-        if selection is None:
-            selection = await get_session_model_selection(control)
-            active_model = selection
+        if not is_usable_model_selection(selection):
+            active_model = selection = await get_session_model_selection(control)
+        selection = selection if is_usable_model_selection(selection) else None
         current = model_selection_ref(selection) if selection is not None else None
         details = await iter_available_model_details(control)
-        if active_model is not None:
+        if selection is not None:
             details.append(active_model)
         models: list[SessionModelChoiceV1] = []
         for choice in model_choice_data_from_details(details):
             reference = normalize_model_selection(choice.selection)
-            if reference is None:
+            if reference is None or not is_usable_model_selection(reference):
                 continue
-            models.append(SessionModelChoiceV1(id=choice.value, provider=reference.provider, endpoint_id=reference.endpoint_id, model_id=reference.model_id, label=choice.label, supports_thinking=bool(getattr(choice.selection, 'supports_thinking', False) or getattr(choice.selection, 'reasoning', False))))
+            models.append(SessionModelChoiceV1(
+                id=choice.value,
+                provider=reference.provider,
+                endpoint_id=reference.endpoint_id,
+                model_id=reference.model_id,
+                label=choice.label,
+                supports_thinking=bool(
+                    getattr(choice.selection, "supports_thinking", False)
+                    or getattr(choice.selection, "reasoning", False)
+                ),
+            ))
         visible = models[:256]
         active_choice = next((model for model in models[256:] if model.id == current), None)
         if active_choice is not None:
             visible[-1] = active_choice
-        return SessionModelsV1(current, tuple(visible), _thinking_settings(control) if current is not None else None)
+        return SessionModelsV1(
+            current, tuple(visible), _thinking_settings(control) if current is not None else None
+        )
 
-    async def select_model(self, model_id: str, thinking_level: str | None=None) -> SessionModelsV1:
+
+    async def select_model(
+        self, model_id: str, thinking_level: str | None = None,
+    ) -> SessionModelsV1:
+        self._require_open()
+        async with self._model_lock:
+            return await self._select_model(model_id, thinking_level)
+
+
+    async def _select_model(self, model_id: str, thinking_level: str | None) -> SessionModelsV1:
         self._require_open()
         control = self._binding.control
-        if getattr(control, 'is_streaming', False):
-            raise RuntimeError(f'{self._product_id}_model_change_while_running')
+        if getattr(control, "is_streaming", False):
+            raise RuntimeError(f"{self._product_id}_model_change_while_running")
         if thinking_level is not None:
             before = await self.list_models()
-            setter = getattr(control, 'set_thinking_level', None)
-            if getattr(control, 'is_streaming', False) or before.current_id != model_id or before.thinking is None or (thinking_level not in before.thinking.available_levels) or (not callable(setter)):
-                raise ValueError(f'{self._product_id}_thinking_level_unavailable')
+            setter = getattr(control, "set_thinking_level", None)
+            if (
+                getattr(control, "is_streaming", False)
+                or before.current_id != model_id or before.thinking is None
+                or thinking_level not in before.thinking.available_levels
+                or not callable(setter)
+            ):
+                raise ValueError(f"{self._product_id}_thinking_level_unavailable")
             await setter(thinking_level)
             return await self.list_models()
-        choices = model_choice_data_from_details(await iter_available_model_details(control))
-        selected = next((choice.selection for choice in choices if choice.value == model_id), None)
-        if selected is None:
-            raise ValueError(f'{self._product_id}_model_unavailable')
-        await apply_session_model_selection(control, selected)
+        choices = model_choice_data_from_details(
+            await iter_available_model_details(control)
+        )
+        selected = next(
+            (choice.selection for choice in choices if choice.value == model_id), None
+        )
+        if not is_usable_model_selection(normalize_model_selection(selected)):
+            raise ValueError(f"{self._product_id}_model_unavailable")
+        await self._apply_selected_model(control, selected)
         return await self.list_models()
+
+
+    async def _apply_selected_model(self, control: SessionControlPort | None, selected: object) -> None:
+        await apply_session_model_selection(control, selected)
 
     async def close(self) -> None:
         async with self._close_lock:

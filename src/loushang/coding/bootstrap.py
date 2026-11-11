@@ -629,6 +629,7 @@ def _create_agent_session(
         CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
     ),
     invocation_product_profile: CodingAgentInvocationProductProfile | None = None,
+    use_default_model: bool = True,
     _resume_bootstrap_admission: _CodingResumeBootstrapAdmission | None = None,
     _resume_plugin_parents: CodingResumePluginParents | None = None,
     _resume_worker_parent: ResumeEffectParentContextV1 | None = None,
@@ -2633,6 +2634,7 @@ def _create_agent_session(
             explicit_system_prompt=system_prompt,
             append_system_prompt=resolved_append_system_prompt,
             model=model,
+            use_default_model=use_default_model,
             thinking_level=thinking_level,
             tools=construction_tools,
             tool_registry=session_tool_registry,
@@ -2988,6 +2990,7 @@ def create_agent_session(
     lsp_definitions: Iterable[LspServerDefinition] = (),
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
+    _use_default_model: bool = True,
 ) -> AgentSession:
     session_manager.require_no_unsettled_resume_activation()
     if worker_candidate_plugin_id is not None and (
@@ -3013,6 +3016,7 @@ def create_agent_session(
         return _create_agent_session(
             session_manager=session_manager,
             model=model,
+            use_default_model=_use_default_model,
             stream_fn=stream_fn,
             system_prompt=system_prompt,
             thinking_level=thinking_level,

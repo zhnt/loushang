@@ -3,17 +3,18 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({
   enabled: true,
+  invoke: vi.fn(async () => {}),
   minimize: vi.fn(async () => {}), toggleMaximize: vi.fn(async () => {}), close: vi.fn(async () => {}),
   isMaximized: vi.fn(async () => false), onResized: vi.fn(async () => () => {}),
 }));
-vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => native.enabled }));
+vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => native.enabled, invoke: native.invoke }));
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => native }));
 vi.mock("../src/client/nativeFixtureBridge", () => ({ probeFixtureBridge: async () => ({ status: "locked", label: "Native bridge locked" }) }));
 import { i18n } from "../src/i18n";
 import { act } from "@testing-library/react";
 import { DesktopFrame } from "../src/DesktopFrame";
 import { HarnessGui } from "../src/App";
-import { createMockAppClient } from "../src/client/mockAppClient";
+import { createMockAppClient } from "./support/mockAppClient";
 
 it("labels disconnected execution snapshots and never waits on an empty completed record", async () => {
   const fixture = createMockAppClient();

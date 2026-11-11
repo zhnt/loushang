@@ -145,6 +145,8 @@ class _CanonicalTranscriptCatalogMethods(
         self,
         record: RecordT,
         manager: ProductTranscriptSession[BindingInputT, ProductBindingT],
+        *,
+        created: bool = False,
     ) -> CandidateT:
         raise NotImplementedError
 
@@ -304,7 +306,7 @@ class _CanonicalTranscriptCatalogMethods(
             self._validate_open_record(record)
             with session.sync_operation_scope():
                 pass
-            candidate = self._candidate_from_manager(record, manager)
+            candidate = self._candidate_from_manager(record, manager, created=expected is None)
             self._accepting()
             self._pending_sessions.pop(id(session))
             return candidate
@@ -598,7 +600,7 @@ class _CanonicalTranscriptCatalogMethods(
                 record = self._read_record(scope, manager.session_file)
                 if record is None:
                     raise self._catalog_error_class()()
-                return self._candidate_from_manager(record, manager)
+                return self._candidate_from_manager(record, manager, created=True)
             except BaseException:
                 await manager.dispose_runtime_profile()
                 raise

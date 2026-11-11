@@ -2,8 +2,17 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { HarnessGui } from "../../src/App";
-import { createMockAppClient } from "../../src/client/mockAppClient";
+import { createMockAppClient } from "../support/mockAppClient";
 import type { ClientSnapshot, FixturePlaybackPort, SessionModels, ThinkingLevel } from "../../src/client/model";
+
+const liveModel = {
+  id: "test:primary:model",
+  provider: "test",
+  endpointId: "primary",
+  modelId: "model",
+  label: "Test model",
+  supportsThinking: false,
+};
 
 function withSnapshot(client: FixturePlaybackPort, snapshot: ClientSnapshot): FixturePlaybackPort {
   return {
@@ -93,6 +102,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       subscribeSnapshots: (listener) => { publish = listener; return () => undefined; },
       submitText: submit,
       interrupt: async () => ({ accepted: false }),
+      sessionModels: async () => ({ currentId: liveModel.id, models: [liveModel] }),
     }} />);
     const input = await screen.findByRole("textbox", { name: "Message for GUI development" });
     await user.type(input, "Keep this message");
@@ -279,7 +289,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.getByRole("button", { name: "Advance fixture" })).toBeDisabled();
   });
 
-  it("enables controlled live submission and hides fixture controls", async () => {
+  it("requires a model for live submission and preserves the draft while selecting it", async () => {
     const user = userEvent.setup();
     const fixture = createMockAppClient();
     const snapshot = await fixture.snapshot();
@@ -287,6 +297,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       submissionId: input.submissionId,
       accepted: true,
     }));
+    let confirmModel!: (models: SessionModels) => void;
     render(<HarnessGui client={{
       snapshot: async () => ({
         ...snapshot,
@@ -310,6 +321,8 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       subscribe: () => () => undefined,
       submitText,
       interrupt: async () => ({ accepted: false }),
+      sessionModels: async () => ({ currentId: null, models: [liveModel] }),
+      selectModel: () => new Promise((resolve) => { confirmModel = resolve; }),
     }} />);
     await screen.findByText("Live AppHost · controlled");
     expect(screen.queryByLabelText("Fixture playback controls")).not.toBeInTheDocument();
@@ -317,6 +330,23 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(input).toBeEnabled();
     expect(screen.getByRole("button", { name: "Account menu" })).toBeVisible();
     await user.type(input, "Talk to the real Agent");
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toBeDisabled();
+    await user.click(send);
+    input.focus();
+    await user.keyboard("{Enter}");
+    expect(submitText).not.toHaveBeenCalled();
+    expect(input).toHaveValue("Talk to the real Agent");
+
+    const picker = screen.getByRole("button", { name: "Session model" });
+    expect(picker).toHaveTextContent("Select a model");
+    await user.click(picker);
+    await user.click(screen.getByRole("menuitemradio", { name: /test · model/ }));
+    expect(send).toBeDisabled();
+    await act(async () => confirmModel({ currentId: liveModel.id, models: [liveModel] }));
+    expect(send).toBeEnabled();
+    expect(input).toHaveValue("Talk to the real Agent");
+    input.focus();
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
     expect(submitText).not.toHaveBeenCalled();
     (input as HTMLTextAreaElement).setSelectionRange(8, 17);
@@ -395,7 +425,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(selector).toHaveTextContent("Default");
   });
 
-  it("refreshes the confirmed model after a restored session executes", async () => {
+  it.each(["empty", "failed"])("blocks sending while the model query is pending or %s", async (result) => {
     const snapshot = await createMockAppClient().snapshot();
     const restored: ClientSnapshot = {
       ...snapshot,
@@ -405,17 +435,36 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     };
     let publish: (snapshot: ClientSnapshot) => void = () => {};
     const choice = { id: "test:primary:confirmed-model", provider: "test", endpointId: "primary", modelId: "confirmed-model", label: "Confirmed model", supportsThinking: false };
-    const sessionModels = vi.fn(async () => ({ currentId: null as string | null, models: [] as typeof choice[] }));
+    let finishQuery!: (models: SessionModels) => void;
+    let failQuery!: (error: Error) => void;
+    const sessionModels = vi.fn(() => new Promise<SessionModels>((resolve, reject) => {
+      finishQuery = resolve;
+      failQuery = reject;
+    }));
+    const submitText = vi.fn();
     render(<HarnessGui client={{
       snapshot: async () => restored,
       subscribe: () => () => undefined,
       subscribeSnapshots: (listener) => { publish = listener; return () => undefined; },
-      submitText: async (input) => ({ submissionId: input.submissionId, accepted: true }),
+      submitText,
       interrupt: async () => ({ accepted: false }),
       sessionModels,
     }} />);
-    expect(await screen.findByText("Model information unavailable")).toBeInTheDocument();
+    expect(await screen.findByText("Loading models…")).toBeInTheDocument();
     await waitFor(() => expect(sessionModels).toHaveBeenCalledOnce());
+    const input = screen.getByRole("textbox", { name: "Message for GUI development" });
+    fireEvent.change(input, { target: { value: "Continue this session" } });
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toBeDisabled();
+    act(() => {
+      if (result === "empty") finishQuery({ currentId: null, models: [] });
+      else failQuery(new Error("Model request failed"));
+    });
+    expect(await screen.findByText(result === "empty" ? "No models available" : "Model catalog unavailable")).toBeInTheDocument();
+    expect(send).toBeDisabled();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(submitText).not.toHaveBeenCalled();
+    expect(input).toHaveValue("Continue this session");
     sessionModels.mockResolvedValue({ currentId: choice.id, models: [choice] });
     act(() => publish({
       ...restored,
@@ -426,7 +475,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       } : session),
     }));
     expect(await screen.findByText("test · confirmed-model")).toBeInTheDocument();
-    expect(screen.queryByText("Effort unavailable")).not.toBeInTheDocument();
+    expect(send).toBeEnabled();
   });
 
   it("shows accepted AppHost context without inventing a workspace or repository", async () => {

@@ -43,6 +43,9 @@
     "label": "会话模型",
     "unavailable": "模型列表不可用",
     "none": "模型信息不可用",
+    "loading": "正在查询模型…",
+    "empty": "无可用模型",
+    "choose": "请选择模型",
     "endpoint": "端点：{{endpoint}}",
     "option": "{{provider}} · {{model}}",
     "thinking": "推理强度",
@@ -89,5 +92,5 @@
     "details": "诊断详情"
   },
   "emptySession": "没有可用的会话。",
-  "opening": "正在打开 loushang…"
+  "opening": "正在打开 {{appName}}…"
 }

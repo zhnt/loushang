@@ -28,10 +28,10 @@ const markdown = [
 
 async function showSample(page: Page) {
   // Supply a rich reply through the browser fixture client, without a model call.
-  await page.route(/\/src\/client\/mockAppClient\.ts$/, (route) => route.fulfill({
+  await page.route(/\/tests\/support\/mockAppClient\.ts$/, (route) => route.fulfill({
     contentType: "text/javascript",
     body: `
-      import { createMockAppClient as original } from "/src/client/mockAppClient.ts?markdown-sample";
+      import { createMockAppClient as original } from "/tests/support/mockAppClient.ts?markdown-sample";
       export function createMockAppClient() {
         const client = original();
         const snapshot = client.snapshot.bind(client);

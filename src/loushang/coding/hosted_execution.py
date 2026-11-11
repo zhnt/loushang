@@ -9,6 +9,8 @@ from secrets import token_hex
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
+from loushang.ai.model import normalize_model_selection
+from loushang.ai.model.selection import is_usable_model_selection
 from loushang.apphost import SessionBindingKeyV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -170,10 +172,17 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
     def execution_state(self) -> ExecutionStateV1 | None:
         return self._guard.state
 
-    def start_execution(self, request: ExecutionRequestV1) -> None:
+    def require_submission_ready(self) -> None:
         self._require_execution_open()
         if not self._product_binding.execution_available:
             raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
+        if self._model_lock.locked() or not is_usable_model_selection(
+            normalize_model_selection(self._product_binding.current_model)
+        ):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+
+    def start_execution(self, request: ExecutionRequestV1) -> None:
+        self.require_submission_ready()
         self._guard.start(
             request,
             self._product_binding.create_execution_work(
@@ -184,11 +193,11 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
     async def wait_execution(self, execution_id: str) -> ExecutionOutcomeV1:
         return await self._guard.wait(execution_id)
 
-    async def select_model(
+    async def _select_model(
         self, model_id: str, thinking_level: str | None = None,
     ) -> SessionModelsV1:
         await self._product_binding.wait_for_title()
-        return await super().select_model(model_id, thinking_level)
+        return await super()._select_model(model_id, thinking_level)
 
     def subscribe_execution_observation(
         self, listener: Callable[[ExecutionObservationV1], None]

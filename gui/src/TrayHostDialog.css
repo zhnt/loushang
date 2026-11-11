@@ -1,0 +1,13 @@
+.tray-host-dialog {
+  width: min(520px, calc(100vw - 48px));
+  padding: 24px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.tray-host-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+.tray-host-dialog h2 { margin: 0 0 16px; font-size: 18px; }
+.tray-host-dialog dd { overflow-wrap: anywhere; }
+.tray-host-dialog footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+.tray-host-dialog button { padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: transparent; color: inherit; }

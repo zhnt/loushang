@@ -233,7 +233,7 @@ export function createNativeLiveClient(): HarnessClientUiPort {
   };
 }
 
-function validateSessionModels(value: unknown): SessionModels {
+export function validateSessionModels(value: unknown): SessionModels {
   const root = object(value);
   if (!Array.isArray(root.models) || (root.currentId !== null && typeof root.currentId !== "string")) {
     throw new Error("session models");

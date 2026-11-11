@@ -36,6 +36,7 @@ def _imports(path: Path) -> set[str]:
 
 def test_a0_3_core_is_stdlib_only_and_facade_exposes_no_optional_edge() -> None:
     assert {path for path in APPHOST.glob("*.py")} == CORE | {
+        APPHOST / "client_preferences.py",
         HOSTED,
         APPLICATION,
         CONTINUITY,
@@ -117,6 +118,8 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
         assert (
             consumer == Path("src/loushang/coding/appservice_adapter.py")
             or consumer == Path("src/loushang/coding/gui_local_host.py")
+            or consumer == Path("src/loushang/coding/web_client.py")
+            or consumer == Path("src/loushang/coding/web_gateway.py")
             or consumer == Path("src/loushang/coding/hosted_application.py")
             or consumer == Path("src/loushang/coding/hosted_catalog.py")
             or consumer == Path("src/loushang/coding/hosted_resume.py")

@@ -8,13 +8,15 @@ import json
 import sys
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
+from functools import cached_property
 from pathlib import Path
 from secrets import token_hex
 from typing import TYPE_CHECKING, cast
 
 from loushang.agent.types import StreamFn
-from loushang.ai.model import Model, ModelSelection
-from loushang.ai.types import AssistantMessage, UserMessage
+from loushang.ai.model import Model, ModelSelection, normalize_model_selection
+from loushang.ai.model.selection import is_usable_model_selection
+from loushang.ai.types import AssistantMessage, ToolCall, UserMessage
 from loushang.apphost import SessionBindingKeyV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -39,16 +41,20 @@ from loushang.harness.approval import (
 from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.events.runtime_projection import project_session_runtime_event
+from loushang.harness.model_catalog import ModelCatalog
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeFactoryPort,
 )
 from loushang.harness.policy import PolicyEvaluator, PolicyEvaluatorChain
 from loushang.harness.session import SessionControlPort
+from loushang.harness.session.model_resolution import resolve_default_model
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import workspace_tool_runtime_settings
 from loushang.harness.transcript.session_catalog import (
+    build_agent_transcript_session_context,
     load_agent_transcript_session_metadata,
 )
+from loushang.harness.transcript.types import AgentTranscriptContext
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 from .appservice_adapter import (
@@ -126,10 +132,7 @@ class CodingHostedHistoryBindingV1:
             history.header_preview.header, history.records
         ).name
         self._projection = CodingHostedSnapshotProjectionV1(
-            title=_session_title(
-                title, (entry.payload for entry in history.records),
-                automatic=_uses_automatic_title(identity),
-            ),
+            title=_session_title(title, (entry.payload for entry in history.records)),
             revision=0, running=False, records=tuple(records),
             truncated=omitted,
         )
@@ -137,6 +140,11 @@ class CodingHostedHistoryBindingV1:
     @property
     def control(self) -> None:
         return None
+
+    @cached_property
+    def context(self) -> AgentTranscriptContext:
+        history = self.resume_history
+        return build_agent_transcript_session_context(history.records, history.selected_leaf_id)
 
     @property
     def resume_history(self) -> CodingResumeHistoryPreview:
@@ -193,6 +201,10 @@ class CodingRealHostedSessionV1:
         return self._session
 
     @property
+    def current_model(self) -> Model:
+        return self._session.agent.model
+
+    @property
     def execution_claimed(self) -> bool:
         return self._execution_claimed
 
@@ -245,11 +257,7 @@ class CodingRealHostedSessionV1:
                 ),
             )
         return CodingHostedSnapshotProjectionV1(
-            title=_session_title(
-                self._session.session_name,
-                _title_messages(self._session),
-                automatic=_uses_automatic_title(self.identity),
-            ),
+            title=_session_title(self._session.session_name, _title_messages(self._session)),
             revision=self._revision,
             running=self._session.is_streaming,
             records=tuple(records),
@@ -541,9 +549,16 @@ class CodingRealHostedSessionFactoryV1:
                 runtime_factory = self._default_product_factory_for_session(
                     manager, services
                 )
+            created = opaque_session_binding.created
+            model = self._model
+            if not created and model is not None:
+                model = _resolve_hosted_saved_model(
+                    manager.build_session_context().model, services.model_registry, model,
+                )
             session = create_agent_session(
                 session_manager=manager,
-                model=self._model,
+                model=model,
+                _use_default_model=created,
                 stream_fn=self._stream_fn,
                 services=services,
                 tools=self._tools,
@@ -559,6 +574,11 @@ class CodingRealHostedSessionFactoryV1:
                 package_product_runtime_factory=runtime_factory,
             )
             opaque_session_binding.retain_constructed_owner(session.dispose)
+            selection = normalize_model_selection(session.agent.model)
+            if created and selection is not None and is_usable_model_selection(selection):
+                await manager.append_model_change(
+                    selection.provider, selection.model_id, endpoint_id=selection.endpoint_id,
+                )
             real_binding = CodingRealHostedSessionV1(session, identity, approval)
             opaque_session_binding.take_manager()
             return real_binding
@@ -567,6 +587,20 @@ class CodingRealHostedSessionFactoryV1:
             # AppHost owner to retry; no acquired owner disappears on failure.
             await opaque_session_binding.close()
             raise
+
+
+def _resolve_hosted_saved_model(
+    saved: object,
+    catalog: ModelCatalog,
+    explicit: Model | ModelSelection | None,
+) -> Model | None:
+    """Restore the recorded route, or use an explicitly injected Host model."""
+    selection = normalize_model_selection(saved if saved is not None else explicit)
+    if not is_usable_model_selection(selection):
+        return None
+    if isinstance(explicit, Model) and normalize_model_selection(explicit) == selection:
+        return explicit
+    return resolve_default_model(selection, build_model=catalog.build_model).model
 
 
 def _bounded(text: str, *, limit: int = _TEXT_LIMIT) -> str:
@@ -585,13 +619,9 @@ def _title_messages(session: AgentSession) -> Iterable[object]:
     return session.messages
 
 
-def _session_title(
-    name: str | None, messages: Iterable[object], *, automatic: bool,
-) -> str:
+def _session_title(name: str | None, messages: Iterable[object]) -> str:
     if name and name.strip():
         return _bounded(name.strip(), limit=256)
-    if automatic:
-        return "New Session"
     # Read the first prompt from the full transcript, including turns omitted
     # by the display window or by context compaction.
     for message in messages:
@@ -609,11 +639,19 @@ def _session_title(
 def _message_record(message: object) -> TranscriptRecordV1 | None:
     if not isinstance(message, UserMessage | AssistantMessage):
         return None
+    text = _message_text(message)
+    if (
+        isinstance(message, AssistantMessage)
+        and message.stop_reason not in {"error", "aborted"}
+        and not text
+        and any(isinstance(part, ToolCall) for part in message.content)
+    ):
+        return None
     return TranscriptRecordV1(
         TranscriptRecordKindV1.USER
         if isinstance(message, UserMessage)
         else TranscriptRecordKindV1.ASSISTANT,
-        _bounded(_message_text(message)),
+        _bounded(text),
     )
 
 
