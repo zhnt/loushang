@@ -25,7 +25,7 @@ Both connect to an independently started AppHost.
 
 ## Connect to a local AppHost
 
-On Linux, run `uv run lmux server start`. Use the absolute directory in the
+On Linux or Windows, run `uv run lmux server start`. Use the absolute directory in the
 `recordRoot` output as `LOUSHANG_APP_RECORD_ROOT` when starting either frontend.
 You can also set `appServer.recordRoot` in `$LOUSHANG_HOME/host.json`:
 
@@ -38,6 +38,19 @@ Run `npm --prefix gui run dev` to start Tauri or
 **Register and open** with a path on the Host, or select a registered Workspace.
 AppHost allocates and owns its Mux. Each Workspace keeps its own Sessions.
 Run `lmux stop --all --yes` to stop the managed Host when you are done.
+
+Use PowerShell on Windows to start the Host and desktop.
+
+```powershell
+$appHost = uv run lmux server start --name desktop | ConvertFrom-Json
+$env:LOUSHANG_APP_RECORD_ROOT = $appHost.recordRoot
+npm --prefix gui run dev
+```
+
+From another PowerShell window using the same `LOUSHANG_HOME`, run
+`uv run lmux status --server desktop` to read the recorded state and
+`uv run lmux stop --server desktop --yes` to stop the Host. The managed Host
+runs in the background without a console window.
 
 Both development surfaces use the same frontend. Vite proxies browser requests
 to the Rust Web listener on loopback. Tauri does not start this listener.

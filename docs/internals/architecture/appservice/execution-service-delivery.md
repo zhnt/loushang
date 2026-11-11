@@ -957,12 +957,21 @@ through an SSH reverse forward and opened a Linux Workspace. The desktop
 displayed the selected Session and a connected status. After a graceful Linux
 AppHost stop and restart, the same window recovered the same Session ID under
 the new service instance, without refreshing the WebView. The test used an
-isolated connection and credentials and made no model calls. Windows native
-managed service acceptance remains a separate phase.
+isolated connection and credentials and made no model calls.
 
 The major-version toolchain configuration at `1b128df31` was verified on the
 same Windows machine. Node 24.19.0 and npm 11.17.0 completed `npm ci` from the
 existing package cache and passed `npm run doctor`.
+
+Native Windows AppHost acceptance also ran on Windows 10 x64. Independent
+`lmux` processes started the Host, reused the running instance, read recorded
+status, stopped it gracefully and started a new instance. The Host stayed
+available after its launching SSH session ended. An isolated interactive Tauri
+window connected through the local AppServer record, registered and opened a
+Windows Workspace, and displayed its Session. The same window observed the
+Host stop and recovered the same Session under the restarted service's new
+AppServer identity. The check used separate frontend and Host directories and
+made no model calls.
 
 After retiring the duplicate packaged Workspace entry point, the complete
 offline AppService gate passed with 2,587 tests and 16 skips.
