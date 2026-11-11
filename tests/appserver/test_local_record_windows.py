@@ -164,3 +164,14 @@ def test_G16_PRIVATE_RECORD_windows_failed_probe_close_keeps_native_handle(tmp_p
         assert api._handles == set()
     finally:
         directory.close()
+
+
+def test_windows_record_publishes_under_long_managed_path(tmp_path):
+    parent = tmp_path / ("x" * max(16, 224 - len(str(tmp_path))))
+    parent.mkdir()
+    directory = LocalConnectionDirectoryV1(parent / "connection")
+    try:
+        first = _publish(directory.acquire("workspace"))
+        assert directory.read("workspace") == first
+    finally:
+        directory.close()

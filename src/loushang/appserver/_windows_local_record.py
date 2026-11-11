@@ -309,7 +309,7 @@ class _WindowsRecordFiles(_RecordFiles):
 
     def replace(self, source: str, target: str) -> None:
         self.check_root()
-        os.replace(self.root / source, self.root / target)
+        os.replace(self._path(source), self._path(target))
 
     def remove(self, name: str, expected: FileIdentity) -> None:
         try:
