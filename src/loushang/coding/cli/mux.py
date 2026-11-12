@@ -203,9 +203,11 @@ def _parser() -> argparse.ArgumentParser:
         "stop",
         help="request application stop; acknowledgement is not completed cleanup",
     )
-    service = commands.add_parser("service", help="control a Linux systemd user service")
+    service = commands.add_parser("service", help="control the local AppHost service")
     service.add_argument("operation", choices=mux_service.OPERATIONS)
     service.add_argument("--unit", type=mux_service.unit_name, default=mux_service.DEFAULT_UNIT)
+    service.add_argument("--json", action="store_true", help="return the local service state as JSON")
+    service.add_argument("--instance", help="require this running instance for stop or restart")
     return parser
 
 
@@ -215,6 +217,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.action == "service":
         if args.connection_root is not None or args.endpoint is not None:
             parser.error("service selects a systemd unit with --unit")
+        if args.instance is not None and (
+            args.operation not in {"stop", "restart"}
+            or len(args.instance) != 32
+            or any(character not in "0123456789abcdef" for character in args.instance)
+        ):
+            parser.error("--instance requires a lowercase hexadecimal instance ID and stop or restart")
+        if args.json or args.instance is not None:
+            if args.unit != mux_service.DEFAULT_UNIT or args.operation == "logs":
+                parser.error("this operation requires the default local service and a lifecycle action")
+            return mux_service.control_local(args.operation, args.instance, as_json=args.json)
         return mux_service.control(args.operation, args.unit)
     if args.connection_root is None or args.endpoint is None:
         parser.error("--connection-root and --endpoint are required for this command")
