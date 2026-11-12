@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import os
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -1575,3 +1576,19 @@ def test_file_fully_reconciled_batch_repairs_head_for_the_next_append(
     assert [receipt.revision for receipt in reconciled.receipts] == [1, 2]
     assert appended.receipt.revision == 3
     assert load_calls == 1
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows file path length")
+def test_windows_file_store_preserves_create_receipt_at_long_paths(tmp_path: Path) -> None:
+    root = tmp_path / ("x" * max(16, 207 - len(str(tmp_path))))
+    key = ConversationKey("coding", "session-" + "a" * 24)
+
+    async def scenario() -> None:
+        factory = _file_factory(root)
+        operation = _operation("create", key)
+        created = await factory().create(key, _Header("Long path"), operation_id=operation)
+        reopened = factory()
+        assert await reopened.create(key, _Header("Long path"), operation_id=operation) == created
+        assert (await reopened.load(key)).snapshot == created
+
+    asyncio.run(scenario())

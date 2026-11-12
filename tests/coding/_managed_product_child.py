@@ -67,6 +67,7 @@ def run(root: Path, endpoint: socket.socket, bootstrap: ManagedChildBootstrapV1,
         canonical = create_coding_managed_local_launch(
             invocation, application_id="coding.default", endpoint="workspace",
             session_root=root / "sessions", session_discovery=True,
+            managed_mux=bootstrap.managed_mux_binding(application_id="coding.default"),
         )
         application = CodingManagedLocalCommandV1(canonical, model=model, stream_fn=held_stream, tools=[])
     else:
@@ -134,7 +135,7 @@ if __name__ == "__main__":
             os.environ["LOUSHANG_HOME"] = str(root / "platform")
             os.environ["LOUSHANG_RUNTIME_DIR"] = str(root / "runtime")
             invocation = ManagedChildInvocationV1.from_json(sys.argv[4])
-            assert invocation.service.product_id == "coding" and invocation.service.workspace == str(root)
+            assert invocation.service.product_id == "coding" and invocation.service.host_root == str(root)
             bootstrap = ManagedChildBootstrapV1(
                 invocation.namespace, invocation.service, invocation.instance, invocation.attempt_id,
                 socket.socket(fileno=int(sys.argv[5])), runtime_root=invocation.runtime_root,

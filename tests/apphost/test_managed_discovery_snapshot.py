@@ -22,7 +22,7 @@ def test_snapshot_includes_unnamed_services_and_is_readonly(owners, discovery):
     extra = ManagedServiceKeyV1("coding", "/another-workspace")
     with registry._database.transaction(write=True) as connection:
         connection.execute("INSERT INTO services VALUES (?,?,?,?)",
-                           (extra.service_id, extra.product_id, extra.workspace, extra.profile))
+                           (extra.service_id, extra.product_id, extra.host_root, extra.profile))
     before = tree(registry._database._directory._root)
     result = reader.snapshot_namespace(deadline=monotonic() + 5)
     assert len(result.services) == 2 and len(result.muxes) == 1
@@ -53,7 +53,7 @@ def test_snapshot_limits_reject_instead_of_truncate(discovery, monkeypatch, limi
         extra = ManagedServiceKeyV1("coding", "/second-workspace")
         with registry._database.transaction(write=True) as connection:
             connection.execute("INSERT INTO services VALUES (?,?,?,?)",
-                               (extra.service_id, extra.product_id, extra.workspace, extra.profile))
+                               (extra.service_id, extra.product_id, extra.host_root, extra.profile))
     else:
         registry.reserve_mux(ManagedMuxReservationV1("second", initial.services[0].service, "e" * 32))
     with pytest.raises(ManagedStorageError, match="capacity"):
@@ -93,7 +93,7 @@ def test_snapshot_uses_one_read_transaction_and_excludes_concurrent_change(disco
 def test_snapshot_rejects_corruption_and_closed_owner(discovery):
     reader, registry = discovery
     with registry._database.transaction(write=True) as connection:
-        connection.execute("UPDATE services SET workspace='/tampered'")
+        connection.execute("UPDATE services SET host_root='/tampered'")
     with pytest.raises(ManagedStorageError, match="invalid_record"):
         reader.snapshot_namespace(deadline=monotonic() + 5)
     registry.close()

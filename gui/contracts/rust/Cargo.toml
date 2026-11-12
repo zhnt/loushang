@@ -8,6 +8,7 @@ default-run = "gui-c1-contract-probe"
 [workspace]
 
 [dependencies]
+loushang-app-client = { path = "../../app-client" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 hmac = "0.12.1"

@@ -36,14 +36,29 @@ mod creation_tests {
         let record = Record::decode(&serde_json::to_vec(&value).unwrap()).unwrap();
         assert_eq!(
             record.creation_context(),
-            ("coding", "cwd", "b".repeat(64).as_str())
+            Some(("coding", "cwd", "b".repeat(64).as_str()))
         );
         value["scopes"].as_array_mut().unwrap().pop();
         let record = Record::decode(&serde_json::to_vec(&value).unwrap()).unwrap();
         assert_eq!(
             record.creation_context(),
-            ("coding", "user_home", "c".repeat(64).as_str())
+            Some(("coding", "user_home", "c".repeat(64).as_str()))
         );
+    }
+    #[test]
+    fn managed_host_without_workspace_attaches_without_a_creation_context() {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../../contracts/fixtures/local-record.json"
+        ))
+        .unwrap();
+        value["scopes"] = json!([]);
+        assert!(Record::decode(&serde_json::to_vec(&value).unwrap()).is_err());
+        value["capabilities"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!("mux_management"));
+        let record = Record::decode(&serde_json::to_vec(&value).unwrap()).unwrap();
+        assert!(record.creation_context().is_none());
     }
 }
 #[derive(Deserialize)]
@@ -71,13 +86,16 @@ fn hex(value: &str, size: usize) -> bool {
 impl Record {
     /// Default creation uses the admitted workspace, falling back to the sole
     /// home scope when no workspace scope was published. No path is inferred.
-    pub(crate) fn creation_context(&self) -> (&str, &str, &str) {
+    pub(crate) fn creation_context(&self) -> Option<(&str, &str, &str)> {
         let scope = self
             .scopes
             .iter()
             .find(|scope| scope.scope == "cwd")
-            .unwrap_or(&self.scopes[0]);
-        (&self.product_id, &scope.scope, &scope.fingerprint)
+            .or_else(|| self.scopes.first())?;
+        Some((self.product_id(), &scope.scope, &scope.fingerprint))
+    }
+    pub(crate) fn product_id(&self) -> &str {
+        &self.product_id
     }
     pub fn port(&self) -> u16 {
         self.port
@@ -102,7 +120,8 @@ impl Record {
             || !hex(&value.instance, 32)
             || value.port == 0
             || !hex(&value.key, 64)
-            || value.scopes.is_empty()
+            || (value.scopes.is_empty()
+                && !value.capabilities.iter().any(|cap| cap == "mux_management"))
             || value.scopes.len() > 2
             || value.scopes.iter().any(|scope| {
                 !["cwd", "user_home"].contains(&scope.scope.as_str())

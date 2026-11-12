@@ -19,6 +19,7 @@ from loushang.appserver.local_record import LocalConnectionRecordV1, LocalRecord
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.harness.tools.core import ToolDefinition
 
+from .app_tunnel import read_app_tunnel
 from .hosted_continuity import CodingHostedContinuityAttemptV1
 from .hosted_local import CodingLocalCommandV1, _LocalLaunchFacts
 from .hosted_session import CodingHostedProductRuntimeFactoryForSession
@@ -35,6 +36,7 @@ class CodingManagedLocalLaunchV1:
     connection_root: Path = field(repr=False)
     endpoint: str
     session_discovery: bool = field(default=False, kw_only=True)
+    app_tunnel: LocalConnectionRecordV1 | None = field(default=None, repr=False, kw_only=True)
     instance_id: str | None = field(default=None, kw_only=True)
     managed_mux: ManagedMuxServiceBindingV1 | None = field(default=None, repr=False, kw_only=True)
 
@@ -47,7 +49,7 @@ class CodingManagedLocalLaunchV1:
         if (type(self.application) is not CodingManagedApplicationLaunchV1
                 or type(self.session_discovery) is not bool or not isinstance(root, Path)
                 or not root.is_absolute() or root != root.resolve()
-                or not root.parent.is_dir() or self.application.workspace.is_relative_to(root)):
+                or not root.parent.is_dir() or self.application.host_root.is_relative_to(root)):
             raise ValueError("invalid managed connection root")
         for durable in (
             self.application.application_root, self.application.session_root,
@@ -62,12 +64,13 @@ class CodingManagedLocalLaunchV1:
         LocalConnectionRecordV1(
             endpoint=self.endpoint, application_id=self.application.application_id,
             product_id="coding", instance="0" * 32 if self.instance_id is None else self.instance_id,
-            key=bytes(32), port=1, scopes=self.scopes,
+            key=bytes(32), port=1, scopes=self.scopes, mux_management=True,
         )
 
     @property
     def scopes(self) -> tuple[LocalRecordScopeV1, ...]:
-        return tuple(LocalRecordScopeV1(scope.scope, scope.fingerprint) for scope in self.application.scopes)
+        # Workspace scopes are learned after authenticating the Host.
+        return ()
 
 
 class CodingManagedLocalCommandV1(CodingLocalCommandV1):
@@ -108,6 +111,10 @@ class CodingManagedLocalCommandV1(CodingLocalCommandV1):
     def _mux_management(self) -> bool:
         assert type(self._launch) is CodingManagedLocalLaunchV1
         return self._launch.managed_mux is not None
+
+    def _app_tunnel(self) -> LocalConnectionRecordV1 | None:
+        assert type(self._launch) is CodingManagedLocalLaunchV1
+        return self._launch.app_tunnel
 
     def _session_execution(self) -> bool:
         return True
@@ -151,7 +158,7 @@ def create_coding_managed_local_launch(
         temporary_override=invocation.temporary_override,
     )
     application = CodingManagedApplicationLaunchV1(
-        Path(invocation.service.workspace), Path(paths.application), application_id, session_root,
+        Path(invocation.service.host_root), Path(paths.application), application_id, session_root,
         store_state_root=store_state_root,
     )
     state = application.store_state_root
@@ -162,10 +169,13 @@ def create_coding_managed_local_launch(
         for managed in _managed_control_roots(invocation):
             if data.is_relative_to(managed) or managed.is_relative_to(data):
                 raise ManagedContractError()
+    home = Path(invocation.namespace.platform_home)
+    tunnel = read_app_tunnel(home) if invocation.service.host_root == str(home) else None
     return CodingManagedLocalLaunchV1(
         application, Path(paths.connection), endpoint, session_discovery=session_discovery,
         instance_id=invocation.instance.instance_id,
         managed_mux=managed_mux,
+        app_tunnel=tunnel,
     )
 
 

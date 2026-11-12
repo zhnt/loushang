@@ -167,7 +167,7 @@ class SessionDiscoveryViewV1:
         scope = HostedSessionDiscoveryScopeV1(
             request.product_id, request.scope, request.scope_fingerprint
         )
-        if scope not in self._owner.binding.scopes:
+        if scope not in self._owner.binding.current_scopes:
             raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
         if request.continuation is not None:
             snapshot = self._snapshots.get(scope)

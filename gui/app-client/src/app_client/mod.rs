@@ -8,41 +8,45 @@ mod record_native;
 mod record_native;
 mod request_deadline;
 mod transport_auth;
-pub(crate) use attachment::{
-    ControlAuthority, ControlResult, CreateSessionResult, ModelControlResult,
+mod workspace;
+pub use attachment::{
+    ControlAuthority, ControlResult, CreateSessionResult, MemberEvents, ModelControlResult,
 };
+pub use workspace::{WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope};
 
 use request_deadline::RequestDeadline;
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddr, TcpStream};
+use std::num::NonZeroU16;
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
+use transport_auth::record_value::Record;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct LiveInitialSnapshot {
-    pub(crate) connection_epoch: String,
-    pub(crate) service_instance_id: String,
-    pub(crate) mux_space: serde_json::Value,
-    pub(crate) sessions: Vec<serde_json::Value>,
+pub struct LiveInitialSnapshot {
+    pub connection_epoch: String,
+    pub service_instance_id: String,
+    pub mux_space: serde_json::Value,
+    pub sessions: Vec<serde_json::Value>,
 }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct LiveEventRound {
-    pub(crate) connection_epoch: String,
-    pub(crate) sequence: String,
-    pub(crate) service_instance_id: String,
-    pub(crate) mux_space_id: serde_json::Value,
-    pub(crate) members: Vec<attachment::MemberEvents>,
-    pub(crate) sessions: Vec<serde_json::Value>,
+pub struct LiveEventRound {
+    pub connection_epoch: String,
+    pub sequence: String,
+    pub service_instance_id: String,
+    pub mux_space_id: serde_json::Value,
+    pub members: Vec<attachment::MemberEvents>,
+    pub sessions: Vec<serde_json::Value>,
 }
 
-pub(crate) enum ControlCommand {
+pub enum ControlCommand {
     CreateSession {
         source_session_id: Option<String>,
         continuity_id: String,
@@ -150,17 +154,29 @@ struct Hello {
     restart_recovery: bool,
 }
 
+/// A tunnel is a loopback TCP port forwarded by an external protected transport.
+#[derive(Clone, Copy)]
+pub enum AppTarget<'a> {
+    Local(&'a Path),
+    Tunnel {
+        credential_root: &'a Path,
+        forwarded_port: NonZeroU16,
+    },
+}
+
 /// `publish` must only perform a bounded local handoff. It runs after the full
 /// snapshot membership barrier and before ongoing reads become observable.
-pub(crate) struct ConnectionOptions<'a> {
-    pub(crate) root: &'a Path,
-    pub(crate) timeout: Duration,
-    pub(crate) cancel: Option<Duration>,
-    pub(crate) attach: bool,
-    pub(crate) prepare_default_session: bool,
-    pub(crate) mux_name: &'a str,
-    pub(crate) stop: Option<super::read_stop::ReadStop>,
-    pub(crate) control_commands: Option<&'a Receiver<ControlCommand>>,
+#[derive(Clone)]
+pub struct ConnectionOptions<'a> {
+    pub target: AppTarget<'a>,
+    pub timeout: Duration,
+    pub cancel: Option<Duration>,
+    pub attach: bool,
+    pub prepare_default_session: bool,
+    pub workspace_scope: Option<&'a WorkspaceInfo>,
+    pub mux_name: &'a str,
+    pub stop: Option<super::read_stop::ReadStop>,
+    pub control_commands: Option<&'a Receiver<ControlCommand>>,
 }
 
 type OpenChannel = (
@@ -173,16 +189,16 @@ type OpenChannel = (
 #[allow(clippy::too_many_arguments)]
 fn open_channel(
     client: &AppClient,
-    record: &transport_auth::record_value::Record,
+    record: &Record,
     profile: &str,
+    address: SocketAddr,
     deadline: &RequestDeadline,
     cancel: Option<Duration>,
     stop: Option<&super::read_stop::ReadStop>,
     attempt: &connection_epoch::Attempt,
     request_thinking: bool,
-) -> Result<Option<OpenChannel>, ()> {
+) -> Result<OpenChannel, ()> {
     client.1.set("connection_failed");
-    let address = SocketAddr::from((Ipv4Addr::LOCALHOST, record.port()));
     let stream = TcpStream::connect_timeout(&address, deadline.remaining().map_err(|_| ())?)
         .map_err(|_| ())?;
     let (finish, receiver) = mpsc::channel();
@@ -230,16 +246,13 @@ fn open_channel(
         capabilities["sessionThinking"] = serde_json::Value::Bool(true);
         let echo = serde_json::to_vec(&capabilities).map_err(|_| ())?;
         channel.send(&echo)?;
-        let Ok(acknowledgement) = channel.receive() else {
-            return Ok(None);
-        };
-        if acknowledgement != echo {
+        if channel.receive()? != echo {
             return Err(());
         }
     } else {
         channel.send(&bytes)?;
     }
-    Ok(Some((stream, cancel_owner, channel, hello)))
+    Ok((stream, cancel_owner, channel, hello))
 }
 
 fn run_attempt(
@@ -254,55 +267,44 @@ fn run_attempt(
     let owner = &client.0;
     client.1.set("record_invalid");
     let ConnectionOptions {
-        root,
+        target,
         timeout,
         cancel,
         attach,
         prepare_default_session,
+        workspace_scope,
         mux_name,
         stop,
         control_commands,
     } = options;
     let deadline = RequestDeadline::new(timeout)?;
     let attempt = owner.begin()?;
-    let name = transport_auth::record_value::Record::filename("workspace")?;
-    let record = transport_auth::record_value::Record::decode(&record_native::read(root, &name)?)?;
-    client.1.set("protocol_incompatible");
-    let profile = record.semantic_profile()?;
-    record.selected("workspace", &profile)?;
-    if !record.supports_execution() {
-        return Err(());
-    }
+    let (record, profile, address) = client.load_record(target)?;
     if cancel == Some(Duration::ZERO) {
         return Err(());
     }
-    let open = |request_thinking| {
-        open_channel(
-            client,
-            &record,
-            &profile,
-            &deadline,
-            cancel,
-            stop.as_ref(),
-            &attempt,
-            request_thinking,
-        )
-    };
-    let preferred = open(control_commands.is_some())?;
-    let (stream, _cancel_owner, mut channel, hello) = match preferred {
-        Some(connection) => connection,
-        None => {
-            // An older Host closes an unrecognized hello. Retry once with
-            // the original hello before acquiring any attachment authority.
-            attempt.apply(|| Ok(()))?;
-            open(false)?.ok_or(())?
-        }
-    };
+    let (stream, _cancel_owner, mut channel, hello) = open_channel(
+        client,
+        &record,
+        &profile,
+        address,
+        &deadline,
+        cancel,
+        stop.as_ref(),
+        &attempt,
+        control_commands.is_some(),
+    )?;
     let instance = &hello.service_instance_id;
     if attach {
         client.1.set("attachment_unavailable");
-        let mut session =
-            attachment::ReadSession::attach(&mut channel, instance, mux_name, &attempt, &record)?;
+        let mut session = attachment::ReadSession::attach(
+            &mut channel,
+            instance,
+            mux_name,
+            &attempt,
+            &record,
+            workspace_scope,
+        )?;
         let outcome = (|| {
             if prepare_default_session {
                 session.ensure_default(&mut channel, &attempt)?;
@@ -376,15 +378,99 @@ fn run_attempt(
 }
 
 #[derive(Default)]
-pub(crate) struct AppClient(connection_epoch::ConnectionOwner, Cell<&'static str>);
+pub struct AppClient(connection_epoch::ConnectionOwner, Cell<&'static str>);
 
 impl AppClient {
-    pub(crate) fn failure_code(&self) -> &'static str {
+    pub fn failure_code(&self) -> &'static str {
         self.1.get()
     }
 
+    fn load_record(&self, target: AppTarget<'_>) -> Result<(Record, String, SocketAddr), ()> {
+        let (root, endpoint, forwarded_port) = match target {
+            AppTarget::Local(root) => (root, "workspace", None),
+            AppTarget::Tunnel {
+                credential_root,
+                forwarded_port,
+            } => (credential_root, "app-tunnel", Some(forwarded_port)),
+        };
+        self.1.set("record_invalid");
+        let name = Record::filename(endpoint)?;
+        let record = Record::decode(&record_native::read(root, &name)?)?;
+        self.1.set("protocol_incompatible");
+        let profile = record.semantic_profile()?;
+        record.selected(endpoint, &profile)?;
+        if !record.supports_execution() {
+            return Err(());
+        }
+        let port = forwarded_port.map_or_else(|| record.port(), NonZeroU16::get);
+        Ok((
+            record,
+            profile,
+            SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
+        ))
+    }
+
+    /// Issue one Workspace request without acquiring a Mux attachment.
+    pub fn workspace(
+        &self,
+        target: AppTarget<'_>,
+        timeout: Duration,
+        request: WorkspaceRequest<'_>,
+    ) -> Result<WorkspaceResult, ()> {
+        self.request_once(target, timeout, |channel, _| {
+            workspace::workspace_request(channel, request)
+        })
+    }
+
+    pub fn instance(&self, target: AppTarget<'_>, timeout: Duration) -> Result<String, ()> {
+        self.request_once(target, timeout, |_, hello| {
+            Ok(hello.service_instance_id.clone())
+        })
+    }
+
+    pub fn muxes(
+        &self,
+        target: AppTarget<'_>,
+        timeout: Duration,
+    ) -> Result<Vec<serde_json::Value>, ()> {
+        self.request_once(target, timeout, |channel, _| {
+            let response = attachment::request(channel, "mux/list", "1", serde_json::json!({}))?;
+            if response.result_type != "muxList" {
+                return Err(());
+            }
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct Directory {
+                mux_spaces: Vec<serde_json::Value>,
+            }
+            let directory: Directory =
+                serde_json::from_str(response.result.get()).map_err(|_| ())?;
+            Ok(directory.mux_spaces)
+        })
+    }
+
+    fn request_once<T>(
+        &self,
+        target: AppTarget<'_>,
+        timeout: Duration,
+        operation: impl FnOnce(
+            &mut transport_auth::Channel<DeadlineStream, DeadlineStream>,
+            &Hello,
+        ) -> Result<T, ()>,
+    ) -> Result<T, ()> {
+        let deadline = RequestDeadline::new(timeout)?;
+        let attempt = self.0.begin()?;
+        let (record, profile, address) = self.load_record(target)?;
+        let (stream, _cancel, mut channel, hello) = open_channel(
+            self, &record, &profile, address, &deadline, None, None, &attempt, false,
+        )?;
+        let result = operation(&mut channel, &hello);
+        let _ = stream.shutdown(Shutdown::Both);
+        attempt.apply(|| result)
+    }
+
     #[allow(dead_code)] // One-shot contract probes do not use reconnect streaming.
-    pub(crate) fn run(
+    pub fn run(
         &self,
         options: ConnectionOptions<'_>,
         publish: &mut dyn FnMut(LiveInitialSnapshot) -> Result<(), ()>,
@@ -401,7 +487,7 @@ impl AppClient {
     }
 
     #[allow(dead_code)] // One-shot contract probes do not use reconnect streaming.
-    pub(crate) fn run_stream(
+    pub fn run_stream(
         &self,
         options: ConnectionOptions<'_>,
         connection_epoch: u64,

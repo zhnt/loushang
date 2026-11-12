@@ -1,4 +1,4 @@
-"""Read an application-scoped Linux machine lookup key, never process authority.
+"""Read an application-scoped machine lookup key, never process authority.
 
 The raw machine ID is confidential: do not return, log or persist it. Read only
 the OS-provisioned identity; no hostname, boot-ID, random or DBus-path fallback.
@@ -12,6 +12,7 @@ import re
 import stat
 import sys
 from hashlib import blake2b, sha256
+from uuid import UUID
 
 from .errors import HostingError, HostingFailureCategory
 
@@ -63,6 +64,34 @@ def linux_machine_key(*, domain: str) -> str:
         _close_owned((descriptor, parent), primary=primary)
 
 
+def windows_machine_key(*, domain: str) -> str:
+    """Derive a private lookup key from the 64-bit Windows machine registry."""
+    if type(domain) is not str or _DOMAIN.fullmatch(domain) is None:
+        raise _error(HostingFailureCategory.INVALID_REQUEST)
+    if sys.platform != "win32":
+        raise _error(HostingFailureCategory.PLATFORM_UNSUPPORTED)
+    import winreg
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography",
+            access=winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
+        ) as key:
+            value, kind = winreg.QueryValueEx(key, "MachineGuid")
+    except OSError:
+        raise _error(HostingFailureCategory.PREPARATION_FAILED) from None
+    if kind != winreg.REG_SZ or type(value) is not str or len(value) != 36:
+        raise _error(HostingFailureCategory.PREPARATION_REJECTED)
+    try:
+        identity = UUID(value)
+    except ValueError:
+        raise _error(HostingFailureCategory.PREPARATION_REJECTED) from None
+    if identity.int == 0 or str(identity) != value.lower():
+        raise _error(HostingFailureCategory.PREPARATION_REJECTED)
+    key = sha256(("windows/" + domain).encode("ascii")).digest()
+    return blake2b(identity.bytes, key=key, digest_size=16).hexdigest()
+
+
 def _trusted(value: os.stat_result, *, directory: bool) -> None:
     if (value.st_uid != _ROOT_UID or value.st_mode & 0o022
             or not (stat.S_ISDIR(value.st_mode) if directory else stat.S_ISREG(value.st_mode))):
@@ -91,4 +120,4 @@ def _error(category: HostingFailureCategory) -> HostingError:
     return HostingError(category, "machine_identity_" + category.value)
 
 
-__all__ = ["linux_machine_key"]
+__all__ = ["linux_machine_key", "windows_machine_key"]

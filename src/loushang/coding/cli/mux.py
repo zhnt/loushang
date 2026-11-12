@@ -203,9 +203,11 @@ def _parser() -> argparse.ArgumentParser:
         "stop",
         help="request application stop; acknowledgement is not completed cleanup",
     )
-    service = commands.add_parser("service", help="control a Linux systemd user service")
+    service = commands.add_parser("service", help="control the local AppHost service")
     service.add_argument("operation", choices=mux_service.OPERATIONS)
     service.add_argument("--unit", type=mux_service.unit_name, default=mux_service.DEFAULT_UNIT)
+    service.add_argument("--json", action="store_true", help="return the local service state as JSON")
+    service.add_argument("--instance", help="require this running instance for stop or restart")
     return parser
 
 
@@ -213,9 +215,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     if args.action == "service":
-        if args.connection_root is not None or args.endpoint is not None:
-            parser.error("service selects a systemd unit with --unit")
-        return mux_service.control(args.operation, args.unit)
+        return mux_service.run_command(parser, args)
     if args.connection_root is None or args.endpoint is None:
         parser.error("--connection-root and --endpoint are required for this command")
     output = sys.stdout

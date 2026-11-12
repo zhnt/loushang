@@ -32,7 +32,7 @@ def test_managed_layout_is_pure_and_does_not_move_sessions(monkeypatch):
     monkeypatch.setattr(Path, "stat", no_io)
     namespace, service, instance = _values()
     paths = resolve_managed_paths(namespace, service, instance, runtime_root="/run/user/1000")
-    root = PurePosixPath("/private/home/lmux/machines") / namespace.machine_id
+    root = PurePosixPath("/private/home/hosts/machines") / namespace.machine_id
     server = root / "servers" / service.service_id
     assert paths.registry == root / "registry"
     assert paths.lifecycle == root / "lifecycle" / service.service_id
@@ -41,7 +41,7 @@ def test_managed_layout_is_pure_and_does_not_move_sessions(monkeypatch):
     assert paths.logs == server / "logs"
     assert paths.temporary == server / "tmp" / instance.instance_id
     assert paths.cache == root / "cache"
-    runtime = PurePosixPath("/run/user/1000/lmux") / namespace.namespace_key / service.service_id
+    runtime = PurePosixPath("/run/user/1000/hosts") / namespace.namespace_key / service.service_id
     assert paths.connection == runtime / "connection"
     assert paths.runtime_control == runtime / "control"
     assert "private" not in repr(paths)
@@ -56,7 +56,7 @@ def test_explicit_temporary_root_and_instance_are_separate():
         namespace, service, replace(instance, instance_id="c" * 32), **kwargs
     )
     assert paths.temporary == (
-        PurePosixPath("/scratch/lmux") / namespace.namespace_key / service.service_id / instance.instance_id
+        PurePosixPath("/scratch/hosts") / namespace.namespace_key / service.service_id / instance.instance_id
     )
     assert paths.temporary != newer.temporary
     assert paths.lifecycle == newer.lifecycle
@@ -81,8 +81,8 @@ def test_reference_mismatch_never_produces_paths():
 
 
 @pytest.mark.parametrize("runtime,temporary", [
-    ("relative", None), ("/private/home/lmux", None),
-    ("/run/user/1000", "/private/home/lmux"),
+    ("relative", None), ("/private/home/hosts", None),
+    ("/run/user/1000", "/private/home/hosts"),
     ("/run/user/1000", "/run/user/1000"),
     ("/run/user/1000", "relative"),
     ("/private/home/state/session-stores", None),

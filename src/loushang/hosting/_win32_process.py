@@ -11,7 +11,7 @@ import stat
 import subprocess
 import sys
 from collections.abc import Callable
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +28,7 @@ from .errors import HostingError, HostingFailureCategory
 _CREATE_NO_WINDOW = 0x08000000
 _CREATE_UNICODE_ENVIRONMENT = 0x00000400
 _CREATE_SUSPENDED = 0x00000004
+_CREATE_BREAKAWAY_FROM_JOB = 0x01000000
 _EXTENDED_STARTUPINFO_PRESENT = 0x00080000
 _STARTF_USESTDHANDLES = 0x00000100
 _HANDLE_FLAG_INHERIT = 0x00000001
@@ -1402,7 +1403,6 @@ class _CtypesWin32Api:
         endpoint_handles: tuple[int, int] | None = None,
     ) -> _Win32SpawnHandles:
         owned: list[int] = []
-        attributes: _Win32AttributeList | None = None
         try:
             job = self._create_job()
             owned.append(job)
@@ -1431,40 +1431,9 @@ class _CtypesWin32Api:
             child_stderr, parent_stderr = self._stderr_handles(request)
             owned.extend(_present_handles(child_stderr, parent_stderr))
 
-            attributes = self._attribute_list(
-                job, (child_stdin, child_stdout, child_stderr)
+            process_information = self._spawn_with_job(
+                request, job, (child_stdin, child_stdout, child_stderr),
             )
-            startup = _STARTUPINFOEXW()
-            startup.StartupInfo.cb = ctypes.sizeof(startup)
-            startup.StartupInfo.dwFlags = _STARTF_USESTDHANDLES
-            startup.StartupInfo.hStdInput = child_stdin
-            startup.StartupInfo.hStdOutput = child_stdout
-            startup.StartupInfo.hStdError = child_stderr
-            startup.lpAttributeList = attributes.pointer
-
-            process_information = _PROCESS_INFORMATION()
-            command_line = ctypes.create_unicode_buffer(
-                subprocess.list2cmdline(request.argv)
-            )
-            environment = ctypes.create_unicode_buffer(
-                _environment_block(request.effective_environment)
-            )
-            created = self._CreateProcessW(
-                request.argv[0],
-                command_line,
-                None,
-                None,
-                True,
-                _EXTENDED_STARTUPINFO_PRESENT
-                | _CREATE_UNICODE_ENVIRONMENT
-                | _CREATE_NO_WINDOW,
-                ctypes.cast(environment, ctypes.c_void_p),
-                request.cwd,
-                ctypes.byref(startup.StartupInfo),
-                ctypes.byref(process_information),
-            )
-            if not created:
-                self._raise_last_error("CreateProcessW")
             process_handle = _handle_value(process_information.hProcess)
             thread_handle = _handle_value(process_information.hThread)
             owned.extend((process_handle, thread_handle))
@@ -1498,11 +1467,54 @@ class _CtypesWin32Api:
                     owned.remove(returned_handle)
             return result
         finally:
-            if attributes is not None:
-                self._DeleteProcThreadAttributeList(attributes.pointer)
             for handle in reversed(owned):
                 with suppress(OSError):
                     self.close_handle(handle)
+
+    def spawn_service(self, request: ProcessLaunchRequest, job: int, endpoint: int, *, breakaway: bool) -> int:
+        """Create a detached service atomically inside its already-owned job."""
+        with ExitStack() as cleanup:
+            stdin = self._null_handle(read=True)
+            cleanup.callback(self.close_handle, stdin)
+            stdout = self._null_handle(read=False)
+            cleanup.callback(self.close_handle, stdout)
+            information = self._spawn_with_job(
+                request, job, (stdin, stdout, stdout), inherited=(endpoint, job),
+                flags=_CREATE_BREAKAWAY_FROM_JOB if breakaway else 0,
+            )
+            process = _handle_value(information.hProcess)
+            try:
+                self.close_handle(_handle_value(information.hThread))
+            except BaseException:
+                self.close_handle(process)
+                raise
+        return process
+
+    def _spawn_with_job(
+        self, request: ProcessLaunchRequest, job: int, stdio: tuple[int, int, int],
+        *, inherited: tuple[int, ...] = (), flags: int = 0,
+    ) -> _PROCESS_INFORMATION:
+        handles = tuple(dict.fromkeys((*stdio, *inherited)))
+        attributes = self._attribute_list(job, handles)
+        try:
+            startup = _STARTUPINFOEXW()
+            startup.StartupInfo.cb = ctypes.sizeof(startup)
+            startup.StartupInfo.dwFlags = _STARTF_USESTDHANDLES
+            startup.StartupInfo.hStdInput, startup.StartupInfo.hStdOutput, startup.StartupInfo.hStdError = stdio
+            startup.lpAttributeList = attributes.pointer
+            information = _PROCESS_INFORMATION()
+            command_line = ctypes.create_unicode_buffer(subprocess.list2cmdline(request.argv))
+            environment = ctypes.create_unicode_buffer(_environment_block(request.effective_environment))
+            if not self._CreateProcessW(
+                request.argv[0], command_line, None, None, True,
+                _EXTENDED_STARTUPINFO_PRESENT | _CREATE_UNICODE_ENVIRONMENT | _CREATE_NO_WINDOW | flags,
+                ctypes.cast(environment, ctypes.c_void_p), request.cwd,
+                ctypes.byref(startup.StartupInfo), ctypes.byref(information),
+            ):
+                self._raise_last_error("CreateProcessW")
+            return information
+        finally:
+            self._DeleteProcThreadAttributeList(attributes.pointer)
 
     def read_pipe(self, handle: int, max_bytes: int) -> bytes:
         buffer = ctypes.create_string_buffer(max_bytes)
@@ -1721,7 +1733,7 @@ class _CtypesWin32Api:
         return handle
 
     def _attribute_list(
-        self, job: int, inherited_handles: tuple[int, int, int]
+        self, job: int, inherited_handles: tuple[int, ...]
     ) -> _Win32AttributeList:
         size = ctypes.c_size_t()
         self._InitializeProcThreadAttributeList(None, 2, 0, ctypes.byref(size))

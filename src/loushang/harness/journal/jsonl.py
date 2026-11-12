@@ -81,6 +81,12 @@ class JournalLockUnavailable(BlockingIOError):
         self.path = path
 
 
+def _journal_io_path(path: Path) -> Path:
+    if os.name == "nt" and path.is_absolute() and len(path.drive) == 2:
+        return Path("\\\\?\\" + os.path.normpath(path))
+    return path
+
+
 @contextmanager
 def journal_file_lock(
     path: Path,
@@ -97,7 +103,7 @@ def journal_file_lock(
         raise TypeError("Journal lock blocking mode must be a built-in bool")
     if type(create) is not bool:
         raise TypeError("Journal lock creation mode must be a built-in bool")
-    lock_path = path.with_name(f"{path.name}{lock_suffix}")
+    lock_path = _journal_io_path(path.with_name(f"{path.name}{lock_suffix}"))
     if create:
         create_private_directory_chain(lock_path.parent)
     with _open_lock_file(lock_path, create=create) as handle:
@@ -168,9 +174,9 @@ def journal_file_read_lock(
     if type(create_lock) is not bool:
         raise TypeError("Journal read lock creation must be a built-in bool")
     if not create_lock:
-        lock_path = path.with_name(f"{path.name}{lock_suffix}")
+        lock_path = _journal_io_path(path.with_name(f"{path.name}{lock_suffix}"))
         try:
-            path.lstat()
+            _journal_io_path(path).lstat()
         except FileNotFoundError:
             try:
                 lock_path.lstat()
@@ -352,6 +358,7 @@ def append_jsonl_record(
                 fsync=durability.fsync,
             )
             return
+        target = _journal_io_path(target)
         create_private_directory_chain(target.parent)
         existed = target.exists()
         with target.open("a", encoding=format_profile.encoding, newline="") as handle:
@@ -398,6 +405,7 @@ def append_jsonl_records(
                 payload.encode(format_profile.encoding), fsync=durability.fsync
             )
             return
+        target = _journal_io_path(target)
         create_private_directory_chain(target.parent)
         existed = target.exists()
         with target.open("a", encoding=format_profile.encoding, newline="") as handle:
@@ -498,7 +506,7 @@ def load_jsonl(
         raw = (
             rooted.read_bytes().decode(format_profile.encoding)
             if rooted is not None
-            else target.read_text(encoding=format_profile.encoding)
+            else _journal_io_path(target).read_text(encoding=format_profile.encoding)
         )
         snapshot = _decode_jsonl(
             raw,
@@ -1004,6 +1012,7 @@ def _replace_text_unlocked(
     if rooted is not None:
         rooted.atomic_write(data.encode(encoding), fsync=durability.fsync)
         return
+    target = _journal_io_path(target)
     create_private_directory_chain(target.parent)
     temp_path = target.with_name(f".{target.name}.{os.getpid()}.tmp")
     try:

@@ -122,7 +122,7 @@ class CodingHostedScopeV1:
 
     @property
     def source_id(self) -> str:
-        return f"coding.hosted.{self.scope.value}"
+        return f"coding.hosted.{self.scope.value}.{self.fingerprint}"
 
 
 def _scope_fingerprint(scope: SessionScopeV1, root: Path, cwd: str) -> str:

@@ -1,15 +1,18 @@
-"""systemd user service adapter for the foreground Coding Host."""
+"""Local AppHost lifecycle and the systemd foreground service adapter."""
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
+import os
 import re
 import signal
 import socket
 import subprocess
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -20,6 +23,20 @@ DEFAULT_UNIT = "loushang-host.service"
 OPERATIONS = ("start", "stop", "restart", "status", "logs")
 
 
+def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if args.connection_root is not None or args.endpoint is not None:
+        parser.error("service selects a systemd unit with --unit")
+    if args.instance is not None and (
+        args.operation not in {"stop", "restart"} or re.fullmatch(r"[0-9a-f]{32}", args.instance) is None
+    ):
+        parser.error("--instance requires a lowercase hexadecimal instance ID and stop or restart")
+    if args.json or args.instance is not None:
+        if args.unit != DEFAULT_UNIT or args.operation == "logs":
+            parser.error("this operation requires the default local service and a lifecycle action")
+        return control_local(args.operation, args.instance, as_json=args.json)
+    return control(args.operation, args.unit)
+
+
 def unit_name(value: str) -> str:
     if not re.fullmatch(r"loushang-host(?:@[a-zA-Z0-9_.-]{1,128})?\.service", value):
         raise argparse.ArgumentTypeError(
@@ -28,7 +45,16 @@ def unit_name(value: str) -> str:
     return value
 
 
+def _uses_managed_backend() -> bool:
+    return sys.platform == "win32" or os.environ.get("LOUSHANG_MUX_BACKEND") == "managed"
+
+
 def control(operation: str, unit: str) -> int:
+    if _uses_managed_backend():
+        if operation == "logs" or unit != DEFAULT_UNIT:
+            print("loushang-mux service: this action requires a systemd user unit", file=sys.stderr)
+            return 1
+        return control_local(operation, None, as_json=False)
     if sys.platform != "linux":
         print("loushang-mux service requires Linux and a systemd user manager", file=sys.stderr)
         return 1
@@ -43,6 +69,71 @@ def control(operation: str, unit: str) -> int:
         return 1
     except KeyboardInterrupt:
         return 130
+
+
+
+def control_local(operation: str, expected: str | None, *, as_json: bool) -> int:
+    from ..managed_service import ServiceControlError, control_managed_service
+
+    try:
+        if _uses_managed_backend():
+            reply = asyncio.run(control_managed_service(operation, expected))
+        elif sys.platform == "linux":
+            reply = _systemd_control(operation, expected)
+        else:
+            raise ServiceControlError("platform_unsupported")
+    except ServiceControlError as error:
+        reply = {"state": "unknown", "errorCode": str(error)}
+    except (OSError, subprocess.SubprocessError, ValueError):
+        reply = {"state": "unknown", "errorCode": "management_unavailable"}
+    if as_json:
+        print(json.dumps(reply, ensure_ascii=True))
+    elif "errorCode" in reply:
+        print(f"loushang-mux service: {reply['errorCode']}", file=sys.stderr)
+    else:
+        print(reply["state"])
+    return int("errorCode" in reply)
+
+
+def _systemd_control(operation: str, expected: str | None) -> dict[str, object]:
+    from ..managed_service import ServiceControlError
+
+    if expected is not None and _systemd_state().get("instanceId") != expected:
+        raise ServiceControlError("instance_changed")
+    if operation != "status":
+        result = subprocess.run(
+            ["systemctl", "--user", "--no-pager", operation, "--", DEFAULT_UNIT],
+            stdout=subprocess.DEVNULL, timeout=80, check=False,
+        )
+        if result.returncode != 0:
+            raise ServiceControlError(f"{operation}_failed")
+    return _systemd_state()
+
+
+def _systemd_state() -> dict[str, object]:
+    from ..managed_service import ServiceControlError
+
+    command = [
+        "systemctl", "--user", "--no-pager", "show",
+        "--property=LoadState,ActiveState,InvocationID", "--", DEFAULT_UNIT,
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=10, check=True)
+    properties = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+    if properties.get("LoadState") != "loaded":
+        raise ServiceControlError("management_unavailable")
+    state = properties.get("ActiveState", "")
+    if state == "active":
+        instance = properties.get("InvocationID", "")
+        if not re.fullmatch(r"[0-9a-f]{32}", instance):
+            raise ServiceControlError("management_unavailable")
+        runtime = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
+        return {
+            "state": "running", "instanceId": instance,
+            "recordRoot": str(runtime / "loushang-host" / "connections"),
+        }
+    return {"state": {
+        "inactive": "not_running", "activating": "starting", "deactivating": "stopping", "failed": "exited",
+    }.get(state, "unknown")}
 
 
 async def run_host(

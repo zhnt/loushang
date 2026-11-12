@@ -16,6 +16,9 @@ from time import monotonic
 import pytest
 
 from loushang.apphost.managed._files import ManagedStorageError
+from loushang.apphost.managed.lifecycle import ManagedServiceJournalV1
+from loushang.apphost.managed.mux_management import ManagedMuxManagerV1
+from loushang.apphost.managed.registry import ManagedRegistryV1
 from loushang.appserver.local import LocalAppClientConnectionV1, LocalConnectionModeV1
 from loushang.appserver.local_record import LocalConnectionDirectoryV1
 from loushang.appserver.protocol import (
@@ -29,6 +32,7 @@ from loushang.appserver.protocol import (
     SessionSnapshotRequestV1,
     TranscriptRecordKindV1,
     TurnTextV1,
+    WorkspaceRequestV1,
 )
 from loushang.coding.managed_bootstrap import CodingManagedApplicationLaunchV1
 from loushang.coding.managed_local import CodingManagedLocalLaunchV1
@@ -50,7 +54,7 @@ pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux detached 
     pytest.param("normal", False, True, signal.SIGTERM, True, id="canonical-late-birth-term"),
 ])
 def test_actual_coding_service_outlives_starter_and_reconnects(deployment, tmp_path, exit_mode, controller_failure, late_birth, stop_signal, canonical):
-    _, _, journal, _, paths = deployment
+    namespace, service, journal, _, paths = deployment
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     address = "lmux-product-test-" + token_hex(16)
     listener.bind("\0" + address)
@@ -139,12 +143,38 @@ def test_actual_coding_service_outlives_starter_and_reconnects(deployment, tmp_p
                 assert "invalid test command" in (tmp_path / "child-diagnostic.log").read_text()
                 return
             await client.start()
-            mux = await client.client.create_mux(MuxCreateV1("dev"))
+            if canonical:
+                registered = await client.client.workspace(WorkspaceRequestV1("register", str(tmp_path)))
+                scope, = registered.workspaces
+                fingerprint = scope.scope_fingerprint
+                registry = ManagedRegistryV1(Path(paths.registry), namespace, defer_open=True)
+                manager_journal = ManagedServiceJournalV1(
+                    registry, namespace, service, Path(paths.lifecycle), defer_open=True,
+                )
+                try:
+                    deadline = monotonic() + 5
+                    await asyncio.to_thread(registry.open, deadline=deadline, wait_for_lock=True)
+                    await asyncio.to_thread(manager_journal.open, deadline=deadline, wait_for_lock=True)
+                    manager = ManagedMuxManagerV1(registry, manager_journal, namespace, service,
+                                                  state.handoff.instance, application_id="coding.default")
+                    reservation = await asyncio.to_thread(
+                        registry.resolve, "dev", deadline=deadline, wait_for_lock=True,
+                    )
+                    assert reservation is not None
+                    permit = manager.issue_create(reservation, deadline=deadline)
+                    mux = await client.managed_mux_client.create_managed_mux(permit)
+                    assert manager.record_created(permit, mux, deadline=deadline) == mux
+                finally:
+                    manager_journal.close()
+                    registry.close()
+            else:
+                mux = await client.client.create_mux(MuxCreateV1("dev"))
+                scope = launch.application.scopes[0]
+                fingerprint = scope.fingerprint
             selector = MuxSelectorV1(mux_space_id=mux.mux_space_id)
             await client.client.attach_mux(MuxAttachV1(selector))
-            scope = launch.application.scopes[0]
             mux = await client.client.open_member(MuxMemberOpenV1(selector, SessionOpenSpecV1(
-                "coding", "detached-test", scope.scope, scope.fingerprint, "dev",
+                "coding", "detached-test", scope.scope, fingerprint, "dev",
             )))
             attached = await client.client.attach_mux(MuxAttachV1(selector))
             turn = asyncio.create_task(client.client.start_turn(TurnTextV1(
@@ -200,7 +230,7 @@ def test_actual_coding_service_outlives_starter_and_reconnects(deployment, tmp_p
             # A pidfd observation is not a persisted scope settlement claim.
             assert not evidence.process_exited and not evidence.process_scope_settled
             if canonical:
-                assert len(tuple((tmp_path / "sessions").glob("*.jsonl"))) == 1
+                assert len(tuple((tmp_path / "sessions").rglob("*.jsonl"))) == 1
                 assert not (tmp_path / "cwd-sessions").exists() and not (tmp_path / "home-sessions").exists()
         finally:
             active_failure = sys.exception()

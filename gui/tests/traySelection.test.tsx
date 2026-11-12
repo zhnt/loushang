@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useEffect, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import LocalHostGate from "../src/LocalHostGate";
+import { ProjectNavigation } from "../src/ProjectNavigation";
+import type { ProjectNavigationProps } from "../src/client/projectDirectory";
 const backend = vi.hoisted(() => ({ invoke: vi.fn(), settings: vi.fn(), create: vi.fn(), listeners: new Map<string, (event: any) => void>() }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: backend.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: async (name: string, callback: (event: any) => void) => {
@@ -14,12 +16,13 @@ vi.mock("../src/client/hostApi", () => ({
 }));
 vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: async () => false }));
 vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: backend.create }));
-vi.mock("../src/App", () => ({ default: () => null, HarnessGui: ({ client, hostSettings, hostSettingsRequest, onConnectionChange }: {
+vi.mock("../src/App", () => ({ default: () => null, HarnessGui: ({ client, hostSettings, hostSettingsRequest, onConnectionChange, projectNavigation }: {
+  projectNavigation: ProjectNavigationProps;
   client: { id: string } | null; hostSettings: ReactNode; hostSettingsRequest: number; onConnectionChange: (state: string) => void;
 }) => {
   const [draft, setDraft] = useState("");
-  useEffect(() => onConnectionChange(client ? "connected" : "disconnected"), [client, onConnectionChange]);
-  return <main><p>{client?.id ?? "offline"}</p><textarea aria-label="Draft" value={draft} onChange={(event) => setDraft(event.target.value)} />
+  useEffect(() => onConnectionChange?.(client ? "connected" : "disconnected"), [client, onConnectionChange]);
+  return <main><ProjectNavigation navigation={projectNavigation} selectedId={null} titles={{}} /><p>{client?.id ?? "offline"}</p><textarea aria-label="Draft" value={draft} onChange={(event) => setDraft(event.target.value)} />
     {hostSettingsRequest > 0 ? <section aria-label="Host settings">{hostSettings}</section> : hostSettings}
   </main>;
 } }));
@@ -42,6 +45,7 @@ beforeEach(() => {
     const id = request.connectionId ?? selected;
     const input = request.operation === "host/request" ? request.request : request;
     if (input.operation === "environment") return { supported: true, workspace: `/${id}`, connectionId: id };
+    if (input.operation === "workspace") return { projects: [{ path: `/${id}`, sessions: [{ id, title: id }] }], temporarySessions: [] };
     if (input.operation === "manage") return { state: "running", errorCode: null, workspace: `/${id}`, instanceId: `${id}-instance` };
     throw new Error("Unexpected request");
   });
@@ -58,29 +62,21 @@ function click(id: string, action: string) {
   act(() => backend.listeners.get("gui://tray-host-action")?.({ payload: { hostId: id, action, revision: projection().revision } }));
 }
 describe("tray selection integration", () => {
-  it("opens Host settings from Start when the local Host cannot be reached and starts a newly chosen workspace", async () => {
+  it("connects an empty Host without selecting or creating a workspace", async () => {
     const settings = backend.settings.getMockImplementation()!;
     backend.settings.mockImplementation(async (request) => {
-      const action = request.connectionId === "local" ? request.request?.action : null;
-      if (action === "connect") return {
-        state: "unknown", errorCode: "connection_unavailable", instanceId: "old-instance", workspace: "/local",
-      };
-      if (action === "start") return {
-        state: "running", errorCode: null, instanceId: "new-instance", workspace: request.request.workspace,
-      };
+      const input = request.operation === "host/request" ? request.request : request;
+      if (input.operation === "environment") return { supported: true, workspace: "", connectionId: "local" };
+      if (input.operation === "workspace") return { projects: [], temporarySessions: [] };
       return settings(request);
     });
     render(<LocalHostGate />);
-    await waitFor(() => expect(projection()?.hosts[0]).toMatchObject({ start: true, startLabel: "Start…" }));
-    click("local", "start");
-    expect(await screen.findByRole("region", { name: "Host settings" })).toBeVisible();
-    expect(screen.getByRole("alert")).toHaveTextContent("connection_unavailable");
-    expect(backend.settings.mock.calls.some(([request]) => request.request?.action === "start")).toBe(false);
-    fireEvent.change(screen.getByDisplayValue("/local"), { target: { value: "/new-workspace" } });
-    fireEvent.click(screen.getByRole("button", { name: /start and connect/i }));
-    await waitFor(() => expect(backend.create).toHaveBeenCalledWith("/new-workspace", "local"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add project" })).toBeEnabled());
+    expect(screen.queryByRole("combobox", { name: "Workspace" })).toBeNull();
+    expect(backend.create).not.toHaveBeenCalled();
     expect(backend.settings).toHaveBeenCalledWith({ operation: "host/request", connectionId: "local",
-      request: { operation: "manage", action: "start", workspace: "/new-workspace" } });
+      request: { operation: "manage", action: "connect" } });
+    expect(backend.settings.mock.calls.some(([request]) => request.request?.action === "register")).toBe(false);
   });
   it("switches the bound client and Web destination while retaining the mounted draft", async () => {
     render(<LocalHostGate />);
@@ -93,7 +89,7 @@ describe("tray selection integration", () => {
     await waitFor(() => expect(projection().currentLabel).toContain("🟢 Office"));
     expect(projection().webUrl).toBe("https://office.example");
     expect(backend.settings).toHaveBeenCalledWith({ operation: "host/request", connectionId: "office",
-      request: { operation: "manage", action: "connect", workspace: "/office" } });
+      request: { operation: "manage", action: "connect" } });
     expect(screen.getByLabelText("Draft")).toBe(draft);
     expect(draft).toHaveValue("Unsent work");
     expect(backend.settings.mock.calls.some(([request]) => ["start", "stop"].includes(request.request?.action))).toBe(false);

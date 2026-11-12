@@ -41,14 +41,11 @@ for (const width of [700, 1100, 1440]) {
         return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
       })).toBe(true);
     };
-    if (width <= 760) await page.getByRole("button", { name: "切换侧边栏" }).click();
     await checkBounds();
     await page.getByRole("button", { name: "打开工作面板" }).click();
     await checkBounds();
     await page.screenshot({ path: `test-results/layout/i18n-zh-${width}.png`, fullPage: true });
-    if (width <= 760) await page.getByRole("button", { name: "切换侧边栏" }).click();
     await changeLanguage(page, "en-US");
-    if (width <= 760) await page.getByRole("button", { name: "Toggle sidebar" }).click();
     await expect(input).toHaveValue("Draft remains unchanged 世界");
     await checkBounds();
     await page.reload();
@@ -118,6 +115,7 @@ test("open panels and raw documents survive language changes through complete pl
   page.on("pageerror", (error) => errors.push(error.message));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
+  await page.getByRole("button", { name: "Toggle sidebar" }).click();
   await page.getByRole("textbox").fill("保留 draft 世界");
   await page.locator(".change-files button").first().click();
   const rawDiff = await page.locator(".quick-look pre").innerText();

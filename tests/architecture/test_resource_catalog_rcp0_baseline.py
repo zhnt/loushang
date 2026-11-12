@@ -351,6 +351,9 @@ EXPECTED_LEGACY_LOADER_IMPORT_EDGES = {
         ("loader.py", "_loader_package_policy"),
         ("loader.py", "_loader_pipeline"),
     )
+} | {
+    # Coding delegates legacy fallback metadata reads to the existing filesystem owner.
+    (Path("src/loushang/coding/plugin_local_discovery.py"), "_loader_discovery_filesystem"),
 }
 
 

@@ -44,6 +44,8 @@ from loushang.appserver.protocol import (
     SessionSnapshotV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceRequestV1,
+    WorkspaceResultV1,
 )
 
 from ._operations import _observe, _OwnedAppOperations
@@ -362,6 +364,10 @@ class AppClientScopeV1:
         if controller.operation is not None and not controller.operation.done():
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return controller
+
+    async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
+        self._require_open()
+        return await self._service.workspace(request)
 
     async def attach_mux(self, request: MuxAttachV1) -> MuxAttachmentV1:
         self._service._require_request(request, MuxAttachV1)

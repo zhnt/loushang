@@ -7,14 +7,24 @@ before an await is not sufficient. No global registry transaction spans RPC.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from hashlib import sha256
 from typing import Protocol
 
 from loushang.appserver.managed_mux import ManagedMuxCreatedV1, ManagedMuxCreateV1
 
 from .continuity import require_application_id
 from .managed_mux_close import ManagedMuxCloseBindingV1
+
+TEMPORARY_MUX = "gui-temporary"
+
+
+def project_mux_name(path: str) -> str:
+    return "ws-" + sha256(path.encode()).hexdigest()[:60]
+
+
+CommitMux = Callable[[ManagedMuxCreateV1], Awaitable[ManagedMuxCreatedV1]]
 
 
 class ManagedMuxAdmissionV1(Protocol):
@@ -47,6 +57,9 @@ class ManagedMuxServiceBindingV1:
     instance_id: str
     prepare: Callable[[ManagedMuxCreateV1], ManagedMuxAdmissionV1] = field(repr=False)
     closing: ManagedMuxCloseBindingV1 | None = field(default=None, repr=False, kw_only=True)
+    ensure_named: Callable[[str, CommitMux], Awaitable[None]] | None = field(
+        default=None, repr=False, kw_only=True,
+    )
 
     def __post_init__(self) -> None:
         require_application_id(self.application_id)
@@ -55,3 +68,5 @@ class ManagedMuxServiceBindingV1:
             raise TypeError("invalid managed Mux admission factory")
         if self.closing is not None and type(self.closing) is not ManagedMuxCloseBindingV1:
             raise TypeError("invalid managed Mux close binding")
+        if self.ensure_named is not None and not callable(self.ensure_named):
+            raise TypeError("invalid managed Mux provisioning")

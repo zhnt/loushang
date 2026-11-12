@@ -238,8 +238,16 @@ def _coding_foreground_request(
     admitted_scopes = tuple(HostedSessionDiscoveryScopeV1(
         "coding", scope.scope, scope.fingerprint,
     ) for scope in catalog.scopes)
+    from .workspace_catalog import CodingWorkspaceCatalog
+
+    def current_scopes():
+        return tuple(HostedSessionDiscoveryScopeV1("coding", scope.scope, scope.fingerprint)
+                     for scope in catalog.scopes)
+
     discovery = None if not session_discovery else HostedSessionDiscoveryBindingV1(
         generation, admitted_scopes, catalog,
+        scope_provider=current_scopes if type(catalog) is CodingWorkspaceCatalog else None,
+        product_id="coding",
     )
     product_version = hashlib.sha256(version("loushang").encode()).hexdigest()
     sessions = (
@@ -273,6 +281,7 @@ def _coding_foreground_request(
         ),
         candidate_validator=CodingHostedCandidateValidatorV1(),
         sessions=sessions,
+        workspaces=catalog if type(catalog) is CodingWorkspaceCatalog else None,
         discovery=discovery,
         admitted_scopes=admitted_scopes,
         execution=execution,

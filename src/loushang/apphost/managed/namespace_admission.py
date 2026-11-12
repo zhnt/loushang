@@ -1,4 +1,4 @@
-"""Retained Linux namespace storage admission, independent of service readiness.
+"""Retained native namespace storage admission, independent of service readiness.
 
 An explicit first-use request may initialize absent storage. Existing witnesses
 are always opened without creation. Failed attempts never delete or adopt their
@@ -7,9 +7,8 @@ residue; callers retain this owner until its local cleanup has settled.
 
 from __future__ import annotations
 
-import os
 from dataclasses import replace
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from secrets import token_hex
 from threading import RLock
 from time import monotonic
@@ -25,6 +24,7 @@ from .admission_record import (
     ManagedNamespaceAdmissionRecordV1,
 )
 from .contracts import ManagedContractError, ManagedNamespaceV1, _path
+from .defaults import current_managed_user
 from .paths import (
     _overlaps,
     resolve_managed_admission_root,
@@ -47,15 +47,17 @@ class ManagedNamespaceAdmissionV1:
 
     def __init__(self, namespace: ManagedNamespaceV1, *, runtime_root: str,
                  create_if_missing: bool = False) -> None:
-        if (type(namespace) is not ManagedNamespaceV1 or namespace.user_id != os.geteuid()
+        if (type(namespace) is not ManagedNamespaceV1 or namespace.user_id != current_managed_user()
                 or type(create_if_missing) is not bool):
             raise ManagedContractError()
-        _path(runtime_root)
+        home = _path(namespace.platform_home)
+        runtime_base = _path(runtime_root)
+        if type(runtime_base) is not type(home):
+            raise ManagedContractError()
         admission = Path(resolve_managed_admission_root(namespace))
         registry = Path(resolve_managed_registry_root(namespace))
-        runtime = Path(runtime_root) / "lmux" / namespace.namespace_key
-        if (_overlaps(PurePosixPath(runtime), PurePosixPath(namespace.platform_home) / "lmux")
-                or _overlaps(PurePosixPath(runtime), PurePosixPath(namespace.platform_home) / "state")):
+        runtime = runtime_base / "hosts" / namespace.namespace_key
+        if _overlaps(runtime, home / "hosts") or _overlaps(runtime, home / "state"):
             raise ManagedContractError()
         self._namespace = namespace
         self._runtime_root = runtime_root
@@ -69,7 +71,7 @@ class ManagedNamespaceAdmissionV1:
         self._fresh = PrivateManagedDirectory(admission, create=True, create_parents=True,
                                               exclusive_create=True, defer_open=True)
         self._probes = tuple(PrivateManagedDirectory(root, defer_open=True)
-                             for root in (registry.parent, runtime))
+                             for root in (registry.parent, Path(runtime)))
         self._directories = (self._existing, self._fresh, *self._probes)
         self._registry: ManagedRegistryV1 | None = None
         self._registry_closed = False

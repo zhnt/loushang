@@ -1,5 +1,5 @@
 //! Owned blocking worker. Stop is nonblocking; join/drop belong off the UI thread.
-use super::read_stop::ReadStop;
+use loushang_app_client::read_stop::ReadStop;
 use std::thread::{self, JoinHandle};
 
 #[derive(Debug, PartialEq, Eq)]

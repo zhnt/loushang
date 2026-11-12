@@ -243,7 +243,7 @@ def test_generation_change_during_wait_does_not_retarget(owners, monkeypatch):
     owner = coordinator(owners)
     calls = []
 
-    async def change(deadline):
+    async def change(deadline, *, interval=0.05):
         calls.append(1)
         changed = replace(state, handoff=replace(state.handoff, instance=replace(state.handoff.instance, instance_id="d" * 32)),
                           evidence=replace(state.evidence, instance=replace(state.handoff.instance, instance_id="d" * 32)))

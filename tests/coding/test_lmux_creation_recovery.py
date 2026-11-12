@@ -125,12 +125,12 @@ def test_real_creation_recovery_uses_original_operation_without_query_replay(
     assert lmux.main(["create", *arguments, "--continue", "--yes"]) == 0, _failure_diagnostic(commands[-1])
     report = _json_lines(capsys.readouterr().out)[-1]
     assert report["status"] == "created" and report["operationId"] == operation
-    assert report["workspace"] == str(tmp_path)
+    assert report["hostRoot"] == commands[-1].defaults.namespace.platform_home
     assert len(calls) == before_calls + (0 if fault == "record_ack" else 1)
     assert all(request.operation_id == operation and request.name == "dev" for request in calls)
     assert not attached  # Recovery is scriptable, never implicitly a TUI entry.
     assert commands[-1].native_closed and not commands[-1].active
-    assert lmux.main(["attach", "-t", "dev"]) == 0
+    assert lmux.main(["attach", "-t", "dev", "--workspace", str(tmp_path)]) == 0
     assert attached == [report["muxId"]]
     capsys.readouterr()
     assert lmux.main(["create-status", *arguments]) == 0

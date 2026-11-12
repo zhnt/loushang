@@ -498,6 +498,7 @@ class HostedApplicationContinuityAttemptV1:
                     resolver=self._request.application.resolver,
                     discovery=self._request.application.discovery,
                     execution=self._request.application.execution,
+                    workspaces=self._request.application.workspaces,
                     managed_mux=self._request.application.managed_mux,
                     continuity_lease=self._lease,
                     id_factory=self._request.application.service_id_factory,

@@ -144,20 +144,32 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
             imports = _imports(path)
             accepted_hosting = {
                 Path("src/loushang/apphost/launcher.py"): {"loushang.hosting.contracts"},
-                Path("src/loushang/apphost/managed/handoff.py"): {"loushang.hosting.errors", "loushang.hosting.service", "loushang.hosting.service_handoff"},
-                Path("src/loushang/apphost/managed/lifecycle.py"): {"loushang.hosting.errors", "loushang.hosting.service"},
-                Path("src/loushang/apphost/managed/bootstrap.py"): {"loushang.hosting.service"},
+                Path("src/loushang/apphost/managed/handoff.py"): {
+                    "loushang.hosting.errors", "loushang.hosting.service",
+                    "loushang.hosting.service_handoff", "loushang.hosting.service_windows",
+                },
+                Path("src/loushang/apphost/managed/lifecycle.py"): {
+                    "loushang.hosting.errors", "loushang.hosting.service", "loushang.hosting.service_windows",
+                },
+                Path("src/loushang/apphost/managed/bootstrap.py"): {
+                    "loushang.hosting.errors", "loushang.hosting.service",
+                    "loushang.hosting.service_handoff", "loushang.hosting.service_windows",
+                },
                 Path("src/loushang/apphost/managed/starter.py"): {
                     "loushang.hosting.contracts", "loushang.hosting.service_process",
+                    "loushang.hosting.service_windows",
                 },
                 Path("src/loushang/apphost/managed/stopper.py"): {
                     "loushang.hosting.service", "loushang.hosting.service_group",
+                    "loushang.hosting.service_windows",
                 },
                 Path("src/loushang/apphost/managed/defaults.py"): {
                     "loushang.hosting.errors", "loushang.hosting.machine_identity",
                 },
                 Path("src/loushang/apphost/managed/connection.py"): {"loushang.hosting.service"},
-                Path("src/loushang/apphost/managed/mux_management.py"): {"loushang.hosting.service"},
+                Path("src/loushang/apphost/managed/mux_management.py"): {
+                    "loushang.hosting.service", "loushang.hosting.service_windows",
+                },
             }.get(path)
             if accepted_hosting is not None:
                 assert {name for name in imports if name.startswith("loushang.hosting")} == accepted_hosting

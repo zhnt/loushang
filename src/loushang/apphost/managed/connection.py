@@ -8,7 +8,6 @@ cleanup task. No discovery, spawn, stop, directory creation or mutation replay.
 from __future__ import annotations
 
 import asyncio
-import os
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -30,7 +29,7 @@ from loushang.appserver.local_record import (
 )
 from loushang.appserver.managed_mux import ManagedMuxCreationPortV1
 from loushang.appserver.managed_mux_close import ManagedMuxClosePortV1
-from loushang.hosting.service import LinuxServiceObserverV1
+from loushang.hosting.service import ServiceObserverV1, reopen_service_observer
 
 from ._files import ManagedStorageError, _check_deadline
 from .child import _spawn
@@ -41,6 +40,7 @@ from .contracts import (
     ManagedNamespaceV1,
     ManagedServiceKeyV1,
 )
+from .defaults import current_managed_user
 from .lifecycle import ManagedServiceJournalV1, ManagedServiceStateV1
 from .paths import resolve_managed_service_paths
 
@@ -75,7 +75,7 @@ class ManagedConnectionLeaseV1:
         paths = resolve_managed_service_paths(namespace, service, runtime_root=runtime_root)
         require_endpoint(endpoint)
         if (
-            namespace.user_id != os.geteuid()
+            namespace.user_id != current_managed_user()
             or type(journal) is not ManagedServiceJournalV1
             or type(instance) is not ManagedInstanceRefV1
             or instance.namespace_key != namespace.namespace_key
@@ -87,7 +87,7 @@ class ManagedConnectionLeaseV1:
             raise ManagedContractError()
         self._journal, self._service, self._instance = journal, service, instance
         self._root, self._endpoint = Path(paths.connection), endpoint
-        self._observer: LinuxServiceObserverV1 | None = None
+        self._observer: ServiceObserverV1 | None = None
         self._native_uncertain = False
         self._observer_close_unknown = False
         self._directory: LocalConnectionDirectoryV1 | None = None
@@ -102,6 +102,11 @@ class ManagedConnectionLeaseV1:
     @property
     def instance(self) -> ManagedInstanceRefV1:
         return self._instance
+
+    @property
+    def record_root(self) -> Path:
+        self._require_connection()
+        return self._root
 
     @property
     def cleanup_pending(self) -> bool:
@@ -170,7 +175,7 @@ class ManagedConnectionLeaseV1:
         state = self._current(deadline)
         assert state.native_identity is not None
         self._native_uncertain = True
-        self._observer = LinuxServiceObserverV1.reopen(state.native_identity)
+        self._observer = reopen_service_observer(state.native_identity)
         self._native_uncertain = False
         if self._observer.exited():
             raise ManagedStorageError("unavailable")

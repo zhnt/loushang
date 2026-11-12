@@ -6,10 +6,12 @@ import os
 import sys
 from copy import deepcopy
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
 from loushang.ai.types import ImagePart, UserMessage
+from loushang.apphost.managed.workspaces import WorkspaceRegistry
 from loushang.appserver.protocol import SessionAvailabilityV1, SessionCompatibilityV1
 from loushang.appservice.discovery_ports import HostedSessionDiscoveryScopeV1
 from loushang.coding.composition_provenance import CODING_COMPOSITION_HEADER_KEY
@@ -20,6 +22,7 @@ from loushang.coding.hosted_catalog import (
 from loushang.coding.managed_catalog import CodingManagedSessionCatalogV1
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE_METADATA_KEY
 from loushang.coding.session_manager import SessionManager
+from loushang.coding.workspace_catalog import CodingWorkspaceCatalog
 from loushang.harness.conversation import StoreCommitOutcomeUnknown
 from loushang.harness.conversation.stores import file as file_module
 from loushang.harness.transcript.jsonl_file import (
@@ -495,5 +498,77 @@ def test_post_restore_rejection_retains_original_session_on_cleanup_failure(tmp_
         opened = await fresh.open_candidate(current[0].reference)
         await opened.close()
         await fresh.close()
+
+    asyncio.run(scenario())
+
+def test_two_workspaces_route_real_transcripts_without_runtime_or_cwd_switch(tmp_path):
+    a, b = tmp_path / 'a', tmp_path / 'b'
+    a.mkdir()
+    b.mkdir()
+    registry = WorkspaceRegistry(tmp_path / 'registry')
+    original_cwd = Path.cwd()
+
+    async def scenario():
+        catalog = CodingWorkspaceCatalog(registry, tmp_path / 'sessions', tmp_path / 'stores')
+        try:
+            await catalog.load()
+            assert catalog.scopes == ()
+            await catalog.register(str(a))
+            await catalog.register(str(b))
+            sa, sb = await catalog.select(str(a)), await catalog.select(str(b))
+            assert sa.source_id != sb.source_id
+            assert sa.fingerprint != sb.fingerprint
+            assert not (tmp_path / 'sessions').exists()
+            for scope in (sa, sb):
+                intent = _intent(scope)
+                candidate = await catalog.create_candidate(intent)
+                await candidate.close()
+            headers = [load_agent_transcript_file(p, read_only=True)[0]
+                       for p in (tmp_path / 'sessions').rglob('*.jsonl')]
+            assert {h.metadata['cwd'] for h in headers} == {str(a), str(b)}
+            rows = await catalog.list_identities((sa.discovery_scope,), limit=256)
+            assert len(rows) == 2
+            a_rows = await catalog.workspace_identities(sa.fingerprint, sa.discovery_scope, limit=1)
+            assert len(a_rows) == 1 and a_rows[0].reference.source_id == sa.source_id
+            assert len({r.reference.source_id for r in rows}) == 2
+            for row in rows:
+                candidate = await catalog.open_candidate(row.reference)
+                await candidate.close()
+            assert Path.cwd() == original_cwd
+        finally:
+            await catalog.close()
+    asyncio.run(scenario())
+
+
+def test_workspace_catalog_reopens_previous_project_store(tmp_path):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    session_root = tmp_path / "sessions"
+    state_root = tmp_path / "stores"
+    previous_root = session_root / hashlib.sha256(str(workspace).encode()).hexdigest()
+
+    async def scenario():
+        previous = CodingManagedSessionCatalogV1(
+            session_root=previous_root, workspace=workspace, store_state_root=state_root,
+        )
+        scope = previous.scopes[0]
+        candidate = await previous.create_candidate(_intent(scope))
+        await candidate.close()
+        old_rows = await previous.list_identities((scope.discovery_scope,), limit=2)
+        await previous.close()
+
+        registry = WorkspaceRegistry(tmp_path / "registry")
+        catalog = CodingWorkspaceCatalog(registry, session_root, state_root)
+        await catalog.load()
+        try:
+            await catalog.register(str(workspace))
+            selected = await catalog.select(str(workspace))
+            assert selected.fingerprint == scope.fingerprint
+            rows = await catalog.workspace_identities(selected.fingerprint, selected.discovery_scope, limit=2)
+            assert [row.reference for row in rows] == [row.reference for row in old_rows]
+            candidate = await catalog.open_candidate(rows[0].reference)
+            await candidate.close()
+        finally:
+            await catalog.close()
 
     asyncio.run(scenario())

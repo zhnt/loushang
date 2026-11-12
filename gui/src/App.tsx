@@ -9,10 +9,14 @@ import type { OfflineAccount } from "./client/offlineAccount";
 import { ModelPicker } from "./ModelPicker";
 import { MessageMarkdown } from "./markdown/MessageMarkdown";
 import { readMarkdownPreferences } from "./markdown/preferences";
+import { ProjectNavigation } from "./ProjectNavigation";
+import type { ProjectNavigationProps } from "./client/projectDirectory";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
+import { readLayoutPreferences, saveLayoutPreferences } from "./layoutPreferences";
 import { isTauri } from "@tauri-apps/api/core";
 import { useSessionHistory } from "./useSessionHistory";
+import { useSessionCreation } from "./useSessionCreation";
 import { readSidebarPreferences, saveSidebarPreferences, updateSidebarPreferences, sidebarPreferencesKey } from "./client/sidebarPreferences";
 import { liveSelectionKey, rememberSessionSelection, restoreSessionSelection } from "./client/sessionSelection";
 import { createNativeLiveClient } from "./client/nativeLiveClient";
@@ -57,6 +61,8 @@ interface HarnessGuiProps {
   readonly client: HarnessClientUiPort | FixturePlaybackPort | null;
   readonly account?: OfflineAccount | null;
   readonly hostSettings?: ReactNode;
+  readonly startLocalHost?: ReactNode;
+  readonly projectNavigation?: ProjectNavigationProps;
   readonly hostSettingsRequest?: number;
   readonly onConnectionChange?: (connection: ConnectionState | "connecting") => void;
 }
@@ -90,7 +96,7 @@ const dockTabs = [
   { id: "review", label: "panels:changes.review", glyph: "▣" },
 ] as const;
 
-export function HarnessGui({ client: attachedClient, account, hostSettings, hostSettingsRequest = 0, onConnectionChange }: HarnessGuiProps) {
+export function HarnessGui({ client: attachedClient, account, hostSettings, startLocalHost, hostSettingsRequest = 0, onConnectionChange, projectNavigation }: HarnessGuiProps) {
   const client = attachedClient ?? offlineClient;
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const fixture = fixturePlayback(client);
@@ -103,11 +109,12 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     if (dialog && !dialog.open) dialog.showModal();
   }
   useEffect(() => { if (hostSettingsRequest > 0) openSettings(); }, [hostSettingsRequest]);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const previousSidebarOpen = useRef(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => readLayoutPreferences().sidebarOpen);
+  const previousSidebarOpen = useRef(sidebarOpen);
   useEffect(() => {
     if (previousSidebarOpen.current !== sidebarOpen) {
       document.querySelector<HTMLButtonElement>(sidebarOpen ? ".brand-actions .frame-icon" : ".collapsed-rail .frame-icon")?.focus({ preventScroll: true });
+      saveLayoutPreferences({ sidebarOpen });
       previousSidebarOpen.current = sidebarOpen;
     }
   }, [sidebarOpen]);
@@ -135,6 +142,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
   const [state, dispatch] = useReducer(guiReducer, undefined, emptyGuiState);
   const [notice, setNotice] = useState<Notice>({ key: "notice.loading" });
   const [syncing, setSyncing] = useState(true);
+  const [installedClient, setInstalledClient] = useState<HarnessClientUiPort | null>(null);
   const refreshRef = useRef<(() => void) | null>(null);
   const syncPendingRef = useRef(true);
   const [remainingSteps, setRemainingSteps] = useState(fixture?.remainingFixtureSteps() ?? 0);
@@ -142,15 +150,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
   const [modelResult, setModelResult] = useState<{ scope: string; query: string; models: SessionModels | null } | null>(null);
   const modelRequest = useRef(0);
   const [modelPending, setModelPending] = useState(false);
-  const [createPending, setCreatePending] = useState(false);
-  const createdSessionRef = useRef<string | null>(null);
+  const { create, confirm, pending: createPending } = useSessionCreation(client, setNotice);
   const controlPendingRef = useRef(false);
-  const [awaitingPublication, setAwaitingPublication] = useState<{
-    readonly sessionId: string;
+  const [publications, setPublications] = useState<Readonly<Record<string, {
+    readonly source: ClientSnapshot["source"];
     readonly cursor: string;
     readonly executionId?: string;
     readonly text: string;
-  } | null>(null);
+  }>>>({});
   const [bridgeProbe, setBridgeProbe] = useState<BridgeProbe>({
     status: "web-mock",
     label: "Web Mock",
@@ -166,6 +173,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     let buffered: ClientEvent[] = [];
     let overflow = false;
     let latestSnapshot: ClientSnapshot | null = null;
+    function install(snapshot: ClientSnapshot, fallbackNotice: Notice) {
+      dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(snapshot) });
+      setInstalledClient(client);
+      const createdSessionId = confirm(client, snapshot);
+      if (createdSessionId) dispatch({ type: "session.selected", sessionId: createdSessionId });
+      setNotice(createdSessionId ? { key: "notice.created" } : fallbackNotice);
+    }
     async function refresh(): Promise<void> {
       if (!active || pending) return;
       pending = true;
@@ -181,14 +195,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
         }
         if (!active) return;
         if (overflow) throw new Error("Snapshot event buffer exceeded its limit.");
-        dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(latestSnapshot ?? snapshot) });
+        install(latestSnapshot ?? snapshot, snapshot.source.kind === "fixture"
+          ? { key: "notice.fixtureReady" }
+          : { key: "notice.liveReady" });
         // The reducer ignores cursors already covered by the snapshot and freezes
         // on any remaining gap. Never infer continuity from arrival timing.
         for (const event of buffered) dispatch({ type: "event.received", event });
         setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
-        setNotice(snapshot.source.kind === "fixture"
-          ? { key: "notice.fixtureReady" }
-          : { key: "notice.liveReady" });
       } catch {
         if (active) dispatch({
           type: "sync.failed",
@@ -217,16 +230,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     const unsubscribeSnapshots = client.subscribeSnapshots?.((snapshot) => {
       if (!active) return;
       latestSnapshot = snapshot;
-      dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(snapshot) });
-      const createdSessionId = createdSessionRef.current;
-      if (createdSessionId && snapshot.sessions.some((session) => session.id === createdSessionId)) {
-        createdSessionRef.current = null;
-        dispatch({ type: "session.selected", sessionId: createdSessionId });
-        setCreatePending(false);
-        setNotice({ key: "notice.created" });
-      } else {
-        setNotice({ key: "notice.liveUpdated" });
-      }
+      install(snapshot, { key: "notice.liveUpdated" });
       setSyncing(false);
     }) ?? (() => undefined);
     const unsubscribeConnection = client.subscribeConnection?.((connection) => {
@@ -251,7 +255,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
       unsubscribeSnapshots();
       unsubscribeConnection();
     };
-  }, [client, fixture]);
+  }, [client, confirm, fixture]);
 
   const resyncRequestedRef = useRef(false);
   useEffect(() => {
@@ -277,9 +281,29 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     }
   }, [state.local.quickLookDocumentId]);
 
+  const requestedSelection = projectNavigation?.selection;
+  const appliedSelection = useRef<typeof requestedSelection>(null);
+  const [knownTitles, setKnownTitles] = useState<Readonly<Record<string, string>>>({});
+  const directoryHost = state.remote.source.kind === "live" ? state.remote.source.connectionId : undefined;
+  useEffect(() => { setKnownTitles({}); }, [directoryHost]);
+  useEffect(() => {
+    if (!projectNavigation || state.remote.source.kind !== "live") return;
+    const titles = Object.fromEntries(Object.values(state.remote.sessions).map((session) => [session.id, session.title]));
+    setKnownTitles((previous) => Object.entries(titles).every(([id, title]) => previous[id] === title)
+      ? previous : { ...previous, ...titles });
+  }, [Boolean(projectNavigation), state.remote.source.kind, state.remote.sessions]);
+  useLayoutEffect(() => {
+    if (!requestedSelection || appliedSelection.current === requestedSelection || installedClient !== client
+      || !state.remote.sessions[requestedSelection.id]) return;
+    appliedSelection.current = requestedSelection;
+    dispatch({ type: "session.selected", sessionId: requestedSelection.id });
+  }, [client, installedClient, requestedSelection, state.remote.sessions]);
+
   const selectedId = state.local.selectedSessionId;
+  const selectionReady = !requestedSelection || appliedSelection.current === requestedSelection
+    || requestedSelection.id === selectedId;
   const selectionKey = liveSelectionKey(state.remote.source);
-  const connected = state.remote.connection === "connected";
+  const connected = installedClient === client && state.remote.connection === "connected";
   const liveConnecting = Boolean(attachedClient && !fixture && syncing);
   useEffect(() => {
     onConnectionChange?.(liveConnecting ? "connecting" : state.remote.connection);
@@ -290,13 +314,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
   const history = useSessionHistory(selectionKey ?? client, selectedId, state.remote.sessions, (sessionId) => dispatch({ type: "session.selected", sessionId }));
   const panelOpen = state.local.dockOpen && state.local.dockTab !== "environment";
   useEffect(() => { if (panelOpen) setEnvironmentOpen(false); }, [panelOpen]);
-  const rightVisible = environmentOpen || panelOpen;
+  const selected = selectedId ? state.remote.sessions[selectedId] : undefined;
+  const rightVisible = Boolean(selected) && (environmentOpen || panelOpen);
   const rightWidth = 380;
   const remainingWidth = viewportWidth - (sidebarOpen && viewportWidth > 760 ? sidebarWidth : 48);
   const stackedRight = rightVisible && remainingWidth < rightWidth + 360;
   const tasksAvailable = hasCapability(state, "tasks");
   const changesAvailable = hasCapability(state, "changes");
-  const selected = selectedId ? state.remote.sessions[selectedId] : undefined;
   const modelScope = connected && selectedId && state.remote.source.kind === "live"
     ? JSON.stringify([selectionKey, state.remote.source.serviceInstanceId, state.remote.source.connectionEpoch, selectedId])
     : null;
@@ -329,23 +353,31 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     });
     return () => { active = false; };
   }, [client, selectedId, modelScope, modelQuery, modelRunning]);
+  const awaitingPublication = selectedId ? publications[selectedId] : undefined;
   useEffect(() => {
-    if (!awaitingPublication) return;
-    const session = state.remote.sessions[awaitingPublication.sessionId];
-    if (state.remote.connection !== "connected" || !session) {
-      setAwaitingPublication(null);
-      return;
-    }
-    const execution = session.execution?.id === awaitingPublication.executionId ? session.execution : null;
-    const contentPublished = session.cursor !== awaitingPublication.cursor;
-    const terminal = execution?.status === "succeeded" || execution?.status === "failed" || execution?.status === "interrupted";
-    if (!contentPublished && !terminal) return;
-    if (awaitingPublication.executionId && (contentPublished || execution?.status === "succeeded")) {
-      dispatch({ type: "draft.submitted", sessionId: session.id, expected: awaitingPublication.text });
-    }
-    setAwaitingPublication(null);
-  }, [awaitingPublication, state.remote.connection, state.remote.sessions]);
-  const controlsAllowed = !syncing && !controlPending && (
+    if (!connected || state.remote.source.kind !== "live") return;
+    const source = state.remote.source;
+    const resolved = Object.entries(publications).filter(([id, receipt]) => {
+      const session = state.remote.sessions[id];
+      if (!session) return false;
+      if (receipt.source.kind !== "live" || receipt.source.connectionId !== source.connectionId
+        || receipt.source.serviceInstanceId !== source.serviceInstanceId) return true;
+      const execution = session.execution?.id === receipt.executionId ? session.execution : null;
+      const contentPublished = session.cursor !== receipt.cursor;
+      const terminal = execution?.status === "succeeded" || execution?.status === "failed" || execution?.status === "interrupted";
+      if (!contentPublished && !terminal) return false;
+      if (receipt.executionId && (contentPublished || execution?.status === "succeeded")) {
+        dispatch({ type: "draft.submitted", sessionId: id, expected: receipt.text });
+      }
+      return true;
+    });
+    if (resolved.length) setPublications((current) => {
+      const remaining = { ...current };
+      for (const [id, receipt] of resolved) if (current[id] === receipt) delete remaining[id];
+      return remaining;
+    });
+  }, [connected, publications, state.remote.source, state.remote.sessions]);
+  const controlsAllowed = installedClient === client && selectionReady && !syncing && !controlPending && (
     (state.remote.source.kind === "fixture" && state.remote.connection === "fixture-offline")
     || (state.remote.source.kind === "live" && state.remote.connection === "connected")
   );
@@ -405,7 +437,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
         return;
       }
       if (!receipt.executionId) dispatch({ type: "draft.submitted", sessionId: selected.id, expected: text });
-      if (!fixture) setAwaitingPublication({ sessionId: selected.id, cursor: selected.cursor, executionId: receipt.executionId, text });
+      if (!fixture) setPublications((current) => ({
+        ...current, [selected.id]: { source: state.remote.source, cursor: selected.cursor, executionId: receipt.executionId, text },
+      }));
       setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
       setNotice(fixture
         ? { key: "notice.fixtureAccepted" }
@@ -473,27 +507,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     }
   }
 
-  async function createSession(): Promise<void> {
-    if (!client.createSession || createPending
-      || state.remote.connection !== "connected") return;
-    setCreatePending(true);
-    try {
-      const receipt = await client.createSession({
-        sourceSessionId: selected?.id,
-        title: i18n.t("workspace:sidebar.newSession"),
-      });
-      createdSessionRef.current = receipt.sessionId;
-      setNotice({ key: "notice.creating" });
-      // Creation replaces the mux projection and invalidates the old controller.
-      // Ask for another authoritative snapshot as a race-safe fallback in case
-      // the automatic reconnect completed before the command reply reached UI.
-      void client.requestResync?.().catch(() => undefined);
-    } catch {
-      setCreatePending(false);
-      setNotice({ key: "notice.createFailed" });
-    }
-  }
-
   function openReview(documentId: string): void {
     if (!selected) return;
     setEnvironmentOpen(false);
@@ -508,6 +521,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
     dispatch({ type: "quick-look.closed" });
   }
 
+  const newSessionEnabled = projectNavigation
+    ? projectNavigation.available && !projectNavigation.pending
+    : Boolean(client.createSession) && connected && !createPending;
+  const newSession = projectNavigation ? () => projectNavigation.create(null) : () => {
+    if (connected) void create(selected?.id, i18n.t("workspace:sidebar.newSession"));
+  };
+
   return (
     <div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}
       onPointerDownCapture={(event) => { event.currentTarget.dataset.inputModality = "pointer"; }}
@@ -515,7 +535,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
       <DesktopFrame sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((open) => !open)}
         {...history}
         onSettings={openSettings}
-        onNewSession={client.createSession && state.remote.connection === "connected" && !createPending ? () => { void createSession(); } : undefined}
+        onNewSession={newSessionEnabled ? newSession : undefined}
+        onOpenFolder={projectNavigation?.available && !projectNavigation.pending ? projectNavigation.openFolder : undefined}
         onFocusComposer={selected ? () => document.getElementById("message-input")?.focus() : undefined}
         environmentOpen={environmentOpen}
         onToggleEnvironment={selected ? () => { if (!environmentOpen) dispatch({ type: "dock.closed" }); setEnvironmentOpen((open) => !open); } : undefined}
@@ -535,9 +556,11 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
           managedLocal={Boolean(hostSettings)}
           onSelect={(sessionId) => dispatch({ type: "session.selected", sessionId })}
           onToggleWorkspace={(workspaceId) => dispatch({ type: "workspace.toggled", workspaceId })}
-          onNewSession={() => { void createSession(); }}
-          newSessionEnabled={Boolean(client.createSession) && state.remote.connection === "connected"}
-          newSessionPending={createPending}
+          onNewSession={newSession}
+          newSessionEnabled={newSessionEnabled}
+          newSessionPending={projectNavigation?.pending ?? createPending}
+          projectNavigation={projectNavigation}
+          projectTitles={knownTitles}
         />
         <div className="sidebar-resizer" role="separator" aria-label={t("panels:layout.sidebarWidth")} aria-orientation="vertical" tabIndex={0}
           aria-valuemin={200} aria-valuemax={420} aria-valuenow={sidebarWidth}
@@ -561,6 +584,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
         /> : null}
 
         <section ref={conversationRef} style={{ "--content-gutter": `${contentMetrics.gutter}px`, "--scrollbar-width": `${contentMetrics.scrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label={t("panels:layout.workspace")}>
+          {startLocalHost ? <div className="diagnostic">{startLocalHost}</div> : null}
           {attachedClient && !liveConnecting && (syncing || state.diagnostic || state.remote.connection === "disconnected") ? (
             <div className="diagnostic" role="status">
               <span>{syncing ? t("session:sync.fixture") : t("session:diagnostic.title")}</span>
@@ -654,7 +678,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
                 >
                   <label className="visually-hidden" htmlFor="message-input">{t("session:composer.messageFor", { title: displaySessionTitle(selected) })}</label>
                   <textarea
+                    key={selected.id}
                     id="message-input"
+                    disabled={installedClient !== client || !selectionReady}
                     aria-describedby="message-keyboard-hint"
                     rows={2}
                     value={state.local.drafts[selected.id] ?? ""}
@@ -707,13 +733,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
             </>
           ) : !liveConnecting ? (
             <div className="empty-state">
-              <p>{t(attachedClient ? "session:emptySession" : "session:sync.offlineHost")}</p>
+              <p>{t(attachedClient || projectNavigation?.available ? "session:emptySession" : "session:sync.offlineHost")}</p>
               {attachedClient ? <p role="status"><NoticeText notice={notice} /></p> : null}
             </div>
           ) : null}
         </section>
 
-        {rightVisible && selected ? (
+        {selected && rightVisible ? (
           <WorkDock
             tab={environmentOpen ? "environment" : state.local.dockTab}
             state={state}
@@ -747,9 +773,11 @@ interface SidebarProps {
   readonly onNewSession: () => void;
   readonly newSessionEnabled: boolean;
   readonly newSessionPending: boolean;
+  readonly projectNavigation?: ProjectNavigationProps;
+  readonly projectTitles: Readonly<Record<string, string>>;
 }
 
-function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar, onSettings }: SidebarProps) {
+function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending, onToggleSidebar, onSettings, projectNavigation, projectTitles }: SidebarProps) {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const { t: shellText } = useTranslation("shell");
   const preferencesKey = sidebarPreferencesKey(state.remote.source);
@@ -763,20 +791,24 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
           <button className="frame-icon" type="button" aria-label={shellText("toggleSidebar")} title={shellText("toggleSidebarHint")} aria-expanded="true" onClick={onToggleSidebar}><PanelIcon side="left" /></button>
         </div>
       </div>
-      <button className="new-session" type="button" onClick={onNewSession}
-        disabled={!newSessionEnabled || newSessionPending}>
-        <UiIcon name="new-session" /> {newSessionPending ? t("workspace:sidebar.creating") : t("workspace:sidebar.newSession")} <kbd aria-hidden="true">+</kbd>
-      </button>
       <div className="workspace-scroll">
       <nav className="sidebar-shortcuts" aria-label={t("workspace:sidebar.shortcuts")}>
+        <button className="new-session" type="button" onClick={onNewSession}
+          disabled={!newSessionEnabled || newSessionPending}>
+          <UiIcon name="new-session" />
+          <span>{t(newSessionPending ? "workspace:sidebar.creating" : "workspace:sidebar.newSession")}</span>
+          <span className="sidebar-add-mark" aria-hidden="true" />
+        </button>
         <button type="button" disabled title={t("workspace:sidebar.prHint")}><UiIcon name="pull-request" /><span>{t("workspace:sidebar.pullRequests")}</span></button>
         <button type="button" disabled title={t("workspace:sidebar.scheduleHint")}><UiIcon name="scheduled" /><span>{t("workspace:sidebar.scheduled")}</span></button>
         <button type="button" disabled title={t("workspace:sidebar.pluginsHint")}><UiIcon name="plugins" /><span>{t("workspace:sidebar.plugins")}</span></button>
       </nav>
       {!managedLocal ? <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? t("workspace:sidebar.fixtureBanner") : t("workspace:sidebar.liveBanner")}</div> : null}
 
-      <SessionNavigation key={preferencesKey} preferencesKey={preferencesKey} state={state}
-        onSelect={onSelect} onToggleWorkspace={onToggleWorkspace} />
+      {projectNavigation
+        ? <ProjectNavigation navigation={projectNavigation} selectedId={state.local.selectedSessionId} titles={projectTitles} />
+        : <SessionNavigation key={preferencesKey} preferencesKey={preferencesKey} state={state}
+            onSelect={onSelect} onToggleWorkspace={onToggleWorkspace} />}
 
       </div>
       <AccountMenu account={account} onSettings={onSettings} />

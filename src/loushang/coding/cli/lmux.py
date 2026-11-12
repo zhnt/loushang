@@ -24,6 +24,7 @@ def _parser() -> argparse.ArgumentParser:
     creation_status.add_argument("--operation", required=True)
     attach = commands.add_parser("attach", help="reconnect by global name; never start a service")
     attach.add_argument("-t", "--target")
+    attach.add_argument("--workspace", help="workspace for an empty mux")
     listing = commands.add_parser("ls", help="read-only global reservations and recorded state (not liveness)")
     listing.add_argument("--after", help="page after this global name")
     diagnostic = commands.add_parser("status", help="read recorded service state and paths; never start or probe readiness")
@@ -37,13 +38,16 @@ def _parser() -> argparse.ArgumentParser:
     logs.add_argument("--limit", type=int, default=50, help="maximum visible events, 1..100 (default: 50)")
     start = commands.add_parser("start", help="explicitly start/reuse a named mux's service; never replay mux creation")
     start.add_argument("-t", "--target", required=True)
-    server = commands.add_parser("server", help="manage a workspace service independently of mux names")
+    server = commands.add_parser("server", help="manage the Host independently of workspace and mux names")
     server_commands = server.add_subparsers(dest="server_action", required=True)
-    server_start = server_commands.add_parser("start", help="start/reuse a workspace service without creating a mux")
-    server_start.add_argument("--workspace", help="service workspace; defaults to cwd")
+    server_start = server_commands.add_parser("start", help="start/reuse the Host without opening a workspace")
     server_start.add_argument("--name", help="optional stable service alias (separate from mux names)")
     server_start.add_argument("--trace-for", type=int, metavar="SECONDS",
                               help="request bounded trace for this new instance only, 1..3600 seconds")
+    tunnel = server_commands.add_parser(
+        "provision-tunnel", help="issue an app-only credential for a protected port forward"
+    )
+    tunnel.add_argument("--port", type=int, required=True, help="AppHost-side loopback port")
     stop = commands.add_parser("stop", help="gracefully stop a selected service; never force-kill")
     stopped = stop.add_mutually_exclusive_group(required=True)
     stopped.add_argument("--server", help="service alias or exact service ID")
@@ -81,6 +85,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error("non-interactive create --continue requires --yes")
     if args.action == "close" and (bool(args.server) != bool(args.operation) or args.continue_close and not args.operation):
         parser.error("--operation requires --server; --continue requires both")
+    if getattr(args, "server_action", None) == "provision-tunnel":
+        from loushang.apphost.managed.defaults import resolve_managed_defaults
+
+        from ..app_tunnel import provision_app_tunnel
+
+        if not 1 <= args.port <= 65535:
+            parser.error("--port must be between 1 and 65535")
+        try:
+            defaults = resolve_managed_defaults()
+            path = provision_app_tunnel(defaults.platform.home, args.port)
+        except FileExistsError:
+            parser.error("app tunnel directory already exists")
+        except FileNotFoundError:
+            parser.error("initialize Loushang home before provisioning a tunnel")
+        print(path)
+        return 0
+
     from loushang.apphost.managed.contracts import (
         ManagedContractError,
         require_mux_name,

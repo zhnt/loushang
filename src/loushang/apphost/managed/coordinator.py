@@ -155,9 +155,9 @@ class ManagedServiceCoordinatorV1:
                 return "not_confirmed"
             await asyncio.sleep(min(0.05, max(0, deadline - monotonic())))
 
-    async def _pause(self, deadline: float) -> None:
+    async def _pause(self, deadline: float, *, interval: float = 0.05) -> None:
         self._check(deadline)
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(min(interval, max(0.0, deadline - monotonic())))
         self._check(deadline)
 
     async def _ensure_once(self, deadline: float) -> None:
@@ -226,7 +226,10 @@ class ManagedServiceCoordinatorV1:
                     self._check(deadline)
                     self._ready = True
                     return
-            await self._pause(deadline)
+            # The child's recovery holds this same lifecycle fence. Leave
+            # room for it to take the lock before another parent read.
+            interval = 1.0 if state.handoff.phase is ManagedHandoffPhaseV1.PROVISIONAL else 0.05
+            await self._pause(deadline, interval=interval)
             current = await self._read(deadline)
             if current is None:
                 raise ManagedStorageError("unavailable")

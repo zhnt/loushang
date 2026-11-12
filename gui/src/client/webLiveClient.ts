@@ -1,4 +1,4 @@
-import type { ClientSnapshot, HarnessClientUiPort } from "./model";
+import type { ClientSnapshot, HarnessClientUiPort, SubmitReceipt } from "./model";
 import { projectNativeInitialSnapshot, validateSessionModels } from "./nativeLiveClient";
 import { webRequest } from "./hostApi";
 
@@ -41,8 +41,21 @@ export function createWebLiveClient(workspace: string, connectionId?: string): H
     subscribeConnection(listener) { connections.add(listener); return () => { connections.delete(listener); }; },
     async requestResync() { const snapshot = await refresh(); for (const listener of listeners) listener(snapshot); },
     async submitText(input) {
-      try { return await call("submit", input); }
-      catch { return { submissionId: input.submissionId, accepted: false, reason: "submission_outcome_unknown" }; }
+      const serviceInstanceId = current?.source.kind === "live" ? current.source.serviceInstanceId : undefined;
+      try {
+        return await call("submit", { ...input, serviceInstanceId });
+      } catch {
+        if (serviceInstanceId) {
+          try {
+            return await call<SubmitReceipt>("find-submission", {
+              sessionId: input.sessionId, submissionId: input.submissionId, serviceInstanceId,
+            });
+          } catch {
+            // The original AppHost may no longer be reachable.
+          }
+        }
+        return { submissionId: input.submissionId, accepted: false, reason: "submission_outcome_unknown" };
+      }
     },
     interrupt(sessionId) {
       const executionId = current?.sessions.find((session) => session.id === sessionId)?.execution?.id;

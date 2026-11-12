@@ -118,7 +118,7 @@ EXPECTED_COMPOSITION_BIND_CALLERS = {
     ),
     (
         Path("src/loushang/coding/package_product_worker_operator_query.py"),
-        "query_coding_product_worker",
+        "_CodingOperatorQueryPolicy.create_session",
     ),
     (
         Path("src/loushang/coding/runtime_capability_admission.py"),

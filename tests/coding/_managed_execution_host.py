@@ -18,7 +18,7 @@ from loushang.apphost.managed.invocation import ManagedChildInvocationV1
 from loushang.appservice.execution_registry import ExecutionRegistryV1
 from loushang.coding.managed_local import CodingManagedLocalCommandV1
 
-root = Path(ManagedChildInvocationV1.from_json(sys.argv[1]).service.workspace)
+root = Path(ManagedChildInvocationV1.from_json(sys.argv[1]).service.host_root)
 
 
 def audit(kind, **fields):

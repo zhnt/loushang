@@ -91,6 +91,7 @@ dependencies = [
  "getrandom",
  "hmac",
  "libc",
+ "loushang-app-client",
  "rustix",
  "serde",
  "serde_json",
@@ -124,6 +125,20 @@ name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
+
+[[package]]
+name = "loushang-app-client"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hmac",
+ "libc",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2",
+ "windows-sys",
+]
 
 [[package]]
 name = "memchr"

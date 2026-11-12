@@ -167,6 +167,10 @@ class CodingHostedContinuityAttemptV1:
 
     async def _open_once(self) -> HostedApplicationContinuityRuntimeV1:
         request = self._request.foreground
+        from .workspace_catalog import CodingWorkspaceCatalog
+
+        if type(request.sessions) is CodingWorkspaceCatalog:
+            await request.sessions.load()
         if self._lease is None:
             try:
                 self._lease = await self._request.store.acquire(

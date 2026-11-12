@@ -378,7 +378,7 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
     assert consumers - optional_execution == {
         Path("src/loushang/coding/client_settings.py"),
         # G1: desktop composition over the existing managed lifecycle owners.
-        Path("src/loushang/coding/gui_local_host.py"),
+        Path("src/loushang/coding/managed_service.py"),
         Path("src/loushang/coding/apphost_canary.py"),
         Path("src/loushang/coding/apphost_composition.py"),
         Path("src/loushang/coding/apphost_product.py"),
@@ -403,6 +403,7 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
         Path("src/loushang/coding/cli/lmux_stop_all.py"),
         Path("src/loushang/coding/managed_bootstrap.py"),
         Path("src/loushang/coding/managed_catalog.py"),
+        Path("src/loushang/coding/workspace_catalog.py"),
         Path("src/loushang/coding/managed_local.py"),
         Path("src/loushang/coding/managed_process.py"),
     }

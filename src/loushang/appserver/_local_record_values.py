@@ -105,7 +105,8 @@ class LocalConnectionRecordV1:
         if type(self.key) is not bytes or len(self.key) != 32:
             raise ValueError("invalid local record key")
         if (
-            type(self.scopes) is not tuple or not 1 <= len(self.scopes) <= 2
+            type(self.scopes) is not tuple or len(self.scopes) > 2
+            or (not self.scopes and not self.mux_management)
             or any(type(item) is not LocalRecordScopeV1 for item in self.scopes)
             or len({item.scope for item in self.scopes}) != len(self.scopes)
         ):
@@ -178,7 +179,7 @@ def decode_connection_record(payload: bytes) -> LocalConnectionRecordV1:
         ):
             raise ValueError
         scopes = raw["scopes"]
-        if type(scopes) is not list or not 1 <= len(scopes) <= 2:
+        if type(scopes) is not list or len(scopes) > 2:
             raise ValueError
         if any(type(item) is not dict or set(item) != {"scope", "fingerprint"}
                or type(item["scope"]) is not str for item in scopes):

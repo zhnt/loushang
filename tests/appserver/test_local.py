@@ -43,7 +43,7 @@ class _Scope:
         self.closed = True
 
 
-def _server(directory, *, auth_timeout=1, close_timeout=1, request_stop=None, instance=None):
+def _server(directory, *, auth_timeout=1, close_timeout=1, request_stop=None, instance=None, **options):
     scopes = []
     def factory():
         scope = _Scope()
@@ -54,7 +54,7 @@ def _server(directory, *, auth_timeout=1, close_timeout=1, request_stop=None, in
         scopes=(LocalRecordScopeV1(SessionScopeV1.CWD, "a" * 64),), scope_factory=factory,
         request_stop=request_stop or (lambda _: pytest.fail("unexpected application stop")),
         auth_timeout=auth_timeout, close_timeout=close_timeout,
-        instance=instance,
+        instance=instance, **options,
     )
     return server, scopes
 
@@ -750,3 +750,60 @@ def test_G16_LOCAL_CLEANUP_reset_requires_actual_handle_closed_evidence(descript
                 await transport.close()
             assert debt.value.code.value == "cleanup_incomplete"
     asyncio.run(scenario())
+
+
+def test_app_tunnel_admits_only_its_own_app_credential(tmp_path):
+    import socket
+
+    from loushang.appserver.framing import AppConnectionClosedError
+    from loushang.appserver.local_record import LocalConnectionRecordV1
+    from loushang.appserver.remote_client import RemoteAppClientV1
+
+    async def scenario():
+        with socket.socket() as reserved:
+            reserved.bind(("127.0.0.1", 0))
+            port = reserved.getsockname()[1]
+        directory = LocalConnectionDirectoryV1(tmp_path / "local")
+        scope = LocalRecordScopeV1(SessionScopeV1.CWD, "a" * 64)
+        tunnel = LocalConnectionRecordV1(
+            endpoint="app-tunnel", application_id="application", product_id="coding",
+            instance="1" * 32, port=port, scopes=(scope,), key=b"t" * 32,
+        )
+        server, scopes = _server(directory, app_tunnel=tunnel)
+
+        async def use(credential, mode):
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            try:
+                frames = await authenticate_local_client(
+                    AsyncioStreamTransportV1(reader, writer), credential.authentication
+                )
+                await frames.send(mode)
+                if mode == b"stop":
+                    await frames.receive()
+                else:
+                    client = RemoteAppClientV1(frames, profile=tunnel.semantic_profile)
+                    await client.start()
+                    assert (await client.list_muxes()).mux_spaces == ()
+                    await client.close()
+            finally:
+                writer.close()
+                with suppress(ConnectionError):
+                    await writer.wait_closed()
+
+        try:
+            await server.start()
+            assert server.record.key != tunnel.key
+            with pytest.raises(LocalAuthenticationError):
+                await use(server.record, b"app")
+            with pytest.raises(AppConnectionClosedError):
+                await use(tunnel, b"stop")
+            assert not scopes
+            await use(tunnel, b"app")
+            assert len(scopes) == 1
+        finally:
+            await server.close()
+            directory.close()
+        with pytest.raises(OSError):
+            await asyncio.open_connection("127.0.0.1", port)
+
+    asyncio.run(asyncio.wait_for(scenario(), 10))

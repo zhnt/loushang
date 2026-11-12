@@ -36,7 +36,7 @@ from .discovery_ports import HostedSessionDiscoveryBindingV1, require_discovery_
 from .execution_service import HostedExecutionServiceBindingV1
 from .managed_mux import ManagedMuxServiceBindingV1
 from .managed_mux_close import ManagedMuxCloseRecoveryAdmissionV1, ManagedMuxCloseUseV1
-from .ports import HostedSessionPortV1, HostedSessionResolverV1
+from .ports import HostedSessionPortV1, HostedSessionResolverV1, HostedWorkspacePort
 from .runtime import (
     _CONTINUITY_TOKEN,
     AppServiceV1,
@@ -56,6 +56,7 @@ class AppServiceRecoveryRequestV1:
     close_timeout_seconds: float = 10.0
     discovery: HostedSessionDiscoveryBindingV1 | None = field(default=None, repr=False)
     execution: HostedExecutionServiceBindingV1 | None = field(default=None, repr=False)
+    workspaces: HostedWorkspacePort | None = field(default=None, repr=False)
     managed_mux: ManagedMuxServiceBindingV1 | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
@@ -251,6 +252,7 @@ class AppServiceRecoveryAttemptV1:
                 close_timeout_seconds=self._request.close_timeout_seconds,
                 discovery=self._request.discovery,
                 execution=self._request.execution,
+                workspaces=self._request.workspaces,
                 managed_mux=self._request.managed_mux,
             )
             service._adopt_continuity_state(

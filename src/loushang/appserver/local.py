@@ -13,6 +13,7 @@ import socket
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from enum import Enum
+from functools import partial
 
 from ._local_peer import (
     LOCAL_APP_MODE,
@@ -47,6 +48,7 @@ from .resume_model import ResumeInputLookupPortV1
 MAX_LOCAL_CONNECTIONS = 8
 MAX_LOCAL_APP_CONNECTIONS = 7  # One authenticated slot is reserved for stop.
 MAX_LOCAL_AUTHENTICATING = 8
+APP_TUNNEL_ENDPOINT = "app-tunnel"
 _LOOPBACK = "127.0.0.1"
 _READ_LIMIT = 64 * 1024
 
@@ -95,6 +97,7 @@ class LocalAppServerV1:
         mux_closure: bool = False,
         resume_input_lookup: bool = False,
         instance: str | None = None,
+        app_tunnel: LocalConnectionRecordV1 | None = None,
     ) -> None:
         require_timeout(auth_timeout)
         require_timeout(close_timeout)
@@ -113,11 +116,25 @@ class LocalAppServerV1:
             raise ValueError("Resume lookup requires an explicit execution scope factory")
         self._resume_input_lookup = resume_input_lookup
         # Validate all record facts before obtaining a lock or opening IO.
-        LocalConnectionRecordV1(endpoint=endpoint, application_id=application_id,
-                                product_id=product_id, scopes=scopes, port=1,
-                                instance="0" * 32 if instance is None else instance, key=bytes(32),
-                                session_execution=execution_scope_factory is not None,
-                                resume_input_lookup=resume_input_lookup)
+        local = LocalConnectionRecordV1(
+            endpoint=endpoint, application_id=application_id, product_id=product_id,
+            scopes=scopes, port=1, instance="0" * 32 if instance is None else instance, key=bytes(32),
+            session_discovery=discovery_scope_factory is not None,
+            session_execution=execution_scope_factory is not None,
+            mux_management=managed_mux_scope_factory is not None,
+            mux_closure=mux_closure, resume_input_lookup=resume_input_lookup,
+        )
+        if app_tunnel is not None and (
+            type(app_tunnel) is not LocalConnectionRecordV1
+            or app_tunnel.endpoint != APP_TUNNEL_ENDPOINT
+            or app_tunnel.application_id != local.application_id
+            or app_tunnel.product_id != local.product_id
+            or app_tunnel.scopes != local.scopes
+            or app_tunnel.semantic_profile != local.semantic_profile
+        ):
+            raise ValueError("app tunnel must be separately provisioned for this application")
+        self._app_tunnel = app_tunnel
+        self._tunnel_server: asyncio.Server | None = None
         self._instance = instance
         self._directory, self._endpoint = directory, endpoint
         self._application_id, self._product_id, self._scopes = application_id, product_id, scopes
@@ -226,22 +243,33 @@ class LocalAppServerV1:
     async def _start_once(self) -> None:
         self._remaining_startup()
         self._reservation = self._directory.acquire(self._endpoint)
+        self._server = await self._listen(0, app_only=False)
+        if self._app_tunnel is not None:
+            self._tunnel_server = await self._listen(self._app_tunnel.port, app_only=True)
+        self._remaining_startup()
+        self._prepared = True
+
+    async def _listen(self, port: int, *, app_only: bool) -> asyncio.Server:
+        self._remaining_startup()
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._socket.set_inheritable(False)
         self._socket.setblocking(False)
         if os.name == "nt":
             self._socket.setsockopt(socket.SOL_SOCKET, getattr(socket, "SO_EXCLUSIVEADDRUSE"), 1)
-        self._socket.bind((_LOOPBACK, 0))
-        self._server = await asyncio.start_server(
-            self._accepted, sock=self._socket, backlog=16, limit=_READ_LIMIT,
+        elif port:
+            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._socket.bind((_LOOPBACK, port))
+        server = await asyncio.start_server(
+            partial(self._accepted, app_only=app_only),
+            sock=self._socket, backlog=16, limit=_READ_LIMIT,
             start_serving=False,
         )
         self._socket = None  # asyncio.Server has adopted that exact socket.
         if self._closed:
-            self._server.close()
+            server.close()
+            await server.wait_closed()
             raise AppConnectionClosedError()
-        self._remaining_startup()
-        self._prepared = True
+        return server
 
     async def _activate_once(self) -> None:
         self._remaining_startup()
@@ -260,21 +288,29 @@ class LocalAppServerV1:
         self._remaining_startup()
         self._ready = True
         await self._server.start_serving()
+        if self._tunnel_server is not None:
+            await self._tunnel_server.start_serving()
         self._remaining_startup()
 
-    def _accepted(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    def _accepted(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, *, app_only: bool,
+    ) -> None:
+        # Leave a handshake slot for local lifecycle management.
+        limit = MAX_LOCAL_AUTHENTICATING - int(app_only)
         if (not self._ready or self._closed or self._stop_requested
-                or self.connection_counts[0] >= MAX_LOCAL_AUTHENTICATING):
+                or self.connection_counts[0] >= limit):
             writer.transport.abort()
             return
-        assert self._record is not None
+        record = self._app_tunnel if app_only else self._record
+        assert record is not None
         try:
             peer = _LocalPeer(
-                _transport(reader, writer), self._record.authentication,
+                _transport(reader, writer), record.authentication,
                 fence=writer.close, abort=writer.transport.abort, scope_factory=self._scope_factory,
-                admit=self._admit, retire=self._peers.discard, request_stop=self._admit_stop,
+                admit=partial(self._admit, app_only=app_only),
+                retire=self._peers.discard, request_stop=self._admit_stop,
                 auth_timeout=self._auth_timeout, close_timeout=self._timeout,
-                profile=self._record.semantic_profile,
+                profile=record.semantic_profile,
                 discovery_scope_factory=self._discovery_factory,
                 execution_scope_factory=self._execution_factory,
                 managed_mux_scope_factory=self._managed_mux_factory,
@@ -290,7 +326,9 @@ class LocalAppServerV1:
             self._peers.discard(peer)
             writer.transport.abort()
 
-    def _admit(self, peer: _LocalPeer, mode: bytes) -> bool:
+    def _admit(self, peer: _LocalPeer, mode: bytes, *, app_only: bool) -> bool:
+        if app_only and mode != LOCAL_APP_MODE:
+            return False
         if self._closed or self._stop_requested or self.connection_counts[1] >= MAX_LOCAL_CONNECTIONS:
             return False
         if (mode == LOCAL_APP_MODE
@@ -306,8 +344,9 @@ class LocalAppServerV1:
     def fence(self) -> None:
         self._closed = True
         self._ready = False
-        if self._server is not None:
-            self._server.close()
+        for server in (self._server, self._tunnel_server):
+            if server is not None:
+                server.close()
 
     async def close(self) -> None:
         self.fence()
@@ -328,8 +367,9 @@ class LocalAppServerV1:
         for task in (self._start_task, self._activate_task):
             if task is not None:
                 await asyncio.gather(task, return_exceptions=True)
-        if self._server is not None:
-            self._server.close()
+        servers = tuple(server for server in (self._server, self._tunnel_server) if server is not None)
+        for server in servers:
+            server.close()
         peers = tuple(self._peers)
         await asyncio.gather(*(peer.close() for peer in peers), return_exceptions=True)
         await asyncio.gather(*(peer.task for peer in peers if peer.task is not None), return_exceptions=True)
@@ -338,8 +378,8 @@ class LocalAppServerV1:
                 self._peers.discard(peer)
         if self._peers:
             raise AppServiceError(AppErrorCodeV1.CLEANUP_INCOMPLETE)
-        if self._server is not None:
-            await self._server.wait_closed()
+        for server in servers:
+            await server.wait_closed()
         if self._socket is not None:
             self._socket.close()
             self._socket = None

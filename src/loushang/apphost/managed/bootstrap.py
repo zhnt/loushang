@@ -16,7 +16,10 @@ from threading import RLock, current_thread, main_thread
 from time import monotonic
 
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
-from loushang.hosting.service import LinuxServiceObserverV1
+from loushang.hosting.errors import HostingError
+from loushang.hosting.service import LinuxServiceObserverV1, ServiceObserverV1
+from loushang.hosting.service_handoff import require_service_channel
+from loushang.hosting.service_windows import WindowsServiceObserverV1
 
 from ._files import ManagedStorageError, PrivateManagedDirectory, _check_deadline
 from ._lifetime import _ChildLifetime
@@ -30,6 +33,7 @@ from .contracts import (
     ManagedServiceKeyV1,
     _match,
 )
+from .defaults import current_managed_user
 from .event_log import ManagedLifecycleEventV1, ManagedLifecycleLogV1
 from .handoff import ManagedChildControlV1
 from .lifecycle import ManagedServiceJournalV1
@@ -59,15 +63,14 @@ class ManagedChildBootstrapV1:
         paths = resolve_managed_paths(namespace, service, instance, runtime_root=runtime_root,
                                       temporary_override=temporary_override)
         _match(attempt_id, _HEX32)
-        if namespace.user_id != os.geteuid() or type(endpoint) is not socket.socket or type(diagnostics) is not bool:
+        if namespace.user_id != current_managed_user() or type(endpoint) is not socket.socket or type(diagnostics) is not bool:
+            raise ManagedContractError()
+        if endpoint.fileno() < 3:
             raise ManagedContractError()
         try:
-            if (endpoint.family != socket.AF_UNIX or endpoint.fileno() < 3
-                    or endpoint.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) != socket.SOCK_STREAM):
-                raise ManagedContractError()
-            endpoint.getpeername()
+            require_service_channel(endpoint)
             endpoint.set_inheritable(False)
-        except OSError:
+        except (HostingError, OSError):
             raise ManagedContractError() from None
         self._namespace, self._service = namespace, service
         self._instance, self._attempt = instance, attempt_id
@@ -86,7 +89,7 @@ class ManagedChildBootstrapV1:
         self._capture_directory: PrivateManagedDirectory | None = None
         self._capture_factory: ManagedOutputCaptureFactory | None = None
         self._journal: ManagedServiceJournalV1 | None = None
-        self._observer: LinuxServiceObserverV1 | None = None
+        self._observer: ServiceObserverV1 | None = None
         self._control: ManagedChildControlV1 | None = None
         self._child: ManagedChildApplicationV1 | None = None
         self._lifetime: _ChildLifetime | None = None
@@ -164,7 +167,8 @@ class ManagedChildBootstrapV1:
             if not self._native_attempted:
                 self._native_attempted = True
                 try:
-                    self._observer = LinuxServiceObserverV1.capture(os.getpid())
+                    observer = WindowsServiceObserverV1 if sys.platform == "win32" else LinuxServiceObserverV1
+                    self._observer = observer.capture(os.getpid())
                 except BaseException:
                     # The capture factory may have acquired native descriptors
                     # before failing; absent a returned owner, do not invent a
@@ -417,7 +421,7 @@ class ManagedChildBootstrapV1:
         return await lifetime.run()
 
     def run_process(self) -> int:
-        """Run once in a dedicated Linux child, owning signals until OS exit.
+        """Run once in a dedicated child, owning signals until OS exit.
 
         Must be called after bind and before any run waiter. The existing
         application driver settles first, then this process shell settles its
@@ -427,7 +431,7 @@ class ManagedChildBootstrapV1:
         does not alter signal policy. Neither cleanup domain may hide the other.
         """
         _outside_loop()
-        if sys.platform != "linux" or current_thread() is not main_thread():
+        if sys.platform not in {"linux", "win32"} or current_thread() is not main_thread():
             raise ManagedStorageError("unsupported")
         if not self._mutex.acquire(blocking=False):
             raise ManagedStorageError("busy")

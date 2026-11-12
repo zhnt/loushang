@@ -23,20 +23,33 @@ _HOST = (
     _DIRECTORY
     + r"""
 case ${1:-} in
-  start) shift; exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.lmux server start "$@" ;;
-  status|stop) exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.lmux "$@" ;;
-  web) shift; exec "$directory/runtime/bin/python3" -I -m loushang.coding.web_server "$@" ;;
-  -h|--help) printf '%s\n' 'Usage: loushang-host {start|status|stop|web} [arguments]'; exit 0 ;;
-  *) printf '%s\n' 'Usage: loushang-host {start|status|stop|web} [arguments]' >&2; exit 2 ;;
+  provision-tunnel) shift; exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.lmux server provision-tunnel "$@" ;;
+  -h|--help) printf '%s\n' 'Usage: loushang-host provision-tunnel [arguments]'; exit 0 ;;
+  *) printf '%s\n' 'Usage: loushang-host provision-tunnel [arguments]' >&2; exit 2 ;;
 esac
 """
 )
+
+def install_portable_mux(package: Path) -> Path:
+    manager = package / "loushang-mux"
+    manager.write_text(
+        _DIRECTORY + r"""
+export LOUSHANG_MUX_BACKEND=managed
+exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.mux "$@"
+"""
+    )
+    manager.chmod(0o755)
+    return manager
+
 
 _GUI = (
     _DIRECTORY
     + r"""
 unset PYTHONPATH PYTHONHOME
-export LOUSHANG_GUI_PYTHON="$directory/runtime/bin/python3"
+if [ "${1:-}" = web ]; then
+  shift
+  exec "$directory/bin/loushang-web" --dist "$directory/web" "$@"
+fi
 exec "$directory/bin/harness-gui" "$@"
 """
 )
@@ -92,7 +105,7 @@ def stage_runtime(package: Path, wheel: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("program", choices=("host", "gui"))
-    parser.add_argument("--wheel", type=Path, required=True)
+    parser.add_argument("--wheel", type=Path, help="Python wheel for the Host")
     parser.add_argument("--native", type=Path, help="Tauri release binary for the GUI")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -100,6 +113,8 @@ def main() -> None:
         parser.error("this recipe targets Linux x86_64")
     if (args.program == "gui") != (args.native is not None):
         parser.error("--native is required for GUI and only applies to GUI")
+    if (args.program == "host") != (args.wheel is not None):
+        parser.error("--wheel is required for the Host and only applies to the Host")
     output = args.output.resolve()
     if output.exists():
         parser.error(f"output already exists: {output}")
@@ -107,13 +122,17 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix=".stage-", dir=output.parent) as temporary:
         package = Path(temporary) / "program"
         package.mkdir()
-        stage_runtime(package, args.wheel.resolve(strict=True))
+        if args.wheel is not None:
+            stage_runtime(package, args.wheel.resolve(strict=True))
+            install_portable_mux(package)
         entry = package / f"loushang-{args.program}"
         entry.write_text(_HOST if args.program == "host" else _GUI)
         entry.chmod(0o755)
         if args.native:
             (package / "bin").mkdir()
             shutil.copy2(args.native.resolve(strict=True), package / "bin/harness-gui")
+            shutil.copy2(args.native.resolve(strict=True).with_name("loushang-web"), package / "bin/loushang-web")
+            shutil.copytree(ROOT / "gui/dist", package / "web")
         for name in ("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"):
             shutil.copy2(ROOT / name, package / name)
         package.rename(output)

@@ -1,12 +1,15 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { initializeI18n } from "../src/i18n";
+import { saveLayoutPreferences } from "../src/layoutPreferences";
 import { afterEach, beforeEach, vi } from "vitest";
 
 afterEach(() => cleanup());
 
 beforeEach(async () => {
   localStorage.clear();
+  // Keep navigation available to playback tests that start in an existing session.
+  saveLayoutPreferences({ sidebarOpen: true });
   await initializeI18n(["en-US"]);
 });
 

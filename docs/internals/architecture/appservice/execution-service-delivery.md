@@ -1,5 +1,20 @@
 # Execution Service Delivery — #576
 
+## GUI integration review (2026-11-12)
+
+Codex, acting as the implementation agent for PR #889, reviewed the managed
+startup and Workspace seams at `2ef8ace84`. The AppHost starter may use the
+Hosting Windows process owner through `loushang.hosting.service_windows`;
+the existing POSIX route continues to use `service_process`. The two
+architecture assertions enumerate those exact dependencies.
+
+The Coding terminal attaches to its existing Mux and registers a Workspace
+only to obtain its scope. Opening a project through the GUI still provisions
+its own Mux. After a busy admission read, AppHost releases the original
+read context before yielding and refuses to retry through persistent
+cleanup debt. The regression cases exercise both transient and persistent
+contention and the terminal's single-Mux selection.
+
 ## Status and scope
 
 - Design status: accepted for this implementation, by the 2026-09-09 request
@@ -903,7 +918,7 @@ workspace permissions.
 Validation commands include `npm --prefix gui run check:full`, pinned-toolchain
 `cargo test --offline --locked --manifest-path src-tauri/Cargo.toml --lib`
 (from `gui/`), and `uv run --no-sync --offline python -m pytest` over
-`test_gui_local_host.py`, `test_managed_execution_process.py`,
+`test_managed_service.py`, `test_managed_execution_process.py`,
 `test_managed_stop_execution.py`, and `test_managed_gui_client.py` in
 `tests/coding/`. React has 97 passing tests, Rust 31; the process regression
 passed 11 tests, followed by 2 passing management tests after adding a real
@@ -936,3 +951,58 @@ provider, not installed-package, Windows/macOS lifecycle or external-model
 acceptance. The graphical clicks were not automated. Submission recovery remains
 in-process and service-instance scoped. Offline approval behavior, TUI migration,
 tray, remote Hosts and crash recovery remain outside G1.
+
+## AppServer over a protected port forward — 2026-11-11
+
+The AppHost delivery implementer reviewed the AppServer, AppHost lifecycle,
+and desktop changes on the `feature/gui-apphost-delivery` branch based on
+`0c3793ba8`. The accepted deployment uses an optional AppHost loopback listener
+with an independently provisioned application credential. OpenSSH supplies
+machine authentication and encryption between machines. AppServer uses its
+existing authenticated frames, capability handshake and application handlers.
+The local management record and stop authority stay on the AppHost machine.
+Both listeners share AppHost readiness, peer limits and shutdown.
+
+Linux tests exercised a Rust client through a forwarded port, rejected the
+local management credential and remote stop mode, and verified that the same
+OpenSSH forward reconnects after AppHost restarts. The desktop route and
+configuration are covered by the Tauri tests. On Windows 10 x64, the native
+workspace probe and release Tauri GUI built from `bd1c58358` authenticated
+through an SSH reverse forward and opened a Linux Workspace. The desktop
+displayed the selected Session and a connected status. After a graceful Linux
+AppHost stop and restart, the same window recovered the same Session ID under
+the new service instance, without refreshing the WebView. The test used an
+isolated connection and credentials and made no model calls.
+
+The major-version toolchain configuration at `1b128df31` was verified on the
+same Windows machine. Node 24.19.0 and npm 11.17.0 completed `npm ci` from the
+existing package cache and passed `npm run doctor`.
+
+Native Windows AppHost acceptance also ran on Windows 10 x64. Independent
+`lmux` processes started the Host, reused the running instance, read recorded
+status, stopped it gracefully and started a new instance. The Host stayed
+available after its launching SSH session ended. An isolated interactive Tauri
+window connected through the local AppServer record, registered and opened a
+Windows Workspace, and displayed its Session. The same window observed the
+Host stop and recovered the same Session under the restarted service's new
+AppServer identity. The check used separate frontend and Host directories and
+made no model calls.
+
+After retiring the duplicate packaged Workspace entry point, the complete
+offline AppService gate passed with 2,587 tests and 16 skips.
+
+
+### Local service management through loushang-mux
+
+`loushang-mux service` owns user-initiated lifecycle actions. On Windows and in
+the portable Linux Host package it composes the existing managed AppHost
+admission, coordinator and stopper. The Debian package uses its installed
+systemd user unit. The TUI service command delegates to the same CLI. Tauri and
+the loopback Web BFF share a Rust command client and use the authenticated
+AppServer record for business operations. Stopping or restarting a managed
+instance requires the instance identity shown in the UI.
+
+Implementation review for the GUI/AppHost boundary was performed by the
+implementing Codex agent on `feature/gui-mux-service`. The reviewed scope is
+local lifecycle delegation and authenticated record discovery. Workspace and
+Session operations stay on the existing AppServer protocol.

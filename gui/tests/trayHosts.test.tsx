@@ -4,8 +4,8 @@ import { useTrayHosts, type HostDirectory } from "../src/client/trayHosts";
 const native = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: native.invoke }));
 const directory: HostDirectory = { selectedId: "local", connections: [
-  { id: "local", name: "Local", kind: "local", selected: true, workspace: "/local", webUrl: "http://127.0.0.1:1422" },
-  { id: "office", name: "Office", kind: "remote", selected: false, workspace: "", webUrl: "https://office.example" },
+  { id: "local", name: "Local", kind: "local", selected: true, webUrl: "http://127.0.0.1:1422" },
+  { id: "office", name: "Office", kind: "remote", selected: false, webUrl: "https://office.example" },
 ] };
 function options() { return {
   enabled: true, selectedId: "local", localName: "Local Host", workspace: "/local", host: { state: "running" as const, errorCode: null, instanceId: "local-instance" },
@@ -32,7 +32,7 @@ describe("shared Host directory for the tray", () => {
     expect(native.invoke.mock.calls.some(([, { request }]) => request.request?.action === "stop")).toBe(false);
     act(() => result.current.confirmStop());
     await waitFor(() => expect(native.invoke).toHaveBeenCalledWith("client_settings", { request: {
-      operation: "host/request", connectionId: "office", request: { operation: "manage", action: "stop", workspace: "/office", instanceId: "office-instance" },
+      operation: "host/request", connectionId: "office", request: { operation: "manage", action: "stop", instanceId: "office-instance" },
     } }));
     expect(props.onManage).not.toHaveBeenCalled();
     expect(props.onSelect).not.toHaveBeenCalled();
@@ -55,7 +55,7 @@ describe("shared Host directory for the tray", () => {
     rerender({ ...props, selectedId: "office" });
     act(() => result.current.confirmStop());
     await waitFor(() => expect(native.invoke).toHaveBeenCalledWith("client_settings", { request: {
-      operation: "host/request", connectionId: "local", request: { operation: "manage", action: "stop", workspace: "/local", instanceId: "local-instance" },
+      operation: "host/request", connectionId: "local", request: { operation: "manage", action: "stop", instanceId: "local-instance" },
     } }));
     expect(props.onManage).not.toHaveBeenCalled();
   });

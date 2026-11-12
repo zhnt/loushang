@@ -69,9 +69,11 @@ async def client_a():
             return
         selector = MuxSelectorV1(mux_space_id=mux.mux_space_id)
         await client.attach_mux(MuxAttachV1(selector))
-        scope = connection.scopes[0]
+        from loushang.appserver.protocol import WorkspaceRequestV1
+
+        scope, = (await connection.client.workspace(WorkspaceRequestV1("register", str(root)))).workspaces
         space = await client.open_member(MuxMemberOpenV1(selector, SessionOpenSpecV1(
-            "coding", "stage1b-continuity", scope.scope, scope.fingerprint, "stage1b",
+            "coding", "stage1b-continuity", scope.scope, scope.scope_fingerprint, "stage1b",
         )))
         attachment = await client.attach_mux(MuxAttachV1(selector))
         control = SessionSnapshotRequestV1(attachment.attachment_id, attachment.controller_generation,
@@ -111,12 +113,14 @@ async def client_a():
 async def client_stop(connection, mux):
     client, execution = connection.client, connection.execution_client
     selector = MuxSelectorV1(mux_space_id=mux.mux_space_id)
-    scope = connection.scopes[0]
+    from loushang.appserver.protocol import WorkspaceRequestV1
+
+    scope, = (await connection.client.workspace(WorkspaceRequestV1("register", str(root)))).workspaces
     count = 1 if mode == "stop-single" else 3
     for index in range(count):
         await client.attach_mux(MuxAttachV1(selector))
         space = await client.open_member(MuxMemberOpenV1(selector, SessionOpenSpecV1(
-            "coding", f"stop-{index}", scope.scope, scope.fingerprint, f"stop-{index}",
+            "coding", f"stop-{index}", scope.scope, scope.scope_fingerprint, f"stop-{index}",
         )))
     attachment = await client.attach_mux(MuxAttachV1(selector))
     control = SessionSnapshotRequestV1(attachment.attachment_id, attachment.controller_generation,

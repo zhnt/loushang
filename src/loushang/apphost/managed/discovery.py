@@ -7,7 +7,6 @@ directory creation, recovery or mutation. Consumers still PrepareConnection.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
 from ._files import ManagedStorageError, _check_deadline
@@ -21,6 +20,7 @@ from .contracts import (
     _match,
     require_mux_name,
 )
+from .defaults import current_managed_user
 from .lifecycle import _decode_state
 from .paths import resolve_managed_registry_root
 from .registry import (
@@ -33,7 +33,7 @@ from .registry import (
 )
 
 _SELECT = (
-    "SELECT m.name, s.product, s.workspace, s.profile, m.operation_id, s.service_id, "
+    "SELECT m.name, s.product, s.host_root, s.profile, m.operation_id, s.service_id, "
     "i.revision, i.instance_id, i.attempt_id, i.phase, i.stop_requested, "
     "i.process_exited, i.application_cleanup_completed, i.process_scope_settled, i.native_identity, i.trace_application "
     "FROM muxes m JOIN services s USING(service_id) "
@@ -41,7 +41,7 @@ _SELECT = (
 )
 
 _SERVICE_SELECT = (
-    "SELECT s.service_id,s.product,s.workspace,s.profile,i.revision,i.instance_id,i.attempt_id,i.phase,"
+    "SELECT s.service_id,s.product,s.host_root,s.profile,i.revision,i.instance_id,i.attempt_id,i.phase,"
     "i.stop_requested,i.process_exited,i.application_cleanup_completed,i.process_scope_settled,"
     "i.native_identity,i.trace_application FROM services s LEFT JOIN instances i USING(service_id) "
 )
@@ -51,7 +51,7 @@ _SERVICE_SELECT = (
 class ManagedMuxObservationV1:
     """Reserved name and recorded lifecycle, not proof of an existing live Mux.
 
-    Workspace is deliberate display/selection metadata; PID, argv, credential
+    Host is deliberate display/selection metadata; PID, argv, credential
     and record paths are never exposed. The operation ID is correlation only.
     """
 
@@ -96,7 +96,7 @@ class ManagedDiscoveryV1:
 
     def __init__(self, registry: ManagedRegistryV1, namespace: ManagedNamespaceV1) -> None:
         root = resolve_managed_registry_root(namespace)
-        if (type(registry) is not ManagedRegistryV1 or namespace.user_id != os.geteuid()
+        if (type(registry) is not ManagedRegistryV1 or namespace.user_id != current_managed_user()
                 or registry._database._namespace != namespace.namespace_key
                 or str(registry._database._directory._root) != str(root)):
             raise ManagedContractError()
@@ -114,7 +114,7 @@ class ManagedDiscoveryV1:
         """Exact service lookup, including services without a registered Mux."""
         _match(service_id, _HEX64)
         with self._registry._database.transaction(deadline=deadline, wait_for_lock=wait_for_lock) as connection:
-            row = connection.execute("SELECT product, workspace, profile FROM services WHERE service_id=?",
+            row = connection.execute("SELECT product, host_root, profile FROM services WHERE service_id=?",
                                      (service_id,)).fetchone()
             _check_deadline(deadline)
             if row is None:

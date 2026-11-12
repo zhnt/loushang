@@ -46,6 +46,8 @@ from loushang.appserver.protocol import (
     SessionSnapshotV1,
     TurnInterruptV1,
     TurnTextV1,
+    WorkspaceRequestV1,
+    WorkspaceResultV1,
 )
 from loushang.foundation._owned_tasks import (
     _observe_task_result as _observe_managed_close,
@@ -73,13 +75,19 @@ from .execution_registry import (
     ExecutionServiceErrorV1,
 )
 from .execution_service import HostedExecutionServiceBindingV1
-from .managed_mux import ManagedMuxAdmissionV1, ManagedMuxServiceBindingV1
+from .managed_mux import (
+    TEMPORARY_MUX,
+    ManagedMuxAdmissionV1,
+    ManagedMuxServiceBindingV1,
+    project_mux_name,
+)
 from .managed_mux_close import ManagedMuxCloseAdmissionV1, ManagedMuxCloseUseV1
 from .ports import (
     HostedSessionPortV1,
     HostedSessionResolutionErrorV1,
     HostedSessionResolutionFailureV1,
     HostedSessionResolverV1,
+    HostedWorkspacePort,
 )
 from .resume_ports import (
     ResumeInputLookupQueryV1,
@@ -497,6 +505,9 @@ class AppServiceV1:
         "_discovery",
         "_execution_config",
         "_execution_registry",
+        "_workspaces",
+        "_workspace_lock",
+        "_workspace_pending",
         "_continuity_application_id",
         "_continuity_lease",
         "_continuity_owner_epoch",
@@ -521,6 +532,7 @@ class AppServiceV1:
         self,
         *,
         product_id: str,
+        workspaces: HostedWorkspacePort | None = None,
         resolver: HostedSessionResolverV1,
         id_factory: Callable[[], str] | None = None,
         close_timeout_seconds: float = 10.0,
@@ -540,6 +552,9 @@ class AppServiceV1:
         ):
             raise ValueError("close_timeout_seconds must be in (0, 60]")
         self.product_id = product_id
+        self._workspaces = workspaces
+        self._workspace_lock = asyncio.Lock()
+        self._workspace_pending: dict[str, int] = {}
         if managed_mux is not None and type(managed_mux) is not ManagedMuxServiceBindingV1:
             raise TypeError("invalid managed Mux service binding")
         self._managed_mux = managed_mux
@@ -579,6 +594,38 @@ class AppServiceV1:
         self._continuity_application_id: str | None = None
         self._continuity_owner_epoch: str | None = None
         self._continuity_revision: int | None = None
+
+    async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
+        async with self._workspace_lock:
+            return await self._workspace(request)
+
+    async def _workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
+        self._require_open()
+        if type(request) is not WorkspaceRequestV1 or self._workspaces is None:
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        if request.action == "unregister":
+            listed = await self._workspaces.workspace(WorkspaceRequestV1("list"))
+            fingerprints = {w.scope_fingerprint for w in listed.workspaces if w.path == request.path}
+            owners = (*self._sessions.values(), *self._cleanup_debt)
+            if (fingerprints.intersection(self._workspace_pending)
+                    or any(s.identity.scope_fingerprint in fingerprints for s in owners)):
+                raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        result = await self._workspaces.workspace(request)
+        binding = self._managed_mux
+        if request.action in {"open", "allocate-temporary"} and binding is not None and binding.ensure_named is not None:
+            if len(result.workspaces) != 1:
+                raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            try:
+                await binding.ensure_named(
+                    (project_mux_name(result.workspaces[0].path)
+                     if request.action == "open" else TEMPORARY_MUX),
+                    self.create_managed_mux,
+                )
+            except AppServiceError:
+                raise
+            except Exception:
+                raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+        return result
 
     @property
     def continuity_enabled(self) -> bool:
@@ -1080,6 +1127,22 @@ class AppServiceV1:
         return AckV1()
 
     async def open_member(self, request: MuxMemberOpenV1) -> MuxSpaceV1:
+        if self._workspaces is None:
+            return await self._open_member(request)
+        self._require_request(request, MuxMemberOpenV1)
+        fingerprint = request.session.scope_fingerprint
+        async with self._workspace_lock:
+            self._workspace_pending[fingerprint] = self._workspace_pending.get(fingerprint, 0) + 1
+        try:
+            return await self._open_member(request)
+        finally:
+            pending = self._workspace_pending[fingerprint] - 1
+            if pending:
+                self._workspace_pending[fingerprint] = pending
+            else:
+                del self._workspace_pending[fingerprint]
+
+    async def _open_member(self, request: MuxMemberOpenV1) -> MuxSpaceV1:
         self._require_request(request, MuxMemberOpenV1)
         if request.session.product_id != self.product_id:
             raise _error(AppErrorCodeV1.PRODUCT_MISMATCH)

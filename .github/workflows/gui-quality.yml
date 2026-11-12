@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: gui/.node-version
-      - run: npm install --global npm@11.19.1
+      - run: npm install --global npm@11
       - run: npm --prefix gui ci
       - name: Offline GUI checks
         run: npm --prefix gui run check

@@ -1,11 +1,8 @@
 //! Submit one deterministic turn through the production desktop control path.
 #[allow(dead_code, unused_imports)]
-#[path = "../../../../src-tauri/src/app_client/mod.rs"]
-mod app_client;
+use loushang_app_client as app_client;
 #[path = "../probe_completion.rs"]
 mod probe_completion;
-#[path = "../../../../src-tauri/src/read_stop.rs"]
-mod read_stop;
 #[allow(dead_code)]
 #[path = "../../../../src-tauri/src/read_worker.rs"]
 mod read_worker;
@@ -47,7 +44,8 @@ fn main() {
                     .run_stream(
                         app_client::ConnectionOptions {
                         prepare_default_session: false,
-                            root: &root,
+                        workspace_scope: None,
+                            target: loushang_app_client::AppTarget::Local(&root),
                             timeout: std::time::Duration::from_millis(timeout),
                             cancel: None,
                             attach: true,
@@ -62,18 +60,19 @@ fn main() {
                             let result = receive
                                 .recv_timeout(std::time::Duration::from_secs(6))
                                 .map_err(|_| ())??;
-                            let (accepted, reason) = match result {
-                                app_client::ControlResult::Accepted => (true, None),
+                            let (accepted, reason, execution_id) = match result {
+                                app_client::ControlResult::Accepted => (true, None, None),
+                                app_client::ControlResult::Submitted(id) => (true, None, Some(id)),
                                 app_client::ControlResult::Missing => {
-                                    (false, Some("missing".to_owned()))
+                                    (false, Some("missing".to_owned()), None)
                                 }
                                 app_client::ControlResult::Rejected(reason) => {
-                                    (false, Some(reason))
+                                    (false, Some(reason), None)
                                 }
                             };
                             println!(
                                 "{}",
-                                serde_json::json!({"type":"control","accepted":accepted,"reason":reason})
+                                serde_json::json!({"type":"control","accepted":accepted,"reason":reason,"executionId":execution_id})
                             );
                             std::io::stdout().flush().map_err(|_| ())?;
 

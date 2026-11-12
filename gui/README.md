@@ -12,23 +12,55 @@ product fixture mode. Deterministic clients live under `tests/support/` only.
 The browser adapter reuses authenticated AppClient/ExecutionClient contracts;
 React uses the same validated snapshot projection as the native bridge.
 
-## Shared local storage and browser access
+The native AppServer client is the standalone Rust crate `gui/app-client`.
+Tauri's native bridge and the protocol integration probes link the same crate.
+It uses the existing authenticated AppServer TCP frames and local connection
+records. Run its unit tests with
+`cargo test --locked --manifest-path gui/app-client/Cargo.toml`. To verify it
+against a real local AppHost with a deterministic model, run
+`uv run python scripts/gui/check_apphost_integration.py` from the repository root.
+Tauri handles local requests in process. The browser sends the same requests
+to the standalone Rust Web server, which calls the shared AppServer client.
+Both connect to an independently started AppHost.
 
-`npm --prefix gui run dev` starts Vite in desktop mode and opens the Tauri
-window. Rust reads the saved connections and talks directly to the selected
-Host's HTTP endpoint. The desktop executable and its development entry require
-no Python interpreter. Start the Host's Web endpoint separately for local use.
+## Connect to a local AppHost
 
-`npm --prefix gui run dev:web` starts the browser development surface with its
-Python proxy. The proxy reuses or starts one shared adapter per user directory.
-Open Settings → Host to select a workspace and explicitly start/connect its Host
-through the running adapter.
-Both surfaces show the same shell and initial panel layout (native window controls
-remain desktop-only). The development API accepts only same-origin loopback
-requests with the client header. Stopping Vite closes its proxy; the shared adapter and managed Hosts continue
-running so other clients remain connected. The browser development proxy needs
-the installed Python project dependencies. `LOUSHANG_GUI_PYTHON` selects its
-interpreter.
+The installed desktop can start, stop, and restart its local AppHost from the
+main window, Host settings, and tray. The desktop and the loopback Web server
+delegate to `loushang-mux service`. Closing the frontend leaves AppHost running.
+Use **Register and open** with a path on the Host, or select a registered
+Workspace. AppHost allocates the Mux and persists its Sessions.
+
+For Windows source development, prepare the installed command in the repository
+environment and run the desktop:
+
+```powershell
+uv sync
+npm.cmd --prefix gui ci
+npm.cmd --prefix gui run dev
+```
+
+Choose **Start and connect** from the disconnected desktop. The same setup
+supports `npm.cmd --prefix gui run dev:web`. Enable Web service controls by
+setting `web.manageLocal` in the BFF configuration below. Development starts the frontend
+before AppHost. Windows management runs without a console window.
+
+Linux installed packages configure the bundled management command. In a Linux
+source checkout, set `LOUSHANG_MUX` to the absolute path of the installed
+`loushang-mux` executable to expose its local service controls. AppHost also
+supports independent administration through `loushang-mux service`.
+
+For a frontend-only deployment with a prestarted AppHost, set
+`LOUSHANG_APP_RECORD_ROOT` to its absolute connection record directory, or set
+`appServer.recordRoot` in `$LOUSHANG_HOME/host.json`:
+
+```json
+{"appServer":{"recordRoot":"/absolute/path/to/connection"}}
+```
+
+Both development surfaces use the same frontend. Vite proxies browser requests
+to the Rust Web listener on loopback. Tauri does not start this listener.
+AppHost keeps accepted executions when either frontend exits.
 
 Storage below `LOUSHANG_HOME` (default `~/.loushang`) follows existing ownership:
 
@@ -37,10 +69,10 @@ Storage below `LOUSHANG_HOME` (default `~/.loushang`) follows existing ownership
 | `models/*.json` | Existing user model registry; unchanged |
 | `auth/<provider>-auth.json` | Existing model OAuth credentials; unchanged |
 | `coding/settings.json` | Existing Coding settings; unchanged |
-| `connections.json` | Client connection targets and last local workspace |
-| `host.json` | Standalone Web listener configuration |
+| `connections.json` | Saved desktop connection targets |
+| `host.json` | Local AppServer and standalone Web listener configuration |
 | `state/web/` | Shared adapter discovery, ownership locks and logs |
-| `data/client-preferences.sqlite3` | Host-side pins, recent visits and selected-session recovery, scoped by mux |
+| `data/client-preferences.sqlite3` | Shared frontend pins and last Workspace |
 | `data/`, `state/`, `lmux/` | Existing business, internal and managed-service storage |
 
 Language, appearance and Markdown theme remain independent localStorage
@@ -56,7 +88,7 @@ Build the Web assets, then run the server without a desktop:
 
 ```sh
 npm --prefix gui run build:web
-uv run python -m loushang.coding.web_server --dist gui/dist
+cargo run --locked --manifest-path gui/web/Cargo.toml -- --dist gui/dist
 ```
 
 The default listener is `127.0.0.1:1422`, accessible only from this machine.
@@ -66,10 +98,13 @@ shared configuration through the Host API. Files are stored in the Host machine'
 credentials and private AppHost records never enter the browser. Closing the
 server releases its connections without stopping managed Hosts.
 
+Set `web.manageLocal` to enable management for clients of this loopback
+listener. Enable it only for a trusted local machine.
+
 Optional `host.json`:
 
 ```json
-{"web":{"bind":"127.0.0.1","port":1422,"dist":"/absolute/path/to/gui/dist"}}
+{"web":{"bind":"127.0.0.1","port":1422,"dist":"/absolute/path/to/gui/dist","manageLocal":true}}
 ```
 
 The current delivery covers local Web access. Remote deployment and account
@@ -99,8 +134,8 @@ System tray and notification behavior are not implemented by this asset change.
 
 ## Toolchain
 
-- Node.js 24.22.2
-- npm 11.19.1
+- Node.js 24.x
+- npm 11.x
 - Rust 1.98.1 with rustfmt and Clippy
 - Tauri 2 and React 19, resolved by the committed lock files
 
@@ -110,8 +145,8 @@ Windows SDK.
 
 ## Commands
 
-Node.js includes npm. If the bundled npm differs from the pinned version, run
-`npm install --global npm@11.19.1`. Run all commands from the repository root:
+Node.js includes npm. If the bundled npm is outside the supported major version,
+run `npm install --global npm@11`. Run all commands from the repository root:
 
 ```text
 npm --prefix gui run doctor
@@ -183,20 +218,65 @@ already exist through the managed management entry. Reconnect attaches the
 original Mux and reads its existing members.
 
 Without explicit connection arguments, the native window reads `connections.json`
-and opens even when the selected endpoint is unavailable. With the local Host's
-Web endpoint running, select an existing absolute Workspace directory, then choose
-**Start and connect** or connect to its running Host. Startup uses the existing
-managed coordinator and admitted Mux creation; an empty Mux receives the existing
-default Session initialization. Closing the GUI only disconnects the client.
-Stop and restart require confirmation because they interrupt active executions;
-restart preserves Session history but does not resume an interrupted execution.
-An unconfirmed instance is never automatically replaced.
+and opens even when the selected endpoint is unavailable. The desktop uses the
+shared Rust AppClient for both local and tunneled AppServer connections.
+Use `lmux` to start or stop a local managed Host separately. Closing the GUI
+releases its client connection and leaves the Host running.
 
-Local and remote management requests go to the selected Host API. The browser
-and desktop write the same v1 connection settings using the shared SQLite lock.
-Managed storage retains its existing private-directory and trusted-ancestor
-requirements. Explicit local record arguments continue to use the native
-AppClient on supported platforms.
+### Connect Windows or Linux desktop to a Linux AppHost
+
+Use OpenSSH port forwarding to protect traffic between machines. AppHost opens
+its optional app-only listener on `127.0.0.1`. The desktop connects to the
+forwarded loopback port and authenticates with a separately issued application
+credential. The credential allows Workspace, Session and Execution operations.
+Service lifecycle remains under the local `lmux` commands.
+
+On the Linux Host, initialize its Loushang home and provision the credential
+while the Host is stopped. The provision command prints the credential path.
+The staged Host package provides the same command as
+`loushang-host provision-tunnel --port 24419`.
+
+```sh
+uv run lmux server provision-tunnel --port 24419
+uv run lmux server start
+```
+
+Transfer the issued file over a trusted channel to
+`$LOUSHANG_HOME/app-tunnels/office/` on the client, keeping the original filename.
+On Linux, grant the client user exclusive access with directory mode 0700 and
+file mode 0600. On Windows, apply protected owner and LocalSystem full access to
+both the directory and the file. For newly created entries, run PowerShell as
+the same account that will launch the GUI:
+
+```powershell
+$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$sddl = "O:${sid}D:P(A;;FA;;;${sid})(A;;FA;;;SY)"
+$homeDir = if ($env:LOUSHANG_HOME) { $env:LOUSHANG_HOME } else { Join-Path $HOME ".loushang" }
+$credentialDir = Join-Path $homeDir "app-tunnels/office"
+foreach ($path in @($credentialDir) + @(Get-ChildItem $credentialDir -File | ForEach-Object FullName)) {
+    $acl = Get-Acl -LiteralPath $path
+    $acl.SetSecurityDescriptorSddlForm($sddl)
+    Set-Acl -LiteralPath $path -AclObject $acl
+}
+```
+
+Save this configuration as `connections.json` in the client's Loushang home.
+`webUrl` is optional and controls the tray's Open Web action.
+
+```json
+{"version":1,"defaultConnection":"office","servers":[{"id":"office","tunnelPort":24420}]}
+```
+
+Keep the forward open while using the GUI. Select the saved connection and use
+Workspace paths on the Linux Host.
+
+```sh
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:24420:127.0.0.1:24419 linux-user@linux-host
+```
+
+To revoke or rotate the credential, stop the Host, remove the provisioned
+`app-tunnel` directory, then start the Host with a newly provisioned credential
+or with the app-only listener disabled.
 
 Linux record admission uses no-follow directory/file descriptors, current-user
 ownership, private 0700/0600 modes, single-link regular files, bounded reads and
@@ -204,7 +284,7 @@ identity/version revalidation. Windows retains its existing handle/DACL checks.
 The connection selects the validated record's semantic Execution profile,
 including `local-detachable-discovery-execution-managed/v2`; capability order,
 managed closure prerequisites, authentication digest and exact hello are checked.
-Legacy valid record decoding remains available, but a live GUI requires Execution.
+The live GUI requires the Execution capability.
 Unknown submit receipts are queried without replay only on the same service
 instance; a replacement Host is reported as an unknown outcome.
 
@@ -302,18 +382,30 @@ uv run python scripts/gui/check_deb_package.py dist/deb/loushang_<version>_amd64
 
 Install the generated file with `sudo apt install /absolute/path/to/package.deb`.
 The application menu and `/usr/bin/loushang` use the bundled runtime under
-`/opt/loushang`. Local startup uses the same managed Host entrypoint as the tray;
-GUI close/quit leaves that Host running. A saved remote connection remains
-selected. `loushang --workspace /absolute/path --status` and `--stop` manage the
-local Host. Stop running Hosts before replacing or removing this test package.
-Settings and Session data remain outside the installed program directory.
+`/opt/loushang`. Use the Host controls to start, stop, or restart the bundled
+AppHost. Closing the desktop leaves it running. Stop the Host before replacing
+or removing the package. Settings and Session data remain in user storage.
 
 This Ubuntu 26.10 amd64 candidate declares native system-library dependencies.
-It does not require a system Python/uv/Node installation. It does not register
-a systemd unit or start services during installation. Provider credentials and
+It does not require a system Python/uv/Node installation. The package also
+installs `loushang-mux`, `loushang-tui` and the `loushang-host.service` systemd
+user unit. The service uses the user's home directory as its workspace.
+Installation does not start or enable the unit. The TUI exposes the same lifecycle commands. From a terminal you can start
+AppHost and attach to a named Mux:
+
+```sh
+loushang-tui service start
+records="$XDG_RUNTIME_DIR/loushang-host/connections"
+loushang-mux --connection-root "$records" --endpoint workspace create main
+loushang-tui main
+```
+
+Use `systemctl --user enable loushang-host.service` to start the Host with the
+user manager. GUI, Web and `loushang-tui service` use the same user service. Provider credentials and
 optional external tools/Plugin worker runtimes are not included. The opt-in
-checker extracts the actual deb and verifies relocated imports, real Host
-startup, reuse, stop and restart without provider calls or system installation.
+checker extracts the actual deb and verifies the binaries, CLI entries, Web
+assets and systemd unit. The portable package checker exercises the packaged
+AppHost lifecycle and Rust Web server.
 
 ## Linux portable package candidate
 
@@ -327,18 +419,19 @@ uv run python scripts/gui/build_linux_portable.py
 ```
 
 Extract `dist/desktop/loushang-linux-x86_64.tar.gz` outside the checkout and
-double-click the native `loushang` executable. To choose a workspace explicitly, run
-`./loushang --workspace /path/to/workspace` inside the extracted directory.
+double-click the native `loushang` executable. Use **Start and connect** to
+start the local Host and choose a Workspace.
 No Python/uv/Node/Rust installation is needed at runtime. Compatible Linux
 GTK/WebKit system libraries are still required. See the included `README.txt`
-for the tested distribution, state locations and explicit `--stop` command.
+for the tested distribution and state locations.
 Closing a GUI window detaches it and leaves its shared AppHost running.
 Credentials and optional external worker/tool runtimes are not bundled.
 
 For opt-in real packaged lifecycle checks, run
 `uv run python scripts/gui/check_portable_package.py /path/to/extracted/package`.
-This does not call a model or add a CI gate. Native UI/provider acceptance must
-also be performed against the extracted package; a source-tree run is insufficient.
+The checker serves the bundled Web UI and opens a real Workspace against the
+packaged AppHost. Run native window and provider acceptance separately against
+the extracted package.
 
 ## Browser layout playback
 
@@ -535,3 +628,16 @@ arrives; it does not maintain a duplicate translation dictionary.
 
 See [i18n delivery evidence](tests/playback/i18n-acceptance.md) for the observed
 validation scope and native limitations.
+
+### Rust Web listener development
+
+`gui/web` is a headless GUI Rust crate, independent of the Tauri window loop.
+`loushang-web --ensure` starts or reuses the loopback Web listener.
+`LOUSHANG_GUI_WEB` can select a binary for browser development. The default
+listener is port 1422. Set the AppServer record directory as shown above.
+
+Run `cargo test --locked --manifest-path gui/web/Cargo.toml` for listener tests.
+The standalone GUI package includes `bin/loushang-web` and `web/` assets. Invoke
+`loushang-gui web` to run them. The Host is packaged separately. After staging
+both programs, verify their independent startup and connection with
+`uv run python scripts/gui/check_split_linux_programs.py /path/to/host /path/to/gui`.

@@ -172,6 +172,7 @@ export default interface Resources {
     },
     "notice": {
       "createFailed": "New Session could not be created.",
+      "createSyncFailed": "New Session was created, but it could not be shown yet.",
       "created": "New Session created and attached.",
       "creating": "New Session created. Reattaching to the updated workspace…",
       "emptyPrompt": "Enter a message before sending.",
@@ -372,9 +373,10 @@ export default interface Resources {
       "service": "Service"
     },
     "localHost": {
+      "addWorkspace": "Register and open",
       "cancel": "Cancel",
       "confirm": "Confirm shutdown",
-      "confirmStop": "Stopping or restarting this Host interrupts all running tasks in this workspace. Session history is retained. Continue?",
+      "confirmStop": "Stopping or restarting this Host interrupts all running tasks across all projects and temporary chats. Session history is retained. Continue?",
       "confirmTitle": "Confirm Host shutdown",
       "connect": "Connect",
       "errors": {
@@ -387,7 +389,7 @@ export default interface Resources {
         "record": "Host connection record is invalid.",
         "start": "Host startup failed. Check status before retrying.",
         "stop": "Host cleanup is not confirmed. Do not start a replacement instance.",
-        "unavailable": "Local management entrypoint is unavailable. Check the installed Python environment.",
+        "unavailable": "Local AppHost management is unavailable. Check loushang-mux.",
         "unknown": "The operation could not be confirmed. Check status before trying another lifecycle operation."
       },
       "identity": "Host information",
@@ -399,6 +401,7 @@ export default interface Resources {
       "reconnect": "Reconnect",
       "refresh": "Check status",
       "restart": "Restart Host",
+      "selectWorkspace": "Select a workspace",
       "serviceInstanceId": "Service instance ID",
       "start": "Start and connect",
       "states": {
@@ -411,16 +414,19 @@ export default interface Resources {
       },
       "stop": "Stop Host",
       "title": "Local AppHost",
-      "unsupported": "Local managed Host is currently supported on Linux only.",
-      "workspace": "Workspace"
+      "unsupported": "No AppServer connection is configured.",
+      "workspace": "Workspace",
+      "workspaceUnavailable": "Unable to open this workspace."
     },
     "sidebar": {
+      "addProject": "Add project",
       "chats": "Chats",
       "creating": "Creating…",
       "fixtureBanner": "Fixture data · no backend",
       "live": "Live · AppHost",
       "liveBanner": "Live AppHost · controlled",
       "navigation": "Workspace and Session navigation",
+      "newProjectChat": "New chat in {{project}}",
       "newSession": "New Session",
       "offline": "Offline fixture",
       "pinChat": "Pin {{title}}",
@@ -429,6 +435,7 @@ export default interface Resources {
       "plugins": "Plugins",
       "pluginsHint": "Plugins are unavailable in the offline fixture",
       "prHint": "Pull requests are unavailable in the offline fixture",
+      "projects": "Projects",
       "pullRequests": "Pull requests",
       "scheduleHint": "Scheduling is unavailable in the offline fixture",
       "scheduled": "Scheduled",

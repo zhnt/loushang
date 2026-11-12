@@ -28,7 +28,7 @@ from .test_managed_catalog import tree
 from .test_managed_launch import invocation
 
 
-def test_invocation_selects_same_canonical_scopes_without_effects(deployment, tmp_path):
+def test_invocation_has_no_workspace_or_side_effects_before_start(deployment, tmp_path):
     async def scenario():
         value = invocation(deployment, tmp_path)
         before = tree(tmp_path)
@@ -38,8 +38,7 @@ def test_invocation_selects_same_canonical_scopes_without_effects(deployment, tm
         )
         owner = CodingManagedLocalCommandV1(launch)
         catalog = owner._attempt._request.foreground.sessions
-        assert catalog.scopes == launch.application.scopes
-        assert {scope.session_dir for scope in catalog.scopes} == {tmp_path / "sessions"}
+        assert catalog.scopes == launch.scopes == ()
         assert launch.connection_root == Path(deployment[4].connection)
         assert launch.application.application_root == Path(deployment[4].application)
         assert owner._attempt._request.foreground.session_owner is catalog
@@ -208,7 +207,7 @@ def test_session_authority_cannot_overlap_admission_witness(deployment, tmp_path
 
 def test_wrong_product_is_rejected_before_native_path_checks(deployment, tmp_path, monkeypatch):
     value = invocation(deployment, tmp_path)
-    service = ManagedServiceKeyV1("work", value.service.workspace)
+    service = ManagedServiceKeyV1("work", value.service.host_root)
     other = ManagedChildInvocationV1(value.namespace, service, ManagedInstanceRefV1(
         value.namespace.namespace_key, service.service_id, value.instance.instance_id,
     ), value.attempt_id, value.runtime_root)
@@ -236,13 +235,14 @@ def test_managed_execution_registry_is_shared_and_shutdown_settles_original_owne
     from loushang.apphost import AppHostRuntimeV1
     from loushang.appserver.local import LocalAppClientConnectionV1
     from loushang.appserver.local_record import LocalConnectionDirectoryV1
+    from loushang.appserver.managed_mux import ManagedMuxCreateV1
     from loushang.appserver.protocol import (
         MuxAttachV1,
-        MuxCreateV1,
         MuxMemberOpenV1,
         MuxSelectorV1,
         SessionOpenSpecV1,
         SessionSnapshotRequestV1,
+        WorkspaceRequestV1,
     )
     from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
     from loushang.appservice import runtime as service_module
@@ -274,9 +274,22 @@ def test_managed_execution_registry_is_shared_and_shutdown_settles_original_owne
                 await release.wait()
                 events.append("execution-cleaned")
 
+        class Admission:
+            # Native reservation is covered by the independent process suite.
+            async def acquire(self):
+                pass
+
+            def check_creation(self, previous):
+                assert previous is None
+
+            async def close(self):
+                pass
+
+        binding = ManagedMuxServiceBindingV1("coding.managed", "a" * 64, "b" * 32, lambda _: Admission())
         launch = CodingManagedLocalLaunchV1(
             CodingManagedApplicationLaunchV1(tmp_path, tmp_path / "application", "coding.managed", tmp_path / "sessions"),
             tmp_path / "connection", "workspace", session_discovery=True,
+            instance_id=binding.instance_id, managed_mux=binding,
         )
         command = CodingManagedLocalCommandV1(launch, model=_model(), stream_fn=held_stream, tools=[])
         directory = LocalConnectionDirectoryV1(launch.connection_root)
@@ -289,17 +302,22 @@ def test_managed_execution_registry_is_shared_and_shutdown_settles_original_owne
             assert len(registries) == 1
             shared = registries[0]
             assert shared.service_instance_id == config.service_instance_id
-            assert directory.read("workspace").semantic_profile is AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION
+            record = directory.read("workspace")
+            assert record.semantic_profile is AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION_MANAGED
+            assert record.scopes == ()
             await first.start()
             await second.start()
             assert len(registries) == 1
             assert first.execution_client.service_instance_id == second.execution_client.service_instance_id == config.service_instance_id
-            mux = await first.client.create_mux(MuxCreateV1("dev"))
+            registered = await first.client.workspace(WorkspaceRequestV1("register", str(tmp_path)))
+            scope, = registered.workspaces
+            mux = await first.managed_mux_client.create_managed_mux(ManagedMuxCreateV1(
+                binding.service_id, binding.instance_id, "c" * 32, "dev", "test",
+            ))
             selector = MuxSelectorV1(mux_space_id=mux.mux_space_id)
             await first.client.attach_mux(MuxAttachV1(selector))
-            scope = launch.application.scopes[0]
             mux = await first.client.open_member(MuxMemberOpenV1(selector, SessionOpenSpecV1(
-                "coding", "managed-execution", scope.scope, scope.fingerprint, "managed",
+                "coding", "managed-execution", scope.scope, scope.scope_fingerprint, "managed",
             )))
             attachment = await first.client.attach_mux(MuxAttachV1(selector))
             control = SessionSnapshotRequestV1(attachment.attachment_id, attachment.controller_generation, mux.members[0].member_id)

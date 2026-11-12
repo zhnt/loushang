@@ -1065,7 +1065,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         )
     }
     assert hosting_consumers == {
-        CODING_ROOT / "gui_local_host.py",
+        CODING_ROOT / "managed_service.py",
         CODING_APPHOST_CANARY,
         CODING_ROOT / "package_product_worker_windows_backend_release.py",
         CODING_ROOT / "package_product_worker_windows_installed_backend.py",
@@ -1089,27 +1089,47 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         APPHOST_ROOT / "managed/mux_management.py",
         CODING_ROOT / "managed_process.py",
     }
-    # LMUX composition consumes public Hosting contracts only. Keep the reviewed
+    # Managed AppHost composition consumes public Hosting contracts only. Keep the reviewed
     # module and symbol edges exact rather than exempting the managed package.
     managed_edges = {
-        CODING_ROOT / "gui_local_host.py": {"errors": {"HostingError"}},
+        CODING_ROOT / "managed_service.py": {"errors": {"HostingError"}},
         APPHOST_ROOT / "managed/starter.py": {
             "contracts": {"ProcessLaunchRequest"},
             "service_process": {"LinuxServiceProcessV1"},
+            "service_windows": {"WindowsServiceLaunchRequestV1", "WindowsServiceProcessV1"},
         },
         APPHOST_ROOT / "managed/stopper.py": {
-            "service": {"LinuxServiceObserverV1"},
+            "service": {"ServiceObserverV1", "reopen_service_observer"},
             "service_group": {"LinuxServiceGroupObservationV1"},
+            "service_windows": {"WindowsServiceJobV1", "WindowsServiceObserverV1"},
         },
         APPHOST_ROOT / "managed/defaults.py": {
             "errors": {"HostingError", "HostingFailureCategory"},
-            "machine_identity": {"linux_machine_key"},
+            "machine_identity": {"linux_machine_key", "windows_machine_key"},
         },
         APPHOST_ROOT / "managed/connection.py": {
-            "service": {"LinuxServiceObserverV1"},
+            "service": {"ServiceObserverV1", "reopen_service_observer"},
         },
         APPHOST_ROOT / "managed/mux_management.py": {
-            "service": {"LinuxServiceIdentityV1"},
+            "service": {"LinuxServiceIdentityV1", "ServiceIdentityV1"},
+            "service_windows": {"WindowsServiceIdentityV1"},
+        },
+        APPHOST_ROOT / "managed/handoff.py": {
+            "errors": {"HostingError"},
+            "service": {"LinuxServiceIdentityV1", "ServiceIdentityV1"},
+            "service_handoff": {"ServiceChildHandoffV1", "ServiceHandoffPhaseV1"},
+            "service_windows": {"WindowsServiceIdentityV1"},
+        },
+        APPHOST_ROOT / "managed/lifecycle.py": {
+            "errors": {"HostingError"},
+            "service": {"LinuxServiceIdentityV1", "ServiceIdentityV1"},
+            "service_windows": {"WindowsServiceIdentityV1"},
+        },
+        APPHOST_ROOT / "managed/bootstrap.py": {
+            "errors": {"HostingError"},
+            "service": {"LinuxServiceObserverV1", "ServiceObserverV1"},
+            "service_handoff": {"require_service_channel"},
+            "service_windows": {"WindowsServiceObserverV1"},
         },
         CODING_ROOT / "managed_process.py": {
             "contracts": {
@@ -1119,6 +1139,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
                 "ProcessStdoutMode",
                 "ProcessStderrMode",
             },
+            "service_windows": {"WindowsServiceLaunchRequestV1", "read_windows_service_startup"},
         },
     }
     for path, modules in managed_edges.items():
@@ -1133,37 +1154,6 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         assert {
             name for name in _imports(path) if name.startswith("loushang.hosting")
         } == expected, path
-    assert {
-        imported
-        for imported in _imports(APPHOST_ROOT / "managed/handoff.py")
-        if imported.startswith("loushang.hosting")
-    } == {
-        "loushang.hosting.errors",
-        "loushang.hosting.errors.HostingError",
-        "loushang.hosting.service",
-        "loushang.hosting.service.LinuxServiceIdentityV1",
-        "loushang.hosting.service_handoff",
-        "loushang.hosting.service_handoff.ServiceHandoffPhaseV1",
-        "loushang.hosting.service_handoff.ServiceChildHandoffV1",
-    }
-    assert {
-        imported
-        for imported in _imports(APPHOST_ROOT / "managed/lifecycle.py")
-        if imported.startswith("loushang.hosting")
-    } == {
-        "loushang.hosting.errors",
-        "loushang.hosting.errors.HostingError",
-        "loushang.hosting.service",
-        "loushang.hosting.service.LinuxServiceIdentityV1",
-    }
-    assert {
-        imported
-        for imported in _imports(APPHOST_ROOT / "managed/bootstrap.py")
-        if imported.startswith("loushang.hosting")
-    } == {
-        "loushang.hosting.service",
-        "loushang.hosting.service.LinuxServiceObserverV1",
-    }
     for consumer in hosting_consumers:
         assert not any(
             imported.startswith("loushang.hosting._") for imported in _imports(consumer)

@@ -196,7 +196,9 @@ def test_G14_WIRE_every_client_method_reaches_its_exact_semantic_target() -> Non
             ),
         )
         method_names = {name for name, _, _ in calls} | {"read_events"}
-        assert method_names == {
+        # Workspace operations are covered through the authenticated managed
+        # connection in test_managed_service, not this STDIO profile.
+        assert method_names | {"workspace"} == {
             name for name in vars(AppClientV1) if not name.startswith("_")
         }
         # G17 adds an optional capability without growing the legacy protocol.
@@ -205,7 +207,7 @@ def test_G14_WIRE_every_client_method_reaches_its_exact_semantic_target() -> Non
         }
         assert optional_names == {"list_sessions"}
         assert not method_names.intersection(optional_names)
-        assert len(method_names | optional_names) == len(AppOperationV1)
+        assert len(method_names | optional_names | {"workspace"}) == len(AppOperationV1)
         semantic = create_autospec(AppClientV1, instance=True)
         for name, _, result in calls:
             getattr(semantic, name).return_value = result

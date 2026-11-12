@@ -14,7 +14,7 @@ CLI_MAIN = lmux.main
 
 
 @pytest.mark.parametrize("args", [["server"], ["server", "stop"],
-    ["server", "start", "-t", "dev"]])
+    ["server", "start", "-t", "dev"], ["server", "start", "--workspace", "/example"]])
 def test_invalid_server_forms_reject_before_defaults(monkeypatch, args):
     from loushang.apphost.managed import defaults
 
@@ -31,8 +31,8 @@ def test_server_start_is_scriptable(monkeypatch):
     monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
     monkeypatch.setattr(lmux_command, "execute", lambda args, **kw: calls.append(args) or 0)
-    assert lmux.main(["server", "start", "--workspace", "/example"]) == 0
-    assert calls[0].action == "server" and calls[0].workspace == "/example"
+    assert lmux.main(["server", "start"]) == 0
+    assert calls[0].action == "server" and not hasattr(calls[0], "workspace")
 
 
 @pytest.mark.parametrize("duration", ["0", "-1", "3601", "1.5", "invalid"])
@@ -132,7 +132,7 @@ def test_real_empty_service_start_reuse_then_new(managed_cli, tmp_path, monkeypa
     monkeypatch.setattr(terminal, "run_hosted_mux_shell", lambda *a, **k: pytest.fail("server entered terminal"))
     assert CLI_MAIN(["server", "start"]) == 0, repr(commands[-1].failure)
     first = json.loads(capsys.readouterr().out)
-    service_id = ManagedServiceKeyV1("coding", str(tmp_path)).service_id
+    service_id = ManagedServiceKeyV1("coding", commands[-1].defaults.namespace.platform_home).service_id
     assert first["status"] == "service_ready" and first["serviceId"] == service_id
     assert commands[-1].creation is None and commands[-1].native_closed
     assert not (commands[-1].defaults.platform.data / "sessions").exists()
@@ -143,7 +143,7 @@ def test_real_empty_service_start_reuse_then_new(managed_cli, tmp_path, monkeypa
     other = tmp_path / "other"
     other.mkdir()
     monkeypatch.chdir(other)
-    assert lmux.main(["server", "start", "--workspace", str(tmp_path)]) == 0
+    assert lmux.main(["server", "start"]) == 0
     assert json.loads(capsys.readouterr().out) == first
     assert commands[-1].starter._starter._process is None
     assert lmux.main(["status", "--server", service_id]) == 0
@@ -155,13 +155,6 @@ def test_real_empty_service_start_reuse_then_new(managed_cli, tmp_path, monkeypa
     assert commands[-1].creation._coordinator._starter._process is None
     assert native._process.poll() is None
     assert not tuple(other.iterdir())
-
-
-def test_missing_workspace_does_not_admit_namespace(managed_cli, tmp_path):
-    _, commands = managed_cli
-    assert lmux.main(["server", "start", "--workspace", str(tmp_path / "missing")]) == 1
-    assert commands[-1].namespace is None and commands[-1].native_closed
-    assert not tuple(tmp_path.iterdir())
 
 
 def test_coordinator_construction_failure_closes_original_admission(managed_cli, tmp_path, monkeypatch, capsys):
@@ -179,7 +172,7 @@ def test_coordinator_construction_failure_closes_original_admission(managed_cli,
     assert commands[-1].service is None and commands[-1].namespace is None
     assert all(not owner.cleanup_pending for owner in retained)
     # A durable admitted service is not deleted to hide a failed command.
-    service_id = ManagedServiceKeyV1("coding", str(tmp_path)).service_id
+    service_id = ManagedServiceKeyV1("coding", commands[-1].defaults.namespace.platform_home).service_id
     assert lmux.main(["status", "--server", service_id]) == 0
     recorded = json.loads(capsys.readouterr().out)
     assert recorded["serviceId"] == service_id and recorded["instanceId"] is None

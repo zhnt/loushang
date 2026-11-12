@@ -18,7 +18,6 @@ from loushang.apphost.managed.paths import (
     resolve_managed_admission_root,
     resolve_managed_paths,
 )
-from loushang.appserver.protocol import SessionScopeV1
 from loushang.appservice.continuity import require_application_id
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.harness.tools.core import ToolDefinition
@@ -26,18 +25,16 @@ from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 from .hosted_application import CODING_MANAGED_APPLICATION_PROFILE_ID
 from .hosted_bootstrap import CodingHostedLaunchV1, _create_coding_attempt
-from .hosted_catalog import CodingHostedScopeV1
 from .hosted_continuity import CodingHostedContinuityAttemptV1
 from .hosted_local import CodingLocalLaunchV1
 from .hosted_session import CodingHostedProductRuntimeFactoryForSession
-from .managed_catalog import CodingManagedSessionCatalogV1
 
 
 @dataclass(frozen=True, slots=True)
 class CodingManagedApplicationLaunchV1:
     """Explicit canonical Session launch, separate from legacy G16 roots."""
 
-    workspace: Path = field(repr=False)
+    host_root: Path = field(repr=False)
     application_root: Path = field(repr=False)
     application_id: str
     session_root: Path = field(repr=False)
@@ -45,11 +42,11 @@ class CodingManagedApplicationLaunchV1:
 
     def __post_init__(self) -> None:
         require_application_id(self.application_id)
-        for path in (self.workspace, self.application_root, self.session_root):
+        for path in (self.host_root, self.application_root, self.session_root):
             if not isinstance(path, Path) or not path.is_absolute() or path != path.resolve():
                 raise ValueError("managed application requires canonical paths")
-        if not self.workspace.is_dir() or not self.application_root.parent.is_dir():
-            raise ValueError("managed workspace and application parent must exist")
+        if not self.host_root.is_dir() or not self.application_root.parent.is_dir():
+            raise ValueError("managed Host root and application parent must exist")
         for data in (
             self.session_root, self.session_root.parent / "session-assets",
             self.session_root.parent / ".session-blob-writers",
@@ -65,10 +62,6 @@ class CodingManagedApplicationLaunchV1:
                     or self.application_root.is_relative_to(state)):
                 raise ValueError("store admission state must be separate from writable application data")
 
-    @property
-    def scopes(self) -> tuple[CodingHostedScopeV1, ...]:
-        return tuple(CodingHostedScopeV1(scope, self.session_root, self.workspace)
-                     for scope in (SessionScopeV1.CWD, SessionScopeV1.USER_HOME))
 
 
 def create_coding_managed_attempt(
@@ -87,8 +80,15 @@ def create_coding_managed_attempt(
     if managed_mux is not None and (type(managed_mux) is not ManagedMuxServiceBindingV1
                                     or managed_mux.application_id != launch.application_id):
         raise ValueError("managed Mux binding does not match application")
-    catalog = CodingManagedSessionCatalogV1(session_root=launch.session_root, workspace=launch.workspace,
-                                           store_state_root=launch.store_state_root)
+    from loushang.apphost.managed.workspaces import WorkspaceRegistry
+
+    from .workspace_catalog import CodingWorkspaceCatalog
+
+    catalog = CodingWorkspaceCatalog(
+        WorkspaceRegistry(launch.application_root.parent / "workspaces"),
+        launch.session_root,
+        launch.store_state_root or launch.application_root.parent / "session-stores",
+    )
     return _create_coding_attempt(
         application_root=launch.application_root, application_id=launch.application_id,
         catalog=catalog, generation=token_hex(16), model=model, stream_fn=stream_fn, tools=tools,
@@ -121,7 +121,7 @@ def create_coding_managed_launch(
     )
     launch = CodingLocalLaunchV1(
         CodingHostedLaunchV1(
-            Path(invocation.service.workspace), Path(paths.application), application_id,
+            Path(invocation.service.host_root), Path(paths.application), application_id,
             cwd_sessions, home_sessions,
         ),
         Path(paths.connection), endpoint, session_discovery=session_discovery,
@@ -138,11 +138,11 @@ def create_coding_managed_launch(
 
 def _managed_control_roots(invocation: ManagedChildInvocationV1) -> tuple[Path, ...]:
     return (
-        Path(invocation.namespace.platform_home) / "lmux",
-        Path(invocation.runtime_root) / "lmux",
+        Path(invocation.namespace.platform_home) / "hosts",
+        Path(invocation.runtime_root) / "hosts",
         Path(resolve_managed_admission_root(invocation.namespace)).parent,
         Path(invocation.namespace.platform_home) / "state/session-stores",
-        *((Path(invocation.temporary_override) / "lmux",) if invocation.temporary_override is not None else ()),
+        *((Path(invocation.temporary_override) / "hosts",) if invocation.temporary_override is not None else ()),
     )
 
 

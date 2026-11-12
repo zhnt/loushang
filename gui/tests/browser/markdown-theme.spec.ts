@@ -81,6 +81,7 @@ test("app appearance includes the shell, settings, and Markdown while preserving
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.emulateMedia({ colorScheme: "light" });
   await showSample(page);
+  await page.getByRole("button", { name: "Toggle sidebar" }).click();
   await page.getByRole("button", { name: "Toggle environment" }).click();
   const body = page.locator(".markdown-body");
   const reading = page.locator(".markdown-reading");

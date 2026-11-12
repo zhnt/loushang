@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -9,12 +9,13 @@ const manifest = path.join(guiDir, "src-tauri", "Cargo.toml");
 const cargo = rustTool("cargo");
 const rustc = rustTool("rustc");
 const npmEntry = process.env.npm_execpath;
-const childEnv = path.isAbsolute(cargo)
-  ? {
-      ...process.env,
-      PATH: `${path.dirname(cargo)}${path.delimiter}${process.env.PATH ?? ""}`,
-    }
-  : process.env;
+const devMux = path.join(guiDir, "..", ".venv", "Scripts", "loushang-mux.exe");
+const childEnv = {
+  ...process.env,
+  ...(process.platform === "win32" && !process.env.LOUSHANG_MUX && existsSync(devMux)
+    ? { LOUSHANG_MUX: devMux } : {}),
+  ...(path.isAbsolute(cargo) ? { PATH: `${path.dirname(cargo)}${path.delimiter}${process.env.PATH ?? ""}` } : {}),
+};
 
 function rustTool(name) {
   const executable = process.platform === "win32" ? `${name}.exe` : name;
@@ -79,8 +80,9 @@ function expectPrefix(label, actual, expected) {
 }
 
 function doctor() {
-  expectPrefix("node", process.version, "v24.22.2");
-  expectPrefix("npm", captureNpm(["--version"]), "11.19.1");
+  const { engines } = JSON.parse(readFileSync(path.join(guiDir, "package.json"), "utf8"));
+  expectPrefix("node", process.version, `v${engines.node.split(".")[0]}.`);
+  expectPrefix("npm", captureNpm(["--version"]), `${engines.npm.split(".")[0]}.`);
   expectPrefix("rustc", capture(rustc, ["--version"]), "rustc 1.98.1 ");
   expectPrefix("cargo", capture(cargo, ["--version"]), "cargo 1.98.1 ");
   const verboseRustc = capture(rustc, ["--version", "--verbose"]);
@@ -100,10 +102,18 @@ function buildWeb() {
 }
 
 function runNative(command, fixtureBridge = false) {
+  const webManifest = path.join(guiDir, "web", "Cargo.toml");
+  if (command === "build") run(cargo, ["build", "--locked", "--manifest-path", webManifest, "--release"]);
   const args = ["exec", "--", "tauri", command];
   if (command === "build") args.push("--no-bundle");
   if (fixtureBridge) args.push("--features", "fixture-bridge");
   runNpm(args);
+  if (command === "build") {
+    const name = process.platform === "win32" ? "loushang-web.exe" : "loushang-web";
+    const destination = path.join(guiDir, "src-tauri", "target", "release");
+    mkdirSync(destination, { recursive: true });
+    copyFileSync(path.join(guiDir, "web", "target", "release", name), path.join(destination, name));
+  }
 }
 
 function check() {

@@ -92,6 +92,7 @@ def open_windows_regular_file_at(
     write: bool,
     security_descriptor: int | None = None,
     read_control: bool = False,
+    share_delete: bool = False,
 ) -> int:
     """Open one no-follow regular file relative to a pinned directory handle."""
 
@@ -112,7 +113,8 @@ def open_windows_regular_file_at(
         directory_fd,
         component,
         desired_access=desired_access,
-        share_access=_FILE_SHARE_READ | _FILE_SHARE_WRITE,
+        share_access=(_FILE_SHARE_READ | _FILE_SHARE_WRITE
+                      | (_FILE_SHARE_DELETE if share_delete else 0)),
         create_disposition=_FILE_CREATE if create_new else _FILE_OPEN,
         create_options=(
             _FILE_SYNCHRONOUS_IO_NONALERT
@@ -239,7 +241,14 @@ def windows_listdir_at(directory_fd: int) -> tuple[str, ...]:
     return tuple(_component(name) for name in os.listdir(final_path))
 
 
-def windows_unlink_at(directory_fd: int, name: str) -> None:
+def windows_final_directory_path(directory_fd: int) -> Path:
+    """Resolve a retained direct directory for consumers requiring a path."""
+
+    _require_direct_directory(os.fstat(directory_fd))
+    return Path(_final_path(directory_fd))
+
+
+def windows_unlink_at(directory_fd: int, name: str, *, unlink_open_file: bool = False) -> None:
     """Delete a file or reparse entry itself, never its target."""
 
     raw_handle = _open_for_delete(directory_fd, name)
@@ -247,7 +256,7 @@ def windows_unlink_at(directory_fd: int, name: str) -> None:
         is_directory, is_reparse = _handle_entry_kind(raw_handle)
         if is_directory and not is_reparse:
             raise IsADirectoryError(name)
-        _mark_handle_for_delete(raw_handle)
+        _mark_handle_for_delete(raw_handle, unlink_open_file=unlink_open_file)
     finally:
         _close_handle(raw_handle)
 
@@ -355,12 +364,14 @@ def windows_rename_at(
     directory_fd: int,
     old_name: str,
     new_name: str,
+    *,
+    replace: bool = False,
 ) -> None:
     """Atomically rename one direct child beneath the same pinned directory."""
 
     raw_handle = _open_for_delete(directory_fd, _component(old_name))
     try:
-        _rename_open_windows_handle_at(directory_fd, raw_handle, new_name)
+        _rename_open_windows_handle_at(directory_fd, raw_handle, new_name, replace=replace)
     finally:
         _close_handle(raw_handle)
 
@@ -394,7 +405,7 @@ def windows_rename_open_directory_at(
 
 
 def _rename_open_windows_handle_at(
-    directory_fd: int, raw_handle: int, new_name: str
+    directory_fd: int, raw_handle: int, new_name: str, *, replace: bool = False
 ) -> None:
     import ctypes
     import msvcrt
@@ -418,7 +429,7 @@ def _rename_open_windows_handle_at(
         )
 
     information = _FileRenameInformation(
-        replace_if_exists=False,
+        replace_if_exists=replace,
         root_directory=wintypes.HANDLE(getattr(msvcrt, "get_osfhandle")(directory_fd)),
         file_name_length=len(encoded_name),
         file_name=(ctypes.c_byte * len(encoded_name)).from_buffer_copy(encoded_name),
@@ -733,7 +744,7 @@ def _open_for_delete(
     )
 
 
-def _mark_handle_for_delete(raw_handle: int) -> None:
+def _mark_handle_for_delete(raw_handle: int, *, unlink_open_file: bool = False) -> None:
     import ctypes
     from ctypes import wintypes
 
@@ -749,10 +760,17 @@ def _mark_handle_for_delete(raw_handle: int) -> None:
         wintypes.DWORD,
     )
     set_information.restype = wintypes.BOOL
-    information = _FileDispositionInfo(delete_file=True)
+    information: wintypes.DWORD | _FileDispositionInfo
+    if unlink_open_file:
+        # FileDispositionInfoEx, with DELETE and POSIX_SEMANTICS.
+        information = wintypes.DWORD(0x3)
+        information_class = 21
+    else:
+        information = _FileDispositionInfo(delete_file=True)
+        information_class = _FILE_DISPOSITION_INFO
     if not set_information(
         wintypes.HANDLE(raw_handle),
-        _FILE_DISPOSITION_INFO,
+        information_class,
         ctypes.byref(information),
         ctypes.sizeof(information),
     ):
@@ -942,6 +960,7 @@ __all__ = [
     "open_windows_directory",
     "open_windows_regular_file_at",
     "supports_windows_rooted_io",
+    "windows_final_directory_path",
     "windows_flush_directory",
     "windows_flush_file",
     "windows_listdir_at",

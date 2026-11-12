@@ -1,13 +1,14 @@
-"""Bounded Linux SQLite transactions for the optional managed registry.
+"""Bounded SQLite transactions for the optional managed registry.
 
 This owner is a same-component friend of the native file owner. SQL never
 escapes this package as an application capability. The stable registry lock
-serializes cooperating processes; it is not a same-UID adversary boundary.
+serializes cooperating processes; it is not a security boundary against the local user.
 """
 
 from __future__ import annotations
 
 import os
+import shutil
 import sqlite3
 import sys
 from collections.abc import Iterator
@@ -16,7 +17,12 @@ from pathlib import Path
 from secrets import token_hex
 from time import monotonic
 
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    windows_final_directory_path,
+)
+
 from ._files import (
+    _WINDOWS,
     ManagedStorageError,
     PrivateManagedDirectory,
     _check_deadline,
@@ -42,8 +48,8 @@ _SCHEMA = (
     "temporary_high_water INTEGER NOT NULL CHECK(typeof(temporary_high_water)='integer' "
     "AND temporary_high_water BETWEEN 0 AND 9223372036854775807)) WITHOUT ROWID",
     "CREATE TABLE services (service_id TEXT PRIMARY KEY NOT NULL, "
-    "product TEXT NOT NULL, workspace TEXT NOT NULL, profile TEXT NOT NULL, "
-    "UNIQUE(product, workspace, profile)) WITHOUT ROWID",
+    "product TEXT NOT NULL, host_root TEXT NOT NULL, profile TEXT NOT NULL, "
+    "UNIQUE(product, host_root, profile)) WITHOUT ROWID",
     "CREATE TABLE muxes (name TEXT PRIMARY KEY NOT NULL, "
     "service_id TEXT NOT NULL REFERENCES services(service_id), "
     "operation_id TEXT NOT NULL UNIQUE, "
@@ -124,6 +130,16 @@ _SCHEMA_ROWS = tuple(sorted((
 )))
 
 
+def _database_uri(parent: int, mode: str) -> str:
+    if _WINDOWS:
+        # SQLite's file URI uses a DOS drive path. The native directory
+        # handles deny delete sharing through the entire retained walk.
+        directory = str(windows_final_directory_path(parent))
+        dos_path = directory.removeprefix("\\\\?\\")
+        return (Path(dos_path) / DATABASE_NAME).as_uri() + f"?mode={mode}"
+    return f"file:/proc/self/fd/{parent}/{DATABASE_NAME}?mode={mode}"
+
+
 class ManagedDatabase:
     """Short-lived connections, strict schema, no automatic format migration."""
 
@@ -140,7 +156,8 @@ class ManagedDatabase:
             raise ManagedContractError()
         self._directory = PrivateManagedDirectory(root, create=create, defer_open=True,
                                                   exclusive_create=exclusive_create,
-                                                  create_parents=create_parents)
+                                                  create_parents=create_parents,
+                                                  inherit_windows_children=True)
         self._namespace = namespace
         self._create = create
         self._exclusive_create = exclusive_create
@@ -192,6 +209,9 @@ class ManagedDatabase:
     def cleanup_pending(self) -> bool:
         return self._cleanup_connection is not None or self._directory.cleanup_pending
 
+    def _idle_cleanup_pending(self) -> bool:
+        return self._cleanup_connection is not None or self._directory._idle_cleanup_pending()
+
     @property
     def deployment_id(self) -> str:
         if not self._opened or self._closing or self._deployment_id is None:
@@ -209,12 +229,12 @@ class ManagedDatabase:
                   DATABASE_NAME + "-journal": JOURNAL_LIMIT}
         # Enumerate with a bound before SQLite can open any sidecars. Unknown
         # WAL/SHM/temp files are debt, not an invitation to clean or recover them.
-        with os.scandir(parent) as entries:
+        with self._directory._scan_entries(parent) as entries:
             for index, entry in enumerate(entries):
                 if index >= len(limits) or entry.name not in limits:
                     raise ManagedStorageError("invalid_record")
                 info = entry.stat(follow_symlinks=False)
-                self._directory._validate(info)
+                self._directory._validate_entry(parent, entry.name)
                 if info.st_size > limits[entry.name]:
                     raise ManagedStorageError("capacity")
 
@@ -249,13 +269,13 @@ class ManagedDatabase:
                     guard = directory._open(
                         DATABASE_NAME, os.O_RDWR | os.O_CREAT | os.O_EXCL, create=True,
                     )
-                identity = directory._validate(os.fstat(guard))
+                identity = directory._validate_fd(guard)
                 if self._file_identity is not None and self._file_identity != identity:
                     raise ManagedStorageError("conflict")
                 # Root identity remains guarded while SQLite uses the retained
                 # directory path. mode=rw prohibits SQLite from inventing a DB.
                 mode = "ro" if read_only else "rw"
-                uri = f"file:/proc/self/fd/{parent}/{DATABASE_NAME}?mode={mode}"
+                uri = _database_uri(parent, mode)
                 # Every connection use/close, including debt retries on another
                 # worker thread, is serialized by the directory mutex.
                 _check_deadline(deadline)
@@ -301,8 +321,7 @@ class ManagedDatabase:
                     connection.execute(f"PRAGMA user_version={_VERSION}")
                     directory._sync_pending.add(parent)
                     connection.commit()
-                    os.fsync(parent)
-                    directory._sync_pending.discard(parent)
+                    directory._sync_parent(parent)
                 elif header != (_APPLICATION_ID, _VERSION):
                     raise ManagedStorageError("invalid_record")
                 self._validate_schema(connection)
@@ -420,10 +439,14 @@ class ManagedDatabase:
         journal_peak = allocated + pages * 8 + PAGE_SIZE * 4
         if journal_peak > JOURNAL_LIMIT:
             raise ManagedStorageError("capacity")
-        usage = os.fstatvfs(parent)
+        if _WINDOWS:
+            available = shutil.disk_usage(windows_final_directory_path(parent)).free
+        else:
+            usage = os.fstatvfs(parent)
+            available = usage.f_bavail * usage.f_frsize
         reserve = CONTROL_RESERVE if normal else 0
         needed = growth + journal_peak + AUXILIARY_RESERVE + reserve
-        if usage.f_bavail * usage.f_frsize < needed:
+        if available < needed:
             raise ManagedStorageError("capacity")
 
     @contextmanager

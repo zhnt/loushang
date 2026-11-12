@@ -46,7 +46,7 @@ def test_xdg_runtime_precedence(tmp_path):
 
 
 def test_platform_rejection_before_uid_or_path_lookup(monkeypatch):
-    monkeypatch.setattr(module.sys, "platform", "win32")
+    monkeypatch.setattr(module.sys, "platform", "darwin")
     monkeypatch.setattr(module, "resolve_platform_paths", lambda **k: pytest.fail("unsupported lookup"))
     with pytest.raises(HostingError) as caught:
         module.resolve_managed_defaults(environ={})
@@ -82,8 +82,8 @@ def test_rejects_cwd_dependent_root_overrides(tmp_path, key, value, monkeypatch)
     assert not list(tmp_path.iterdir())
 
 
-@pytest.mark.parametrize("key,suffix", [("LOUSHANG_RUNTIME_DIR", "lmux"), ("LOUSHANG_RUNTIME_DIR", "state"),
-    ("LOUSHANG_RUNTIME_DIR", "data"), ("LOUSHANG_TMPDIR", "lmux"), ("LOUSHANG_TMPDIR", "state"),
+@pytest.mark.parametrize("key,suffix", [("LOUSHANG_RUNTIME_DIR", "hosts"), ("LOUSHANG_RUNTIME_DIR", "state"),
+    ("LOUSHANG_RUNTIME_DIR", "data"), ("LOUSHANG_TMPDIR", "hosts"), ("LOUSHANG_TMPDIR", "state"),
     ("LOUSHANG_TMPDIR", "data"), ("LOUSHANG_TMPDIR", "run")])
 def test_overlapping_roots_rejected_before_creation(tmp_path, key, suffix):
     env = {"LOUSHANG_HOME": str(tmp_path), "LOUSHANG_RUNTIME_DIR": str(tmp_path / "run"), key: str(tmp_path / suffix)}

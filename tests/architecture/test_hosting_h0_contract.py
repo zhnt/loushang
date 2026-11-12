@@ -73,7 +73,7 @@ def _imports(path: Path) -> set[str]:
     return result
 
 
-def test_hosting_package_is_standard_library_only_and_product_neutral() -> None:
+def test_hosting_package_dependencies_are_bounded_and_product_neutral() -> None:
     modules = (
         H0_PUBLIC_MODULES
         | H1_PRIVATE_MODULES
@@ -85,10 +85,24 @@ def test_hosting_package_is_standard_library_only_and_product_neutral() -> None:
     )
     assert {path for path in HOSTING_ROOT.rglob("*.py")} == modules
 
+    shared_task_consumers = {
+        "_child_session_host.py", "_endpoint_host.py", "_launch_preparation.py", "_process_host.py",
+    }
+    task_module = "loushang.foundation._owned_tasks"
+    task_symbols = {"_join_cancellation_first", "_task_failed_or_cancelled"}
     for path in modules:
+        if path.name in shared_task_consumers:
+            nodes = ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            assert {
+                alias.name
+                for node in nodes
+                if isinstance(node, ast.ImportFrom) and node.module == task_module
+                for alias in node.names
+            } == task_symbols
         for imported in _imports(path):
-            root = imported.partition(".")[0]
-            assert root in sys.stdlib_module_names, (path, imported)
+            if path.name in shared_task_consumers and imported == task_module:
+                continue
+            assert imported.partition(".")[0] in sys.stdlib_module_names, (path, imported)
 
 
 def test_h0_public_surface_exposes_no_platform_or_caller_authority_types() -> None:

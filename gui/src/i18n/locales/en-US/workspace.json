@@ -14,6 +14,9 @@
     "plugins": "Plugins",
     "fixtureBanner": "Fixture data · no backend",
     "liveBanner": "Live AppHost · controlled",
+    "projects": "Projects",
+    "addProject": "Add project",
+    "newProjectChat": "New chat in {{project}}",
     "chats": "Chats",
     "pinned": "Pinned",
     "unassigned": "Without a workspace",
@@ -64,7 +67,7 @@
     "title": "Local AppHost",
     "workspace": "Workspace",
     "pathHint": "Absolute local directory",
-    "unsupported": "Local managed Host is currently supported on Linux only.",
+    "unsupported": "No AppServer connection is configured.",
     "refresh": "Check status",
     "start": "Start and connect",
     "connect": "Connect",
@@ -77,7 +80,7 @@
     "instanceId": "Host instance ID",
     "serviceInstanceId": "Service instance ID",
     "intro": "Select a local workspace and check its Host. Start and connect when it is not running. Closing this window does not stop the Host.",
-    "confirmStop": "Stopping or restarting this Host interrupts all running tasks in this workspace. Session history is retained. Continue?",
+    "confirmStop": "Stopping or restarting this Host interrupts all running tasks across all projects and temporary chats. Session history is retained. Continue?",
     "states": {
       "unknown": "Status unconfirmed",
       "notRunning": "Host not running",
@@ -92,7 +95,7 @@
       "connection": "Host connection failed.",
       "disconnected": "Client disconnected; recovering without resubmitting.",
       "attachment": "Unable to attach the Session.",
-      "unavailable": "Local management entrypoint is unavailable. Check the installed Python environment.",
+      "unavailable": "Local AppHost management is unavailable. Check loushang-mux.",
       "record": "Host connection record is invalid.",
       "instance": "Host identity changed. Check status before stopping.",
       "unknown": "The operation could not be confirmed. Check status before trying another lifecycle operation.",
@@ -101,6 +104,9 @@
     },
     "confirmTitle": "Confirm Host shutdown",
     "cancel": "Cancel",
-    "confirm": "Confirm shutdown"
+    "confirm": "Confirm shutdown",
+    "selectWorkspace": "Select a workspace",
+    "addWorkspace": "Register and open",
+    "workspaceUnavailable": "Unable to open this workspace."
   }
 }

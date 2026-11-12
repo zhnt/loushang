@@ -16,6 +16,7 @@ from loushang.appserver.framing import require_timeout
 from loushang.appserver.local import LocalAppServerV1
 from loushang.appserver.local_record import (
     LocalConnectionDirectoryV1,
+    LocalConnectionRecordV1,
     LocalRecordScopeV1,
 )
 
@@ -208,6 +209,9 @@ class _LocalApplicationStartup(_LocalStartup):
     def _mux_management(self) -> bool:
         raise NotImplementedError
 
+    def _app_tunnel(self) -> LocalConnectionRecordV1 | None:
+        return None
+
     def _check_retry_budget(self, value: float) -> None:
         _require_budget(value)
 
@@ -231,6 +235,7 @@ class _LocalApplicationStartup(_LocalStartup):
             session_execution=self._session_execution(),
             connection_instance=self._connection_instance(),
             mux_management=self._mux_management(),
+            app_tunnel=self._app_tunnel(),
         )
         self._application = None  # AppHost has adopted both application and directory.
         await self._local.prepare(deadline=self._startup_deadline)
@@ -344,6 +349,7 @@ class HostedLocalRuntimeV1(_LocalStartup):
         session_execution: bool = False,
         mux_management: bool = False,
         connection_instance: str | None = None,
+        app_tunnel: LocalConnectionRecordV1 | None = None,
     ) -> None:
         if type(session_discovery) is not bool:
             raise TypeError("invalid discovery activation")
@@ -385,6 +391,7 @@ class HostedLocalRuntimeV1(_LocalStartup):
             else None,
             mux_closure=mux_management and application.managed_mux_close_enabled,
             instance=connection_instance,
+            app_tunnel=app_tunnel,
         )
         self._startup_timeout, self._timeout = startup_timeout, settlement_timeout
         self._start_task: asyncio.Task[None] | None = None

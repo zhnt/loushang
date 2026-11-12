@@ -166,7 +166,7 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
     assert apphost_consumers - optional_execution_consumers == {
         Path("src/loushang/coding/client_settings.py"),
         # G1: desktop composition over the existing managed lifecycle owners.
-        Path("src/loushang/coding/gui_local_host.py"),
+        Path("src/loushang/coding/managed_service.py"),
         Path("src/loushang/coding/apphost_canary.py"),
         Path("src/loushang/coding/apphost_composition.py"),
         Path("src/loushang/coding/apphost_product.py"),
@@ -191,6 +191,7 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
         Path("src/loushang/coding/cli/lmux_stop_all.py"),
         Path("src/loushang/coding/managed_bootstrap.py"),
         Path("src/loushang/coding/managed_catalog.py"),
+        Path("src/loushang/coding/workspace_catalog.py"),
         Path("src/loushang/coding/managed_local.py"),
         Path("src/loushang/coding/managed_process.py"),
     }

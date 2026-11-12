@@ -45,6 +45,8 @@ from .test_hosted_session import _model, _stream
 def test_hosted_resume_activates_once_from_stable_execution_input(
     tmp_path, monkeypatch,
 ):
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(tmp_path / "runtime"))
     monkeypatch.setattr(
         "loushang.coding.hosted_bootstrap._services",
         lambda cwd: create_services(
@@ -139,7 +141,9 @@ def test_hosted_resume_activates_once_from_stable_execution_input(
                 )
                 if current.state.status.terminal:
                     break
-                await asyncio.sleep(0)
+                # The in-process poll can complete without suspending. Let the
+                # native Catalog preview and execution tasks make progress.
+                await asyncio.sleep(0.01)
             assert current.state.status is ExecutionStatusV1.SUCCEEDED
             snapshot = await client.snapshot_session(control)
             assert snapshot.submission_mode is SessionSubmissionModeV1.EXECUTION

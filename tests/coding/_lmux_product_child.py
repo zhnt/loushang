@@ -1,7 +1,7 @@
 """Fixed installed managed-child composition for first-use tests only.
 
 Accept only the production invocation/session-root/control-descriptor arguments.
-The test parent precreates a private observations directory in its workspace.
+The test parent precreates a private observations directory under its Host root.
 No dynamic provider/module/executable selection is exposed to production.
 """
 
@@ -43,7 +43,7 @@ def main(arguments=None):
     if not origin.is_relative_to(Path(sys.prefix).resolve()):
         raise ValueError("fixed child must use its measured installation")
     invocation = ManagedChildInvocationV1.from_json(arguments[0])
-    root = Path(invocation.service.workspace) / "lmux-test-observations"
+    root = Path(invocation.service.host_root) / "lmux-test-observations"
     info = root.lstat()
     if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid()
             or info.st_mode & 0o077 or root.resolve() != root):

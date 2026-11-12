@@ -8,7 +8,6 @@ neither close nor caller cancellation stops a service or repeats a create RPC.
 from __future__ import annotations
 
 import asyncio
-import os
 from collections.abc import Callable
 from time import monotonic
 from typing import TypeVar
@@ -21,6 +20,7 @@ from .child import _failed, _spawn
 from .connection import ManagedConnectionLeaseV1, _settled_native
 from .contracts import ManagedContractError, ManagedNamespaceV1
 from .coordinator import ManagedServiceCoordinatorV1
+from .defaults import current_managed_user
 from .lifecycle import ManagedServiceJournalV1
 from .mux_management import ManagedMuxManagerV1
 from .registry import ManagedMuxReservationV1, ManagedRegistryV1
@@ -50,7 +50,7 @@ class ManagedMuxCreateOperationV1:
         if (
             type(registry) is not ManagedRegistryV1 or type(journal) is not ManagedServiceJournalV1
             or type(namespace) is not ManagedNamespaceV1 or type(reservation) is not ManagedMuxReservationV1
-            or namespace.user_id != os.geteuid() or journal._database is not registry._database
+            or namespace.user_id != current_managed_user() or journal._database is not registry._database
             or journal._namespace != namespace or journal._service != reservation.service
             or registry._database._namespace != namespace.namespace_key
         ):

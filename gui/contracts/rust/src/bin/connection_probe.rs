@@ -1,9 +1,6 @@
 //! Native lifecycle evidence consuming the same native adapter as Tauri.
 #[allow(dead_code, unused_imports)]
-#[path = "../../../../src-tauri/src/app_client/mod.rs"]
-mod app_client;
-#[path = "../../../../src-tauri/src/read_stop.rs"]
-mod read_stop;
+use loushang_app_client as app_client;
 #[allow(dead_code)]
 #[path = "../../../../src-tauri/src/read_worker.rs"]
 mod read_worker;
@@ -30,7 +27,8 @@ fn main() {
             app_client::AppClient::default().run(
                 app_client::ConnectionOptions {
                     prepare_default_session: false,
-                    root: &root,
+                    workspace_scope: None,
+                    target: loushang_app_client::AppTarget::Local(&root),
                     timeout: std::time::Duration::from_millis(timeout),
                     cancel: (cancel >= 0).then(|| std::time::Duration::from_millis(cancel as u64)),
                     attach,

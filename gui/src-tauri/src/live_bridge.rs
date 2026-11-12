@@ -1,9 +1,9 @@
 //! Tauri handoff for reconnecting snapshots, validated event rounds and bounded control.
-use crate::app_client::{
+use crate::connection_lifecycle::{ConnectionLifecycle, ExitAction};
+use loushang_app_client::{
     AppClient, ConnectionOptions, ControlCommand, ControlResult, CreateSessionResult,
     LiveEventRound, LiveInitialSnapshot, ModelControlResult,
 };
-use crate::connection_lifecycle::{ConnectionLifecycle, ExitAction};
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -111,7 +111,7 @@ enum Publication {
 }
 
 #[tauri::command]
-pub(crate) fn live_readonly_available(app: tauri::AppHandle) -> bool {
+pub(crate) fn live_connection_available(app: tauri::AppHandle) -> bool {
     matches!(&app.state::<LiveLaunchState>().launch, Ok(Some(_)))
 }
 
@@ -146,7 +146,7 @@ fn parse_launch(arguments: impl IntoIterator<Item = OsString>) -> Result<Option<
 }
 
 #[tauri::command]
-pub(crate) fn start_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
+pub(crate) fn start_live_connection(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<LiveLaunchState>();
     let Ok(Some(launch)) = state.launch.clone() else {
         return Err("live AppHost launch configuration is unavailable".to_owned());
@@ -176,7 +176,8 @@ pub(crate) fn start_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
                 let outcome = client.run_stream(
                     ConnectionOptions {
                         prepare_default_session: true,
-                        root: &launch.record_root,
+                        workspace_scope: None,
+                        target: loushang_app_client::AppTarget::Local(&launch.record_root),
                         timeout: Duration::from_secs(5),
                         cancel: None,
                         attach: true,
@@ -487,7 +488,7 @@ fn control_receipt(
 }
 
 #[tauri::command]
-pub(crate) fn resync_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
+pub(crate) fn resync_live_connection(app: tauri::AppHandle) -> Result<(), String> {
     app.state::<LiveLaunchState>()
         .resync
         .try_update(Ordering::AcqRel, Ordering::Acquire, |value| {
@@ -498,7 +499,7 @@ pub(crate) fn resync_live_readonly(app: tauri::AppHandle) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub(crate) fn stop_live_readonly(app: tauri::AppHandle) {
+pub(crate) fn stop_live_connection(app: tauri::AppHandle) {
     if let Ok(mut control) = app.state::<LiveLaunchState>().control.write() {
         *control = None;
     }

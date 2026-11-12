@@ -9,7 +9,6 @@ across to_thread jobs. This module neither launches nor stops a service.
 from __future__ import annotations
 
 import asyncio
-import os
 import sqlite3
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
@@ -30,15 +29,17 @@ from loushang.appservice.continuity import (
     ApplicationContinuityRecordV1,
     require_application_id,
 )
-from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
+from loushang.appservice.managed_mux import CommitMux, ManagedMuxServiceBindingV1
 from loushang.appservice.managed_mux_close import (
     ManagedMuxCloseBindingV1,
     ManagedMuxCloseRecoveryBindingV1,
     ManagedMuxCloseUseV1,
 )
-from loushang.hosting.service import LinuxServiceIdentityV1
+from loushang.hosting.service import LinuxServiceIdentityV1, ServiceIdentityV1
+from loushang.hosting.service_windows import WindowsServiceIdentityV1
 
 from ._files import ManagedStorageError, _check_deadline
+from .connection import _settled_native
 from .contracts import (
     _HEX32,
     _HEX64,
@@ -49,6 +50,7 @@ from .contracts import (
     ManagedServiceKeyV1,
     _match,
 )
+from .defaults import current_managed_user
 from .lifecycle import ManagedServiceJournalV1, ManagedServiceTransitionV1
 from .registry import MAX_MUXES, ManagedMuxReservationV1, ManagedRegistryV1, _decode
 
@@ -111,7 +113,7 @@ class ManagedMuxManagerV1:
         namespace: ManagedNamespaceV1, service: ManagedServiceKeyV1,
         instance: ManagedInstanceRefV1, *, application_id: str,
         startup_attempt_id: str | None = None,
-        startup_native_identity: LinuxServiceIdentityV1 | None = None,
+        startup_native_identity: ServiceIdentityV1 | None = None,
     ) -> None:
         require_application_id(application_id)
         if (
@@ -120,7 +122,7 @@ class ManagedMuxManagerV1:
             or type(namespace) is not ManagedNamespaceV1
             or type(service) is not ManagedServiceKeyV1
             or type(instance) is not ManagedInstanceRefV1
-            or namespace.user_id != os.geteuid()
+            or namespace.user_id != current_managed_user()
             or journal._database is not registry._database
             or journal._namespace != namespace or journal._service != service
             or instance.namespace_key != namespace.namespace_key
@@ -134,7 +136,8 @@ class ManagedMuxManagerV1:
             raise ManagedContractError()
         if startup_attempt_id is not None:
             _match(startup_attempt_id, _HEX32)
-            if (type(startup_native_identity) is not LinuxServiceIdentityV1
+            if (startup_native_identity is None
+                    or type(startup_native_identity) not in {LinuxServiceIdentityV1, WindowsServiceIdentityV1}
                     or startup_native_identity.user_id != namespace.user_id):
                 raise ManagedContractError()
         self._startup_attempt, self._startup_native = startup_attempt_id, startup_native_identity
@@ -149,7 +152,29 @@ class ManagedMuxManagerV1:
         return ManagedMuxServiceBindingV1(
             self._application_id, self._service.service_id, self._instance.instance_id,
             self.prepare, closing=None if self._startup_attempt is None else self.closing_binding(),
+            ensure_named=self.ensure_named,
         )
+
+    def _reserve_named(self, name: str, deadline: float) -> ManagedMuxReservationV1:
+        existing = self._registry.resolve(name)
+        if existing is None:
+            candidate = ManagedMuxReservationV1(name, self._service, token_hex(16))
+            try:
+                return self._registry.reserve_mux(candidate, deadline=deadline, wait_for_lock=True)
+            except ManagedStorageError as error:
+                if error.code != "conflict":
+                    raise
+                existing = self._registry.resolve(name)
+        if existing is None or existing.service != self._service:
+            raise ManagedStorageError("conflict")
+        return existing
+
+    async def ensure_named(self, name: str, commit: CommitMux) -> None:
+        deadline = monotonic() + 10
+        reservation = await _settled_native(self._reserve_named, name, deadline)
+        permit = await _settled_native(lambda: self.issue_create(reservation, deadline=deadline))
+        created = await commit(permit)
+        await _settled_native(lambda: self.record_created(permit, created, deadline=deadline))
 
     def closing_binding(self) -> ManagedMuxCloseBindingV1:
         """Recovery activates only with the original bootstrap startup identity."""
@@ -220,7 +245,7 @@ class ManagedMuxManagerV1:
 
     def _reservation(self, connection: sqlite3.Connection, name: str, operation: str) -> None:
         row = connection.execute(
-            "SELECT m.name, s.product, s.workspace, s.profile, m.operation_id, s.service_id "
+            "SELECT m.name, s.product, s.host_root, s.profile, m.operation_id, s.service_id "
             "FROM muxes m JOIN services s USING(service_id) WHERE m.name=?", (name,),
         ).fetchone()
         if row is None or _decode(row) != ManagedMuxReservationV1(name, self._service, operation):
@@ -379,7 +404,7 @@ class ManagedMuxManagerV1:
 
     def _historical_creation(self, connection: sqlite3.Connection, reservation: ManagedMuxReservationV1) -> ManagedMuxCreatedV1:
         row = connection.execute(
-            "SELECT m.name, s.product, s.workspace, s.profile, m.operation_id, s.service_id "
+            "SELECT m.name, s.product, s.host_root, s.profile, m.operation_id, s.service_id "
             "FROM mux_intents m JOIN services s USING(service_id) WHERE m.operation_id=?",
             (reservation.operation_id,),
         ).fetchone()
@@ -629,7 +654,7 @@ class _ManagedMuxFence:
                 return
             except ManagedStorageError as error:
                 if (error.code != "busy" or self._exit_attempted
-                        or journal._fence.cleanup_pending):
+                        or journal._fence._idle_cleanup_pending()):
                     raise
                 # No check_*/ADMIT/CAS/Session effect has occurred. Release
                 # this exact read context; never retry an uncertain release.
@@ -638,24 +663,20 @@ class _ManagedMuxFence:
                     self._exit_attempted = True
                     self._context.__exit__(None, None, None)
                     self._entered = False
-                if journal._fence.cleanup_pending:
+                if journal._fence._idle_cleanup_pending():
                     raise ManagedStorageError("unavailable") from None
                 self._context = None
                 self._discard_permission()
                 self._exit_attempted = False  # Prior read's release is confirmed.
-                if journal._database.cleanup_pending:
-                    # Another native operation may be between retaining and
-                    # confirming one descriptor close. Yield once, but never
-                    # wait through persistent or unknown database cleanup debt.
-                    await asyncio.sleep(min(0.01, max(0.0, deadline - monotonic())))
-                    _check_deadline(deadline)
-                    if self._closed or self._exit_attempted:
-                        raise ManagedStorageError("closed")
-                    if journal._fence.cleanup_pending or journal._database.cleanup_pending:
-                        raise
-                    continue
+                # Give an in-flight descriptor close one turn to settle.
+                # Persistent cleanup debt must still prevent a new admission.
                 _check_deadline(deadline)
                 await asyncio.sleep(min(0.01, max(0.0, deadline - monotonic())))
+                _check_deadline(deadline)
+                if self._closed or self._exit_attempted:
+                    raise ManagedStorageError("closed")
+                if journal._fence._idle_cleanup_pending() or journal._database._idle_cleanup_pending():
+                    raise
 
     async def _read_once(self, deadline: float) -> None:
         journal = self._manager._journal
@@ -685,7 +706,7 @@ class _ManagedMuxFence:
             self._exit_attempted = True
             self._context.__exit__(None, None, None)
             self._entered = False
-        if self._manager._journal._fence.cleanup_pending:
+        if self._manager._journal._fence._idle_cleanup_pending():
             raise ManagedStorageError("unavailable")
         self._context = None
         self._closed = True

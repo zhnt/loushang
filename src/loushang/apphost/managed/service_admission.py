@@ -116,9 +116,9 @@ class ManagedServiceAdmissionV1:
                                      (service.service_id,)).fetchone()
             if row is not None:
                 return self._decode(row), False
-            key = connection.execute("SELECT product, workspace, profile FROM services WHERE service_id=?",
+            key = connection.execute("SELECT product, host_root, profile FROM services WHERE service_id=?",
                                      (service.service_id,)).fetchone()
-            if key is not None and key != (service.product_id, service.workspace, service.profile):
+            if key is not None and key != (service.product_id, service.host_root, service.profile):
                 raise ManagedStorageError("conflict")
             if connection.execute("SELECT 1 FROM instances WHERE service_id=?", (service.service_id,)).fetchone():
                 raise ManagedStorageError("conflict")
@@ -127,7 +127,7 @@ class ManagedServiceAdmissionV1:
                 if connection.execute("SELECT count(*) FROM services").fetchone()[0] >= MAX_SERVICES:
                     raise ManagedStorageError("capacity")
                 connection.execute("INSERT INTO services VALUES (?, ?, ?, ?)",
-                                   (service.service_id, service.product_id, service.workspace, service.profile))
+                                   (service.service_id, service.product_id, service.host_root, service.profile))
             connection.execute("INSERT INTO service_controls VALUES (?, ?)",
                                (service.service_id, self._intent.to_json()))
         return self._intent, True

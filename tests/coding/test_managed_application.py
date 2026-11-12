@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from dataclasses import replace
+from secrets import token_hex
 
 import pytest
 
@@ -18,12 +19,13 @@ from loushang.appservice.execution_service import HostedExecutionServiceBindingV
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.coding.hosted_application import (
     CODING_HOSTED_APPLICATION_PROFILE_ID,
+    CODING_MANAGED_APPLICATION_PROFILE_ID,
     CodingAppHostHostedSessionResolverV1,
 )
+from loushang.coding.hosted_bootstrap import _create_coding_attempt
 from loushang.coding.hosted_session import CodingRealHostedSessionFactoryV1
 from loushang.coding.managed_bootstrap import (
     CodingManagedApplicationLaunchV1,
-    create_coding_managed_attempt,
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.transcript.writer_lease import TranscriptWriterError
@@ -42,9 +44,15 @@ def launch(root):
     return CodingManagedApplicationLaunchV1(root, root / "application", "coding.managed", root / "sessions")
 
 
-def attempt(root):
-    return create_coding_managed_attempt(
-        launch(root), model=_model(), stream_fn=scripted_stream, tools=[], session_discovery=True,
+def attempt(root, *, stream_fn=scripted_stream):
+    # Exercise the original canonical identity/lease proof independently of
+    # the Host-owned membership API covered by the real process tests.
+    spec = launch(root)
+    return _create_coding_attempt(
+        application_root=spec.application_root, application_id=spec.application_id,
+        catalog=catalog(root), generation=token_hex(16), model=_model(), stream_fn=stream_fn,
+        tools=[], session_discovery=True, owned_transcripts=True,
+        profile_id=CODING_MANAGED_APPLICATION_PROFILE_ID, managed_selection=True,
     )
 
 
@@ -145,9 +153,7 @@ def test_managed_real_product_scope_projection_reconnect_and_continuity(tmp_path
 
         # Production freezes static native methods during attempt construction.
         monkeypatch.setattr(CodingRealHostedSessionFactoryV1, "create_session", observe)
-        owner = create_coding_managed_attempt(
-            launch(tmp_path), model=_model(), stream_fn=gated_stream, tools=[], session_discovery=True,
-        )
+        owner = attempt(tmp_path, stream_fn=gated_stream)
         from loushang.coding.hosted_execution import (
             CodingHostedExecutionSessionV1,
         )

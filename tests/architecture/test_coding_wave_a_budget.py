@@ -22,7 +22,7 @@ G18_FACADE_SLICE = frozenset({"__init__.py"})
 EXECUTION_PRODUCT_SLICE = frozenset({"hosted_execution.py", "_hosted_execution_work.py"})
 LMUX_PRODUCT_SLICE = frozenset({
     "managed_process.py", "managed_local.py", "managed_bootstrap.py", "managed_catalog.py",
-    "cli/lmux.py", "cli/lmux_command.py", "cli/lmux_stop_all.py",
+    "cli/lmux.py", "cli/lmux_command.py", "cli/lmux_stop_all.py", "workspace_catalog.py",
 })
 
 APPROVED_SLICES = {
@@ -107,11 +107,11 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
     # composition and admitted owned-root preparation. Exact net delta from
     # current main: mux +1, bootstrap +37 and local command +15.
     # Hosted SDK Method and bounded Goal integration add 29 bootstrap lines.
-    assert sum(groups["g16"].values()) <= 900 + 53 + 29, groups["g16"]
+    assert sum(groups["g16"].values()) <= 900 + 53 + 29 + 9, groups["g16"]
     for path, limit in {
         # Main 794156c3b adds systemd AppHost management to this owner.
         "cli/mux.py": 277,
-        "hosted_bootstrap.py": 288 + 29,
+        "hosted_bootstrap.py": 288 + 29 + 9,
         "hosted_local.py": 402,
     }.items():
         assert groups["g16"][path] <= limit, (path, groups["g16"][path], limit)
@@ -147,11 +147,13 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
     assert sum(groups["lmux"].values()) <= (
         1_579 + 13 + managed_composition_allowance + creation_recovery_composition_allowance
         + child_import_boundary_allowance + plc9b_hosted_lmux_allowance
-        + r21_resume_lmux_allowance
+        + r21_resume_lmux_allowance + 150 + 18  # Host First: catalog and managed wiring
     ), groups["lmux"]
     for path, limit in {
-        "cli/lmux_command.py": 811,
-        "managed_local.py": 172,
+        # One line reports the connection root after confirmed Host startup.
+        "cli/lmux_command.py": 811 + 17 + 1,
+        # Nine lines admit and pass through the optional AppHost tunnel credential.
+        "managed_local.py": 172 + 1 + 9,
     }.items():
         assert groups["lmux"][path] <= limit, (path, groups["lmux"][path], limit)
 

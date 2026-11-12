@@ -15,7 +15,8 @@ from pathlib import Path
 from secrets import token_hex
 
 from loushang.hosting.errors import HostingError
-from loushang.hosting.service import LinuxServiceIdentityV1
+from loushang.hosting.service import LinuxServiceIdentityV1, ServiceIdentityV1
+from loushang.hosting.service_windows import WindowsServiceIdentityV1
 
 from ._files import (
     ManagedStorageError,
@@ -67,7 +68,7 @@ class ManagedServiceStateV1:
     revision: int
     handoff: ManagedHandoffV1
     evidence: ManagedStopEvidenceV1
-    native_identity: LinuxServiceIdentityV1 | None = None
+    native_identity: ServiceIdentityV1 | None = None
     trace_application: ManagedTraceApplicationV1 | None = None
 
     def __post_init__(self) -> None:
@@ -76,7 +77,7 @@ class ManagedServiceStateV1:
             or type(self.handoff) is not ManagedHandoffV1
             or type(self.evidence) is not ManagedStopEvidenceV1
             or self.handoff.instance != self.evidence.instance
-            or (self.native_identity is not None and type(self.native_identity) is not LinuxServiceIdentityV1)
+            or (self.native_identity is not None and type(self.native_identity) not in {LinuxServiceIdentityV1, WindowsServiceIdentityV1})
             or (self.handoff.phase is ManagedHandoffPhaseV1.COMMITTED and self.native_identity is None)
         ):
             raise ManagedContractError()
@@ -253,7 +254,7 @@ class ManagedServiceJournalV1:
             return result
 
     def register_native(
-        self, instance: ManagedInstanceRefV1, attempt_id: str, identity: LinuxServiceIdentityV1,
+        self, instance: ManagedInstanceRefV1, attempt_id: str, identity: ServiceIdentityV1,
         *, deadline: float | None = None,
     ) -> ManagedServiceStateV1:
         """Persist the trusted launch owner's capture, once per generation.
@@ -278,13 +279,13 @@ class ManagedServiceJournalV1:
 
         return self._update(instance, update, deadline=deadline)
 
-    def _require_native(self, identity: LinuxServiceIdentityV1 | None) -> None:
-        if type(identity) is not LinuxServiceIdentityV1 or identity.user_id != self._namespace.user_id:
+    def _require_native(self, identity: ServiceIdentityV1 | None) -> None:
+        if identity is None or type(identity) not in {LinuxServiceIdentityV1, WindowsServiceIdentityV1} or identity.user_id != self._namespace.user_id:
             raise ManagedContractError()
 
     def commit(
         self, instance: ManagedInstanceRefV1, attempt_id: str, *,
-        native_identity: LinuxServiceIdentityV1 | None = None, deadline: float | None = None,
+        native_identity: ServiceIdentityV1 | None = None, deadline: float | None = None,
     ) -> ManagedServiceStateV1:
         """Child proposal requires the durable native binding and no stop/abort."""
         _match(attempt_id, _HEX32)
@@ -299,7 +300,7 @@ class ManagedServiceJournalV1:
 
     def record_trace_application(
         self, instance: ManagedInstanceRefV1, attempt_id: str, *,
-        native_identity: LinuxServiceIdentityV1, trace_deadline_ms: int,
+        native_identity: ServiceIdentityV1, trace_deadline_ms: int,
         deadline: float | None = None,
     ) -> ManagedServiceStateV1:
         """Child publishes after sink/consumer/storage admission, not before.
@@ -337,7 +338,7 @@ class ManagedServiceJournalV1:
 
     def abort(
         self, instance: ManagedInstanceRefV1, attempt_id: str, *,
-        native_identity: LinuxServiceIdentityV1 | None = None, deadline: float | None = None,
+        native_identity: ServiceIdentityV1 | None = None, deadline: float | None = None,
     ) -> ManagedServiceStateV1:
         """Starter may abort by exact attempt; bound children must match birth.
 
@@ -365,7 +366,7 @@ class ManagedServiceJournalV1:
         ), deadline=deadline)
 
     def request_child_stop(
-        self, instance: ManagedInstanceRefV1, attempt_id: str, native_identity: LinuxServiceIdentityV1,
+        self, instance: ManagedInstanceRefV1, attempt_id: str, native_identity: ServiceIdentityV1,
         *, deadline: float | None = None,
     ) -> ManagedServiceStateV1:
         """Child's explicit stop, atomically bound to its attempt and birth.
@@ -387,7 +388,7 @@ class ManagedServiceJournalV1:
         return self._update(instance, update, deadline=deadline)
 
     def record_child_cleanup(
-        self, instance: ManagedInstanceRefV1, attempt_id: str, native_identity: LinuxServiceIdentityV1,
+        self, instance: ManagedInstanceRefV1, attempt_id: str, native_identity: ServiceIdentityV1,
         *, deadline: float | None = None,
     ) -> ManagedServiceStateV1:
         """Record only successful application cleanup, never child/process exit."""
@@ -403,13 +404,13 @@ class ManagedServiceJournalV1:
         return self._update(instance, update, deadline=deadline)
 
     @staticmethod
-    def _match_child(current: ManagedServiceStateV1, attempt_id: str, native: LinuxServiceIdentityV1) -> None:
+    def _match_child(current: ManagedServiceStateV1, attempt_id: str, native: ServiceIdentityV1) -> None:
         if (current.handoff.attempt_id != attempt_id
                 or current.native_identity is not None and current.native_identity != native):
             raise ManagedStorageError("conflict")
 
     def record_native_stop(
-        self, instance: ManagedInstanceRefV1, native_identity: LinuxServiceIdentityV1, *,
+        self, instance: ManagedInstanceRefV1, native_identity: ServiceIdentityV1, *,
         process_exited: bool, process_scope_settled: bool, deadline: float,
     ) -> ManagedServiceStateV1:
         """Native-only monotonic facts; never accept an application-cleanup bit."""
@@ -496,9 +497,9 @@ class ManagedServiceJournalV1:
 
     def _read_state(self, connection: sqlite3.Connection) -> ManagedServiceStateV1 | None:
         service = self._service
-        key = connection.execute("SELECT product, workspace, profile FROM services WHERE service_id=?",
+        key = connection.execute("SELECT product, host_root, profile FROM services WHERE service_id=?",
                                  (service.service_id,)).fetchone()
-        if key != (service.product_id, service.workspace, service.profile):
+        if key != (service.product_id, service.host_root, service.profile):
             raise ManagedStorageError("conflict")
         if self._database.service_admission_required:
             control = self._read_control(connection)
@@ -634,16 +635,23 @@ def _decode_trace(value: object) -> ManagedTraceApplicationV1 | None:
         raise ManagedContractError() from None
 
 
-def _encode_native(identity: LinuxServiceIdentityV1 | None) -> str | None:
+def _encode_native(identity: ServiceIdentityV1 | None) -> str | None:
     return None if identity is None else json.dumps(asdict(identity), sort_keys=True, separators=(",", ":"))
 
 
-def _decode_native(value: object) -> LinuxServiceIdentityV1 | None:
+def _decode_native(value: object) -> ServiceIdentityV1 | None:
     if value is None:
         return None
     if type(value) is not str or len(value) > 1024:
         raise ManagedContractError()
-    identity = LinuxServiceIdentityV1(**json.loads(value))
+    row = json.loads(value)
+    if type(row) is not dict:
+        raise ManagedContractError()
+    identity: ServiceIdentityV1
+    if "creation_filetime" in row:
+        identity = WindowsServiceIdentityV1(**row)
+    else:
+        identity = LinuxServiceIdentityV1(**row)
     if _encode_native(identity) != value:
         raise ManagedContractError()
     return identity

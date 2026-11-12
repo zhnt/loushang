@@ -22,22 +22,15 @@ fixture-bridge = []
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+loushang-app-client = { path = "../app-client", features = ["frontend"] }
 tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
-hmac = "0.12.1"
 sha2 = "0.10.9"
 getrandom = "0.2.17"
 tauri-plugin-os = "=2.3.1"
-reqwest = { version = "0.13.5", default-features = false, features = ["json", "native-tls"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
 tempfile = "3"
-
-[target.'cfg(unix)'.dependencies]
-rustix = { version = "1.1.6", features = ["fs", "process"] }
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
@@ -49,4 +42,7 @@ panic = "abort"
 strip = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
-libc = "0.2"
+gtk = "=0.18.2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61.3", features = ["Win32_System_Com", "Win32_UI_Shell"] }

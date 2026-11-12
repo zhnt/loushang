@@ -6,24 +6,29 @@ import { AccountMenu } from "../src/AccountMenu";
 import { SettingsDialog } from "../src/SettingsDialog";
 import { readMarkdownPreferences } from "../src/markdown/preferences";
 import LocalHostGate from "../src/LocalHostGate";
+import { ProjectNavigation } from "../src/ProjectNavigation";
+import type { ProjectNavigationProps } from "../src/client/projectDirectory";
 
 const native = vi.hoisted(() => ({
   invoke: vi.fn(), create: vi.fn(() => ({})), listeners: new Map<string, (value: any) => void>(),
+  available: vi.fn(async () => false),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: native.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async (name, callback) => {
   native.listeners.set(name, callback);
   return () => native.listeners.delete(name);
 }) }));
-vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: async () => false }));
+vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: native.available }));
 vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: native.create }));
 vi.mock("../src/DesktopFrame", () => ({ DesktopFrame: () => <header>Desktop</header> }));
 vi.mock("../src/App", () => ({
   default: () => <p>Fixture</p>,
-  HarnessGui: ({ client, account, hostSettings, hostSettingsRequest = 0 }: { client: unknown; account: OfflineAccount | null; hostSettings: ReactNode; hostSettingsRequest?: number }) => {
+  HarnessGui: ({ client, account, hostSettings, hostSettingsRequest = 0, projectNavigation }: { projectNavigation: ProjectNavigationProps; client: unknown; account: OfflineAccount | null; hostSettings: ReactNode; hostSettingsRequest?: number }) => {
     const dialog = useRef<HTMLDialogElement>(null);
     useEffect(() => { if (hostSettingsRequest) dialog.current?.showModal(); }, [hostSettingsRequest]);
     return <>
+      <button disabled={!projectNavigation.available} onClick={() => projectNavigation.create(null)}>New Session</button>
+      <ProjectNavigation navigation={projectNavigation} selectedId={projectNavigation.selection?.id ?? null} titles={{}} />
       {client ? <textarea aria-label="Draft" /> : <p>Disconnected workspace</p>}
       <AccountMenu account={account} onSettings={() => dialog.current?.showModal()} />
       <SettingsDialog dialogRef={dialog} hostSettings={hostSettings} hostRequest={hostSettingsRequest}
@@ -45,6 +50,8 @@ function openHostSettings() {
 }
 
 function installMock(implementation: (command: string, args?: any) => Promise<unknown>) {
+  const pinned = new Set<string>();
+  const chat = (id: string, title: string, scope: string) => ({ id, title, scope, pinned: pinned.has(id) });
   native.invoke.mockImplementation(async (command, args) => {
     if (command === "client_settings") {
       if (args.request.operation === "connections/list") return { selectedId: "local", connections: [
@@ -53,15 +60,31 @@ function installMock(implementation: (command: string, args?: any) => Promise<un
       if (args.request.operation === "environment") return {
         ...await implementation("environment", args) as object, connectionId: "local",
       };
-      if (args.request.operation === "host/request") return implementation("manage", { request: args.request.request });
+      if (args.request.operation === "host/request") {
+        if (args.request.request.operation === "preferences") {
+          const { action, session } = args.request.request;
+          if (action === "pin") pinned.add(session);
+          if (action === "unpin") pinned.delete(session);
+          return { pinned: [...pinned], recent: [], selected: "" };
+        }
+        if (args.request.request.operation === "workspace") {
+          const request = args.request.request;
+          if (request.action !== "navigation") return implementation("workspace", request);
+          return { projects: [
+            { path: "/workspace", sessions: [chat("a", "Project A chat", "mux:a")] },
+            { path: "/previous", sessions: [chat("b", "Project B chat", "mux:b")] },
+          ], temporarySessions: [chat("scratch", "Temporary chat", "mux:temp")] };
+        }
+        return { manageable: true, ...await implementation("manage", { request: args.request.request }) as object };
+      }
     }
     return implementation(command, args);
   });
 }
 
-function management(action: string, workspace = "/workspace", instanceId?: string) {
+function management(action: string, _workspace = "/workspace", instanceId?: string) {
   return { request: { operation: "host/request", connectionId: "local",
-    request: { operation: "manage", action, workspace, ...(instanceId ? { instanceId } : {}) } } };
+    request: { operation: "manage", action, ...(instanceId ? { instanceId } : {}) } } };
 }
 
 function countActions(action: string) {
@@ -83,6 +106,13 @@ beforeEach(() => {
 });
 
 describe("local managed Host presentation", () => {
+  it("does not query the Web Host directory while selecting a direct native connection", async () => {
+    native.available.mockResolvedValueOnce(true);
+    render(<LocalHostGate />);
+    expect(await screen.findByText("Fixture")).toBeVisible();
+    expect(native.invoke.mock.calls.filter(([command]) => command === "client_settings")).toEqual([]);
+  });
+
   it("routes tray start and stop through management and the existing shutdown confirmation", async () => {
     render(<LocalHostGate />);
     const projection = () => {
@@ -123,7 +153,7 @@ describe("local managed Host presentation", () => {
     expect(settings.getByRole("combobox", { name: "Interface language" })).toBeVisible();
     expect(settings.queryByRole("textbox", { name: "Workspace" })).not.toBeInTheDocument();
     fireEvent.click(settings.getByRole("button", { name: "Host" }));
-    expect(settings.getByRole("textbox", { name: "Workspace" })).toBeVisible();
+    expect(settings.queryByRole("textbox", { name: "Workspace" })).toBeNull();
     expect(settings.queryByRole("combobox", { name: "Interface language" })).not.toBeInTheDocument();
     const start = await settings.findByRole("button", { name: "Start and connect" });
     expect(native.invoke).toHaveBeenCalledWith("client_settings", management("connect"));
@@ -149,6 +179,93 @@ describe("local managed Host presentation", () => {
     expect(native.invoke).toHaveBeenCalledWith("client_settings", management("connect", "/previous"));
     expect(countActions("start")).toBe(0);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps projects visible and uses distinct actions for project and temporary chats", async () => {
+    installMock(async (command, args) => {
+      if (command === "environment") return { supported: true, workspace: "" };
+      if (command === "pick_project_folder") return "C:\\Work\\项目";
+      if (command === "workspace" && args.action === "create-chat") return args.path
+        ? { workspace: args.path, sessionId: "a" }
+        : { workspace: "@temporary", sessionId: "scratch" };
+      return { state: "running", errorCode: null };
+    });
+    render(<LocalHostGate />);
+    const projects = within(screen.getByRole("region", { name: "Projects" }));
+    const chats = within(screen.getByRole("region", { name: "Chats" }));
+    fireEvent.click(await projects.findByRole("button", { name: "Project B chat" }));
+    expect(native.create).toHaveBeenCalledWith("/previous", "local");
+    expect(projects.getByRole("button", { name: "Project A chat" })).toBeVisible();
+    expect(chats.getByRole("button", { name: "Temporary chat" })).toBeVisible();
+    expect(chats.queryByText("Project B chat")).toBeNull();
+
+    const project = projects.getByRole("button", { name: "workspace" });
+    fireEvent.click(project);
+    expect(project).toHaveAttribute("aria-expanded", "false");
+    expect(projects.queryByRole("button", { name: "Project A chat" })).toBeNull();
+    expect(projects.getByRole("button", { name: "Project B chat" })).toBeVisible();
+    fireEvent.click(projects.getByRole("button", { name: "New chat in workspace" }));
+    await waitFor(() => expect(native.create).toHaveBeenCalledWith("/workspace", "local"));
+    expect(projects.getByRole("button", { name: "Project A chat" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(screen.getByRole("button", { name: "New Session" }));
+    await waitFor(() => expect(native.create).toHaveBeenCalledWith("@temporary", "local"));
+    expect(chats.getByRole("button", { name: "Temporary chat" })).toHaveAttribute("aria-current", "true");
+
+    fireEvent.click(projects.getByRole("button", { name: "Add project" }));
+    await waitFor(() => expect(native.invoke).toHaveBeenCalledWith("client_settings", {
+      request: { operation: "host/request", connectionId: "local",
+        request: { operation: "workspace", action: "register", path: "C:\\Work\\项目" } },
+    }));
+    expect(countActions("create-chat")).toBe(2);
+    expect(countActions("open")).toBe(0);
+  });
+
+  it("shows a picker failure without opening a manual path field for the local desktop", async () => {
+    installMock(async (command) => {
+      if (command === "environment") return { supported: true, workspace: "" };
+      if (command === "pick_project_folder") throw new Error("folder_picker_unavailable");
+      return { state: "running", errorCode: null };
+    });
+    render(<LocalHostGate />);
+    const projects = within(screen.getByRole("region", { name: "Projects" }));
+    const button = projects.getByRole("button", { name: "Add project" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    expect(await projects.findByRole("alert")).toBeVisible();
+    expect(projects.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(countActions("register")).toBe(0);
+  });
+
+  it("puts pinned project and temporary chats above projects and returns them to their groups", async () => {
+    installMock(async (command) => command === "environment"
+      ? { supported: true, workspace: "" }
+      : { state: "running", errorCode: null });
+    render(<LocalHostGate />);
+    const projects = screen.getByRole("region", { name: "Projects" });
+    const chats = screen.getByRole("region", { name: "Chats" });
+    const pin = await within(projects).findByRole("button", { name: "Pin Project A chat" });
+    pin.focus();
+    fireEvent.click(pin);
+    const pinned = await screen.findByRole("region", { name: "Pinned" });
+    expect(pinned.nextElementSibling).toBe(projects);
+    expect(within(pinned).getByRole("button", { name: "Unpin Project A chat" })).toHaveFocus();
+    expect(within(projects).queryByRole("button", { name: "Project A chat" })).toBeNull();
+    expect(native.invoke).toHaveBeenCalledWith("client_settings", {
+      request: { operation: "host/request", connectionId: "local",
+        request: { operation: "preferences", scope: "mux:a", session: "a", action: "pin" } },
+    });
+    fireEvent.click(within(chats).getByRole("button", { name: "Pin Temporary chat" }));
+    await within(pinned).findByRole("button", { name: "Unpin Temporary chat" });
+    expect(within(chats).queryByRole("button", { name: "Temporary chat" })).toBeNull();
+
+    fireEvent.click(within(pinned).getByRole("button", { name: "Project A chat" }));
+    expect(native.create).toHaveBeenCalledWith("/workspace", "local");
+    fireEvent.click(within(projects).getByRole("button", { name: "workspace" }));
+    fireEvent.click(within(pinned).getByRole("button", { name: "Unpin Project A chat" }));
+    expect(await within(projects).findByRole("button", { name: "Project A chat" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(within(pinned).getByRole("button", { name: "Unpin Temporary chat" }));
+    expect(await within(chats).findByRole("button", { name: "Temporary chat" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Pinned" })).toBeNull();
   });
 
   it("confirms Host stop and preserves the mounted draft across stop and start", async () => {
@@ -183,11 +300,11 @@ describe("local managed Host presentation", () => {
     expect(screen.queryByRole("button", { name: "Start and connect" })).toBeNull();
   });
 
-  it("shows unsupported platforms without attempting managed effects", async () => {
+  it("shows missing AppServer configuration without contacting a Host", async () => {
     installMock(async () => ({ supported: false, workspace: "/workspace" }));
     render(<LocalHostGate />);
     openHostSettings();
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Linux only"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("No AppServer connection is configured"));
     expect(countActions("connect")).toBe(0);
   });
 });

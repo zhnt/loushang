@@ -84,6 +84,7 @@ _OPERATION_FILTER_MAX_SEGMENTS = 32
 _RECENT_RECORD_LIMIT = 64
 _TOMBSTONE_MAX_BYTES = 64 * 1024
 _ADVISORY_HEAD_QUIET_SECONDS = 0.75
+_WINDOWS_JOURNAL_PATH_LIMIT = 240  # Leave room for lock, metadata and temporary suffixes.
 
 
 @dataclass(frozen=True)
@@ -1414,6 +1415,11 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
             raise StoreDataError(
                 "managed conversation must be a direct child of its root"
             )
+        if (
+            self._file_io is None and os.name == "nt" and path.is_absolute() and len(path.drive) == 2
+            and len(str(path).encode("utf-16-le", errors="surrogatepass")) // 2 >= _WINDOWS_JOURNAL_PATH_LIMIT
+        ):
+            return Path("\\\\?\\" + os.path.normpath(path))
         return path
 
     def _new_journal(

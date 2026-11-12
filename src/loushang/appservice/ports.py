@@ -12,6 +12,8 @@ from loushang.appserver.protocol import (
     SessionIdentityV1,
     SessionOpenSpecV1,
     SessionSnapshotV1,
+    WorkspaceRequestV1,
+    WorkspaceResultV1,
 )
 
 HostedSessionEventListenerV1 = Callable[
@@ -77,3 +79,7 @@ __all__ = [
     "HostedSessionResolutionFailureV1",
     "HostedSessionResolutionErrorV1",
 ]
+
+
+class HostedWorkspacePort(Protocol):
+    async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1: ...

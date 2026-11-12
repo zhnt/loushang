@@ -6,11 +6,11 @@ export type HostState = "unknown" | "not_running" | "starting" | "running" | "st
 export type HostAction = "status" | "start" | "connect" | "stop" | "restart";
 export interface HostStatus {
   state: HostState; errorCode: string | null; workspace?: string;
-  instanceId?: string; serviceInstanceId?: string; pid?: number;
+  manageable?: boolean; instanceId?: string; serviceInstanceId?: string; pid?: number;
 }
 export interface SavedHost {
   id: string; name: string; kind: "local" | "remote"; selected: boolean;
-  webUrl: string | null; workspace: string;
+  webUrl: string | null;
 }
 export interface HostDirectory { selectedId: string; connections: SavedHost[] }
 interface HostProbe { host: HostStatus; workspace: string; supported: boolean; connection: TrayConnection }
@@ -21,15 +21,12 @@ export const selectTrayHost = (connectionId: string) => request<HostDirectory>({
 const atHost = <T,>(connectionId: string, value: Record<string, unknown>) => request<T>({ operation: "host/request", connectionId, request: value });
 const unknown = (workspace: string): HostProbe => ({ host: { state: "unknown", errorCode: null }, workspace, supported: false, connection: "unknown" });
 const service = (state: HostState): TrayHost["service"] => state === "not_running" ? "stopped" : state === "exited" ? "unknown" : state;
-const needsWorkspace = (entry: SavedHost, state: HostStatus) =>
-  entry.selected && entry.kind === "local" && (state.state === "unknown" || state.state === "exited");
 
 /** Saved connections come from the shared native configuration, never localStorage. */
 export function useTrayHosts(options: {
   enabled: boolean; selectedId: string; localName: string; workspace: string; host: HostStatus; supported: boolean; busy: boolean;
   connection: TrayConnection;
   onSelect: (id: string) => Promise<void>;
-  onConfigureStart: () => void;
   onManage: (action: HostAction, workspace?: string, instanceId?: string) => Promise<void>;
 }) {
   const latest = useRef(options); latest.current = options;
@@ -55,7 +52,7 @@ export function useTrayHosts(options: {
     try {
       const environment = await atHost<{ workspace: string; supported: boolean }>(entry.id, { operation: "environment" });
       const host = environment.supported ? await atHost<HostStatus>(entry.id, {
-        operation: "manage", action: "status", workspace: environment.workspace,
+        operation: "manage", action: "status",
       }) : { state: "unknown" as const, errorCode: null };
       if (active.current) setProbes((old) => ({ ...old, [entry.id]: {
         host, workspace: environment.workspace, supported: environment.supported,
@@ -63,7 +60,7 @@ export function useTrayHosts(options: {
       } }));
     } catch {
       if (active.current) setProbes((old) => ({ ...old, [entry.id]: {
-        ...unknown(entry.workspace), connection: "disconnected", host: { state: "unknown", errorCode: "connection_failed" },
+        ...unknown(""), connection: "disconnected", host: { state: "unknown", errorCode: "connection_failed" },
       } }));
     } finally { setWorking(entry.id, false); }
   }
@@ -92,7 +89,7 @@ export function useTrayHosts(options: {
 
   function currentProbe(entry: SavedHost): HostProbe {
     return entry.selected ? { host: options.host, workspace: options.workspace,
-      supported: options.supported, connection: options.connection } : probes[entry.id] ?? unknown(entry.workspace);
+      supported: options.supported, connection: options.connection } : probes[entry.id] ?? unknown("");
   }
   const entries = (directory?.connections ?? []).map((entry) => ({ ...entry, selected: entry.id === options.selectedId }));
   const hosts: TrayHost[] = entries.map((entry) => {
@@ -100,8 +97,8 @@ export function useTrayHosts(options: {
     return { id: entry.id, name: entry.kind === "local" ? options.localName : entry.name,
       selected: entry.selected, connection: state.connection, service: service(state.host.state),
       busy: switching || workingIds.includes(entry.id) || (entry.selected && options.busy),
-      manageable: state.supported, canEnable: !options.busy && !switching,
-      configureStart: needsWorkspace(entry, state.host),
+      manageable: state.host.manageable === true, canEnable: !options.busy && !switching,
+      configureStart: false,
       canStop: Boolean(state.host.instanceId), webUrl: entry.webUrl ?? undefined };
   });
 
@@ -118,7 +115,7 @@ export function useTrayHosts(options: {
           if (!state.supported) throw new Error("platform_unsupported");
         }
         const host = await atHost<HostStatus>(entry.id, { operation: "manage", action,
-          workspace: state.workspace, ...(state.host.instanceId ? { instanceId: state.host.instanceId } : {}) });
+          ...(state.host.instanceId ? { instanceId: state.host.instanceId } : {}) });
         if (active.current) setProbes((old) => ({ ...old, [entry.id]: { ...state, host,
           connection: host.errorCode ? "disconnected" : "connected" } }));
         if (host.errorCode) throw new Error(host.errorCode);
@@ -130,10 +127,6 @@ export function useTrayHosts(options: {
     const entry = entries.find((item) => item.id === id);
     if (!entry) return;
     const state = currentProbe(entry);
-    if (action === "start" && needsWorkspace(entry, state.host)) {
-      latest.current.onConfigureStart();
-      return;
-    }
     if (action === "info" || action === "stop") {
       setDetails({ entry, probe: state, confirm: action === "stop" });
       return;

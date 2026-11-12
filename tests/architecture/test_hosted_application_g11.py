@@ -312,7 +312,8 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # existing protocol/client group (6 client, 6 exports, 49 codec, 60 model).
         # Optional Session reasoning adds 63 lines (2 exports, 31 codec, 30 model).
         # See Optional Session Reasoning in the AppServer architecture overview.
-        "appserver": 2_100 + 121 + 63,
+        # Host First adds the managed Workspace operation and profile validation.
+        "appserver": 2_100 + 121 + 63 + 82,
         # LMUX M0 §60 reviewed ManagedCreate adds 170 net lines for the same
         # state lock/atomic continuity authority; all four core files still count.
         # LMUX M0 §72 keeps close coordination on the same state/continuity
@@ -320,13 +321,16 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # Hosted capability routing and attachment-scoped model control share
         # this existing AppService core owner.
         # Optional reasoning adds five lines to confirm the selected level.
-        "appservice-core": 1_961 + 5,
+        # Host First: typed Workspace port and membership admission on the owner.
+        # Managed Workspace open provisions its Mux on the existing owner.
+        "appservice-core": 1_961 + 5 + 54 + 18,
         # LMUX M0 §71 reviewed v3 close history adds 59 net lines to the
         # same continuity schema/recovery boundary; no owner split or activation.
         # LMUX M0 §73 reviewed recovery stays on the original Attempt/lease;
         # complete continuity group 1378 lines, two managed contracts 134.
         "appservice-continuity": 1_400,
-        "appservice-managed-contract": 150,
+        # The named Mux provisioning capability belongs to this contract.
+        "appservice-managed-contract": 150 + 8,
         "appserver-close-values": 80,
         # Hosted execution plus redacted, session-local model control remain
         # isolated in the Coding AppService adapter.
