@@ -16,6 +16,7 @@ import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { readLayoutPreferences, saveLayoutPreferences } from "./layoutPreferences";
 import { isTauri } from "@tauri-apps/api/core";
 import { useSessionHistory } from "./useSessionHistory";
+import { useSessionCreation } from "./useSessionCreation";
 import { readSidebarPreferences, saveSidebarPreferences, updateSidebarPreferences, sidebarPreferencesKey } from "./client/sidebarPreferences";
 import { liveSelectionKey, rememberSessionSelection, restoreSessionSelection } from "./client/sessionSelection";
 import { createNativeLiveClient } from "./client/nativeLiveClient";
@@ -149,8 +150,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const [modelResult, setModelResult] = useState<{ scope: string; query: string; models: SessionModels | null } | null>(null);
   const modelRequest = useRef(0);
   const [modelPending, setModelPending] = useState(false);
-  const [createPending, setCreatePending] = useState(false);
-  const createdSessionRef = useRef<string | null>(null);
+  const { create, confirm, pending: createPending } = useSessionCreation(client, setNotice);
   const controlPendingRef = useRef(false);
   const [publications, setPublications] = useState<Readonly<Record<string, {
     readonly source: ClientSnapshot["source"];
@@ -173,6 +173,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     let buffered: ClientEvent[] = [];
     let overflow = false;
     let latestSnapshot: ClientSnapshot | null = null;
+    function install(snapshot: ClientSnapshot, fallbackNotice: Notice) {
+      dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(snapshot) });
+      setInstalledClient(client);
+      const createdSessionId = confirm(client, snapshot);
+      if (createdSessionId) dispatch({ type: "session.selected", sessionId: createdSessionId });
+      setNotice(createdSessionId ? { key: "notice.created" } : fallbackNotice);
+    }
     async function refresh(): Promise<void> {
       if (!active || pending) return;
       pending = true;
@@ -188,15 +195,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
         }
         if (!active) return;
         if (overflow) throw new Error("Snapshot event buffer exceeded its limit.");
-        dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(latestSnapshot ?? snapshot) });
-        setInstalledClient(client);
+        install(latestSnapshot ?? snapshot, snapshot.source.kind === "fixture"
+          ? { key: "notice.fixtureReady" }
+          : { key: "notice.liveReady" });
         // The reducer ignores cursors already covered by the snapshot and freezes
         // on any remaining gap. Never infer continuity from arrival timing.
         for (const event of buffered) dispatch({ type: "event.received", event });
         setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
-        setNotice(snapshot.source.kind === "fixture"
-          ? { key: "notice.fixtureReady" }
-          : { key: "notice.liveReady" });
       } catch {
         if (active) dispatch({
           type: "sync.failed",
@@ -225,17 +230,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     const unsubscribeSnapshots = client.subscribeSnapshots?.((snapshot) => {
       if (!active) return;
       latestSnapshot = snapshot;
-      dispatch({ type: "snapshot.installed", snapshot: restoreSessionSelection(snapshot) });
-      setInstalledClient(client);
-      const createdSessionId = createdSessionRef.current;
-      if (createdSessionId && snapshot.sessions.some((session) => session.id === createdSessionId)) {
-        createdSessionRef.current = null;
-        dispatch({ type: "session.selected", sessionId: createdSessionId });
-        setCreatePending(false);
-        setNotice({ key: "notice.created" });
-      } else {
-        setNotice({ key: "notice.liveUpdated" });
-      }
+      install(snapshot, { key: "notice.liveUpdated" });
       setSyncing(false);
     }) ?? (() => undefined);
     const unsubscribeConnection = client.subscribeConnection?.((connection) => {
@@ -260,7 +255,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       unsubscribeSnapshots();
       unsubscribeConnection();
     };
-  }, [client, fixture]);
+  }, [client, confirm, fixture]);
 
   const resyncRequestedRef = useRef(false);
   useEffect(() => {
@@ -512,27 +507,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     }
   }
 
-  async function createSession(): Promise<void> {
-    if (!client.createSession || createPending
-      || state.remote.connection !== "connected") return;
-    setCreatePending(true);
-    try {
-      const receipt = await client.createSession({
-        sourceSessionId: selected?.id,
-        title: i18n.t("workspace:sidebar.newSession"),
-      });
-      createdSessionRef.current = receipt.sessionId;
-      setNotice({ key: "notice.creating" });
-      // Creation replaces the mux projection and invalidates the old controller.
-      // Ask for another authoritative snapshot as a race-safe fallback in case
-      // the automatic reconnect completed before the command reply reached UI.
-      void client.requestResync?.().catch(() => undefined);
-    } catch {
-      setCreatePending(false);
-      setNotice({ key: "notice.createFailed" });
-    }
-  }
-
   function openReview(documentId: string): void {
     if (!selected) return;
     setEnvironmentOpen(false);
@@ -550,7 +524,9 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const newSessionEnabled = projectNavigation
     ? projectNavigation.available && !projectNavigation.pending
     : Boolean(client.createSession) && connected && !createPending;
-  const newSession = projectNavigation ? () => projectNavigation.create(null) : () => { void createSession(); };
+  const newSession = projectNavigation ? () => projectNavigation.create(null) : () => {
+    if (connected) void create(selected?.id, i18n.t("workspace:sidebar.newSession"));
+  };
 
   return (
     <div className={`desktop-shell ${native ? "native-shell" : "web-shell"}`}

@@ -555,7 +555,12 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(within(context).getByText("Workspace details unavailable")).toBeVisible();
   });
 
-  it.each([false, true])("creates a live Session and selects it after the replacement snapshot (empty=%s)", async (empty) => {
+  it.each([
+    { empty: false, refresh: "none" },
+    { empty: true, refresh: "none" },
+    { empty: false, refresh: "reject" },
+    { empty: false, refresh: "timeout" },
+  ])("selects a created Session after the replacement snapshot ($empty, $refresh)", async ({ empty, refresh }) => {
     const user = userEvent.setup();
     const fixture = createMockAppClient();
     const fixtureSnapshot = await fixture.snapshot();
@@ -587,11 +592,25 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       submitText: async (input) => ({ submissionId: input.submissionId, accepted: true }),
       interrupt: async () => ({ accepted: false }),
       createSession,
+      requestResync: refresh === "reject" ? async () => { throw new Error("refresh unavailable"); }
+        : refresh === "timeout" ? () => new Promise<void>(() => undefined)
+        : undefined,
     }} />);
 
     if (empty) await screen.findByText("No Session is available.");
     else await screen.findByRole("heading", { name: "GUI development" });
-    await user.click(screen.getByRole("button", { name: "New Session" }));
+    if (refresh === "timeout") {
+      vi.useFakeTimers();
+      try {
+        await act(async () => { fireEvent.click(screen.getByRole("button", { name: "New Session" })); });
+        expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
+        await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+      } finally {
+        vi.useRealTimers();
+      }
+    } else {
+      await user.click(screen.getByRole("button", { name: "New Session" }));
+    }
     if (empty) {
       expect(await screen.findByText("New Session could not be created.")).toBeVisible();
       await user.click(screen.getByRole("button", { name: "New Session" }));
@@ -600,7 +619,13 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       sourceSessionId: empty ? undefined : "session-gui",
       title: "New Session",
     });
-    expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
+    if (refresh !== "none") {
+      expect(await screen.findByText("New Session was created, but it could not be shown yet.")).toBeVisible();
+      expect(screen.getByRole("button", { name: "New Session" })).toBeEnabled();
+      expect(createSession).toHaveBeenCalledTimes(1);
+    } else {
+      expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
+    }
 
     const source = snapshot.sessions[0];
     const created = {

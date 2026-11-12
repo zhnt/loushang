@@ -19,6 +19,7 @@
     "modelRejected": "Model change was rejected. The Session kept its previous model.",
     "creating": "New Session created. Reattaching to the updated workspace…",
     "createFailed": "New Session could not be created.",
+    "createSyncFailed": "New Session was created, but it could not be shown yet.",
     "rejected": "Submission rejected.",
     "playback": "Playback: {{label}}.",
     "modelChanged": "Session model changed to {{model}}.",

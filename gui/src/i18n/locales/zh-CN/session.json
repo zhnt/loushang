@@ -19,6 +19,7 @@
     "modelRejected": "模型切换被拒绝，会话仍使用原模型。",
     "creating": "已创建新会话，正在重新连接更新后的工作区…",
     "createFailed": "无法创建新会话。",
+    "createSyncFailed": "新会话已创建，暂时无法显示。",
     "rejected": "提交被拒绝。",
     "playback": "回放：{{label}}。",
     "modelChanged": "会话模型已切换为 {{model}}。",

@@ -172,6 +172,7 @@ export default interface Resources {
     },
     "notice": {
       "createFailed": "New Session could not be created.",
+      "createSyncFailed": "New Session was created, but it could not be shown yet.",
       "created": "New Session created and attached.",
       "creating": "New Session created. Reattaching to the updated workspace…",
       "emptyPrompt": "Enter a message before sending.",
@@ -388,7 +389,7 @@ export default interface Resources {
         "record": "Host connection record is invalid.",
         "start": "Host startup failed. Check status before retrying.",
         "stop": "Host cleanup is not confirmed. Do not start a replacement instance.",
-        "unavailable": "Local management entrypoint is unavailable. Check the installed Python environment.",
+        "unavailable": "Local AppHost management is unavailable. Check loushang-mux.",
         "unknown": "The operation could not be confirmed. Check status before trying another lifecycle operation."
       },
       "identity": "Host information",
