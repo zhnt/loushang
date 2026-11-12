@@ -287,7 +287,8 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .document-view .diff-added { color: var(--green); background: var(--green-soft); }
 .document-view .diff-removed { color: var(--red); background: var(--red-soft); }
 .document-view .diff-hunk { color: var(--blue); background: var(--blue-soft); }
-.empty-state { min-height: 100%; display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px; text-align: center; color: var(--muted); font-size: 13px; }
+.empty-state p { margin: 0; }
 
 /* Shared reading width and legible desktop typography. */
 .session-title, .composer textarea { font-size: 14px; }
@@ -357,6 +358,7 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 /* A shared header spans the conversation and right surfaces. Only the body
    reserves panel width, so its controls stay at the window's right edge. */
 .desktop-layout, .desktop-layout.dock-closed { grid-template-columns: var(--rail-width) minmax(0, 1fr); grid-template-rows: 49px minmax(0, 1fr); }
+.desktop-layout:not(:has(> .conversation-header)) { grid-template-rows: 0 minmax(0, 1fr); }
 .desktop-layout.right-visible { grid-template-columns: var(--rail-width) minmax(0, 1fr) var(--right-width); }
 .desktop-layout > .conversation-header { grid-column: 2 / -1; grid-row: 1; min-width: 0; }
 .desktop-layout > .sidebar-container, .desktop-layout > .collapsed-rail { grid-column: 1; grid-row: 1 / -1; }
