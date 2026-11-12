@@ -9,24 +9,26 @@ describe("system tray projection", () => {
     ] }, 7);
     expect(view.userName).toBe("Chester");
     expect(view.quitLabel).toBe(`Quit ${appName}`);
-    expect(view.currentLabel).toContain("🔴 Local · Disconnected");
-    expect(view.hosts[0].label).toContain("✓");
+    expect(view.currentLabel).toBe("Current Host: Local · Disconnected");
+    expect(view.hosts[0].label).toBe("Local ✓ · Disconnected");
     expect(view.hosts[0].serviceLabel).toBe("Service: Running");
-    expect(view.hosts[1].label).toBe("🟢 Other");
+    expect(view.hosts[1].label).toBe("Other · Connected");
     expect(view.hosts[1].enable).toBe(true);
     expect(view.hosts[0].enable).toBe(false);
     expect(view.hosts[0].stop).toBe(true);
     expect(view.webUrl).toBe(local.webUrl);
     const connected = trayProjection({ userName: "Chester", language: "zh-CN", hosts: [{ ...local, connection: "connected" }] }, 8);
-    expect(connected.currentLabel).toBe("当前 Host：🟢 Local");
+    expect(connected.currentLabel).toBe("当前 Host：Local · 已连接");
+    expect(connected.hosts[0].label).toBe("Local ✓ · 已连接");
     expect(connected.quitLabel).toBe(`退出 ${appName}`);
   });
-  it("shows connecting in yellow and never borrows another Host's web address", () => {
+  it("shows the connecting status and never borrows another Host's web address", () => {
     const view = trayProjection({ userName: "", language: "zh-CN", hosts: [
       { ...local, connection: "connecting", busy: true, webUrl: undefined },
       { ...local, id: "other", selected: false },
     ] }, 1);
-    expect(view.currentLabel).toContain("🟡 Local · 正在连接…");
+    expect(view.currentLabel).toBe("当前 Host：Local · 正在连接…");
+    expect(view.hosts[0].label).toBe("Local ✓ · 正在连接…");
     expect(view.webUrl).toBeNull();
     expect(view.hosts[0].stop).toBe(false);
     expect(view.hosts[0].reconnect).toBe(false);

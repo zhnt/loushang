@@ -190,7 +190,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
     let user = MenuItem::new(app, &menu_name, false, None::<&str>)?;
     let current = MenuItem::new(
         app,
-        "⚪ 未选择 Host / No Host selected",
+        "未选择 Host / No Host selected",
         false,
         None::<&str>,
     )?;

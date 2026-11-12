@@ -21,7 +21,6 @@ export interface TrayHost {
   webUrl?: string;
 }
 export interface TrayModel { userName: string; language: string; hosts: TrayHost[] }
-const dots: Record<TrayConnection, string> = { connected: "🟢", connecting: "🟡", disconnected: "🔴", unknown: "⚪" };
 export function availableTrayAction(host: TrayHost, action: TrayAction): boolean {
   if (action === "info") return true;
   if (host.busy) return false;
@@ -38,16 +37,15 @@ export function trayProjection(model: TrayModel, revision: number) {
   const text = shell.tray;
   const separator = chinese ? "：" : ": ";
   const current = model.hosts.find((host) => host.selected);
-  const status = current && current.connection !== "connected" ? ` · ${text[current.connection]}` : "";
   return {
     revision, userName: model.userName || text.user,
-    currentLabel: current ? `${text.current}${separator}${dots[current.connection]} ${current.name}${status}` : `⚪ ${text.none}`,
+    currentLabel: current ? `${text.current}${separator}${current.name} · ${text[current.connection]}` : text.none,
     showLabel: text.showLabel, webLabel: text.webLabel, manageLabel: text.manageLabel,
     quitLabel: shell.quitApp.replace("{{appName}}", () => appName), enableLabel: text.enableLabel, infoLabel: text.infoLabel,
     reconnectLabel: text.reconnectLabel, stopLabel: text.stopLabel,
     webUrl: current?.webUrl ?? null,
     hosts: model.hosts.map((host) => ({
-      id: host.id, label: `${dots[host.connection]} ${host.name}${host.selected ? " ✓" : ""}`,
+      id: host.id, label: `${host.name}${host.selected ? " ✓" : ""} · ${text[host.connection]}`,
       serviceLabel: `${text.service}${separator}${text[host.service]}`,
       startLabel: host.configureStart ? `${text.startLabel}…` : text.startLabel,
       enable: availableTrayAction(host, "enable"), reconnect: availableTrayAction(host, "reconnect"),
