@@ -36,22 +36,16 @@ def main() -> None:
         python = str(venv / "Scripts/python.exe")
         subprocess.run(["uv", "pip", "install", "--python", python, PYINSTALLER],
                        cwd=ROOT, check=True)
-        entry = work / "entry.py"
-        entry.write_text(
-            "from loushang.coding.cli.__main__ import main\n"
-            "raise SystemExit(main())\n",
-            encoding="utf-8",
-        )
         subprocess.run(
             [
-                python, "-m", "PyInstaller", "--noconfirm", "--onefile", "--console",
-                "--name", "loushang", "--collect-submodules", "loushang",
-                "--collect-data", "loushang", "--copy-metadata", "loushang", str(entry),
+                python, "-m", "PyInstaller", "--noconfirm",
+                "--distpath", str(work / "dist"), "--workpath", str(work / "build"),
+                str(ROOT / "loushang.spec"),
             ],
-            cwd=work, check=True,
+            cwd=ROOT, check=True,
         )
         target.parent.mkdir(parents=True, exist_ok=True)
-        with target.open("xb") as destination, (work / "dist/loushang.exe").open("rb") as source:
+        with (work / "dist/loushang.exe").open("rb") as source, target.open("xb") as destination:
             shutil.copyfileobj(source, destination)
     print(target)
 

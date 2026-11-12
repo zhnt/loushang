@@ -9,10 +9,14 @@
 # loushang.* submodule is included explicitly via collect_submodules().
 # Platform-conditional stdlib imports (fcntl/termios/tty/msvcrt) are listed
 # as well.
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 datas = []
 datas += collect_data_files('loushang')
+# The resource loader walks this package on disk. Its Python-only directories
+# would otherwise live exclusively in the PYZ archive.
+datas += collect_data_files('loushang.coding.resources', include_py_files=True)
+datas += copy_metadata('loushang')
 
 hiddenimports = collect_submodules('loushang')
 hiddenimports += [
