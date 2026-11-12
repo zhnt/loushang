@@ -34,12 +34,12 @@ def stage_runtime(work: Path) -> None:
     if sites.exists():
         shutil.rmtree(sites)
     requirements = work / "requirements.txt"
-    run("uv", "export", "--locked", "--no-dev", "--no-emit-project", "--output-file",
+    run("uv", "--quiet", "export", "--locked", "--no-dev", "--no-emit-project", "--output-file",
         str(requirements))
     bundled = str(runtime / "python.exe")
     install = ("uv", "pip", "install", "--python", bundled, "--target", str(sites))
     run(*install, "--require-hashes", "--no-deps", "-r", str(requirements))
-    run("uv", "build", "--wheel", "--out-dir", str(work))
+    run("uv", "--quiet", "build", "--wheel", "--out-dir", str(work))
     run(*install, "--no-deps", str(next(work.glob("loushang-*.whl"))))
 
 
@@ -85,8 +85,12 @@ def main() -> None:
         }
         config_path = work / "bundle.json"
         config_path.write_text(json.dumps(config), encoding="utf-8")
-        run(str(GUI / "node_modules/.bin/tauri.cmd"), "build", "--bundles", "nsis",
-            "--config", str(config_path), cwd=GUI, env=env)
+        tauri = str(GUI / "node_modules/.bin/tauri.cmd")
+        # The CLI supports bundleVCRuntime. The Rust-side config parser on
+        # this branch predates it, so pass the setting only to the bundler.
+        run(tauri, "build", "--no-bundle", cwd=GUI, env=env)
+        run(tauri, "bundle", "--bundles", "nsis", "--config", str(config_path),
+            cwd=GUI, env=env)
         output.mkdir(parents=True, exist_ok=True)
         source = TAURI / "target/release/bundle/nsis" / name
         with source.open("rb") as installer, (output / name).open("xb") as destination:
