@@ -1,4 +1,7 @@
-param([Parameter(Mandatory=$true)][string]$Installer)
+param(
+    [Parameter(Mandatory=$true)][string]$Installer,
+    [string]$TestParent = $env:TEMP
+)
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -14,13 +17,14 @@ if (Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue |
     Where-Object { $_.DisplayName -like '*loushang*' }) {
     throw 'Use a Windows account with no registered Loushang installation'
 }
-$root = Join-Path $env:TEMP ("loushang-full-test-" + [guid]::NewGuid().ToString('N'))
+$root = Join-Path (Resolve-Path $TestParent).Path ("ls-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 $install = Join-Path $root 'installed'
 $env:LOUSHANG_HOME = Join-Path $root 'home'
 $env:Path = "$install;$env:SystemRoot\System32;$env:SystemRoot"
 Remove-Item Env:VIRTUAL_ENV,Env:PYTHONPATH,Env:PYTHONHOME -ErrorAction SilentlyContinue
 New-Item -ItemType Directory $env:LOUSHANG_HOME -Force | Out-Null
-$env:LOUSHANG_APP_RECORD_ROOT = $null
+Remove-Item Env:LOUSHANG_APP_RECORD_ROOT,Env:LOUSHANG_RUNTIME_DIR,Env:LOUSHANG_TMPDIR `
+    -ErrorAction SilentlyContinue
 '{"web":{"port":0,"manageLocal":true}}' |
     Set-Content (Join-Path $env:LOUSHANG_HOME 'host.json') -Encoding Ascii
 $endpoint = Join-Path $env:LOUSHANG_HOME 'state/web/endpoint.json'
