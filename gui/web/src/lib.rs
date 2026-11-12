@@ -69,9 +69,10 @@ async fn accept(
 }
 
 fn assets(selected: Option<PathBuf>) -> Result<Option<PathBuf>> {
-    let packaged = std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(|parent| parent.join("../web")));
+    let packaged = std::env::current_exe().ok().and_then(|path| {
+        path.parent()
+            .map(|parent| parent.join(if cfg!(windows) { "web" } else { "../web" }))
+    });
     let path = selected
         .or_else(|| packaged.filter(|path| path.is_dir()))
         .or_else(|| {
