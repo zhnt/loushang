@@ -16,6 +16,8 @@ datas += collect_data_files('loushang')
 # The resource loader walks this package on disk. Its Python-only directories
 # would otherwise live exclusively in the PYZ archive.
 datas += collect_data_files('loushang.coding.resources', include_py_files=True)
+# Startup also reads the source members of installed first-party plugin wheels.
+datas += collect_data_files('loushang.coding._plugins', include_py_files=True)
 datas += copy_metadata('loushang')
 
 hiddenimports = collect_submodules('loushang')
