@@ -182,6 +182,33 @@ test("desktop shell renders menus and Session history with a simulated native br
   expect(errors).toEqual([]);
 });
 
+test("offline startup keeps the message centered as the window and sidebar resize", async ({ page }) => {
+  await page.setViewportSize({ width: 560, height: 420 });
+  await simulateDesktop(page, true);
+  await page.goto("/");
+  const notice = page.getByText("No AppHost is connected. Manage the local AppHost in Settings.");
+  await expect(notice).toBeVisible();
+  const workspace = page.locator(".app-shell");
+  const sidebar = page.locator(".sidebar-container:not([hidden]), .collapsed-rail");
+  async function expectCentered() {
+    const [shell, rail, message] = await Promise.all([
+      workspace.boundingBox(), sidebar.boundingBox(), notice.boundingBox(),
+    ]);
+    expect(message!.x + message!.width / 2).toBeCloseTo((rail!.x + rail!.width + shell!.x + shell!.width) / 2, 0);
+    expect(message!.y + message!.height / 2).toBeCloseTo(shell!.y + shell!.height / 2, 0);
+  }
+  for (const width of [560, 760, 761, 1024, 1440, 1920]) {
+    await page.setViewportSize({ width, height: width < 800 ? 420 : 900 });
+    await expectCentered();
+    if (width <= 760) continue; // At narrow widths the open sidebar overlays the workspace.
+    await sidebar.getByRole("button", { name: "Toggle sidebar" }).click();
+    await expect(page.locator(".sidebar-container")).toBeVisible();
+    await expectCentered();
+    await sidebar.getByRole("button", { name: "Toggle sidebar" }).click();
+    await expect(page.locator(".collapsed-rail")).toBeVisible();
+  }
+});
+
 test("General and Host share a fixed dialog with scrollable content in a short window", async ({ page }, info) => {
   await page.setViewportSize({ width: 680, height: 360 });
   await simulateDesktop(page, true);

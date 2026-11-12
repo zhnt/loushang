@@ -314,13 +314,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const history = useSessionHistory(selectionKey ?? client, selectedId, state.remote.sessions, (sessionId) => dispatch({ type: "session.selected", sessionId }));
   const panelOpen = state.local.dockOpen && state.local.dockTab !== "environment";
   useEffect(() => { if (panelOpen) setEnvironmentOpen(false); }, [panelOpen]);
-  const rightVisible = environmentOpen || panelOpen;
+  const selected = selectedId ? state.remote.sessions[selectedId] : undefined;
+  const rightVisible = Boolean(selected) && (environmentOpen || panelOpen);
   const rightWidth = 380;
   const remainingWidth = viewportWidth - (sidebarOpen && viewportWidth > 760 ? sidebarWidth : 48);
   const stackedRight = rightVisible && remainingWidth < rightWidth + 360;
   const tasksAvailable = hasCapability(state, "tasks");
   const changesAvailable = hasCapability(state, "changes");
-  const selected = selectedId ? state.remote.sessions[selectedId] : undefined;
   const modelScope = connected && selectedId && state.remote.source.kind === "live"
     ? JSON.stringify([selectionKey, state.remote.source.serviceInstanceId, state.remote.source.connectionEpoch, selectedId])
     : null;
@@ -739,7 +739,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           ) : null}
         </section>
 
-        {rightVisible && selected ? (
+        {selected && rightVisible ? (
           <WorkDock
             tab={environmentOpen ? "environment" : state.local.dockTab}
             state={state}
