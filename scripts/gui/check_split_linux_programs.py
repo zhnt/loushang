@@ -16,7 +16,7 @@ def main() -> None:
     parser.add_argument("host", type=Path)
     parser.add_argument("gui", type=Path)
     args = parser.parse_args()
-    host = args.host.resolve(strict=True) / "loushang-host"
+    host = args.host.resolve(strict=True) / "loushang-mux"
     gui = args.gui.resolve(strict=True) / "loushang-gui"
     assert not (gui.parent / "runtime").exists()
     assert not any(gui.parent.rglob("*.py"))
@@ -35,25 +35,25 @@ def main() -> None:
             "LOUSHANG_TMPDIR": str(root / "temporary"),
         }
 
-        def call(*flags: str) -> list[dict]:
+        def call(action: str, *flags: str) -> dict:
             stdout = subprocess.check_output(
-                [str(host), *flags],
+                [str(host), "service", action, "--json", *flags],
                 cwd=root,
                 env=env,
                 text=True,
                 timeout=90,
             )
-            return [json.loads(line) for line in stdout.splitlines()]
+            return json.loads(stdout)
 
-        started = call("start")[0]
+        started = call("start")
         try:
-            assert started["status"] == "service_ready", started
-            assert call("start")[0] == started
+            assert started["state"] == "running", started
+            assert call("start") == started
             check_web([str(gui), "web"], env, started, workspace)
-            assert call("start")[0] == started
+            assert call("start") == started
         finally:
-            stopped = call("stop", "--server", started["serviceId"], "--yes")[-1]
-            assert stopped == {"instanceId": started["instanceId"], "status": "stopped"}
+            stopped = call("stop", "--instance", started["instanceId"])
+            assert stopped["state"] == "not_running" and stopped["cleanlyStopped"]
     print(
         "PASS: Python-free GUI/Web package connected to the standalone AppHost package"
     )

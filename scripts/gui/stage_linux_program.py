@@ -23,13 +23,24 @@ _HOST = (
     _DIRECTORY
     + r"""
 case ${1:-} in
-  start|provision-tunnel) action=$1; shift; exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.lmux server "$action" "$@" ;;
-  status|stop) exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.lmux "$@" ;;
-  -h|--help) printf '%s\n' 'Usage: loushang-host {start|status|stop|provision-tunnel} [arguments]'; exit 0 ;;
-  *) printf '%s\n' 'Usage: loushang-host {start|status|stop|provision-tunnel} [arguments]' >&2; exit 2 ;;
+  provision-tunnel) shift; exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.lmux server provision-tunnel "$@" ;;
+  -h|--help) printf '%s\n' 'Usage: loushang-host provision-tunnel [arguments]'; exit 0 ;;
+  *) printf '%s\n' 'Usage: loushang-host provision-tunnel [arguments]' >&2; exit 2 ;;
 esac
 """
 )
+
+def install_portable_mux(package: Path) -> Path:
+    manager = package / "loushang-mux"
+    manager.write_text(
+        _DIRECTORY + r"""
+export LOUSHANG_MUX_BACKEND=managed
+exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.mux "$@"
+"""
+    )
+    manager.chmod(0o755)
+    return manager
+
 
 _GUI = (
     _DIRECTORY
@@ -113,6 +124,7 @@ def main() -> None:
         package.mkdir()
         if args.wheel is not None:
             stage_runtime(package, args.wheel.resolve(strict=True))
+            install_portable_mux(package)
         entry = package / f"loushang-{args.program}"
         entry.write_text(_HOST if args.program == "host" else _GUI)
         entry.chmod(0o755)

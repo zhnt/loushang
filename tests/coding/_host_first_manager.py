@@ -6,8 +6,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from loushang.coding.gui_local_host import operate
 from loushang.coding.managed_process import coding_managed_process_request
+from loushang.coding.managed_service import control_managed_service
 
 
 def factory(invocation, descriptor):
@@ -17,4 +17,8 @@ def factory(invocation, descriptor):
 
 
 if __name__ == "__main__":
-    print(json.dumps(asyncio.run(operate(json.load(sys.stdin), request_factory=factory))))
+    request = json.load(sys.stdin)
+    result = asyncio.run(control_managed_service(
+        request["action"], request.get("instanceId"), request_factory=factory,
+    ))
+    print(json.dumps(result))

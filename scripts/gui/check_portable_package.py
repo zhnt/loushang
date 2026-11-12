@@ -13,14 +13,14 @@ from urllib.request import Request, urlopen
 
 
 def check_web(
-    command: list[str], env: dict[str, str], host: dict, workspace: Path
+    command: list[str], env: dict[str, str], host: dict, workspace: Path,
+    *, manage_local: bool = False,
 ) -> None:
     home = Path(env["LOUSHANG_HOME"])
-    (home / "host.json").write_text('{"web":{"port":0}}')
+    (home / "host.json").write_text(json.dumps({"web": {"port": 0, "manageLocal": manage_local}}))
     endpoint = home / "state/web/endpoint.json"
-    with subprocess.Popen(
-        command, env={**env, "LOUSHANG_APP_RECORD_ROOT": host["recordRoot"]}
-    ) as web:
+    web_env = env if manage_local else {**env, "LOUSHANG_APP_RECORD_ROOT": host["recordRoot"]}
+    with subprocess.Popen(command, env=web_env) as web:
         try:
             deadline = monotonic() + 15
             while web.poll() is None and monotonic() < deadline:
@@ -47,6 +47,10 @@ def check_web(
 
             with urlopen(url, timeout=5) as response:
                 assert "text/html" in response.headers["Content-Type"]
+            if manage_local:
+                managed = call("manage", action="start")
+                assert managed["manageable"] and managed["instanceId"] == host["instanceId"]
+                assert "recordRoot" not in managed
             instance = call("manage", action="connect")["serviceInstanceId"]
             assert instance and instance == host.get("serviceInstanceId", instance)
             call("workspace", action="register", path=str(workspace))
@@ -62,7 +66,7 @@ def check_web(
                 web.wait(timeout=5)
 
 
-def check_host(package: Path, launcher: Path, root: Path) -> None:
+def check_host(package: Path, root: Path) -> None:
     workspace = root / "workspace with spaces"
     workspace.mkdir(mode=0o700)
     home = root / "home"
@@ -79,7 +83,7 @@ def check_host(package: Path, launcher: Path, root: Path) -> None:
 
     def call(*flags: str) -> dict:
         result = subprocess.run(
-            [str(launcher), "--workspace", str(workspace), *flags],
+            [str(package / "loushang-mux"), "service", *flags, "--json"],
             cwd=root,
             env=env,
             capture_output=True,
@@ -107,13 +111,13 @@ def check_host(package: Path, launcher: Path, root: Path) -> None:
     assert (package / "web/index.html").is_file()
     assert (package / "bin/harness-gui").read_bytes()[:4] == b"\x7fELF"
     assert (package / "bin/loushang-web").read_bytes()[:4] == b"\x7fELF"
-    state_before = call("--status")
+    state_before = call("status")
     assert state_before["state"] == "not_running"
     try:
-        started = call("--start-only")
+        started = call("start")
         assert started["state"] == "running" and started["recordRoot"]
-        assert call("--status")["instanceId"] == started["instanceId"]
-        reused = call("--start-only")
+        assert call("status")["instanceId"] == started["instanceId"]
+        reused = call("start")
         assert reused["instanceId"] == started["instanceId"]
         assert reused["recordRoot"] == started["recordRoot"]
         check_web(
@@ -121,18 +125,19 @@ def check_host(package: Path, launcher: Path, root: Path) -> None:
             env,
             reused,
             workspace,
+            manage_local=True,
         )
-        assert call("--status")["instanceId"] == started["instanceId"]
-        stopped = call("--stop")
+        assert call("status")["instanceId"] == started["instanceId"]
+        stopped = call("stop")
         assert stopped["state"] == "not_running" and stopped["cleanlyStopped"]
-        assert call("--status")["state"] == "not_running"
-        restarted = call("--start-only")
+        assert call("status")["state"] == "not_running"
+        restarted = call("start")
         assert restarted["instanceId"] != started["instanceId"]
         assert restarted["recordRoot"] == started["recordRoot"]
     finally:
-        stopped = call("--stop")
+        stopped = call("stop")
         assert stopped["state"] == "not_running"
-        assert call("--status")["state"] == "not_running"
+        assert call("status")["state"] == "not_running"
 
 
 def main() -> None:
@@ -148,7 +153,7 @@ def main() -> None:
     assert os.access(launcher, os.X_OK)
     with tempfile.TemporaryDirectory(prefix="loushang-portable-check-") as directory:
         root = Path(directory)
-        check_host(package, launcher, root)
+        check_host(package, root)
     print("PASS: extracted portable GUI, bundled Web and managed AppHost")
 
 

@@ -31,8 +31,15 @@ def unit_name(value: str) -> str:
     return value
 
 
+def _uses_managed_backend() -> bool:
+    return sys.platform == "win32" or os.environ.get("LOUSHANG_MUX_BACKEND") == "managed"
+
+
 def control(operation: str, unit: str) -> int:
-    if sys.platform == "win32" and operation != "logs" and unit == DEFAULT_UNIT:
+    if _uses_managed_backend():
+        if operation == "logs" or unit != DEFAULT_UNIT:
+            print("loushang-mux service: this action requires a systemd user unit", file=sys.stderr)
+            return 1
         return control_local(operation, None, as_json=False)
     if sys.platform != "linux":
         print("loushang-mux service requires Linux and a systemd user manager", file=sys.stderr)
@@ -52,12 +59,10 @@ def control(operation: str, unit: str) -> int:
 
 
 def control_local(operation: str, expected: str | None, *, as_json: bool) -> int:
-    from loushang.apphost.managed._files import ManagedStorageError
-
     from ..managed_service import ServiceControlError, control_managed_service
 
     try:
-        if sys.platform == "win32":
+        if _uses_managed_backend():
             reply = asyncio.run(control_managed_service(operation, expected))
         elif sys.platform == "linux":
             reply = _systemd_control(operation, expected)
@@ -65,8 +70,6 @@ def control_local(operation: str, expected: str | None, *, as_json: bool) -> int
             raise ServiceControlError("platform_unsupported")
     except ServiceControlError as error:
         reply = {"state": "unknown", "errorCode": str(error)}
-    except ManagedStorageError as error:
-        reply = {"state": "unknown", "errorCode": error.code}
     except (OSError, subprocess.SubprocessError, ValueError):
         reply = {"state": "unknown", "errorCode": "management_unavailable"}
     if as_json:

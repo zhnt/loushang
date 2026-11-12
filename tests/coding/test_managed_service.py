@@ -1,4 +1,4 @@
-"""Desktop helper uses production managed processes, without an in-process Host."""
+"""Exercise the lifecycle used by loushang-mux with a native AppHost."""
 from __future__ import annotations
 
 import asyncio
@@ -16,8 +16,11 @@ pytestmark = [pytest.mark.requires_host_runtime,
 
 
 def test_failed_native_spawn_is_not_reported_as_ready(tmp_path, monkeypatch):
-    from loushang.coding.gui_local_host import operate
     from loushang.coding.managed_process import coding_managed_process_request
+    from loushang.coding.managed_service import (
+        ServiceControlError,
+        control_managed_service,
+    )
 
     for name, leaf in (("LOUSHANG_HOME", "home"), ("LOUSHANG_RUNTIME_DIR", "runtime"),
                        ("LOUSHANG_TMPDIR", "temporary")):
@@ -28,13 +31,9 @@ def test_failed_native_spawn_is_not_reported_as_ready(tmp_path, monkeypatch):
             executable=sys.executable, environment=os.environ)
         return replace(original, argv=(str(tmp_path / "missing-python"),))
 
-    failed = asyncio.run(operate({"action": "start"},
-                                 request_factory=missing_executable))
-    assert failed["state"] == "unknown", failed
-    assert failed["errorCode"] is not None
-    assert not failed.get("serviceInstanceId")
-    assert not failed.get("pid")
-    inspected = asyncio.run(operate({"action": "status"}))
+    with pytest.raises(ServiceControlError):
+        asyncio.run(control_managed_service("start", None, request_factory=missing_executable))
+    inspected = asyncio.run(control_managed_service("status", None))
     assert inspected["state"] != "running", inspected
 
 
@@ -44,23 +43,16 @@ def test_concurrent_starts_reuse_the_authenticated_host(tmp_path):
     env = {**os.environ, 'LOUSHANG_HOME': str(home),
            'PYTHONPATH': str(Path(__file__).resolve().parents[2] / 'src'),
            'LOUSHANG_RUNTIME_DIR': str(tmp_path / 'runtime'),
-           'LOUSHANG_TMPDIR': str(tmp_path / 'temporary')}
+           'LOUSHANG_TMPDIR': str(tmp_path / 'temporary'),
+           'LOUSHANG_MUX_BACKEND': 'managed'}
 
-    def call(action, *, allow_error=False, **fields):
-        p = subprocess.run([sys.executable, '-m', 'loushang.coding.gui_local_host'],
-                           input=json.dumps({'action': action, **fields}),
-                           text=True, capture_output=True, env=env, timeout=90)
-        assert p.returncode == 0, p.stderr
-        value = json.loads(p.stdout)
-        if value.get("errorCode") == "management_failed":
-            diagnostic = subprocess.run([sys.executable, "-c",
-                "import asyncio,json,sys; from loushang.coding.gui_local_host import operate; print(asyncio.run(operate(json.load(sys.stdin))))"],
-                input=json.dumps({'action': action, **fields}), text=True,
-                capture_output=True, env=env, timeout=90)
-            pytest.fail(diagnostic.stderr or diagnostic.stdout)
-        if not allow_error:
-            assert not value.get("errorCode"), value
-        return value
+    def call(action, *, allow_error=False, instance_id=None):
+        command = [sys.executable, "-m", "loushang.coding.cli.mux", "service", action, "--json"]
+        if instance_id is not None:
+            command.extend(["--instance", instance_id])
+        result = subprocess.run(command, text=True, capture_output=True, env=env, timeout=90)
+        assert result.returncode == int(allow_error), (result.stdout, result.stderr)
+        return json.loads(result.stdout)
 
     host = None
     try:
@@ -74,7 +66,7 @@ def test_concurrent_starts_reuse_the_authenticated_host(tmp_path):
         assert {item['pid'] for item in duplicates} == {host['pid']}
         assert {item['serviceInstanceId'] for item in duplicates} == {host['serviceInstanceId']}
         assert call('start')['pid'] == host['pid']
-        assert call('stop', allow_error=True, instanceId='0' * 32)['errorCode'] == 'instance_changed'
+        assert call('stop', allow_error=True, instance_id='0' * 32)['errorCode'] == 'instance_changed'
         record, = Path(host['recordRoot']).glob('*.json')
         original = record.read_bytes()
         try:
@@ -88,8 +80,8 @@ def test_concurrent_starts_reuse_the_authenticated_host(tmp_path):
             assert call('start', allow_error=True)['state'] == 'unknown'
         finally:
             record.write_bytes(original)
-        assert call('connect')['pid'] == host['pid']
+        assert call('status')['pid'] == host['pid']
     finally:
         if host and host.get('instanceId'):
-            stopped = call('stop', instanceId=host['instanceId'])
+            stopped = call('stop', instance_id=host['instanceId'])
             assert stopped.get('cleanlyStopped'), stopped

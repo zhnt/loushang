@@ -520,7 +520,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [worktree.py](../../../../src/loushang/coding/worktree.py) | C06 | 158 | R/M | C06 其余根目录入口与策略 | 52d96c306803 | 158 | 52d96c306803 |
 | [_worker_history_access.py](../../../../src/loushang/coding/_worker_history_access.py) | C07 | — | M | Worker原存储访问绑定；共享机制已部分归位 | — | 54 | fd4112bace44 |
 | [_worker_preparation_inputs.py](../../../../src/loushang/coding/_worker_preparation_inputs.py) | C07 | — | M | Worker准备的Coding准入与配置；剩余须按场景复核 | — | 348 | 290a23d3566b |
-| [gui_local_host.py](../../../../src/loushang/coding/gui_local_host.py) | C02 | — | B | 主线新增GUI本地托管Product入口；不计本轮重构新增收益 | — | 201 | 168cf5e11098 |
+| [managed_service.py](../../../../src/loushang/coding/managed_service.py) | C02 | — | B | `loushang-mux service` 本地托管 Product 入口；不计本轮重构新增收益 | — | 201 | 168cf5e11098 |
 
 ## 当前分组计量与剩余处置
 

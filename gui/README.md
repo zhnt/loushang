@@ -25,32 +25,38 @@ Both connect to an independently started AppHost.
 
 ## Connect to a local AppHost
 
-On Linux or Windows, run `uv run lmux server start`. Use the absolute directory in the
-`recordRoot` output as `LOUSHANG_APP_RECORD_ROOT` when starting either frontend.
-You can also set `appServer.recordRoot` in `$LOUSHANG_HOME/host.json`:
+The installed desktop can start, stop, and restart its local AppHost from the
+main window, Host settings, and tray. The desktop and the loopback Web server
+delegate to `loushang-mux service`. Closing the frontend leaves AppHost running.
+Use **Register and open** with a path on the Host, or select a registered
+Workspace. AppHost allocates the Mux and persists its Sessions.
+
+For Windows source development, prepare the installed command in the repository
+environment and run the desktop:
+
+```powershell
+uv sync
+npm.cmd --prefix gui ci
+npm.cmd --prefix gui run dev
+```
+
+Choose **Start and connect** from the disconnected desktop. The same setup
+supports `npm.cmd --prefix gui run dev:web`. Enable Web service controls by
+setting `web.manageLocal` in the BFF configuration below. Development starts the frontend
+before AppHost. Windows management runs without a console window.
+
+Linux installed packages configure the bundled management command. In a Linux
+source checkout, set `LOUSHANG_MUX` to the absolute path of the installed
+`loushang-mux` executable to expose its local service controls. AppHost also
+supports independent administration through `loushang-mux service`.
+
+For a frontend-only deployment with a prestarted AppHost, set
+`LOUSHANG_APP_RECORD_ROOT` to its absolute connection record directory, or set
+`appServer.recordRoot` in `$LOUSHANG_HOME/host.json`:
 
 ```json
 {"appServer":{"recordRoot":"/absolute/path/to/connection"}}
 ```
-
-Run `npm --prefix gui run dev` to start Tauri or
-`npm --prefix gui run dev:web` to open the browser development surface. Use
-**Register and open** with a path on the Host, or select a registered Workspace.
-AppHost allocates and owns its Mux. Each Workspace keeps its own Sessions.
-Run `lmux stop --all --yes` to stop the managed Host when you are done.
-
-Use PowerShell on Windows to start the Host and desktop.
-
-```powershell
-$appHost = uv run lmux server start --name desktop | ConvertFrom-Json
-$env:LOUSHANG_APP_RECORD_ROOT = $appHost.recordRoot
-npm --prefix gui run dev
-```
-
-From another PowerShell window using the same `LOUSHANG_HOME`, run
-`uv run lmux status --server desktop` to read the recorded state and
-`uv run lmux stop --server desktop --yes` to stop the Host. The managed Host
-runs in the background without a console window.
 
 Both development surfaces use the same frontend. Vite proxies browser requests
 to the Rust Web listener on loopback. Tauri does not start this listener.
@@ -92,10 +98,13 @@ shared configuration through the Host API. Files are stored in the Host machine'
 credentials and private AppHost records never enter the browser. Closing the
 server releases its connections without stopping managed Hosts.
 
+Set `web.manageLocal` to enable management for clients of this loopback
+listener. Enable it only for a trusted local machine.
+
 Optional `host.json`:
 
 ```json
-{"web":{"bind":"127.0.0.1","port":1422,"dist":"/absolute/path/to/gui/dist"}}
+{"web":{"bind":"127.0.0.1","port":1422,"dist":"/absolute/path/to/gui/dist","manageLocal":true}}
 ```
 
 The current delivery covers local Web access. Remote deployment and account
@@ -373,34 +382,30 @@ uv run python scripts/gui/check_deb_package.py dist/deb/loushang_<version>_amd64
 
 Install the generated file with `sudo apt install /absolute/path/to/package.deb`.
 The application menu and `/usr/bin/loushang` use the bundled runtime under
-`/opt/loushang`. Run `loushang --start-only` to start the bundled managed
-AppHost explicitly. The GUI attaches to an already running Host and leaves it
-running after exit. A saved remote connection remains selected.
-Use `loushang --status` and `loushang --stop` to manage the local Host. Stop running Hosts before replacing or removing this test package.
-Settings and Session data remain outside the installed program directory.
+`/opt/loushang`. Use the Host controls to start, stop, or restart the bundled
+AppHost. Closing the desktop leaves it running. Stop the Host before replacing
+or removing the package. Settings and Session data remain in user storage.
 
 This Ubuntu 26.10 amd64 candidate declares native system-library dependencies.
 It does not require a system Python/uv/Node installation. The package also
 installs `loushang-mux`, `loushang-tui` and the `loushang-host.service` systemd
 user unit. The service uses the user's home directory as its workspace.
-Installation does not start or enable the unit. To use the systemd-managed
-Host from the TUI, run as your desktop user:
+Installation does not start or enable the unit. The TUI exposes the same lifecycle commands. From a terminal you can start
+AppHost and attach to a named Mux:
 
 ```sh
-systemctl --user daemon-reload
-loushang-mux service start
+loushang-tui service start
 records="$XDG_RUNTIME_DIR/loushang-host/connections"
 loushang-mux --connection-root "$records" --endpoint workspace create main
-loushang-tui --connection-root "$records" main
+loushang-tui main
 ```
 
 Use `systemctl --user enable loushang-host.service` to start the Host with the
-user manager. The desktop launcher's local Host commands still manage the
-existing desktop route separately. Provider credentials and
+user manager. GUI, Web and `loushang-tui service` use the same user service. Provider credentials and
 optional external tools/Plugin worker runtimes are not included. The opt-in
-checker extracts the actual deb and verifies relocated imports, Host lifecycle,
-and the bundled Rust Web server against the packaged AppHost. It runs without
-provider calls or system installation.
+checker extracts the actual deb and verifies the binaries, CLI entries, Web
+assets and systemd unit. The portable package checker exercises the packaged
+AppHost lifecycle and Rust Web server.
 
 ## Linux portable package candidate
 
@@ -414,12 +419,11 @@ uv run python scripts/gui/build_linux_portable.py
 ```
 
 Extract `dist/desktop/loushang-linux-x86_64.tar.gz` outside the checkout and
-run `./loushang --start-only` to start the bundled AppHost, then double-click
-the native `loushang` executable. To choose a workspace explicitly, run
-`./loushang --workspace /path/to/workspace` inside the extracted directory.
+double-click the native `loushang` executable. Use **Start and connect** to
+start the local Host and choose a Workspace.
 No Python/uv/Node/Rust installation is needed at runtime. Compatible Linux
 GTK/WebKit system libraries are still required. See the included `README.txt`
-for the tested distribution, state locations and explicit `--stop` command.
+for the tested distribution and state locations.
 Closing a GUI window detaches it and leaves its shared AppHost running.
 Credentials and optional external worker/tool runtimes are not bundled.
 

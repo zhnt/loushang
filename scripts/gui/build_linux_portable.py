@@ -12,6 +12,7 @@ import tarfile
 from pathlib import Path
 
 from native_tools import gui_binary
+from stage_linux_program import install_portable_mux
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -77,9 +78,7 @@ def main() -> None:
     shutil.copy2(native, package / "bin/harness-gui")
     shutil.copy2(native.with_name("loushang-web"), package / "bin/loushang-web")
     shutil.copytree(ROOT / "gui/dist", package / "web")
-    shutil.copy2(
-        ROOT / "scripts/gui/desktop_launcher.py", package / "desktop_launcher.py"
-    )
+    manager = install_portable_mux(package)
     launcher = package / "loushang"
     rustc = shutil.which("rustc") or str(Path.home() / ".cargo/bin/rustc")
     run(
@@ -107,9 +106,7 @@ def main() -> None:
         "buildSystem": platform.platform(),
         "guiSha256": hashlib.sha256(native.read_bytes()).hexdigest(),
         "entrySha256": hashlib.sha256(launcher.read_bytes()).hexdigest(),
-        "launcherSha256": hashlib.sha256(
-            (package / "desktop_launcher.py").read_bytes()
-        ).hexdigest(),
+        "managerSha256": hashlib.sha256(manager.read_bytes()).hexdigest(),
         "wheelSha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
         "lockSha256": hashlib.sha256((ROOT / "uv.lock").read_bytes()).hexdigest(),
     }

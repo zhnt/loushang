@@ -197,7 +197,7 @@ def test_G14_WIRE_every_client_method_reaches_its_exact_semantic_target() -> Non
         )
         method_names = {name for name, _, _ in calls} | {"read_events"}
         # Workspace operations are covered through the authenticated managed
-        # connection in test_gui_local_host, not this STDIO profile.
+        # connection in test_managed_service, not this STDIO profile.
         assert method_names | {"workspace"} == {
             name for name in vars(AppClientV1) if not name.startswith("_")
         }

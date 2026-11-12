@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from contextlib import AsyncExitStack
+from functools import partial
 from pathlib import Path
 from time import monotonic
 
@@ -26,7 +27,13 @@ from loushang.apphost.managed.lifecycle import (
 from loushang.apphost.managed.namespace_admission import ManagedNamespaceAdmissionV1
 from loushang.apphost.managed.paths import resolve_managed_service_paths
 from loushang.apphost.managed.service_admission import ManagedServiceAdmissionV1
+from loushang.apphost.managed.starter import ManagedLaunchRequestFactoryV1
 from loushang.apphost.managed.stopper import ManagedServiceStopOperationV1
+from loushang.appserver.client import AppConnectionClosedError
+from loushang.appserver.local_auth import LocalAuthenticationError
+from loushang.appserver.local_record import LocalRecordError
+from loushang.appserver.protocol import AppServiceError, InvalidAppMessageError
+from loushang.hosting.errors import HostingError
 
 from .managed_process import APPLICATION_ID, ENDPOINT, coding_managed_process_request
 
@@ -35,7 +42,31 @@ class ServiceControlError(RuntimeError):
     """A safe lifecycle error for command clients."""
 
 
-async def control_managed_service(operation: str, expected: str | None) -> dict[str, object]:
+async def control_managed_service(
+    operation: str,
+    expected: str | None,
+    *,
+    request_factory: ManagedLaunchRequestFactoryV1 | None = None,
+) -> dict[str, object]:
+    try:
+        return await _control(operation, expected, request_factory)
+    except LocalAuthenticationError as error:
+        raise ServiceControlError("authentication_failed") from error
+    except AppConnectionClosedError as error:
+        raise ServiceControlError("connection_failed") from error
+    except InvalidAppMessageError as error:
+        raise ServiceControlError("protocol_incompatible") from error
+    except (AppServiceError, LocalRecordError) as error:
+        raise ServiceControlError(error.code.value) from error
+    except ManagedStorageError as error:
+        raise ServiceControlError(error.code) from error
+    except HostingError as error:
+        raise ServiceControlError(error.category.value) from error
+
+
+async def _control(
+    operation: str, expected: str | None, request_factory: ManagedLaunchRequestFactoryV1 | None,
+) -> dict[str, object]:
     deadline = monotonic() + (60 if operation == "restart" else 30)
     defaults = resolve_managed_defaults()
     namespace = defaults.namespace
@@ -76,19 +107,19 @@ async def control_managed_service(operation: str, expected: str | None) -> dict[
             if not stopped.cleanly_stopped:
                 raise ServiceControlError("cleanup_incomplete")
             if operation == "stop":
-                return {"state": "not_running"}
+                return {"state": "not_running", "cleanlyStopped": True}
 
         if operation in {"start", "restart"}:
             starter = ManagedServiceCoordinatorV1(
                 journal, namespace, service, runtime_root=runtime, endpoint=ENDPOINT,
                 temporary_override=defaults.temporary_override,
-                request_factory=lambda invocation, descriptor: coding_managed_process_request(
-                    invocation, descriptor, executable=sys.executable, environment=os.environ,
+                request_factory=request_factory or partial(
+                    coding_managed_process_request, executable=sys.executable, environment=os.environ,
                 ),
             )
             owners.push_async_callback(starter.close)
             ready = await starter.ensure_started(deadline=deadline)
-            return _running(ready)
+            return _running(ready, await _settled_native(lambda: journal.read(deadline=deadline, wait_for_lock=True)))
 
         status = _recorded_state(state)
         if status != "running":
@@ -99,7 +130,7 @@ async def control_managed_service(operation: str, expected: str | None) -> dict[
         )
         owners.push_async_callback(connection.close)
         await connection.prepare(deadline=deadline)
-        return _running(connection)
+        return _running(connection, state)
 
 
 def _absent(operation: str, expected: str | None) -> dict[str, object]:
@@ -121,7 +152,7 @@ def _recorded_state(state: ManagedServiceStateV1 | None) -> str:
     }.get(state.handoff.phase, "starting")
 
 
-def _running(connection: ManagedConnectionLeaseV1) -> dict[str, object]:
+def _running(connection: ManagedConnectionLeaseV1, state: ManagedServiceStateV1 | None) -> dict[str, object]:
     if connection.application_id != APPLICATION_ID or connection.execution_client is None:
         raise ServiceControlError("protocol_incompatible")
     return {
@@ -129,4 +160,5 @@ def _running(connection: ManagedConnectionLeaseV1) -> dict[str, object]:
         "instanceId": connection.instance.instance_id,
         "serviceInstanceId": connection.execution_client.service_instance_id,
         "recordRoot": str(connection.record_root),
+        "pid": state.native_identity.pid if state and state.native_identity else None,
     }

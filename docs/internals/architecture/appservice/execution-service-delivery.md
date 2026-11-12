@@ -903,7 +903,7 @@ workspace permissions.
 Validation commands include `npm --prefix gui run check:full`, pinned-toolchain
 `cargo test --offline --locked --manifest-path src-tauri/Cargo.toml --lib`
 (from `gui/`), and `uv run --no-sync --offline python -m pytest` over
-`test_gui_local_host.py`, `test_managed_execution_process.py`,
+`test_managed_service.py`, `test_managed_execution_process.py`,
 `test_managed_stop_execution.py`, and `test_managed_gui_client.py` in
 `tests/coding/`. React has 97 passing tests, Rust 31; the process regression
 passed 11 tests, followed by 2 passing management tests after adding a real
@@ -975,3 +975,19 @@ made no model calls.
 
 After retiring the duplicate packaged Workspace entry point, the complete
 offline AppService gate passed with 2,587 tests and 16 skips.
+
+
+### Local service management through loushang-mux
+
+`loushang-mux service` owns user-initiated lifecycle actions. On Windows and in
+the portable Linux Host package it composes the existing managed AppHost
+admission, coordinator and stopper. The Debian package uses its installed
+systemd user unit. The TUI service command delegates to the same CLI. Tauri and
+the loopback Web BFF share a Rust command client and use the authenticated
+AppServer record for business operations. Stopping or restarting a managed
+instance requires the instance identity shown in the UI.
+
+Implementation review for the GUI/AppHost boundary was performed by the
+implementing Codex agent on `feature/gui-mux-service`. The reviewed scope is
+local lifecycle delegation and authenticated record discovery. Workspace and
+Session operations stay on the existing AppServer protocol.

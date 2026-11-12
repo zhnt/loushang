@@ -8,9 +8,10 @@ fn launch() -> Result<(), Box<dyn std::error::Error>> {
     let package = executable.parent().ok_or("missing package directory")?;
     // Preserve argument boundaries, including spaces/non-UTF-8 paths. Resolve
     // resources from the executable, never the file manager's working directory.
-    let error = Command::new(package.join("runtime/bin/python3"))
-        .arg("-I")
-        .arg(package.join("desktop_launcher.py"))
+    let error = Command::new(package.join("bin/harness-gui"))
+        .env("LOUSHANG_MUX", package.join("loushang-mux"))
+        .env_remove("PYTHONHOME")
+        .env_remove("PYTHONPATH")
         .args(env::args_os().skip(1))
         .exec();
     Err(error.into())

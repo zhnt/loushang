@@ -70,17 +70,13 @@ def main() -> None:
             format="loushang-linux-deb/v1",
             version=version,
         )
-        manifest_file.write_text(json.dumps(manifest, indent=2) + "\n")
         (package / "README.txt").write_text(
             "Loushang desktop test package: GUI, tray, Web assets, CPython, AppHost,\n"
             "AppService, product runtime and locked Python dependencies.\n"
-            "Open Loushang in the application menu, or use loushang --workspace PATH.\n"
-            "The desktop connects to an already running Host.\n"
-            "Run loushang --start-only to start or reuse the bundled Host explicitly.\n"
-            "loushang --workspace PATH --status / --stop manage the same local Host.\n"
+            "Open Loushang in the application menu and start the AppHost from the GUI.\n"
             "GUI close/quit leaves the Host running. Stop it before replacing/removing\n"
             "this test package. Existing settings and Session data remain in user storage.\n"
-            "loushang-tui attaches to a named Mux on an already running Host.\n"
+            "loushang-tui service also controls AppHost. Attach with a named Mux.\n"
             "loushang-mux service controls the installed systemd user unit.\n"
             "Installation leaves the user service disabled and stopped.\n"
             "Ubuntu 26.10 amd64 candidate; other distributions have not been validated.\n"
@@ -92,6 +88,8 @@ def main() -> None:
             stage, package, "loushang-tui", '"$package/tui_appclient_entry.py"'
         )
         install_command(stage, package, "loushang-mux", "-m loushang.coding.cli.mux")
+        manifest["managerSha256"] = hashlib.sha256((package / "loushang-mux").read_bytes()).hexdigest()
+        manifest_file.write_text(json.dumps(manifest, indent=2) + "\n")
         unit = stage / "usr/lib/systemd/user/loushang-host.service"
         unit.parent.mkdir(parents=True)
         shutil.copy2(ROOT / "scripts/gui/loushang-host.service", unit)
