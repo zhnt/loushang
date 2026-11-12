@@ -184,7 +184,7 @@ describe("local managed Host presentation", () => {
   it("keeps projects visible and uses distinct actions for project and temporary chats", async () => {
     installMock(async (command, args) => {
       if (command === "environment") return { supported: true, workspace: "" };
-      if (command === "pick_project_folder") return "/added";
+      if (command === "pick_project_folder") return "C:\\Work\\项目";
       if (command === "workspace" && args.action === "create-chat") return args.path
         ? { workspace: args.path, sessionId: "a" }
         : { workspace: "@temporary", sessionId: "scratch" };
@@ -214,10 +214,26 @@ describe("local managed Host presentation", () => {
     fireEvent.click(projects.getByRole("button", { name: "Add project" }));
     await waitFor(() => expect(native.invoke).toHaveBeenCalledWith("client_settings", {
       request: { operation: "host/request", connectionId: "local",
-        request: { operation: "workspace", action: "register", path: "/added" } },
+        request: { operation: "workspace", action: "register", path: "C:\\Work\\项目" } },
     }));
     expect(countActions("create-chat")).toBe(2);
     expect(countActions("open")).toBe(0);
+  });
+
+  it("shows a picker failure without opening a manual path field for the local desktop", async () => {
+    installMock(async (command) => {
+      if (command === "environment") return { supported: true, workspace: "" };
+      if (command === "pick_project_folder") throw new Error("folder_picker_unavailable");
+      return { state: "running", errorCode: null };
+    });
+    render(<LocalHostGate />);
+    const projects = within(screen.getByRole("region", { name: "Projects" }));
+    const button = projects.getByRole("button", { name: "Add project" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    expect(await projects.findByRole("alert")).toBeVisible();
+    expect(projects.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(countActions("register")).toBe(0);
   });
 
   it("puts pinned project and temporary chats above projects and returns them to their groups", async () => {

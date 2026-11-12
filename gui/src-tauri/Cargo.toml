@@ -43,3 +43,6 @@ strip = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "=0.18.2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61.3", features = ["Win32_System_Com", "Win32_UI_Shell"] }

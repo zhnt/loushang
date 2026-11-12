@@ -108,6 +108,7 @@ export default function LocalHostGate() {
       return;
     }
     folderPicker.current = true;
+    setWorkspaceError(false);
     const epoch = workspaceEpoch.current;
     try {
       const path = await invoke<string | null>("pick_project_folder", {
@@ -115,7 +116,7 @@ export default function LocalHostGate() {
       });
       if (path && epoch === workspaceEpoch.current) await changeDirectory({ action: "register", path });
     } catch {
-      if (epoch === workspaceEpoch.current) setFolderInput(true);
+      if (epoch === workspaceEpoch.current) setWorkspaceError(true);
     } finally {
       folderPicker.current = false;
     }
