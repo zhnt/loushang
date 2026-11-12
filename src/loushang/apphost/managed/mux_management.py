@@ -668,10 +668,15 @@ class _ManagedMuxFence:
                 self._context = None
                 self._discard_permission()
                 self._exit_attempted = False  # Prior read's release is confirmed.
-                if journal._database._idle_cleanup_pending():
-                    raise
+                # Give an in-flight descriptor close one turn to settle.
+                # Persistent cleanup debt must still prevent a new admission.
                 _check_deadline(deadline)
                 await asyncio.sleep(min(0.01, max(0.0, deadline - monotonic())))
+                _check_deadline(deadline)
+                if self._closed or self._exit_attempted:
+                    raise ManagedStorageError("closed")
+                if journal._fence._idle_cleanup_pending() or journal._database._idle_cleanup_pending():
+                    raise
 
     async def _read_once(self, deadline: float) -> None:
         journal = self._manager._journal

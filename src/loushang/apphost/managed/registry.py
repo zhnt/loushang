@@ -204,9 +204,11 @@ class ManagedRegistryV1:
         _check_deadline(deadline)
         return result
 
-    def resolve(self, name: str) -> ManagedMuxReservationV1 | None:
+    def resolve(
+        self, name: str, *, deadline: float | None = None, wait_for_lock: bool = False,
+    ) -> ManagedMuxReservationV1 | None:
         require_mux_name(name)
-        with self._database.transaction() as connection:
+        with self._database.transaction(deadline=deadline, wait_for_lock=wait_for_lock) as connection:
             row = connection.execute(
                 "SELECT m.name, s.product, s.host_root, s.profile, m.operation_id, s.service_id "
                 "FROM muxes m JOIN services s USING(service_id) WHERE m.name=?",

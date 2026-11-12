@@ -147,13 +147,21 @@ def test_actual_coding_service_outlives_starter_and_reconnects(deployment, tmp_p
                 registered = await client.client.workspace(WorkspaceRequestV1("register", str(tmp_path)))
                 scope, = registered.workspaces
                 fingerprint = scope.scope_fingerprint
-                registry = ManagedRegistryV1(Path(paths.registry), namespace)
-                manager_journal = ManagedServiceJournalV1(registry, namespace, service, Path(paths.lifecycle))
+                registry = ManagedRegistryV1(Path(paths.registry), namespace, defer_open=True)
+                manager_journal = ManagedServiceJournalV1(
+                    registry, namespace, service, Path(paths.lifecycle), defer_open=True,
+                )
                 try:
+                    deadline = monotonic() + 5
+                    await asyncio.to_thread(registry.open, deadline=deadline, wait_for_lock=True)
+                    await asyncio.to_thread(manager_journal.open, deadline=deadline, wait_for_lock=True)
                     manager = ManagedMuxManagerV1(registry, manager_journal, namespace, service,
                                                   state.handoff.instance, application_id="coding.default")
-                    deadline = monotonic() + 5
-                    permit = manager.issue_create(registry.resolve("dev"), deadline=deadline)
+                    reservation = await asyncio.to_thread(
+                        registry.resolve, "dev", deadline=deadline, wait_for_lock=True,
+                    )
+                    assert reservation is not None
+                    permit = manager.issue_create(reservation, deadline=deadline)
                     mux = await client.managed_mux_client.create_managed_mux(permit)
                     assert manager.record_created(permit, mux, deadline=deadline) == mux
                 finally:

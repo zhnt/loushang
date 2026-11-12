@@ -168,7 +168,7 @@ class ManagedMuxCommand:
         if args.action in (None, "new", "server"):
             selected_service = ManagedServiceKeyV1("coding", self.defaults.namespace.platform_home)
         workspace = getattr(args, "workspace", None)
-        if args.action in (None, "new") or (args.action == "attach" and workspace is not None):
+        if args.action == "new" or (args.action in (None, "attach") and workspace is not None):
             self.workspace = Path(workspace or Path.cwd()).expanduser().resolve(strict=True)
             if not self.workspace.is_dir():
                 raise ManagedContractError()
@@ -649,13 +649,13 @@ class ManagedMuxCommand:
 
     def _new(self, name: str, service: ManagedServiceKeyV1) -> None:
         assert self.namespace is not None
+        self.workspace = self.workspace or Path.cwd()
         registry = self.namespace.registry
         reservation = self.creation_reservation = ManagedMuxReservationV1(name, service, token_hex(16))
         # Printed before the first fallible commit: this is only a planned
         # intent, not a creation receipt, serving claim, or proof of reservation.
         self._creation_output("planned_creation")
-        # First reserve the exact global intent, before service creation. The
-        # operation rejoins this same reservation; it never allocates a new ID.
+        # Reserve the exact intent before service creation; retries rejoin it.
         registry.reserve_mux(reservation, deadline=self.deadline, wait_for_lock=True)
         self._prepare_creation_owner(reservation)
 
@@ -737,9 +737,9 @@ class ManagedMuxCommand:
                 scopes = tuple(dict.fromkeys((m.session.scope, m.session.scope_fingerprint) for m in mux.members))
             if not scopes:
                 if self.workspace is not None:
-                    path = str(self.workspace)
-                    await connection.client.workspace(WorkspaceRequestV1("register", path))
-                    workspaces = (await connection.client.workspace(WorkspaceRequestV1("open", path))).workspaces
+                    # Register without provisioning a separate GUI Mux.
+                    registered = await connection.client.workspace(WorkspaceRequestV1("register", str(self.workspace)))
+                    workspaces = tuple(item for item in registered.workspaces if Path(item.path) == self.workspace)
                 else:
                     workspaces = (await connection.client.workspace(WorkspaceRequestV1("list"))).workspaces
                 if len(workspaces) != 1:

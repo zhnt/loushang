@@ -635,22 +635,31 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
                 "loushang.hosting.errors",
                 "loushang.hosting.service",
                 "loushang.hosting.service_handoff",
+                "loushang.hosting.service_windows",
             },
             APPHOST / "managed/lifecycle.py": {
                 "loushang.hosting.errors",
                 "loushang.hosting.service",
+                "loushang.hosting.service_windows",
             },
-            APPHOST / "managed/bootstrap.py": {"loushang.hosting.service"},
+            APPHOST / "managed/bootstrap.py": {
+                "loushang.hosting.errors", "loushang.hosting.service",
+                "loushang.hosting.service_handoff", "loushang.hosting.service_windows",
+            },
             # Managed startup/continuation compares the original native value;
             # process creation and cleanup remain with their existing owners.
-            APPHOST / "managed/mux_management.py": {"loushang.hosting.service"},
+            APPHOST / "managed/mux_management.py": {
+                "loushang.hosting.service", "loushang.hosting.service_windows",
+            },
             APPHOST / "managed/starter.py": {
                 "loushang.hosting.contracts",
                 "loushang.hosting.service_process",
+                "loushang.hosting.service_windows",
             },
             APPHOST / "managed/stopper.py": {
                 "loushang.hosting.service",
                 "loushang.hosting.service_group",
+                "loushang.hosting.service_windows",
             },
             APPHOST / "managed/connection.py": {"loushang.hosting.service"},
             APPHOST / "managed/defaults.py": {

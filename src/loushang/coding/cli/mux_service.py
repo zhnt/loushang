@@ -23,6 +23,20 @@ DEFAULT_UNIT = "loushang-host.service"
 OPERATIONS = ("start", "stop", "restart", "status", "logs")
 
 
+def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if args.connection_root is not None or args.endpoint is not None:
+        parser.error("service selects a systemd unit with --unit")
+    if args.instance is not None and (
+        args.operation not in {"stop", "restart"} or re.fullmatch(r"[0-9a-f]{32}", args.instance) is None
+    ):
+        parser.error("--instance requires a lowercase hexadecimal instance ID and stop or restart")
+    if args.json or args.instance is not None:
+        if args.unit != DEFAULT_UNIT or args.operation == "logs":
+            parser.error("this operation requires the default local service and a lifecycle action")
+        return control_local(args.operation, args.instance, as_json=args.json)
+    return control(args.operation, args.unit)
+
+
 def unit_name(value: str) -> str:
     if not re.fullmatch(r"loushang-host(?:@[a-zA-Z0-9_.-]{1,128})?\.service", value):
         raise argparse.ArgumentTypeError(

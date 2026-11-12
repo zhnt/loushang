@@ -1,5 +1,20 @@
 # Execution Service Delivery — #576
 
+## GUI integration review (2026-11-12)
+
+Codex, acting as the implementation agent for PR #889, reviewed the managed
+startup and Workspace seams at `2ef8ace84`. The AppHost starter may use the
+Hosting Windows process owner through `loushang.hosting.service_windows`;
+the existing POSIX route continues to use `service_process`. The two
+architecture assertions enumerate those exact dependencies.
+
+The Coding terminal attaches to its existing Mux and registers a Workspace
+only to obtain its scope. Opening a project through the GUI still provisions
+its own Mux. After a busy admission read, AppHost releases the original
+read context before yielding and refuses to retry through persistent
+cleanup debt. The regression cases exercise both transient and persistent
+contention and the terminal's single-Mux selection.
+
 ## Status and scope
 
 - Design status: accepted for this implementation, by the 2026-09-09 request

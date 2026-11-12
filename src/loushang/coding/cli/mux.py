@@ -215,19 +215,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     if args.action == "service":
-        if args.connection_root is not None or args.endpoint is not None:
-            parser.error("service selects a systemd unit with --unit")
-        if args.instance is not None and (
-            args.operation not in {"stop", "restart"}
-            or len(args.instance) != 32
-            or any(character not in "0123456789abcdef" for character in args.instance)
-        ):
-            parser.error("--instance requires a lowercase hexadecimal instance ID and stop or restart")
-        if args.json or args.instance is not None:
-            if args.unit != mux_service.DEFAULT_UNIT or args.operation == "logs":
-                parser.error("this operation requires the default local service and a lifecycle action")
-            return mux_service.control_local(args.operation, args.instance, as_json=args.json)
-        return mux_service.control(args.operation, args.unit)
+        return mux_service.run_command(parser, args)
     if args.connection_root is None or args.endpoint is None:
         parser.error("--connection-root and --endpoint are required for this command")
     output = sys.stdout
