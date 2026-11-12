@@ -82,6 +82,14 @@ failures. For changes to CI selection itself, run the focused `tests/ci` suite
 and Actions syntax validation locally; the PR provides full remote validation.
 See `docs/internals/testing/change-aware-quality-gates.md` for the shared rules.
 
+Before opening a PR, run the applicable CI checks locally against the intended
+PR base and the full candidate diff. Use `make plan-checks` and
+`make check-changed` with the correct base, or pass `--base <ref>` to
+`scripts/ci/check_changed.py` for an explicit base. Wait for the applicable
+local checks to pass before opening the PR. If a check fails, fix the failure
+and rerun the affected checks. Keep checks that require a different platform or
+GitHub Actions in remote CI, and record which checks ran locally in the PR.
+
 Do not add or expand a PR gate without explicit approval from the authorized
 approver. This includes adding a required check, workflow, job, test route,
 runner platform or matrix entry; broadening path triggers; restoring a paused
