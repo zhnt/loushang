@@ -95,7 +95,7 @@
       "connection": "Host 连接失败。",
       "disconnected": "客户端连接已断开，正在恢复，不会重复提交。",
       "attachment": "暂时无法 attach 会话。",
-      "unavailable": "本地管理入口不可用，请检查已安装的 Python 环境。",
+      "unavailable": "本机 AppHost 管理入口不可用，请检查 loushang-mux。",
       "record": "Host 连接记录无效。",
       "instance": "Host 身份已变化，请刷新状态后再停止。",
       "unknown": "无法确认操作结果，请先查看状态，再尝试其他生命周期操作。",

@@ -60,6 +60,7 @@ interface HarnessGuiProps {
   readonly client: HarnessClientUiPort | FixturePlaybackPort | null;
   readonly account?: OfflineAccount | null;
   readonly hostSettings?: ReactNode;
+  readonly startLocalHost?: ReactNode;
   readonly projectNavigation?: ProjectNavigationProps;
   readonly hostSettingsRequest?: number;
   readonly onConnectionChange?: (connection: ConnectionState | "connecting") => void;
@@ -94,7 +95,7 @@ const dockTabs = [
   { id: "review", label: "panels:changes.review", glyph: "▣" },
 ] as const;
 
-export function HarnessGui({ client: attachedClient, account, hostSettings, hostSettingsRequest = 0, onConnectionChange, projectNavigation }: HarnessGuiProps) {
+export function HarnessGui({ client: attachedClient, account, hostSettings, startLocalHost, hostSettingsRequest = 0, onConnectionChange, projectNavigation }: HarnessGuiProps) {
   const client = attachedClient ?? offlineClient;
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const fixture = fixturePlayback(client);
@@ -607,6 +608,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
         /> : null}
 
         <section ref={conversationRef} style={{ "--content-gutter": `${contentMetrics.gutter}px`, "--scrollbar-width": `${contentMetrics.scrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label={t("panels:layout.workspace")}>
+          {startLocalHost ? <div className="diagnostic">{startLocalHost}</div> : null}
           {attachedClient && !liveConnecting && (syncing || state.diagnostic || state.remote.connection === "disconnected") ? (
             <div className="diagnostic" role="status">
               <span>{syncing ? t("session:sync.fixture") : t("session:diagnostic.title")}</span>
@@ -755,7 +757,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, host
             </>
           ) : !liveConnecting ? (
             <div className="empty-state">
-              <p>{t(attachedClient ? "session:emptySession" : "session:sync.offlineHost")}</p>
+              <p>{t(attachedClient || projectNavigation?.available ? "session:emptySession" : "session:sync.offlineHost")}</p>
               {attachedClient ? <p role="status"><NoticeText notice={notice} /></p> : null}
             </div>
           ) : null}

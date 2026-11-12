@@ -21,11 +21,17 @@ pub async fn serve(root: PathBuf, dist: Option<PathBuf>) -> Result<()> {
     let listener = TcpListener::bind(config.address()).await?;
     let address = listener.local_addr()?;
     let assets = assets(dist.or(config.dist))?;
+    let backend = Backend::new(root);
+    let backend = if config.manage_local {
+        backend.with_service_management()
+    } else {
+        backend
+    };
     let (stop, stopped) = watch::channel(false);
     let service = Arc::new(http::Service {
         address,
         dist: assets,
-        backend: Backend::new(root),
+        backend,
         stop,
     });
     publish(&state, address)?;
@@ -53,7 +59,7 @@ async fn accept(
                     let _permit = permit;
                     let connection = http1::Builder::new().keep_alive(false)
                         .serve_connection(TokioIo::new(stream), service_fn(move |request| service.clone().handle(request)));
-                    let _ = tokio::time::timeout(Duration::from_secs(80), connection).await;
+                    let _ = tokio::time::timeout(Duration::from_secs(110), connection).await;
                 });
             }
         }

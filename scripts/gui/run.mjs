@@ -9,12 +9,13 @@ const manifest = path.join(guiDir, "src-tauri", "Cargo.toml");
 const cargo = rustTool("cargo");
 const rustc = rustTool("rustc");
 const npmEntry = process.env.npm_execpath;
-const childEnv = path.isAbsolute(cargo)
-  ? {
-      ...process.env,
-      PATH: `${path.dirname(cargo)}${path.delimiter}${process.env.PATH ?? ""}`,
-    }
-  : process.env;
+const devMux = path.join(guiDir, "..", ".venv", "Scripts", "loushang-mux.exe");
+const childEnv = {
+  ...process.env,
+  ...(process.platform === "win32" && !process.env.LOUSHANG_MUX && existsSync(devMux)
+    ? { LOUSHANG_MUX: devMux } : {}),
+  ...(path.isAbsolute(cargo) ? { PATH: `${path.dirname(cargo)}${path.delimiter}${process.env.PATH ?? ""}` } : {}),
+};
 
 function rustTool(name) {
   const executable = process.platform === "win32" ? `${name}.exe` : name;

@@ -16,7 +16,11 @@ export function hostBridge(): Plugin {
         await execute("cargo", ["build", "--locked", "--manifest-path", manifest], { cwd: path.join(root, "gui") });
         binary = path.join(root, "gui/web/target/debug", process.platform === "win32" ? "loushang-web.exe" : "loushang-web");
       }
-      const { stdout } = await execute(binary, ["--ensure"], { cwd: root });
+      const manager = path.join(root, ".venv", "Scripts", "loushang-mux.exe");
+      const env = process.platform === "win32" && !process.env.LOUSHANG_MUX
+        ? { ...process.env, LOUSHANG_MUX: manager }
+        : process.env;
+      const { stdout } = await execute(binary, ["--ensure"], { cwd: root, env });
       const endpoint = new URL(stdout.trim());
       server.middlewares.use("/api/loushang", async (request, response) => {
         response.setHeader("Content-Type", "application/json");
@@ -37,7 +41,7 @@ export function hostBridge(): Plugin {
           }
           const result = await fetch(new URL("/api/loushang", endpoint), {
             method: "POST", body, headers: { "Content-Type": "application/json", "X-Loushang-Client": "1" },
-            signal: AbortSignal.timeout(80_000), redirect: "error",
+            signal: AbortSignal.timeout(110_000), redirect: "error",
           });
           response.statusCode = result.status;
           response.end(await result.text());

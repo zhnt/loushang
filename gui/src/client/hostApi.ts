@@ -5,7 +5,7 @@ export async function webRequest<T>(request: Record<string, unknown>, connection
   if (isTauri()) return invoke<T>("client_settings", { request: connectionId ? bound : { operation: "remote-call", request } });
   const response = await fetch("/api/loushang", {
     method: "POST", headers: { "Content-Type": "application/json", "X-Loushang-Client": "1" },
-    body: JSON.stringify(bound), signal: AbortSignal.timeout(80_000),
+    body: JSON.stringify(bound), signal: AbortSignal.timeout(110_000),
   });
   const value = await response.json();
   if (!response.ok || value.error) throw new Error(value.error ?? "host_unavailable");

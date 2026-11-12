@@ -1,4 +1,5 @@
 //! Browser and desktop requests use the same AppServer client.
+mod service;
 use crate::{
     AppClient, AppTarget, ConnectionOptions, ControlCommand, ControlResult, CreateSessionResult,
     ModelControlResult, WorkspaceInfo, WorkspaceRequest, WorkspaceResult,
@@ -23,6 +24,8 @@ pub struct Backend {
     root: PathBuf,
     tunnel: Option<(PathBuf, NonZeroU16)>,
     requests: Arc<Mutex<()>>,
+    manager: Option<PathBuf>,
+    managed_record: Arc<Mutex<Option<PathBuf>>>,
 }
 
 impl Backend {
@@ -31,7 +34,14 @@ impl Backend {
             root,
             tunnel: None,
             requests: Arc::new(Mutex::new(())),
+            manager: None,
+            managed_record: Arc::new(Mutex::new(None)),
         }
+    }
+
+    pub fn with_service_management(mut self) -> Self {
+        self.manager = service::executable();
+        self
     }
 
     pub fn through_tunnel(&self, root: PathBuf, port: NonZeroU16) -> Self {
@@ -39,6 +49,8 @@ impl Backend {
             tunnel: Some((root.clone(), port)),
             root,
             requests: self.requests.clone(),
+            manager: None,
+            managed_record: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -64,6 +76,11 @@ impl Backend {
     }
 
     fn host_request(&self, operation: &str, request: &Value) -> Result<Value> {
+        let configured_record = if self.tunnel.is_none() { self.record_root()? } else { None };
+        let manager = self.manager.as_deref().filter(|_| configured_record.is_none());
+        if let (Some(manager), "manage") = (manager, operation) {
+            return self.manage_service(manager, request);
+        }
         let record_root;
         let target = if let Some((credential_root, forwarded_port)) = &self.tunnel {
             Some(AppTarget::Tunnel {
@@ -71,18 +88,67 @@ impl Backend {
                 forwarded_port: *forwarded_port,
             })
         } else {
-            record_root = self.record_root()?;
+            record_root = match configured_record {
+                Some(path) => Some(path),
+                None => self.managed_record.lock().map_err(|_| "host_unavailable")?.clone(),
+            };
             record_root.as_deref().map(AppTarget::Local)
         };
         match operation {
             "environment" => Ok(json!({
-                "supported": target.is_some(), "manageable": false, "workspace": self.last_workspace()?,
+                "supported": target.is_some() || manager.is_some(),
+                "manageable": manager.is_some(), "workspace": self.last_workspace()?,
             })),
             "manage" => status(target, field(request, "action")?),
             "workspace" => self.workspace(target.ok_or("not_connected")?, request),
             "live" => live_request(target.ok_or("not_connected")?, request),
             _ => Err("unknown_operation".into()),
         }
+    }
+
+
+    fn manage_service(&self, manager: &std::path::Path, request: &Value) -> Result<Value> {
+        let (action, instance) = match field(request, "action")? {
+            "status" | "connect" => ("status", None),
+            "start" => ("start", None),
+            action @ ("stop" | "restart") => {
+                let instance = field(request, "instanceId")?;
+                if instance.len() != 32 || !instance.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+                    return Err("invalid_request".into());
+                }
+                (action, Some(instance))
+            }
+            _ => return Err("invalid_request".into()),
+        };
+        let error = |code: &str| json!({"state":"unknown", "errorCode":code, "manageable":true});
+        let reply = match service::invoke(manager, &self.root, action, instance) {
+            Ok(reply) => reply,
+            Err(code) => return Ok(error(code)),
+        };
+        if let Some(code) = reply.error_code {
+            return Ok(error(&code));
+        }
+        if reply.state != "running" {
+            if !matches!(reply.state.as_str(), "not_running" | "starting" | "stopping" | "exited" | "unknown") {
+                return Ok(error("management_unconfirmed"));
+            }
+            *self.managed_record.lock().map_err(|_| "host_unavailable")? = None;
+            return Ok(json!({"state":reply.state, "errorCode":null, "manageable":true}));
+        }
+        let Some(root) = reply.record_root.filter(|path| path.is_absolute()) else {
+            return Ok(error("management_unconfirmed"));
+        };
+        let client = AppClient::default();
+        let service_instance = match client.instance(AppTarget::Local(&root), TIMEOUT) {
+            Ok(instance) => instance,
+            Err(()) => return Ok(error(client.failure_code())),
+        };
+        if reply.service_instance_id.is_some_and(|expected| expected != service_instance) {
+            return Ok(error("instance_changed"));
+        }
+        *self.managed_record.lock().map_err(|_| "host_unavailable")? = Some(root);
+        Ok(json!({"state":"running", "errorCode":null, "manageable":true,
+                  "instanceId":reply.instance_id, "serviceInstanceId":service_instance}))
     }
 
     fn record_root(&self) -> Result<Option<PathBuf>> {

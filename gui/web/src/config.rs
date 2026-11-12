@@ -6,11 +6,12 @@ use std::{
 };
 
 #[derive(Deserialize)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct Config {
     pub bind: IpAddr,
     pub port: u16,
     pub dist: Option<PathBuf>,
+    pub manage_local: bool,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -18,6 +19,7 @@ impl Default for Config {
             bind: IpAddr::V4(Ipv4Addr::LOCALHOST),
             port: 1422,
             dist: None,
+            manage_local: false,
         }
     }
 }

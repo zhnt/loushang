@@ -108,7 +108,8 @@ async fn dispatch(routed: Routed) -> Result<Value> {
             environment,
         } => {
             static BACKEND: OnceLock<Backend> = OnceLock::new();
-            let backend = BACKEND.get_or_init(|| Backend::new(root.clone()));
+            let backend =
+                BACKEND.get_or_init(|| Backend::new(root.clone()).with_service_management());
             let backend = if let Some(port) = tunnel {
                 backend.through_tunnel(root.join("app-tunnels").join(&id), port)
             } else {

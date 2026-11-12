@@ -157,7 +157,7 @@ export default function LocalHostGate() {
         const available = preferred === TEMPORARY_WORKSPACE
           ? directory.temporarySessions.length > 0
           : directory.projects.some((project) => project.path === preferred && project.sessions.length > 0);
-        if (available) openConversation(preferred);
+        if (available) openConversation(preferred, selection?.workspace === preferred ? selection.id : undefined);
         else setConnection("connected");
       }
     } catch (error) {
@@ -269,6 +269,8 @@ export default function LocalHostGate() {
     : reason?.startsWith("start_") || reason === "spawn_failed" ? t("localHost.errors.start")
     : reason?.startsWith("stop_") || reason === "cleanup_incomplete" ? t("localHost.errors.stop")
     : t("localHost.errors.unknown");
+  const canStart = host.manageable && host.state === "not_running";
+  const startHost = () => void perform("start", workspace.trim());
   const stop = (action: "stop" | "restart") => {
     setConfirmation({ action, workspace, instanceId: host.instanceId });
   };
@@ -283,11 +285,11 @@ export default function LocalHostGate() {
       <div className="local-host-card">
         <div className="local-host-actions">
           <button disabled={busy || !supported} onClick={() => void perform("status")}>{t("localHost.refresh")}</button>
-          {host.manageable && host.state === "not_running" ?
-            <button disabled={busy || !supported} onClick={() => void perform("start", workspace.trim())}>{t("localHost.start")}</button> : null}
+          {canStart ?
+            <button disabled={busy} onClick={startHost}>{t("localHost.start")}</button> : null}
           {host.state === "running" ? <>
             <button disabled={busy} onClick={() => void perform("connect")}>{t(client ? "localHost.reconnect" : "localHost.connect")}</button>
-            {host.manageable && <><button disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>
+            {host.manageable && host.instanceId && <><button disabled={busy} onClick={() => stop("stop")}>{t("localHost.stop")}</button>
             <button disabled={busy} onClick={() => stop("restart")}>{t("localHost.restart")}</button></>}
           </> : null}
         </div>
@@ -311,6 +313,7 @@ export default function LocalHostGate() {
     </div> : null}
   </>;
   return <><HarnessGui client={client} account={account} hostSettings={hostSettings}
+    startLocalHost={canStart ? <button disabled={busy} onClick={startHost}>{t("localHost.start")}</button> : null}
     hostSettingsRequest={hostSettingsRequest} onConnectionChange={client ? setConnection : undefined}
     projectNavigation={{
       directory, available: host.state === "running" && !host.errorCode && !busy,

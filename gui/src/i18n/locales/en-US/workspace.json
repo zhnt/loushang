@@ -95,7 +95,7 @@
       "connection": "Host connection failed.",
       "disconnected": "Client disconnected; recovering without resubmitting.",
       "attachment": "Unable to attach the Session.",
-      "unavailable": "Local management entrypoint is unavailable. Check the installed Python environment.",
+      "unavailable": "Local AppHost management is unavailable. Check loushang-mux.",
       "record": "Host connection record is invalid.",
       "instance": "Host identity changed. Check status before stopping.",
       "unknown": "The operation could not be confirmed. Check status before trying another lifecycle operation.",
