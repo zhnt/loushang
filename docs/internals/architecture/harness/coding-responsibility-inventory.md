@@ -331,7 +331,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_cli.py](../../../../src/loushang/coding/package_product_cli.py) | C10 | 467 | M | C10 包分发与 Product 管理 | 99e20c686e5f | 467 | 99e20c686e5f |
 | [package_product_management_cli.py](../../../../src/loushang/coding/package_product_management_cli.py) | C10 | 548 | M | C10 包分发与 Product 管理 | fa812374945e | 539 | ce7c00c33ddb |
 | [package_product_preview.py](../../../../src/loushang/coding/package_product_preview.py) | C10 | 668 | M | C10 包分发与 Product 管理 | 9a98648bd20d | 661 | 7d6efd1494c9 |
-| [package_product_repair.py](../../../../src/loushang/coding/package_product_repair.py) | C10 | 321 | M | C10 包分发与 Product 管理 | 2c060b56dfaf | 321 | 2c060b56dfaf |
+| [package_product_repair.py](../../../../src/loushang/coding/package_product_repair.py) | C10 | 321 | M | 11类修复执行/释放归原ProductRuntime；Code保DTO、准入、创建及parent关闭 | 2c060b56dfaf | 228 | ace479ee6a09 |
 | [package_product_repair_rpc.py](../../../../src/loushang/coding/package_product_repair_rpc.py) | C10 | 49 | M | C10 包分发与 Product 管理 | 74413ce3f304 | 49 | 74413ce3f304 |
 | [package_product_repair_ui.py](../../../../src/loushang/coding/package_product_repair_ui.py) | C10 | 86 | M | C10 包分发与 Product 管理 | f38309028385 | 86 | f38309028385 |
 | [package_product_revisions.py](../../../../src/loushang/coding/package_product_revisions.py) | C10 | 442 | M | C10 包分发与 Product 管理 | 30e7ae99295b | 219 | 9818e5b9c3e5 |
@@ -530,7 +530,8 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 ## 当前分组计量与剩余处置
 
 2026-11-13续作核对，以`481134a42`源码重新计算全部当前列，新增4个主线文件单列并注明原审计未覆盖。
-当前Coding 112232行，完整≤15K目标差97232行；当前列更新不代表候选处置已接受。
+当前Coding 112139行，完整≤15K目标差97139行；当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
+Code−93/Core+119/系统+26；当前两源及验证边界见执行记录。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
 
@@ -550,7 +551,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C07 | 112 | 21,208 |
 | C08 | 31 | 6,691 |
 | C09 | 34 | 9,523 |
-| C10 | 12 | 5,417 |
+| C10 | 12 | 5,324 |
 | C11 | 26 | 9,507 |
 | C12 | 25 | 7,017 |
 | C13 | 21 | 5,653 |
@@ -569,4 +570,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 434 | 112,232 |
+| 合计 | 434 | 112,139 |

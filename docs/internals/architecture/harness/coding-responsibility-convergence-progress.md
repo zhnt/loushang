@@ -1,5 +1,38 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A155 完整Package修复执行归原ProductRuntime（2026-11-13）
+
+11类inspect/repair的完整执行与runtime.dispose finally从Coding退出，归现有
+PackageProductRuntime模块。Code保公开SDK/DTO、动作与workspace准入、owner/runtime
+创建及外层owner.close。原runtime各阶段方法不能自行表达完整选择、结果投影和统一释放，
+故在原owner模块最小增加一个执行函数；不扩runtime Protocol、不加manager或状态。
+唯一result_factory只构造产品DTO，不回借Code IO；max_bytes保原2MiB产品政策。
+
+三个独立职责/运行/兼容视角核实：纯参数逆绑定后完整try/finally AST与旧体相同，
+Code及Core其余操作体保持。保handoff先于activate、inspect/prepare/execute顺序、
+字段重复读取与dispose→parent.close清理覆盖关系；构造失败仍只关闭parent。
+固定标量进入helper时捕获，不声称私有全局在运行中任意重写的反射等价。
+
+原253受控观察及原3 SDK在保存旧源下256项通过；当前固定重放加SDK/UI/RPC共268项
+通过（14.98秒）：253固定、3 SDK、6 UI、6 RPC。253原JSON的manifest SHA全部匹配，
+重放缺记录直接失败；其中200场景真正触达故障注入，12场景执行实际inspect-await
+Task.cancel。覆盖open/create、11动作、结果构造、dispose/owner错误组合及清理次序。
+这是受控runtime/owner模型，不能代替11动作全部真实持久IO、native或全部取消交错。
+原190项阶段性结果不重复累计。真实Product的43种重开/重绑定阶段及5种handoff恢复
+入口共48项全部通过（1148.08秒），保原非live/host-runtime选择，覆盖实际持久事务与
+CLI/SDK/RPC/UI入口；不外推Windows native或所有取消交错。A153诊断比较153项另列，不计本片独立覆盖。
+
+两源Ruff及限定mypy、依赖图检查、9项纯文档检查通过；最终两源下原完整导入边界/
+架构文档175项通过（339.97秒）。完整成本Coding−93、Harness+119、其它生产源0，系统净增26；
+这是职责迁移，不是重复算法精简。全帧Coding112139、Harness362458、历史全帧658749，
+距15K仍97139行。Harness包含349行既有导出HTML/CSS/JS，纯Python362109行。
+历史全帧继承GUI树选定源码，其中gui/tests为4271行；剔除该测试目录后654478行。
+本片两源差值+26在这两种全系统口径下相同，不把GUI测试计为生产精简。
+完整P1–P4仍partial，≤15K未达；源码、固定观察、manifest、JUnit及验证限制保于树外
+`coding-convergence-continue/a155-package-repair`。实施owner据三视角与上述最终结果
+接受该完整修复执行片，不关闭整个C10或完整Goal。
+
+
 
 
 
