@@ -25,6 +25,15 @@ Coding 112389→112387（−2），Harness 362224→362224，全帧658765→6587
 P1–P4职责簇继续待处置。可校验原源、全帧、JUnit及失败证据保存于树外
 `coding-convergence-continue/a147-deletion-naming`。本片由实施owner核实三视角证据后有界接受。
 
+
+### A147 验证欠账闭环
+
+随后修复Windows deletion barrier既有probe的五个旧挂点，ACL/open/close/listdir
+指向实际Resources模块，目录身份指向原IO实例所属类并保self。原9个CASE、4个断言及
+2873字节固定fixture保持；独立逆变换整模块AST核对通过。9项原先在冻结旧源失败的
+场景现全部通过（3.35秒），该项旧挂点欠账关闭。证据`barrier-fixed.xml/log`保留于
+同树外目录。未添加gate或覆盖场景，生产源码和A147计量不变。
+
 ## PR #886交付核对
 
 A146已验收源码进入交付。首轮 CI 发现 AppHost 历史源码清单、Wave A 旧单文件预算和
