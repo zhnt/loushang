@@ -3,6 +3,26 @@
 
 
 
+
+## A150 验证命令的完整Bash执行归Session（2026-11-13）
+
+Verification中的累计preview、原SDK调用及完整结构化RuntimeError恢复程序接入既有
+Session.bash，并直接使用原结果归一化。窄Session Protocol保持方法属性读取在原try内，
+原Mapping/truth/kwargs求值顺序、精确标志与UTF8计数条件保持。普通成功结果原样返回，
+无Task/shield/abort或新记录路径。Code保Work准入/options字段、返回后Session-current、
+报告/Blob及判定政策。旧BashCommandExecutionRuntime有不同记录/重抛职责，不直接替换。
+
+三独立设计与实际代码审查通过。展开helper及还原session绑定后，完整Code非import AST
+与旧源一致；Core逆去新增Protocol/helper后其他执行体相同。原默认tmp布局13项Writer
+unsafe失败保留，按既有私有嵌套tmp夹具，旧151过/7host排除（85.50秒），新同151过/
+7排除（99.79秒）；接收Bash/CLI原11项过。未以这些结果宣称全部组合或原生平台覆盖。
+两源mypy、Ruff及diff通过。私有调用帧/observer定义位置随owner改变，未更改持久格式。
+
+Code−39/Core+53/系统+14，属于完整执行机制归位，非算法去重。全帧仅两生产源变化，
+Coding112379→112340、Harness362241→362294、系统658772→658786。新增窄端口、签名和
+局部调用成本全计，距15K仍97340行，完整P1–P4继续。原源/完整帧/JUnit及初失败证据
+保存树外`coding-convergence-continue/a150-verification-bash`。实施owner核实有限证据后接受。
+
 ## A149 连接配置完整原子写归Config（2026-11-13）
 
 原client_settings.write_connections的完整临时文件/文本流/JSON/flush/fsync/replace/
