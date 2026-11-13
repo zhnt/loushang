@@ -36,6 +36,9 @@ from .package_private_data_deletion_journal import (
     CodingArchPrivateDataDeletionEventV1,
     CodingArchPrivateDataDeletionJournal,
 )
+from .package_private_data_deletion_journal import (
+    _tombstone_name as _tombstone_name,
+)
 from .package_private_data_deletion_preview import (
     CodingArchPrivateDataDeletionPreview,
     _capture_target_snapshot,
@@ -161,16 +164,6 @@ def _delete_started(
         make_tombstone_name=lambda: _tombstone_name(started),
         record_renamed=journal.record_renamed,
     )
-
-
-def _tombstone_name(started: CodingArchPrivateDataDeletionEventV1) -> str:
-    digest = sha256(
-        b"loushang.coding-arch-private-data-tombstone/v1\0"
-        + started.plan.fingerprint.encode("ascii")
-        + b"\0"
-        + started.confirmation.confirmation_id.encode("utf-8")
-    ).hexdigest()
-    return ".deleting-" + digest
 
 
 def _receipt_id(

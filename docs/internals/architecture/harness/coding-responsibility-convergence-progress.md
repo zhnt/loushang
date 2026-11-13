@@ -1,5 +1,30 @@
 # COD-RESP-GOAL-002 执行记录
 
+
+## A147 双平台删除标记命名归一（2026-11-13）
+
+恢复Goal后已读取完整用户目标，任务工作树快进到远端main `4bbf65da5`。
+控制工作树原三处用户改动保留。原A1–A146作为既有成果，完整P1–P4及≤15K目标继续。
+
+POSIX删除与Windows删除/恢复证明中的两份完全相同命名函数，统一由现有Coding
+删除journal维护；两旧模块保留同名导入。原Coding专属hash域、ASCII/NUL/UTF8输入顺序、
+惰性调用位置及持久化格式保持。原Harness物理删除与journal机制直接复用，本片为同域
+重复退出，未新增通用owner、回调或状态。私有函数定义模块及traceback位置随归属改变。
+
+三独立视角完成设计与实际代码核对。新函数与两旧函数完整AST相同，其余非import
+操作体AST保持。改前12项原回归通过；改后12项及既有Windows效果/程序探针共59项通过。
+另9项barrier探针因旧WindowsPrivateDirectoryAcl挂点不存在失败，冻结原三源复跑同9项
+失败；本片未关闭该旧探针欠账。Windows验证为Linux受控端口，未运行native Windows。
+三源Ruff、mypy及diff检查通过。
+
+计量固定为生产源码物理行，完整src/gui源码帧只三源改变。
+Coding 112389→112387（−2），Harness 362224→362224，全帧658765→658763（−2）。
+接收journal+12，两旧模块各−7，兼容导入成本包含在内；无格式精简计益。
+该帧纳入最新GUI/AppHost主线，不能将与A146差值都计为本Goal收益。
+距离Coding≤15000仍有97387行。剩余启动装配、Session/插件寿命、Windows退休及其他
+P1–P4职责簇继续待处置。可校验原源、全帧、JUnit及失败证据保存于树外
+`coding-convergence-continue/a147-deletion-naming`。本片由实施owner核实三视角证据后有界接受。
+
 ## PR #886交付核对
 
 A146已验收源码进入交付。首轮 CI 发现 AppHost 历史源码清单、Wave A 旧单文件预算和
