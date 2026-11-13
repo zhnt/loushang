@@ -334,7 +334,10 @@ def observe(name, base, patch):
                 if kind == "complete"
                 else (expected,)
             )
-            getattr(code, f"_publish_{kind}_repair_intent")(fd, *args)
+            repair_journal = getattr(code._STORAGE, kind)
+            repair_journal.publish(
+                fd, expected.attempt_id, args if kind == "complete" else expected
+            )
         if case == "prior-absent" or case == "stage-missing":
             shutil.rmtree(stage)
         if case == "prior-mismatch":
@@ -344,9 +347,9 @@ def observe(name, base, patch):
         if case == "stale-stage":
             stage.chmod(0o755)
         if case == "intent-mode":
-            (root / getattr(code, f"_{kind}_repair_names")(ATTEMPT)[0]).chmod(0o644)
+            (root / getattr(code._STORAGE, kind).names(ATTEMPT)[0]).chmod(0o644)
         if case == "intent-body":
-            (root / getattr(code, f"_{kind}_repair_names")(ATTEMPT)[0]).write_bytes(
+            (root / getattr(code._STORAGE, kind).names(ATTEMPT)[0]).write_bytes(
                 b"{}\n"
             )
         if case == "list-bad-name":

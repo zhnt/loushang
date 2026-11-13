@@ -1284,10 +1284,6 @@ def _fresh_coding_product_namespace_id(store_id: str) -> str:
     ).hexdigest()
 
 
-def _coding_builtin_bootstrap_operation_id(store_id: str, plugin_id: str) -> str:
-    return _CODING_BUILTIN_BOOTSTRAP_POLICY.operation_id(store_id, plugin_id)
-
-
 def _fresh_coding_builtin_bootstrap_completed(
     owner: CodingFencedProductApplicationOwner,
 ) -> bool:

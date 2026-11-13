@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source import (
     ExactProductSourceFiles,
     InstalledProductWheelRecipe,
-    _installed_member_is_reparse,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
@@ -370,10 +368,6 @@ def _read_member(root: Path, relative: str) -> bytes:
     return _product_source_files.read_installed_member(
         root, relative, maximum_bytes=lambda: _MAX_MEMBER_BYTES
     )
-
-
-def _is_windows_reparse(metadata: os.stat_result) -> bool:
-    return _installed_member_is_reparse(metadata)
 
 
 __all__ = [

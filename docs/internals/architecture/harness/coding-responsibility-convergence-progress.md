@@ -5,6 +5,29 @@
 
 
 
+
+## A153 完整旧适配簇退出（2026-11-13）
+
+筛查全src/tests/scripts私有单return转发后，经三独立视角核动态消费者，删除payload
+empty/complete/unmarked九个命名/读/发布转发，以及native release验证、wheel reparse、
+builtin bootstrap operation id三个已退出的旧薄壳。实际主路直接使用既有PayloadStorage/
+RepairJournal、NativeReleaseVerifier、ExactProductSourceFiles及BootstrapPolicy，未新增
+共享算法或改变其资源寿命。三prefix显式兼容alias及仍有消费者的native._read_member保留。
+
+两个payload probe同步接原journal，保原tuple/参数形状、complete(plan,fingerprint)、故障
+挂点和所有断言/fixture。原组158过/1skip/1旧complete:read-short fixture失败；新增树外
+旧实际观察对照后最终159过/1skip/同1旧失败，该case完整观察与冻结旧源码逐值相同。
+原fixture未更新，差异欠账保持。初probe适配局部journal遮原factory致9失败，经改名
+repair_journal修正，初失败保留。额外bootstrap/native-release固定对照266过/1warning。
+树外捕获首命令因单外部节点未加载仓库--skip-host-runtime选项exit4，加入原仓库节点
+后7过，未将失败命令算运行验证。未据这些离线/受控观察宣称native Product或并发覆盖。
+
+三视角实际AST逆验：删12def及三处无用import后四源其余执行体相同；probe断言/fixture
+不变。四源mypy、Ruff及diff通过。Code/系统−75，Harness0，测试适配+13另计；
+四源分别−59/−6/−6/−4，来源与全生产帧存于树外a153-obsolete-adapters。
+Coding112322→112247、Harness362294保持、系统658768→658693；距15K仍97247行。
+本片由实施owner核实独立审查及有限结果后接受，完整P1–P4/Goal继续。
+
 ## A151 Work证据归属候选未采用（2026-11-13）
 
 完整私有_work_evidence的192行已核，字段/回放机制技术上中性，但全部真实消费者仍是
