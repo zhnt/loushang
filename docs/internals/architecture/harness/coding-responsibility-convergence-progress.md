@@ -7,6 +7,19 @@
 
 
 
+
+## A154后累计集成核对（2026-11-13）
+
+重新fetch核远端main为`4bbf65da5`，任务树已包含该主线；控制main从`afdb439c3`
+安全快进到同一远端。控制树原三处用户改动前后binary patch SHA均为
+`98fbaa23c7d25c1f6c3eb333f8ce2b7107a7fe196e6da0d33f6fa1ad03a338f0`，未混入任务提交。
+
+在任务源码`c7aa4ff4f`上，生成依赖图`--check`通过；既有完整import_boundaries及
+architecture_documentation两模块合计175项通过（121.20秒），包含H3公开Process端口与
+生成依赖事实检查。无门禁、阈值或测试触发修改，无生产源码增删。原A153旧fixture差异
+仍保留，完整Goal/P1–P4与≤15K缺口未关闭。终态JUnit及日志保于树外
+`a154-lsp-process-wait/integration-architecture.xml`；控制更新补丁证据在同树外父目录。
+
 ## A154 LSP进程退出waiter寿命归公开Process接口（2026-11-13）
 
 原LspClient._wait_for_exit完整create_task→shield/wait_for→超时terminate/等待→异常
