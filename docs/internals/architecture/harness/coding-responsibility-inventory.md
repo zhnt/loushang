@@ -383,7 +383,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_receipt.py](../../../../src/loushang/coding/package_product_worker_receipt.py) | C07 | 1,287 | M | C07 插件 Worker 执行/持久化/恢复 | 28b31f8d21d9 | 880 | d8c20f9d14b3 |
 | [package_product_worker_receipt_base_v2.py](../../../../src/loushang/coding/package_product_worker_receipt_base_v2.py) | C07 | 234 | M | C07 插件 Worker 执行/持久化/恢复 | 6e0d43651711 | 44 | e68d7ab4c84d |
 | [package_product_worker_registered_c5_settlement.py](../../../../src/loushang/coding/package_product_worker_registered_c5_settlement.py) | C07 | 368 | M | C07 插件 Worker 执行/持久化/恢复 | 4e651980106b | 102 | 2bdcfed63608 |
-| [package_product_worker_registered_payload_repair.py](../../../../src/loushang/coding/package_product_worker_registered_payload_repair.py) | C07 | 490 | M | C07 插件 Worker 执行/持久化/恢复 | 154d62d8b4ea | 291 | b01b88bd0bce |
+| [package_product_worker_registered_payload_repair.py](../../../../src/loushang/coding/package_product_worker_registered_payload_repair.py) | C07 | 490 | M | registered恢复已直接复用RepairJournal；三旧转发退出，保DTO及绑定 | 154d62d8b4ea | 273 | c8ef4f38412d |
 | [package_product_worker_registered_recovery.py](../../../../src/loushang/coding/package_product_worker_registered_recovery.py) | C07 | 297 | M | C07 插件 Worker 执行/持久化/恢复 | a4f687231e21 | 199 | 7d2b972ff406 |
 | [package_product_worker_resume.py](../../../../src/loushang/coding/package_product_worker_resume.py) | C07 | 281 | M | C07 插件 Worker 执行/持久化/恢复 | 806f3072e7b6 | 196 | af6dc6f481ac |
 | [package_product_worker_session_composition.py](../../../../src/loushang/coding/package_product_worker_session_composition.py) | C07 | 635 | M | C07 插件 Worker 执行/持久化/恢复 | 7314a0c57377 | 343 | a7ea4fffc71e |
@@ -530,7 +530,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 ## 当前分组计量与剩余处置
 
 2026-11-13续作核对，以`481134a42`源码重新计算全部当前列，新增4个主线文件单列并注明原审计未覆盖。
-当前Coding 112340行，完整≤15K目标差97340行；当前列更新不代表候选处置已接受。
+当前Coding 112322行，完整≤15K目标差97322行；当前列更新不代表候选处置已接受。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
 
@@ -547,7 +547,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C04 | 2 | 2,956 |
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
-| C07 | 112 | 21,291 |
+| C07 | 112 | 21,273 |
 | C08 | 31 | 6,691 |
 | C09 | 34 | 9,523 |
 | C10 | 12 | 5,427 |
@@ -569,4 +569,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 434 | 112,340 |
+| 合计 | 434 | 112,322 |

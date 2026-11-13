@@ -78,7 +78,12 @@ def sample(kind):
 
 def profile(kind):
     if kind == "registered":
-        return registered._names, registered._read_intent, registered._publish_intent
+        journal = registered._repair_journal()
+        return (
+            registered._names,
+            journal.read,
+            lambda fd, intent: journal.publish(fd, intent.attempt_id, intent),
+        )
     return (
         getattr(payload, f"_{kind}_repair_names"),
         getattr(payload, f"_read_{kind}_repair_intent"),

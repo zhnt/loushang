@@ -4,6 +4,31 @@
 
 
 
+
+## A151 Work证据归属候选未采用（2026-11-13）
+
+完整私有_work_evidence的192行已核，字段/回放机制技术上中性，但全部真实消费者仍是
+同一Coding Product。原HW-KD-002选择私有codec/query，共享提升尚缺明确边界依据；
+迁往私有integration并不自动提供该依据，也没有第二套算法/IO/状态owner可删除。
+此外旧delegation固定观察含EvidenceReplayError原FQN，简单reexport会改变该元数据。
+不为迁移增加错误factory/mixin或Core→Code依赖，不改变原期待。三视角均指出这些
+边界；本轮未采用该候选、生产精简0，未称元数据变化必然违反公开持久合同。
+
+## A152 Registered恢复旧转发退出（2026-11-13）
+
+生产恢复与history/GC/V2预检实际已直接消费_repair_journal，清除_read_intent、
+_publish_intent及_settle_intent_stage三旧私有转发。初rg漏两份probe别名消费者，经
+独立审查修正：read/publish并非全仓无消费者。先将payload profile适配及两个恢复setup
+调用同步接到同一RepairJournal.read/publish，保原lambda参数形状、intent.attempt_id及
+所有断言/固定fixture；settle未发现消费者。保原DTO、_names、codec与journal绑定。
+
+旧126项完整固定对照过（20.96秒），新同126项过（20.38秒），未以之覆盖native Windows
+或完整Linux Product host场景。生产非删除函数保持，probe无新增gate/场景。Ruff、源mypy
+及diff通过，三视角核对实际调用链/消费者迁移后由实施owner作本片接受。
+Coding/系统各−18，Harness0，无新共享机制收益。全生产帧仅一源变，Coding112340→112322、
+Harness362294不变、系统658786→658768。测试适配5行净增另计；距15K尚97322行，完整
+P1–P4继续。原源码/probe、全帧及JUnit保于树外`coding-convergence-continue/a152-repair-adapters`。
+
 ## A150 验证命令的完整Bash执行归Session（2026-11-13）
 
 Verification中的累计preview、原SDK调用及完整结构化RuntimeError恢复程序接入既有
