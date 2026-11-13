@@ -8,6 +8,20 @@
 
 
 
+
+## A153 read-short诊断差异闭环（2026-11-13）
+
+对保存的迁前实际观察作原compact变换后逐字段核对，与原fixture仅repair.error.cause.message
+一处不同：同JSONDecodeError、同line1/column158/char157的两条确定解析文案。
+只在显式probe比较层的complete:read-short、该cause路径与精确type/当前完整文案匹配时，
+将文案投影为原fixture旧文案。observe/error_graph/compact及原fixture字节均保持，原完整
+字典比较继续检查所有字节/trace/hash、外层错误、context/notes与结果，不改Product。
+
+两独立运行/兼容视角接受此受限诊断合同。原组153项全部通过（7.22秒）。纯比较层六项
+反事实验证旧文案和已知文案都通过，偏移、错误类型和trace变化仍失败，其他case不受影响。
+原迁前失败及保存raw继续保留；不把这项偶然诊断差异宣告为Product行为修复或生产精简。
+本片不加gate/场景，生产增删0，测试净增12行，证据存树外a155-package-repair。
+
 ## A154后累计集成核对（2026-11-13）
 
 重新fetch核远端main为`4bbf65da5`，任务树已包含该主线；控制main从`afdb439c3`
