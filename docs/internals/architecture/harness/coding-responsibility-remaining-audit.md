@@ -1,4 +1,12 @@
-# Coding 全量剩余职责与保留成本复核 A72
+# Coding 全量剩余职责与保留成本复核
+
+本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐A155源码
+`4b3c2b1a5`及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
+112139行，距15K仍97139行。下面28组不是可删除预算或最终保留成本。
+A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
+Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
+具体接受/验证边界见[执行记录](coding-responsibility-convergence-progress.md)。
+完整P1–P4仍partial；本次只是交付事实协调，不新增Target、接口或精简收益。
 
 - A146 普通启动和操作员查询共用 Provider 签发与选择，续期共用签发，Coding 减45行、系统增12行。见[A146](coding-responsibility-convergence-progress.md#a146共用worker-provider签发与选择)。
 - A145 普通 Worker 待启动、实际 adapter 和操作员查询复用能力绑定或准入投影，Coding 减41行、系统减7行。见[A145](coding-responsibility-convergence-progress.md#a145共用普通worker能力绑定与准入投影)。
@@ -50,8 +58,8 @@
 - A94后续：H5原operator边界协调，生产净0；保留5项扩大Hosting基线欠账，完整P1–P4仍未完成，见[当前状态](coding-responsibility-convergence-progress.md)。
 
 - Authority: descriptive audit under COD-RESP-GOAL-002；不替代已接受Target。
-- Design status: current-gap review；下面候选接口尚未接受或实施。
-- Implementation status: A71已提交；本工作件不新增生产实现或精简收益。
+- Design status: current-gap review；A72历史候选在当时未接受，后续A73/A74/A75等接受见各片记录，不重新列为待开发。
+- Implementation status: A155已提交；本次只同步当前计量与历史标记，不新增生产实现或精简收益。
 - Owner: Coding及各原组件owner；三独立视角复核，实施owner综合事实。
 - A117：完整Goal/Work来源冷读与原owner关闭归原GoalStore集成；C12整体仍未关闭，见[A117](key-designs/goal-work-source-custody-convergence.md)。
 - A116：完整规划waiter/cache寿命归原Session；C17整体仍未关闭，见[A116](key-designs/session-planning-slot-custody-convergence.md)。
@@ -66,10 +74,10 @@
 - A105：A104观察到的Catalog消费者清单失配已协调（生产增删0/原模块3过）；其它历史Catalog/Session欠账不销账，见[KD009 §24](key-designs/startup-session-assembly-convergence.md#24-a105协调两项已接受-catalog-消费者库存)。
 - A104：native fallback整FD/根身份程序归原Resources，Code保政策/纯投影；不关闭C01，旧Catalog清单欠账保持，见[A104](key-designs/native-fallback-metadata-custody-convergence.md)。
 - A103：普通 Session 孤儿恢复完整物理程序已归原 Product，Code 保资格政策/薄入口；不关闭整个 C10，见[A103](key-designs/ordinary-orphan-recovery-convergence.md)。
-- A93后续：完整Windows backend review/install/read及approval current归原PackageProduct，Code保公开值/产品政策；不关闭整个P1。现存H5规范/原Session operator事实失配待协调，见[A93](key-designs/windows-backend-release-custody-convergence.md)。
+- A93后续：完整Windows backend review/install/read及approval current归原PackageProduct，Code保公开值/产品政策；不关闭整个P1。原H5规范/Session operator事实失配已在[A94](../hosting/harness-worker-adapter-h5.md#a94-reconciliation-evidence)协调，见[A93](key-designs/windows-backend-release-custody-convergence.md)。
 - A92后续：原Continuity激活lease算法已直接复用，Code行数不变/系统−28；不关闭整个C04/P3，也不实施KD003 bytes输入。当前事实见[A92](key-designs/activation-lease-lifecycle-convergence.md)。
-- 后续：A73关闭下文候选的完整审批协调，A74关闭三类payload恢复协调（registered另合同仍待），A75关闭prepared-operation任务custody、A76关闭备份拓扑完整存储依赖、A77关闭完整Linux history proof/strict GC，A78关闭完整registered/crash恢复、cleanup evidence及POSIX C5 Store custody，A79关闭完整Product selected revision输入与installed member/Wheel bytes程序，A80关闭完整canonical Catalog协调/候选custody与Managed探针程序（history/navigation原位）；A81关闭完整delegated Goal Work/Session轮次关联、Task/取消/清理及固定history取得（Coding保领域选择/证据）；当前计量与未关闭职责见[执行状态](coding-responsibility-convergence-progress.md)，本文件其余数值保留A72审计切点。
-- 实物：`2c322a821`，专用delivery worktree；Coding430文件117115行，系统1958源645173行。
+- 后续：A73关闭下文候选的完整审批协调，A74关闭三类payload恢复协调（当时不含registered，A78后已接管所述闭包），A75关闭prepared-operation任务custody、A76关闭备份拓扑完整存储依赖、A77关闭完整Linux history proof/strict GC，A78关闭完整registered/crash恢复、cleanup evidence及POSIX C5 Store custody，A79关闭完整Product selected revision输入与installed member/Wheel bytes程序，A80关闭完整canonical Catalog协调/候选custody与Managed探针程序（history/navigation原位）；A81关闭完整delegated Goal Work/Session轮次关联、Task/取消/清理及固定history取得（Coding保领域选择/证据）；当前计量与未关闭职责见[执行状态](coding-responsibility-convergence-progress.md)，除当前28组表外，保留账与候选窗口中的历史数值沿用A72审计切点。
+- A72历史实物：`2c322a821`，专用delivery worktree；Coding430文件117115行，系统1958源645173行。
 - 方法：本地干净master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 
 ## 覆盖及计量边界
@@ -87,27 +95,27 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
-数量按A146当前430源重计；原A72的117115行快照不再作当前值，前序减少不重复计入本批收益。
+数量按A155当前434源重计；A146/A72均为历史切点，前序减少不重复计入本次协调。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
 |---|---:|---|---|---|
-| C01 启动、Plugin/资源装配 | 22/12,706 | P2 | 原Construction/Session、Catalog/Graph已实际接入；Code剩跨阶段选择、审批、刷新与交接 | 拆清领域选择和完整共用程序；不把bootstrap3531行或装配回调池当删除预算 |
-| C02 托管与受管接入 | 28/7,859 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用；Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝 |
+| C01 启动、Plugin/资源装配 | 22/12,709 | P2 | 原Construction/Session、Catalog/Graph已实际接入；Code剩跨阶段选择、审批、刷新与交接 | 拆清领域选择和完整共用程序；不把bootstrap3561行或装配回调池当删除预算 |
+| C02 托管与受管接入 | 31/8,478 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用；Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝 |
 | C03 Resume与SessionManager | 15/4,132 | P2/P3 | 原Transcript/Session lifecycle、live恢复已复用；Code保版本化输入/装配与授权政策 | 按new/resume/fork/reopen完整合同再拆；不重建提交器或自动重试 |
 | C04 Continuity | 2/2,956 | P3 | 原Continuity provider/runtime及A68 payload custody已接入；Code来源/导入/恢复桥仍在 | KD003 bytes import未实施；区分纯准入与读取/借用/abort寿命，不提前采用KD011 |
 | C05 Canary及作者验证入口 | 6/3,565 | P1/P3/P4 | 原Worker attempt及托管owner已有接入；Code保真实SDK/CLI验证入口和产品场景 | 存在真实运行消费者，不能按canary/smoke命名删除；剩余协调须随实际场景替代 |
 | C06 其余根入口与策略 | 26/4,460 | P2/P4 | 混合产品配置、模型/工具选择及既有薄绑定 | 逐具体声明/运行路径处置；不整体当领域保留或机械可删 |
-| C07 插件Worker | 112/21,291 | P1 | 五流/Rooted/history/platform/native custody已共享；A118收据事务、A121 live-stage及A122持久base读协调归位，Code保准入与证据关联 | 已共享payload recovery不重计；继续核普通Session选择/停止/重开/结清的剩余政策与协调，尚无整簇完成证明 |
-| C08 插件私有数据 | 31/6,693 | P4 | 原备份/删除/恢复/过期及A71 lineage已由原Plugin Management/Resources承接 | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
+| C07 插件Worker | 112/21,208 | P1 | 五流/Rooted/history/platform/native custody已共享；A118收据事务、A121 live-stage及A122持久base读协调归位，Code保准入与证据关联 | 已共享payload recovery不重计；继续核普通Session选择/停止/重开/结清的剩余政策与协调，尚无整簇完成证明 |
+| C08 插件私有数据 | 31/6,691 | P4 | 原备份/删除/恢复/过期及A71 lineage已由原Plugin Management/Resources承接 | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
 | C09 兼容迁移与快照证据 | 34/9,523 | P4 | 原capture/epoch/receipt等机制已共享；存量分类、准入与恢复政策仍在 | 逐受支持状态和恢复入口给退出证明；legacy命名与静态无调用都不足以删支持 |
-| C10 包分发及Product管理 | 12/5,427 | P2/P4 | Package Product/Management/Source/Bootstrap已复用；Code仍组装兼容与fenced路线 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |
-| C11 CLI | 25/9,278 | P4 | 大量命令调用原owner；语法、确认、选择、JSON/TUI及少量效果协调交织 | 同一业务接同一owner；lmux close可单独完整收敛，不造命令阶段框架 |
-| C12 Goal/Work/证据适配 | 25/7,056 | P3/P4 | 原Work/Goal/Method、Goal物理backend及A117来源冷读已共享；Code保仓库/测试/评审策略与scope适配 | 按剩余领域判据/入口核保留或退出成本，不重开已共享cold reader/Task闭包；真实calculator/repository路线保持 |
-| C13 LSP | 21/5,668 | P2/P4 | 语义查询/位置/结果及协议；实际进程端口已用Workspace/Hosting | 领域能力继续计Code；通用任务/IO仍可复用，不能用整目录量当必要下界 |
+| C10 包分发及Product管理 | 12/5,324 | P2/P4 | Package Product等已复用；A155修复执行/释放归原ProductRuntime，Code保该入口准入/DTO/parent关闭，其它兼容/fenced装配仍混合 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |
+| C11 CLI | 26/9,507 | P4 | 大量命令调用原owner；语法、确认、选择、JSON/TUI及少量效果协调交织 | 同一业务接同一owner；lmux close须先证明输出/确认/CAS/期限屏障及全适配成本，未接受新形状 |
+| C12 Goal/Work/证据适配 | 25/7,017 | P3/P4 | 原Work/Goal/Method、A117来源冷读及A150验证Bash完整执行已共享；Code保仓库/测试/评审策略与scope适配 | 按剩余领域判据/入口核保留或退出成本，不重开已共享cold reader/Task闭包；真实calculator/repository路线保持 |
+| C13 LSP | 21/5,653 | P2/P4 | 语义查询/位置/结果及协议；进程端口已用Workspace/Hosting，A154退出waiter寿命归公开Process | 领域能力继续计Code；通用任务/IO仍可复用，不能用整目录量当必要下界 |
 | C14 Arch | 13/3,608 | P2/P4 | Python AST/import分类/图查询及cache、读取适配 | 保编码分析；核cache/IO与原Workspace/Resources的边界，不把领域算法换目录 |
-| C15 AgentSession产品绑定 | 2/2,036 | P2 | 原AgentProductSession/Graph/publication/retirement已实际复用 | 构造、选择见证/receipt及产品hooks仍混合；公开入口可薄化，不能声称整类是第二引擎 |
-| C16 Native UI产品绑定 | 14/2,179 | P4 | 原HarnessTUI conversation/controller/surface为实际机制 | 保产品文案/主题/领域动作；以公共观察替代私有字段耦合，不复制UI状态权威 |
+| C15 AgentSession产品绑定 | 2/2,042 | P2 | 原AgentProductSession/Graph/publication/retirement已实际复用 | 构造、选择见证/receipt及产品hooks仍混合；公开入口可薄化，不能声称整类是第二引擎 |
+| C16 Native UI产品绑定 | 14/2,189 | P4 | 原HarnessTUI conversation/controller/surface为实际机制 | 保产品文案/主题/领域动作；以公共观察替代私有字段耦合，不复制UI状态权威 |
 | C17 AgentSessionRuntime绑定 | 3/904 | P2/P3 | 原Session已承接A75 prepared、A106 history、A116 planning寿命；Code保Resume准入/Plan/fresh校验与关闭政策 | 按剩余领域与准入逐路径核实保留成本；不重开已共享Task机制，不据本片关闭整C17 |
 | C18 交互命令与预热 | 5/874 | P4 | 原Command/Session/展示机制已共享 | 保语法与业务动作；公共控制/观察端口代替跨owner私有访问 |
 | C19 压缩Profile | 4/440 | P4 | 原compaction runtime已接入 | 保编码摘要内容/标签；不为纯绑定再建抽象 |
@@ -120,15 +128,15 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C26 配置/路径兼容导出 | 2/52 | P4 | 原Config owner已复用 | 保产品路径选择与支持中的导出，退出需合同证据 |
 | C27 版本检查 | 2/50 | P4 | 产品更新选择与原公共机制绑定 | 保必要产品选择，不为50行再建服务 |
 | C28 资源命名空间 | 5/5 | P4 | 支持中的Python布局标记 | 保真实加载/导出路径，空壳不是第二引擎 |
-| 合计 | **430/111,514** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
+| 合计 | **434/112,139** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
 
-## 保留账：语义、兼容成本与当前实现必须分开
+## A72保留合同与语法筛查（历史成本，非当前下界）
 
 以下保留的是原用户能力/产品决定和兼容合同，不是整段当前操作体。尚未建立全树
 不可削减下界，也未证明15K必定可达，因此不请求放宽目标、不宣布冲突、不按目录
 预算直接删实现。移至Plugin、配置或别的产品包的Code专属实现仍须计归属成本。
 
-| 具体合同/语义 | 当前可定位成本 | 必须保持 | 可继续退出的机制及原owner |
+| 具体合同/语义 | A72时点可定位成本 | 必须保持 | 可继续退出的机制及原owner |
 |---|---:|---|---|
 | LSP位置与范围转换 | `lsp/positions.py`104行；五函数体合计73行 | 公开CodePoint/UTF-16转换、边界与错误 | 通用过程/IO/任务不在这五函数内；整个LSP目录5668不是不可变下界 |
 | Python import语义 | `arch/providers/python.py`的Visitor180行、TYPE_CHECKING判断9、dynamic import提取14，共203行操作体 | import分类、证据及语言规则 | 文件遍历/读取/cache由原Workspace/Resources复核；不是整个876行都保或都迁 |
@@ -143,7 +151,7 @@ public或`__init__`方法，候选dataclass全部自身AnnAssign（含ClassVar/p
 按token中括号depth0的冒号结束header，class header含其decorator，函数/方法不含
 其decorator；逐文件取行集合去重。622类、347候选dataclass、2008注解、649函数、
 1217方法。类header1080、注解2134、函数header3197、方法header3196，合计9607
-当前行。这是需要查合同的语法范围，不是公开API认证、不可删成本或15K下界。
+A72时点行。这是需要查合同的语法范围，不是公开API认证、不可删成本或15K下界。
 其中方法可继承，私有模块内类未必公开，AnnAssign也并非全是dataclass字段。
 完整token脚本与逐文件结果在树外，避免把不明约9.7K估数写成硬事实。
 
@@ -157,17 +165,19 @@ API，不能把标签、语法或现状当成结论。
 
 | 波次 | 已共享事实不能重复计收益 | 尚未证明完成的整体路径 | 下一步证据/退出条件 |
 |---|---|---|---|
-| P1 Worker | history/Rooted/Windows基座、Supervisor、Storage/repair journal、A61 attempt与A69/A70 native custody | 普通Session Worker从选用/批准到停止、重开及资源结清；payload debt协调仍在Code | 按实际policy/type绑定接原owner；原preview/intent/重验/清理/reopen/retry全闭合，原操作体退出，不把不同事实合并日志 |
+| P1 Worker | history/Rooted/Windows基座、Supervisor、Storage/repair journal、A61 attempt与A69/A70 native custody | 普通Session Worker从选用/批准到停止、重开及资源结清的整体验收；不重开已共享的payload恢复 | 按实际policy/type绑定接原owner；原preview/intent/重验/清理/reopen/retry全闭合，原操作体退出，不把不同事实合并日志 |
 | P2启动/Plugin/Session | Construction、Catalog交接/refresh、Graph/Registration、owner publication/retirement、cleanup、A59 live resume均已在调用链 | 普通new/resume、initial/refresh、失败构造和关闭重试尚无统一完整职责验收 | 拆产品选择和中性操作；对照真实现有owner与完整替代源，删除厚Code回调，保未结清依赖和重试凭据 |
-| P3托管/Continuity/执行 | 标准Session控制桥、foreground host、Goal物理后端、payload custody已有接入 | 严格Catalog/恢复准入、Continuity导入、部分prepared任务寿命及Goal scope仍混合 | 严格读不能用摘要替换；不复制Goal/Method/Work执行引擎；KD003/KD011未因此实施 |
+| P3托管/Continuity/执行 | 标准Session控制桥、foreground host、Goal物理后端、payload custody已有接入 | 严格Catalog/恢复准入、Continuity导入及Goal scope仍混合；A75 prepared及A106/A116已共享寿命不重开 | 严格读不能用摘要替换；不复制Goal/Method/Work执行引擎；KD003/KD011未因此实施 |
 | P4入口/存量 | managed/create/probe/stop和包/私有数据机制已实际复用；许多UI/配置入口已薄化 | CLI/SDK/UI、历史设置/状态/备份及公共导出未全部给最终保留/退出结果 | 每个退出需支持与消费者证据；canary/legacy/calculator名称不构成退出；最终逻辑Code归属与≤15K另审 |
 
 仅以源码已用Core、若干场景green或局部成本下降，不足以把任一整波次标完成。
 本次不扩大门禁/平台、不重新运行无关套件，先前实际验证的原边界保持。
 
-## 最大已定位窗口与下一完整候选
+## A72历史窗口与候选（不作为当前待开发清单）
 
-职责视角定位的P2十源窗口共12560行，是待拆清的交互面而非可删预算。重点为
+以下12560行窗口、API缺口与候选排序记录A72当时实物；A73审批、A74 payload恢复、
+A75 prepared任务等后续已接受内容以执行记录为准，不重复开发或计收益。
+当前组量见上表；本节历史行数不能作当前值或可删预算。A72重点为
 [bootstrap](../../../../src/loushang/coding/bootstrap.py)的普通构造与内部factory、
 [AgentSession](../../../../src/loushang/coding/session/agent_session.py)构造/选择见证，
 以及[capability composition](../../../../src/loushang/coding/_capability_plugin_composition.py)
@@ -175,9 +185,9 @@ API，不能把标签、语法或现状当成结论。
 AgentProductConstructionBinding、ProductPluginCompositionPreparation、Graph/
 Registration及Session lifecycle必须继续用，不能再包一个composer。
 
-窗口实物（物理行，按当前source逐文件重计）：
+A72窗口实物（历史物理行）：
 
-| Code路径 | 当前行 |
+| Code路径 | A72行 |
 |---|---:|
 | [bootstrap.py](../../../../src/loushang/coding/bootstrap.py) | 3531 |
 | [session/agent_session.py](../../../../src/loushang/coding/session/agent_session.py) | 2101 |
@@ -191,7 +201,7 @@ Registration及Session lifecycle必须继续用，不能再包一个composer。
 | [_plugin_owner_generations.py](../../../../src/loushang/coding/_plugin_owner_generations.py) | 301 |
 | **合计** | **12560** |
 
-下一项优先形成两条原owner的**完整审批程序**的实际候选与全成本：
+A72当时拟优先形成两条原owner的**完整审批程序**候选与全成本：
 
 1. Definition：原PluginDeclarationHost首次resolve→仅pending时按原顺序调用
    同一Product issuer→原返回record类型和subject digest校验→第二次resolve。
@@ -202,7 +212,8 @@ Registration及Session lifecycle必须继续用，不能再包一个composer。
    →decision IDs→bind_session_inputs。保原host recovery构造时点，不提前调用
    begin_admission、consume、创建Provider或改变Graph publication。
 
-这还不是已接受接口或已实现替代。先证明现有配置/端口不能直接表达，再最小扩原
+A72时这还不是已接受接口或已实现替代；后续A73已接受所述完整审批协调。
+当时要求先证明现有配置/端口不能直接表达，再最小扩原
 owner；Product审批权保留，错误/记录/时间/恢复行为固定，没有新状态、阶段表或
 Code IO回借。具体Code/Core/薄外观成本由完整源实测，不预报1887行退出。
 
@@ -220,14 +231,14 @@ reopen-read-retry，现成PayloadStorage、RepairJournal、值机制和RootedSup
 SessionLifecycleRuntime已有候选状态却缺全部task/debt custody，仍须最小扩原
 runtime，不能冒称已有整API。优先级随具体复用与全成本证据调整。
 
-## 独立视角与当前决定
+## A72独立复核的历史结论
 
 职责/复用、运行/失败、数据/兼容三个原reviewer独立只读核源码与现行合同；未
 运行pytest、未实施新接口。Root采用本次**差距与选题事实**，不把它当设计/代码
 完成接受。静态全文件frame和token筛查支持覆盖/计量；深审支持上述具体候选，
 不声称已经逐行认证430文件或找到全局最大/唯一方案。
 
-生产仍为A71终帧，无新增精简。完整Goal及15K上限保持active；没有可证数值冲突
+上述A72复核当时生产仍为A71终帧，无新增精简；这不是当前源码状态。完整Goal及15K上限保持；没有可证数值冲突
 就不申请放宽，也不保证尚未证明的可达性。KD011/A33原用户确认边界保持；KD003
 bytes导入仍draft/not-started。继续无依赖的完整职责工作，不将待确认事项当作全
 Goal阻塞或借分析停止执行。
