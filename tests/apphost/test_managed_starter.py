@@ -366,3 +366,36 @@ def test_callback_failure_or_expired_budget_never_spawns(owners, monkeypatch, fa
         assert owner.observe(deadline=monotonic() + 5).native_identity is None
     finally:
         owner.close()
+
+
+@pytest.mark.parametrize("scope", ["present", "context_stale", "absent", "prior_boot_absent"])
+def test_recovered_generation_reuses_journal_without_fabricating_cleanup(owners, monkeypatch, scope):
+    from dataclasses import replace
+
+    from loushang.apphost.managed import lifecycle
+    from loushang.hosting.service import LinuxServiceObserverV1
+
+    journal = owners[0]
+    initial = journal.prepare("1" * 32, expected=None)
+    observer = LinuxServiceObserverV1.capture(os.getpid())
+    try:
+        identity = replace(observer.identity, boot_id="01234567-89ab-cdef-0123-456789abcdef")
+    finally:
+        observer.close()
+    journal.register_native(initial.handoff.instance, "1" * 32, identity)
+    committed = journal.commit(initial.handoff.instance, "1" * 32, native_identity=identity)
+    monkeypatch.setattr(lifecycle, "linux_service_group_recovery_status", lambda _: scope)
+
+    retired = journal.recover_exited(committed, deadline=monotonic() + 5)
+    if scope in {"present", "context_stale"}:
+        assert retired == committed
+        with pytest.raises(ManagedStorageError, match="busy"):
+            journal.prepare("2" * 32, expected=retired)
+        return
+    assert journal.recover_exited(committed, deadline=monotonic() + 5) == retired
+    assert retired.evidence.process_scope_settled
+    assert retired.evidence.process_exited
+    assert not retired.cleanly_stopped
+    successor = journal.prepare("2" * 32, expected=retired)
+    assert successor.handoff.instance != committed.handoff.instance
+    assert journal.read_transition().previous == retired

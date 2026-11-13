@@ -113,6 +113,21 @@ describe("local managed Host presentation", () => {
     expect(native.invoke.mock.calls.filter(([command]) => command === "client_settings")).toEqual([]);
   });
 
+  it("offers Start when the recorded Host has exited", async () => {
+    installMock(async (command, args) => {
+      if (command === "offline_account") return { name: "desktop-user", id: "local-test-id" };
+      if (command === "sync_tray") return;
+      if (command === "environment") return { supported: true, workspace: "/workspace" };
+      return args.request.action === "start"
+        ? { state: "running", errorCode: null, instanceId: "replacement" }
+        : { state: "exited", errorCode: null };
+    });
+    render(<LocalHostGate />);
+    const start = await openHostSettings().findByRole("button", { name: "Start and connect" });
+    fireEvent.click(start);
+    await waitFor(() => expect(countActions("start")).toBe(1));
+  });
+
   it("routes tray start and stop through management and the existing shutdown confirmation", async () => {
     render(<LocalHostGate />);
     const projection = () => {

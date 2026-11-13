@@ -85,3 +85,44 @@ def test_concurrent_starts_reuse_the_authenticated_host(tmp_path):
         if host and host.get('instanceId'):
             stopped = call('stop', instance_id=host['instanceId'])
             assert stopped.get('cleanlyStopped'), stopped
+
+
+def test_restart_after_killed_host_preserves_home(tmp_path):
+    import signal
+    from time import monotonic, sleep
+
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src"),
+           "LOUSHANG_MUX_BACKEND": "managed"}
+    for name, leaf in (("LOUSHANG_HOME", "home"), ("LOUSHANG_RUNTIME_DIR", "runtime"),
+                       ("LOUSHANG_TMPDIR", "temporary")):
+        env[name] = str(tmp_path / leaf)
+
+    def call(action):
+        result = subprocess.run(
+            [sys.executable, "-m", "loushang.coding.cli.mux", "service", action, "--json"],
+            text=True, capture_output=True, env=env, timeout=45,
+        )
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        return json.loads(result.stdout)
+
+    old = call("start")
+    try:
+        os.kill(old["pid"], signal.SIGKILL)
+        deadline = monotonic() + 5
+        while monotonic() < deadline:
+            stat = Path(f"/proc/{old['pid']}/stat")
+            if not stat.exists():
+                break
+            try:
+                if stat.read_text().rsplit(")", 1)[1].split()[0] == "Z":
+                    break
+            except FileNotFoundError:
+                break
+            sleep(0.02)
+        assert call("status") == {"state": "exited"}
+        current = call("start")
+        assert current["state"] == "running"
+        assert current["instanceId"] != old["instanceId"]
+    finally:
+        if call("status")["state"] == "running":
+            call("stop")

@@ -270,7 +270,7 @@ export default function LocalHostGate() {
     : reason?.startsWith("start_") || reason === "spawn_failed" ? t("localHost.errors.start")
     : reason?.startsWith("stop_") || reason === "cleanup_incomplete" ? t("localHost.errors.stop")
     : t("localHost.errors.unknown");
-  const canStart = host.manageable && host.state === "not_running";
+  const canStart = host.manageable && ["not_running", "exited"].includes(host.state);
   const startHost = () => void perform("start", workspace.trim());
   const stop = (action: "stop" | "restart") => {
     setConfirmation({ action, workspace, instanceId: host.instanceId });

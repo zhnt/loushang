@@ -121,6 +121,8 @@ async def _control(
             ready = await starter.ensure_started(deadline=deadline)
             return _running(ready, await _settled_native(lambda: journal.read(deadline=deadline, wait_for_lock=True)))
 
+        if state is not None:
+            state = await _settled_native(lambda: journal.recover_exited(state, deadline=deadline))
         status = _recorded_state(state)
         if status != "running":
             return {"state": status}
@@ -142,6 +144,8 @@ def _absent(operation: str, expected: str | None) -> dict[str, object]:
 def _recorded_state(state: ManagedServiceStateV1 | None) -> str:
     if state is None or state.cleanly_stopped:
         return "not_running"
+    if state.reusable:
+        return "exited"
     if state.evidence.process_exited:
         raise ServiceControlError("unclean_exit")
     if state.handoff.stop_requested:
