@@ -524,13 +524,13 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 
 | [app_tunnel.py](../../../../src/loushang/coding/app_tunnel.py) | C02 | — | M | 托管凭据产品政策；通用凭据存储复用AppHost | — | 64 | ecfdc75a5acc |
 | [workspace_catalog.py](../../../../src/loushang/coding/workspace_catalog.py) | C02 | — | M | 工作区政策与Catalog接入；复用现有Transcript Catalog | — | 183 | 65143a2fd8a4 |
-| [client_settings.py](../../../../src/loushang/coding/client_settings.py) | C02 | — | M | 连接配置与导航持久化边界待处置 | — | 181 | 99929b7c80c8 |
+| [client_settings.py](../../../../src/loushang/coding/client_settings.py) | C02 | — | M | 连接政策保留；原子JSON写归Config.store，SQLite修改锁保原入口 | — | 173 | 118db65c32fb |
 | [cli/mux_service.py](../../../../src/loushang/coding/cli/mux_service.py) | C11 | — | M | systemd/journalctl CLI入口；平台控制与通知寿命待处置 | — | 171 | 7f8f0df7a90b |
 
 ## 当前分组计量与剩余处置
 
 2026-11-13续作核对，以`481134a42`源码重新计算全部当前列，新增4个主线文件单列并注明原审计未覆盖。
-当前Coding 112387行，完整≤15K目标差97387行；当前列更新不代表候选处置已接受。
+当前Coding 112379行，完整≤15K目标差97379行；当前列更新不代表候选处置已接受。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
 
@@ -542,7 +542,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | 组 | 当前文件 | 当前物理行 |
 | --- | ---: | ---: |
 | C01 | 22 | 12,709 |
-| C02 | 31 | 8,486 |
+| C02 | 31 | 8,478 |
 | C03 | 15 | 4,132 |
 | C04 | 2 | 2,956 |
 | C05 | 6 | 3,565 |
@@ -569,4 +569,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 434 | 112,387 |
+| 合计 | 434 | 112,379 |

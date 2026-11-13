@@ -2,6 +2,27 @@
 
 
 
+
+## A149 连接配置完整原子写归Config（2026-11-13）
+
+原client_settings.write_connections的完整临时文件/文本流/JSON/flush/fsync/replace/
+finally unlink程序由原Harness Config.store接管，无新增状态、回调或公开配置API。
+原JsonConfigStore.save的固定临时名、JSON参数和无fsync语义不等价，故最小新增私有
+原子writer。Code保路径、mkdir700、连接校验及整个SQLite BEGIN IMMEDIATE修改作用域。
+共享函数局部导入，原只读列表入口不新增Config初始化；首次写入会初始化该包。
+
+三独立设计/实际代码评审通过，按三个纯路径/前缀替换核原操作序列AST相同，其他
+操作体不变。原GUI4项基线通过；最终GUI4+Config2+树外冻结旧源5场景共11项通过。
+对照覆盖成功Unicode/tuple/NaN字节及dump/fsync/replace/unlink失败、目标字节、临时数量
+和异常/context类型。未覆盖fdopen/flush/close故障、完整异常链、FD普查或native Windows。
+SQLite与JSON文件的部分提交窗口保留。Ruff、两源mypy及diff检查通过。
+
+Code−8、Harness+17、系统+9，属于完整IO职责迁移，未称重复消除。
+同一全帧Coding112387→112379，Harness362224→362241，系统658763→658772；
+除两源外生产帧逐SHA同，兼容局部导入成本全计。距15K尚97379行，完整P1–P4继续。
+原源/完整前后帧及JUnit保存于树外`coding-convergence-continue/a149-connection-write`。
+实施owner据实际源、三视角与有限验证作本片接受。
+
 ## A148 当前职责清单复核（2026-11-13）
 
 按`481134a42`当前源码刷新逐文件清单，434个文件唯一覆盖，全部当前行数和SHA核验，
