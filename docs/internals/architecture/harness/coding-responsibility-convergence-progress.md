@@ -1,6 +1,25 @@
 # COD-RESP-GOAL-002 执行记录
 
 
+
+## A148 当前职责清单复核（2026-11-13）
+
+按`481134a42`当前源码刷新逐文件清单，434个文件唯一覆盖，全部当前行数和SHA核验，
+21行旧当前值更新，4个主线新增文件补入；原审计列和候选处置均保留。
+当前Coding112387，距15K仍97387；本轮生产增删0，完整P1–P4未完成。
+新增app_tunnel/client_settings/workspace_catalog归C02待核产品政策与通用持久化边界，
+cli/mux_service归C11待核平台通知/关闭寿命，未据文件名宣告迁移接受。
+
+三个独立视角重新核实已有A139–A144后的四类Windows退休完整入口，共398物理行。
+现有Records/StageRetirement已经接管记录与物理IO，不能重复计收益。剩余四程序的
+start/completed/root-intent读取顺序、历史证明时点、stage重复观测及launch-intent取得
+时点不同；unlaunched还须保持native_revision==2、completed早返前的intent证明。
+crash的外层ValueError与复用complete物理删除的StageRetirementError并存，不能统一
+为单一route错误。yield内外删除/根意图及close异常覆盖顺序属于原恢复合同。
+统一整runner仍至少需要四类效果端口及各route错误绑定，尚无替换完整证明程序的
+共同合同，故不提出新flags框架或采用迁移原型。此处为有界否决记录，不证明永久
+不可迁，也不将已共享机制或文档刷新计为源码精简。
+
 ## A147 双平台删除标记命名归一（2026-11-13）
 
 恢复Goal后已读取完整用户目标，任务工作树快进到远端main `4bbf65da5`。
