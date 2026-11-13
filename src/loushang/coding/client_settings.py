@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import sqlite3
 import sys
-import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -80,17 +78,11 @@ def mutate_connections(change) -> None:
 
 
 def write_connections(value: dict) -> None:
+    from loushang.harness.config.store import _write_json_atomically
+
     home = resolve_platform_home()
     home.mkdir(mode=0o700, parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(dir=home, prefix=".connections-")
-    try:
-        with os.fdopen(fd, "w") as output:
-            json.dump(value, output)
-            output.flush()
-            os.fsync(output.fileno())
-        os.replace(name, home / "connections.json")
-    finally:
-        Path(name).unlink(missing_ok=True)
+    _write_json_atomically(home / "connections.json", value, temporary_prefix=".connections-")
 
 
 def connection_list() -> dict:

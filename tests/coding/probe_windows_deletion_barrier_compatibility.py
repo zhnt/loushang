@@ -176,14 +176,17 @@ def observe(case, patch):
 
     patch.setattr(code, "coding_arch_installation_private_data_root", lambda *a: root)
     patch.setattr(code, "CodingWindowsArchPrivateDataDeletionTransaction", Deletion)
-    patch.setattr(code, "WindowsPrivateDirectoryAcl", ACL)
+    native = importlib.import_module(
+        "loushang.harness.resources.packages._private_tree_windows"
+    )
+    patch.setattr(native, "WindowsPrivateDirectoryAcl", ACL)
     patch.setattr(
         code, "inspect_windows_product_private_directory_identity", lambda path: (1, 2)
     )
-    patch.setattr(code, "open_windows_directory", open_directory)
-    patch.setattr(code, "closing_descriptor", closing)
-    patch.setattr(code, "_directory_identity", lambda fd: (1, 2))
-    patch.setattr(code, "windows_listdir_at", names)
+    patch.setattr(native, "open_windows_directory", open_directory)
+    patch.setattr(native, "closing_descriptor", closing)
+    patch.setattr(type(code._native_io), "directory_identity", lambda _io, fd: (1, 2))
+    patch.setattr(native, "windows_listdir_at", names)
     patch.setattr(
         code, "inspect_coding_windows_arch_installation_root", lambda *a, **k: (3, 4)
     )

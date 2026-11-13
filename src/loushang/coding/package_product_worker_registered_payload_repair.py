@@ -176,24 +176,6 @@ def _names(attempt_id: str) -> tuple[str, str]:
     return name, f".{name}.stage"
 
 
-def _read_intent(
-    root_fd: int, attempt_id: str
-) -> CodingWorkerRegisteredPayloadRepairIntentV1 | None:
-    return _repair_journal().read(root_fd, attempt_id)
-
-
-def _publish_intent(
-    root_fd: int, intent: CodingWorkerRegisteredPayloadRepairIntentV1
-) -> None:
-    return _repair_journal().publish(root_fd, intent.attempt_id, intent)
-
-
-def _settle_intent_stage(
-    root_fd: int, intent: CodingWorkerRegisteredPayloadRepairIntentV1
-) -> None:
-    return _repair_journal().settle(root_fd, intent.attempt_id, intent)
-
-
 def _expected_intent(
     review: CodingWorkerRegisteredOrphanReviewV1,
 ) -> CodingWorkerRegisteredPayloadRepairIntentV1:

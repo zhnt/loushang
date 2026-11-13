@@ -75,7 +75,7 @@ from loushang.harness.worker.payload._storage import (
 from loushang.harness.worker.payload._storage import (
     _UNMARKED_REPAIR_PREFIX as _UNMARKED_REPAIR_PREFIX,
 )
-from loushang.harness.worker.payload._storage import PayloadStorage, repair_names
+from loushang.harness.worker.payload._storage import PayloadStorage
 from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
 
 from .package_product_worker_installed_native import CodingWorkerNativeLaunchMaterialV1
@@ -697,72 +697,13 @@ def repair_coding_product_worker_empty_payload_debt(
         )
 
 
-def _empty_repair_names(attempt_id: str) -> tuple[str, str]:
-    return repair_names(attempt_id, _EMPTY_REPAIR_PREFIX)
-
-
 _read_repair_file = _STORAGE._read_repair_file
-
-
-def _read_empty_repair_intent(
-    root_fd: int, attempt_id: str
-) -> CodingWorkerEmptyPayloadDebtPlanV1 | None:
-    return cast(
-        "CodingWorkerEmptyPayloadDebtPlanV1 | None",
-        _STORAGE.empty.read(root_fd, attempt_id),
-    )
-
-
-def _publish_empty_repair_intent(
-    root_fd: int, plan: CodingWorkerEmptyPayloadDebtPlanV1
-) -> None:
-    return _STORAGE.empty.publish(root_fd, plan.attempt_id, plan)
-
-
-def _complete_repair_names(attempt_id: str) -> tuple[str, str]:
-    return repair_names(attempt_id, _COMPLETE_REPAIR_PREFIX)
-
-
-def _read_complete_repair_intent(
-    root_fd: int, attempt_id: str
-) -> tuple[CodingWorkerPayloadDebtPlanV1, str] | None:
-    return cast(
-        "tuple[CodingWorkerPayloadDebtPlanV1, str] | None",
-        _STORAGE.complete.read(root_fd, attempt_id),
-    )
-
-
-def _publish_complete_repair_intent(
-    root_fd: int, plan: CodingWorkerPayloadDebtPlanV1, supervisor_fingerprint: str
-) -> None:
-    return _STORAGE.complete.publish(
-        root_fd, plan.attempt_id, (plan, supervisor_fingerprint)
-    )
 
 
 def _unmarked_repair_fields(
     review: CodingWorkerUnmarkedPayloadDebtReviewV1,
 ) -> dict[str, object]:
     return unmarked_fields(review)
-
-
-def _unmarked_repair_names(attempt_id: str) -> tuple[str, str]:
-    return repair_names(attempt_id, _UNMARKED_REPAIR_PREFIX)
-
-
-def _read_unmarked_repair_intent(
-    root_fd: int, attempt_id: str
-) -> CodingWorkerUnmarkedPayloadDebtReviewV1 | None:
-    return cast(
-        "CodingWorkerUnmarkedPayloadDebtReviewV1 | None",
-        _STORAGE.unmarked.read(root_fd, attempt_id),
-    )
-
-
-def _publish_unmarked_repair_intent(
-    root_fd: int, review: CodingWorkerUnmarkedPayloadDebtReviewV1
-) -> None:
-    return _STORAGE.unmarked.publish(root_fd, review.attempt_id, review)
 
 
 _stage_exists = _STORAGE._stage_exists

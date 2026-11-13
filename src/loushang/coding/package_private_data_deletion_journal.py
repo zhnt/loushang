@@ -7,6 +7,7 @@ deletion; the Coding data-domain owner must hold Product quiescence around it.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.journal import (
@@ -40,6 +41,17 @@ class CodingArchPrivateDataDeletionEventV1(
 ):
     target: CodingArchPrivateDataTargetSnapshotV1
     target_type = CodingArchPrivateDataTargetSnapshotV1
+
+
+def _tombstone_name(started: CodingArchPrivateDataDeletionEventV1) -> str:
+    digest = sha256(
+        b"loushang.coding-arch-private-data-tombstone/v1\0"
+        + started.plan.fingerprint.encode("ascii")
+        + b"\0"
+        + started.confirmation.confirmation_id.encode("utf-8")
+    ).hexdigest()
+    return ".deleting-" + digest
+
 
 
 def _decode(value: object) -> CodingArchPrivateDataDeletionEventV1:

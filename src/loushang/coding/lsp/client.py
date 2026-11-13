@@ -11,6 +11,7 @@ from types import MappingProxyType
 
 from loushang.coding.lsp.model import LspProtocolError
 from loushang.coding.lsp.ports import ProcessHandle
+from loushang.harness.workspace.process import wait_for_process_exit
 
 _MAX_HEADER_BYTES = 16 * 1024
 _MAX_MESSAGE_BYTES = 4 * 1024 * 1024
@@ -325,29 +326,13 @@ class LspClient:
                 self._fail_pending(LspProtocolError("LSP connection was aborted"))
 
     async def _wait_for_exit(self) -> None:
-        waiter = asyncio.create_task(
-            self._handle.wait(),
-            name="coding-lsp-process-exit",
+        await wait_for_process_exit(
+            self._handle,
+            timeout_seconds=self._shutdown_timeout_seconds,
+            task_name="coding-lsp-process-exit",
+            error_type=LspProtocolError,
+            error_message="waiting for language server exit failed",
         )
-        try:
-            try:
-                await asyncio.wait_for(
-                    asyncio.shield(waiter),
-                    self._shutdown_timeout_seconds,
-                )
-            except TimeoutError:
-                await self._handle.terminate()
-                await waiter
-        except BaseException as exc:
-            if not waiter.done():
-                waiter.cancel()
-                with suppress(asyncio.CancelledError):
-                    await waiter
-            if isinstance(exc, asyncio.CancelledError):
-                raise
-            raise LspProtocolError(
-                f"waiting for language server exit failed: {exc}"
-            ) from exc
 
     async def _cancel_pending_for_close(self) -> None:
         request_ids = tuple(self._pending)

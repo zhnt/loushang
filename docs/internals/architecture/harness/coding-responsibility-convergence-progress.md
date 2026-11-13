@@ -1,5 +1,266 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A147–A155本地交付核验（2026-11-13）
+
+生产源码冻结于`4b3c2b1a5`，对主线`4bbf65da5`：Coding−250、Harness+234、
+系统净−16行；其中A155独立为−93/+119/净+26，职责迁移不冒称去重。
+本次只补交付证据及剩余审计的当前计量/历史标记，生产源码不变。
+
+原change-aware计划选择Coding/Harness/Hosting离线清单、E2E和架构检查。
+本地驱动未区分暂停workflow与checks标志，且会重复模块单测，故只停外层驱动，
+保留当时Coding子进程；未执行暂停的native Make门禁，仓库CI配置保持原样。
+Coding连续失败后主动中断取堆栈，原轮12失败/1404通过/7跳过只保留历史，
+未把它计为正确环境通过。原因是本地私有pytest插件经PYTEST_ADDOPTS继承，
+Repository verifier重写PYTHONPATH后找不到插件。最小实际嵌套对照复现该差异，
+同一节点在主线/当前源码各单独通过；改为仅外层CLI加载插件，不改Product或超时。
+
+正确环境下两模块56项通过；原前缀扣除这两模块后1372通过/7跳过；剩余部分
+2824通过/17跳过。按原4264个nodeid逐条核三份JUnit，12个交叠只计一次，
+最终**4240通过、24跳过，无缺失或额外节点**；错误环境1404通过完全不计入。
+两批会话句柄更新后只读观察原PID到终态，未重启测试；不把observer退出码当测试结果。
+
+Harness离线5939通过/110跳过，Hosting离线397通过/56跳过，选中E2E两项通过，
+各自原报告校验通过；E2E与Coding有重叠，不累加跨套件独立总数。
+A155的48项真实Product、268项固定对照/入口及175项最终架构检查另见原记录。
+现有warning及平台/host-runtime/live排除保留；真实LSP与其它平台验证留原Actions路线。
+
+434源/112139行清单保持，距15K仍97139行，完整P1–P4未完成。
+剩余审计28组刷新到同一实物；A72合同/候选/语法窗口明确为历史，已共享闭包不再列为待开发。
+原日志、环境反事实、完整节点清单与覆盖审计保于树外`a155-package-repair`。
+本地验收通过后进入PR/CI/合并/控制main同步，再依用户要求暂停完整Goal。
+
+
+## A155 完整Package修复执行归原ProductRuntime（2026-11-13）
+
+11类inspect/repair的完整执行与runtime.dispose finally从Coding退出，归现有
+PackageProductRuntime模块。Code保公开SDK/DTO、动作与workspace准入、owner/runtime
+创建及外层owner.close。原runtime各阶段方法不能自行表达完整选择、结果投影和统一释放，
+故在原owner模块最小增加一个执行函数；不扩runtime Protocol、不加manager或状态。
+唯一result_factory只构造产品DTO，不回借Code IO；max_bytes保原2MiB产品政策。
+
+三个独立职责/运行/兼容视角核实：纯参数逆绑定后完整try/finally AST与旧体相同，
+Code及Core其余操作体保持。保handoff先于activate、inspect/prepare/execute顺序、
+字段重复读取与dispose→parent.close清理覆盖关系；构造失败仍只关闭parent。
+固定标量进入helper时捕获，不声称私有全局在运行中任意重写的反射等价。
+
+原253受控观察及原3 SDK在保存旧源下256项通过；当前固定重放加SDK/UI/RPC共268项
+通过（14.98秒）：253固定、3 SDK、6 UI、6 RPC。253原JSON的manifest SHA全部匹配，
+重放缺记录直接失败；其中200场景真正触达故障注入，12场景执行实际inspect-await
+Task.cancel。覆盖open/create、11动作、结果构造、dispose/owner错误组合及清理次序。
+这是受控runtime/owner模型，不能代替11动作全部真实持久IO、native或全部取消交错。
+原190项阶段性结果不重复累计。真实Product的43种重开/重绑定阶段及5种handoff恢复
+入口共48项全部通过（1148.08秒），保原非live/host-runtime选择，覆盖实际持久事务与
+CLI/SDK/RPC/UI入口；不外推Windows native或所有取消交错。A153诊断比较153项另列，不计本片独立覆盖。
+
+两源Ruff及限定mypy、依赖图检查、9项纯文档检查通过；最终两源下原完整导入边界/
+架构文档175项通过（339.97秒）。完整成本Coding−93、Harness+119、其它生产源0，系统净增26；
+这是职责迁移，不是重复算法精简。全帧Coding112139、Harness362458、历史全帧658749，
+距15K仍97139行。Harness包含349行既有导出HTML/CSS/JS，纯Python362109行。
+历史全帧继承GUI树选定源码，其中gui/tests为4271行；剔除该测试目录后654478行。
+本片两源差值+26在这两种全系统口径下相同，不把GUI测试计为生产精简。
+完整P1–P4仍partial，≤15K未达；源码、固定观察、manifest、JUnit及验证限制保于树外
+`coding-convergence-continue/a155-package-repair`。实施owner据三视角与上述最终结果
+接受该完整修复执行片，不关闭整个C10或完整Goal。
+
+
+
+
+
+
+
+
+
+
+
+## A153 read-short诊断差异闭环（2026-11-13）
+
+对保存的迁前实际观察作原compact变换后逐字段核对，与原fixture仅repair.error.cause.message
+一处不同：同JSONDecodeError、同line1/column158/char157的两条确定解析文案。
+只在显式probe比较层的complete:read-short、该cause路径与精确type/当前完整文案匹配时，
+将文案投影为原fixture旧文案。observe/error_graph/compact及原fixture字节均保持，原完整
+字典比较继续检查所有字节/trace/hash、外层错误、context/notes与结果，不改Product。
+
+两独立运行/兼容视角接受此受限诊断合同。原组153项全部通过（7.22秒）。纯比较层六项
+反事实验证旧文案和已知文案都通过，偏移、错误类型和trace变化仍失败，其他case不受影响。
+原迁前失败及保存raw继续保留；不把这项偶然诊断差异宣告为Product行为修复或生产精简。
+本片不加gate/场景，生产增删0，测试净增12行，证据存树外a155-package-repair。
+
+## A154后累计集成核对（2026-11-13）
+
+重新fetch核远端main为`4bbf65da5`，任务树已包含该主线；控制main从`afdb439c3`
+安全快进到同一远端。控制树原三处用户改动前后binary patch SHA均为
+`98fbaa23c7d25c1f6c3eb333f8ce2b7107a7fe196e6da0d33f6fa1ad03a338f0`，未混入任务提交。
+
+在任务源码`c7aa4ff4f`上，生成依赖图`--check`通过；既有完整import_boundaries及
+architecture_documentation两模块合计175项通过（121.20秒），包含H3公开Process端口与
+生成依赖事实检查。无门禁、阈值或测试触发修改，无生产源码增删。原A153旧fixture差异
+仍保留，完整Goal/P1–P4与≤15K缺口未关闭。终态JUnit及日志保于树外
+`a154-lsp-process-wait/integration-architecture.xml`；控制更新补丁证据在同树外父目录。
+
+## A154 LSP进程退出waiter寿命归公开Process接口（2026-11-13）
+
+原LspClient._wait_for_exit完整create_task→shield/wait_for→超时terminate/等待→异常
+cancel/join程序由现有Harness workspace.process接管。新增公开wait_for_process_exit位于
+轻量lifecycle模块，根门面明确导出；复用原ProcessHandle，不扩其Protocol方法、不持有
+handle注册或关闭权。Code保LSP cancelRequest/shutdown/exit/close/reader/state次序及
+timeout/task名/错误类与文案政策，仍只有原单个waiter。
+
+最初将helper放私有host实现，独立审查发现违反原H3公开端口合同，未接受该形状。
+实际host.py恢复原字节，改用明确公开API；lifecycle仅asyncio/contextlib/types依赖。
+原wait/terminate/close及Foundation join均不等价，不能直接替换原取消策略。
+root新增stdlib asyncio初始化，未加载私有host/local；首次冷导入探针漏PYTHONPATH读到
+控制lane旧包的ImportError保留，正确指定本worktree src后探针通过。
+
+三视角按五个纯policy绑定逆验完整Task操作AST相同；Code其它操作体/原Process DTO不变。
+基线原37项过，最终公开形状原37+H3边界+树外旧源六场景共44过（3.18秒）。六场景为
+正常、超时、wait错误、terminate错误、caller cancel、cancel清理错误；观察事件/错误类型
+消息/cause相同，未据之覆盖重复取消或native平台资源。另中途形状扩大LSP/Process套件
+103过（241.47秒），因运行期间完成公开边界修正，仅记补充结果，不冒称最终全源码帧验证。
+最终三源mypy/Ruff及diff通过。公开函数新增调用帧，标量timeout/handle在进入helper前
+绑定，原实际普通字段政策保持；不声称任意可变属性反射等价。
+
+全成本Code−15/Core+45/系统+30（新lifecycle43行及root导出2行全计），是完整Task寿命
+职责归位，非重复算法消除。全帧仅Code client、Process根及新lifecycle变化，
+Coding112247→112232、Harness362294→362339、系统658693→658723。距15K仍97232行，
+完整P1–P4继续。原源/全帧/JUnit/边界修正与冷导入限制见树外a154-lsp-process-wait。
+实施owner据三视角与有限最终结果接受本片。
+
+## A153 完整旧适配簇退出（2026-11-13）
+
+筛查全src/tests/scripts私有单return转发后，经三独立视角核动态消费者，删除payload
+empty/complete/unmarked九个命名/读/发布转发，以及native release验证、wheel reparse、
+builtin bootstrap operation id三个已退出的旧薄壳。实际主路直接使用既有PayloadStorage/
+RepairJournal、NativeReleaseVerifier、ExactProductSourceFiles及BootstrapPolicy，未新增
+共享算法或改变其资源寿命。三prefix显式兼容alias及仍有消费者的native._read_member保留。
+
+两个payload probe同步接原journal，保原tuple/参数形状、complete(plan,fingerprint)、故障
+挂点和所有断言/fixture。原组158过/1skip/1旧complete:read-short fixture失败；新增树外
+旧实际观察对照后最终159过/1skip/同1旧失败，该case完整观察与冻结旧源码逐值相同。
+原fixture未更新，差异欠账保持。初probe适配局部journal遮原factory致9失败，经改名
+repair_journal修正，初失败保留。额外bootstrap/native-release固定对照266过/1warning。
+树外捕获首命令因单外部节点未加载仓库--skip-host-runtime选项exit4，加入原仓库节点
+后7过，未将失败命令算运行验证。未据这些离线/受控观察宣称native Product或并发覆盖。
+
+三视角实际AST逆验：删12def及三处无用import后四源其余执行体相同；probe断言/fixture
+不变。四源mypy、Ruff及diff通过。Code/系统−75，Harness0，测试适配+13另计；
+四源分别−59/−6/−6/−4，来源与全生产帧存于树外a153-obsolete-adapters。
+Coding112322→112247、Harness362294保持、系统658768→658693；距15K仍97247行。
+本片由实施owner核实独立审查及有限结果后接受，完整P1–P4/Goal继续。
+
+## A151 Work证据归属候选未采用（2026-11-13）
+
+完整私有_work_evidence的192行已核，字段/回放机制技术上中性，但全部真实消费者仍是
+同一Coding Product。原HW-KD-002选择私有codec/query，共享提升尚缺明确边界依据；
+迁往私有integration并不自动提供该依据，也没有第二套算法/IO/状态owner可删除。
+此外旧delegation固定观察含EvidenceReplayError原FQN，简单reexport会改变该元数据。
+不为迁移增加错误factory/mixin或Core→Code依赖，不改变原期待。三视角均指出这些
+边界；本轮未采用该候选、生产精简0，未称元数据变化必然违反公开持久合同。
+
+## A152 Registered恢复旧转发退出（2026-11-13）
+
+生产恢复与history/GC/V2预检实际已直接消费_repair_journal，清除_read_intent、
+_publish_intent及_settle_intent_stage三旧私有转发。初rg漏两份probe别名消费者，经
+独立审查修正：read/publish并非全仓无消费者。先将payload profile适配及两个恢复setup
+调用同步接到同一RepairJournal.read/publish，保原lambda参数形状、intent.attempt_id及
+所有断言/固定fixture；settle未发现消费者。保原DTO、_names、codec与journal绑定。
+
+旧126项完整固定对照过（20.96秒），新同126项过（20.38秒），未以之覆盖native Windows
+或完整Linux Product host场景。生产非删除函数保持，probe无新增gate/场景。Ruff、源mypy
+及diff通过，三视角核对实际调用链/消费者迁移后由实施owner作本片接受。
+Coding/系统各−18，Harness0，无新共享机制收益。全生产帧仅一源变，Coding112340→112322、
+Harness362294不变、系统658786→658768。测试适配5行净增另计；距15K尚97322行，完整
+P1–P4继续。原源码/probe、全帧及JUnit保于树外`coding-convergence-continue/a152-repair-adapters`。
+
+## A150 验证命令的完整Bash执行归Session（2026-11-13）
+
+Verification中的累计preview、原SDK调用及完整结构化RuntimeError恢复程序接入既有
+Session.bash，并直接使用原结果归一化。窄Session Protocol保持方法属性读取在原try内，
+原Mapping/truth/kwargs求值顺序、精确标志与UTF8计数条件保持。普通成功结果原样返回，
+无Task/shield/abort或新记录路径。Code保Work准入/options字段、返回后Session-current、
+报告/Blob及判定政策。旧BashCommandExecutionRuntime有不同记录/重抛职责，不直接替换。
+
+三独立设计与实际代码审查通过。展开helper及还原session绑定后，完整Code非import AST
+与旧源一致；Core逆去新增Protocol/helper后其他执行体相同。原默认tmp布局13项Writer
+unsafe失败保留，按既有私有嵌套tmp夹具，旧151过/7host排除（85.50秒），新同151过/
+7排除（99.79秒）；接收Bash/CLI原11项过。未以这些结果宣称全部组合或原生平台覆盖。
+两源mypy、Ruff及diff通过。私有调用帧/observer定义位置随owner改变，未更改持久格式。
+
+Code−39/Core+53/系统+14，属于完整执行机制归位，非算法去重。全帧仅两生产源变化，
+Coding112379→112340、Harness362241→362294、系统658772→658786。新增窄端口、签名和
+局部调用成本全计，距15K仍97340行，完整P1–P4继续。原源/完整帧/JUnit及初失败证据
+保存树外`coding-convergence-continue/a150-verification-bash`。实施owner核实有限证据后接受。
+
+## A149 连接配置完整原子写归Config（2026-11-13）
+
+原client_settings.write_connections的完整临时文件/文本流/JSON/flush/fsync/replace/
+finally unlink程序由原Harness Config.store接管，无新增状态、回调或公开配置API。
+原JsonConfigStore.save的固定临时名、JSON参数和无fsync语义不等价，故最小新增私有
+原子writer。Code保路径、mkdir700、连接校验及整个SQLite BEGIN IMMEDIATE修改作用域。
+共享函数局部导入，原只读列表入口不新增Config初始化；首次写入会初始化该包。
+
+三独立设计/实际代码评审通过，按三个纯路径/前缀替换核原操作序列AST相同，其他
+操作体不变。原GUI4项基线通过；最终GUI4+Config2+树外冻结旧源5场景共11项通过。
+对照覆盖成功Unicode/tuple/NaN字节及dump/fsync/replace/unlink失败、目标字节、临时数量
+和异常/context类型。未覆盖fdopen/flush/close故障、完整异常链、FD普查或native Windows。
+SQLite与JSON文件的部分提交窗口保留。Ruff、两源mypy及diff检查通过。
+
+Code−8、Harness+17、系统+9，属于完整IO职责迁移，未称重复消除。
+同一全帧Coding112387→112379，Harness362224→362241，系统658763→658772；
+除两源外生产帧逐SHA同，兼容局部导入成本全计。距15K尚97379行，完整P1–P4继续。
+原源/完整前后帧及JUnit保存于树外`coding-convergence-continue/a149-connection-write`。
+实施owner据实际源、三视角与有限验证作本片接受。
+
+## A148 当前职责清单复核（2026-11-13）
+
+按`481134a42`当前源码刷新逐文件清单，434个文件唯一覆盖，全部当前行数和SHA核验，
+21行旧当前值更新，4个主线新增文件补入；原审计列和候选处置均保留。
+当前Coding112387，距15K仍97387；本轮生产增删0，完整P1–P4未完成。
+新增app_tunnel/client_settings/workspace_catalog归C02待核产品政策与通用持久化边界，
+cli/mux_service归C11待核平台通知/关闭寿命，未据文件名宣告迁移接受。
+
+三个独立视角重新核实已有A139–A144后的四类Windows退休完整入口，共398物理行。
+现有Records/StageRetirement已经接管记录与物理IO，不能重复计收益。剩余四程序的
+start/completed/root-intent读取顺序、历史证明时点、stage重复观测及launch-intent取得
+时点不同；unlaunched还须保持native_revision==2、completed早返前的intent证明。
+crash的外层ValueError与复用complete物理删除的StageRetirementError并存，不能统一
+为单一route错误。yield内外删除/根意图及close异常覆盖顺序属于原恢复合同。
+统一整runner仍至少需要四类效果端口及各route错误绑定，尚无替换完整证明程序的
+共同合同，故不提出新flags框架或采用迁移原型。此处为有界否决记录，不证明永久
+不可迁，也不将已共享机制或文档刷新计为源码精简。
+
+## A147 双平台删除标记命名归一（2026-11-13）
+
+恢复Goal后已读取完整用户目标，任务工作树快进到远端main `4bbf65da5`。
+控制工作树原三处用户改动保留。原A1–A146作为既有成果，完整P1–P4及≤15K目标继续。
+
+POSIX删除与Windows删除/恢复证明中的两份完全相同命名函数，统一由现有Coding
+删除journal维护；两旧模块保留同名导入。原Coding专属hash域、ASCII/NUL/UTF8输入顺序、
+惰性调用位置及持久化格式保持。原Harness物理删除与journal机制直接复用，本片为同域
+重复退出，未新增通用owner、回调或状态。私有函数定义模块及traceback位置随归属改变。
+
+三独立视角完成设计与实际代码核对。新函数与两旧函数完整AST相同，其余非import
+操作体AST保持。改前12项原回归通过；改后12项及既有Windows效果/程序探针共59项通过。
+另9项barrier探针因旧WindowsPrivateDirectoryAcl挂点不存在失败，冻结原三源复跑同9项
+失败；本片未关闭该旧探针欠账。Windows验证为Linux受控端口，未运行native Windows。
+三源Ruff、mypy及diff检查通过。
+
+计量固定为生产源码物理行，完整src/gui源码帧只三源改变。
+Coding 112389→112387（−2），Harness 362224→362224，全帧658765→658763（−2）。
+接收journal+12，两旧模块各−7，兼容导入成本包含在内；无格式精简计益。
+该帧纳入最新GUI/AppHost主线，不能将与A146差值都计为本Goal收益。
+距离Coding≤15000仍有97387行。剩余启动装配、Session/插件寿命、Windows退休及其他
+P1–P4职责簇继续待处置。可校验原源、全帧、JUnit及失败证据保存于树外
+`coding-convergence-continue/a147-deletion-naming`。本片由实施owner核实三视角证据后有界接受。
+
+
+### A147 验证欠账闭环
+
+随后修复Windows deletion barrier既有probe的五个旧挂点，ACL/open/close/listdir
+指向实际Resources模块，目录身份指向原IO实例所属类并保self。原9个CASE、4个断言及
+2873字节固定fixture保持；独立逆变换整模块AST核对通过。9项原先在冻结旧源失败的
+场景现全部通过（3.35秒），该项旧挂点欠账关闭。证据`barrier-fixed.xml/log`保留于
+同树外目录。未添加gate或覆盖场景，生产源码和A147计量不变。
+
 ## PR #886交付核对
 
 A146已验收源码进入交付。首轮 CI 发现 AppHost 历史源码清单、Wave A 旧单文件预算和
