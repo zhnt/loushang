@@ -6,6 +6,35 @@
 
 
 
+
+## A154 LSP进程退出waiter寿命归公开Process接口（2026-11-13）
+
+原LspClient._wait_for_exit完整create_task→shield/wait_for→超时terminate/等待→异常
+cancel/join程序由现有Harness workspace.process接管。新增公开wait_for_process_exit位于
+轻量lifecycle模块，根门面明确导出；复用原ProcessHandle，不扩其Protocol方法、不持有
+handle注册或关闭权。Code保LSP cancelRequest/shutdown/exit/close/reader/state次序及
+timeout/task名/错误类与文案政策，仍只有原单个waiter。
+
+最初将helper放私有host实现，独立审查发现违反原H3公开端口合同，未接受该形状。
+实际host.py恢复原字节，改用明确公开API；lifecycle仅asyncio/contextlib/types依赖。
+原wait/terminate/close及Foundation join均不等价，不能直接替换原取消策略。
+root新增stdlib asyncio初始化，未加载私有host/local；首次冷导入探针漏PYTHONPATH读到
+控制lane旧包的ImportError保留，正确指定本worktree src后探针通过。
+
+三视角按五个纯policy绑定逆验完整Task操作AST相同；Code其它操作体/原Process DTO不变。
+基线原37项过，最终公开形状原37+H3边界+树外旧源六场景共44过（3.18秒）。六场景为
+正常、超时、wait错误、terminate错误、caller cancel、cancel清理错误；观察事件/错误类型
+消息/cause相同，未据之覆盖重复取消或native平台资源。另中途形状扩大LSP/Process套件
+103过（241.47秒），因运行期间完成公开边界修正，仅记补充结果，不冒称最终全源码帧验证。
+最终三源mypy/Ruff及diff通过。公开函数新增调用帧，标量timeout/handle在进入helper前
+绑定，原实际普通字段政策保持；不声称任意可变属性反射等价。
+
+全成本Code−15/Core+45/系统+30（新lifecycle43行及root导出2行全计），是完整Task寿命
+职责归位，非重复算法消除。全帧仅Code client、Process根及新lifecycle变化，
+Coding112247→112232、Harness362294→362339、系统658693→658723。距15K仍97232行，
+完整P1–P4继续。原源/全帧/JUnit/边界修正与冷导入限制见树外a154-lsp-process-wait。
+实施owner据三视角与有限最终结果接受本片。
+
 ## A153 完整旧适配簇退出（2026-11-13）
 
 筛查全src/tests/scripts私有单return转发后，经三独立视角核动态消费者，删除payload
