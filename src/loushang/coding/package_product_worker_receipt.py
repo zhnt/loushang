@@ -6,7 +6,7 @@ Capability publication, and public Worker authoring remain separate gates.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
@@ -271,6 +271,50 @@ class _CodingWorkerReceiptAuthority:
             ):
                 raise CodingWorkerReceiptError("coding_worker_receipt_stale")
             return decision.opt_in.owner_id
+
+    def _latch_kill_switch(
+        self,
+        *,
+        expected_generation: int,
+        invalid_generation_message: str,
+        revoke: Callable[
+            [str, str, CodingWorkerOptInDecisionV1], CodingWorkerOptInDecisionV1
+        ],
+    ) -> int:
+        """Persist revocation before the coordinator retires future requests."""
+
+        if type(expected_generation) is not int or expected_generation < 0:
+            raise ValueError(invalid_generation_message)
+        with self._product.gc_gate.guard(require_write=True):
+            self._product.assert_root_gc_authority_current()
+            plugin_id = self._selected.snapshot.installation_key.plugin_id
+            decision = self._opt_in.current(plugin_id)
+            if decision is None:
+                raise CodingWorkerReceiptError("coding_worker_kill_switch_absent")
+            if (
+                decision.action == "revoke"
+                and decision.kill_switch_generation == expected_generation + 1
+            ):
+                return decision.kill_switch_generation
+            if (
+                decision.action != "allow"
+                or decision.kill_switch_generation != expected_generation
+            ):
+                raise CodingWorkerReceiptError("coding_worker_kill_switch_stale")
+            operation_id = (
+                "worker-kill-"
+                + sha256(
+                    canonical_json_bytes(
+                        {
+                            "scopeId": self._product.policy.project_scope_id,
+                            "pluginId": plugin_id,
+                            "expectedGeneration": expected_generation,
+                        }
+                    )
+                ).hexdigest()
+            )
+            revoked = revoke(plugin_id, operation_id, decision)
+            return revoked.kill_switch_generation
 
 
 class CodingWorkerProductReceiptOwner(
@@ -604,45 +648,17 @@ class CodingWorkerProductReceiptOwner(
 
     def latch_kill_switch(self, *, expected_generation: int) -> int:
         """Persist revocation before the coordinator retires future requests."""
-
-        if type(expected_generation) is not int or expected_generation < 0:
-            raise ValueError("Coding Worker kill-switch generation is invalid")
-        with self._product.gc_gate.guard(require_write=True):
-            self._product.assert_root_gc_authority_current()
-            plugin_id = self._selected.snapshot.installation_key.plugin_id
-            decision = self._opt_in.current(plugin_id)
-            if decision is None:
-                raise CodingWorkerReceiptError("coding_worker_kill_switch_absent")
-            if (
-                decision.action == "revoke"
-                and decision.kill_switch_generation == expected_generation + 1
-            ):
-                return decision.kill_switch_generation
-            if (
-                decision.action != "allow"
-                or decision.kill_switch_generation != expected_generation
-            ):
-                raise CodingWorkerReceiptError("coding_worker_kill_switch_stale")
-            operation_id = (
-                "worker-kill-"
-                + sha256(
-                    canonical_json_bytes(
-                        {
-                            "scopeId": self._product.policy.project_scope_id,
-                            "pluginId": plugin_id,
-                            "expectedGeneration": expected_generation,
-                        }
-                    )
-                ).hexdigest()
-            )
-            revoked = self._opt_in.change(
+        return self._latch_kill_switch(
+            expected_generation=expected_generation,
+            invalid_generation_message="Coding Worker kill-switch generation is invalid",
+            revoke=lambda plugin_id, operation_id, decision: self._opt_in.change(
                 plugin_id=plugin_id,
                 operation_id=operation_id,
                 expected_generation=decision.generation,
                 action="revoke",
                 opt_in=None,
-            )
-            return revoked.kill_switch_generation
+            ),
+        )
 
     def _derive(self, opt_in: object) -> ProductWorkerActivationPolicyV1 | None:
         if not isinstance(opt_in, CodingWorkerOptInV1):

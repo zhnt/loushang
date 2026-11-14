@@ -1,5 +1,60 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A165 两平台完整kill-switch事务去重（2026-11-14）
+
+A164找到两份真实重复：POSIX与Windows receipt owner均执行expected-generation
+准入→GC写guard/根currentness→current decision→精确revoke重放→CAS→同canonical
+hash operation ID→撤销→返回kill generation。现整段只留在原Coding receipt authority。
+Code产品政策继续归Code，不为这条单域政策增加Core框架、profile或状态机。
+
+两公开方法保签名、docstring及各自ValueError文案，只传原末端mutation：POSIX
+change(action="revoke", opt_in=None)，Windows revoke。lambda是原effectful写口，
+不称pure，也不参与选择/读取/循环/清理。传raw decision以保mutation method lookup
+之后才读generation；不提前绑定_opt_in或预取generation。with范围、短路首错、
+opID及失败后同操作重试保持。增加helper/lambda内部frame；Windows原实现使用的
+canonical_json_bytes进口退出，不承诺任意私有alias反射或单点monkeypatch保持。
+
+实际POSIX880→896（+16）、Windows542→511（−31），Code/系统净−15、Core0；
+包括全部typing、lambda和import清理。统一同一Ruff格式后的净值也为−15，不将
+原40行操作体当净删除预算。2053源帧仅两Code源变，其余2051源SHA原样；434份
+当前Code清单逐项核对。Code111911、Harness362596、AppHost19218，历史系统658776，
+剔除GUI测试后654505；C07当前21175行，距15K仍96911，完整Goal未完成。
+
+原真实Product valid事务先1过/22.02s；修改前从实际两平台方法冻结46观察，每平台
+23项。含严格整数/invalid-before-guard、absent/replay/stale、GC/根/read/hash/mutation
+故障、提交后报错/guard退出报错再重试只写一次、mutation查找优先于generation getter。
+正常记录用原真实DTO/create/hash，GC和journal effects受控；“提交”是模型状态更新，
+不当成真实磁盘断电恢复，Windows模型不当native验证，取消是端口抛CancelledError。
+
+实际联合127过：原Product1、原OptIn持久日志7、原Activation73、冻结观察46；
+before1/46不重复累计。两个actual module路径/SHA、三个函数编译代码对象和line/
+exception table、公开签名及异常类型identity守卫通过。固定JSON SHA未改，显式
+持久probe移除capture后46过/0.59s，为相同覆盖复验；gzip解压逐字等原71530B。
+Ruff及两源scoped mypy before/after通过。POSIX与新函数片段格式通过；Windows
+原整文件两处格式债务保留，统一格式计量不等于全文件format检查绿。未改测试断言、
+默认发现、workflow或平台矩阵，未运行完整Coding/Harness PR矩阵。
+
+三设计与实际视角对本片有界接受，实施owner `/root`核源码、原期待、JUnit和当前
+清单后接受。树外`coding-convergence-resumed-20261114/a165-worker-kill-switch/`
+保存原件/候选、固定观察、frame、成本、来源守卫及评审；本片不关闭C07读取族。
+
+## A164 普通Worker完整路径复核（2026-11-14，无源码收益）
+
+基于`2afde2ce1`沿bootstrap→receipt→provider→ordinary Session→准备/停止/重开
+核实三视角实物。native准备/释放/C5/Resume已归原worker._ordinary_prepare，
+grant/renewal/facet/graph/abort/commit已归Session._worker_provider；A135/145/146
+已共享部分不重复迁移或记收益。Provider及Session输入剩真实产品准入/信任/授权join，
+未发现能直接退出大段旧体的现成API，不新造ordinary总控或厚callback池。
+
+剩余具体窗口是完整receipt-read family。candidate verifier只返inert候选事实，
+Core payload authority是消费者协议，不是完整selected/native/opt-in/witness捕获
+实现。未来完整接管应归原Package Product；Linux selected-payload四次witness及
+嵌套GC，与runtime-binding两次witness/末opt-in不可互换；Windows先后和catch集
+也不同。尚无完整替代diff/全成本，不以方法跨度承诺减量，不宣布整文件必须保留或
+15K不可达。原A159整policy/receipt拒绝结论保留，完整读取族仍open。
+树外`a164-worker-path-audit/`保存三实查与九源SHA/range。该审计明确下一候选及
+已共享边界，收益0；真正实施收益仅记A165完整kill-switch去重。
+
 ## A163 SDK模型政策公开边界修复（2026-11-14）
 
 A162原SDK检查失败来自`d84d7a19d`将Hosted内部_use_default_model开关加到公开

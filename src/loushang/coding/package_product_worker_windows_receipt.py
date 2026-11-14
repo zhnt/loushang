@@ -22,9 +22,6 @@ from loushang.harness.package_product.product_worker_candidate import (
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
     PackagePhysicalStagingError,
 )
@@ -188,43 +185,15 @@ class CodingWindowsWorkerProductReceiptOwner(_CodingWorkerReceiptAuthority):
 
     def latch_kill_switch(self, *, expected_generation: int) -> int:
         """Persist a Windows opt-in revocation before C5 retires its domain."""
-
-        if type(expected_generation) is not int or expected_generation < 0:
-            raise ValueError("Windows Worker kill-switch generation is invalid")
-        with self._product.gc_gate.guard(require_write=True):
-            self._product.assert_root_gc_authority_current()
-            plugin_id = self._selected.snapshot.installation_key.plugin_id
-            decision = self._opt_in.current(plugin_id)
-            if decision is None:
-                raise CodingWorkerReceiptError("coding_worker_kill_switch_absent")
-            if (
-                decision.action == "revoke"
-                and decision.kill_switch_generation == expected_generation + 1
-            ):
-                return decision.kill_switch_generation
-            if (
-                decision.action != "allow"
-                or decision.kill_switch_generation != expected_generation
-            ):
-                raise CodingWorkerReceiptError("coding_worker_kill_switch_stale")
-            operation_id = (
-                "worker-kill-"
-                + sha256(
-                    canonical_json_bytes(
-                        {
-                            "scopeId": self._product.policy.project_scope_id,
-                            "pluginId": plugin_id,
-                            "expectedGeneration": expected_generation,
-                        }
-                    )
-                ).hexdigest()
-            )
-            revoked = self._opt_in.revoke(
+        return self._latch_kill_switch(
+            expected_generation=expected_generation,
+            invalid_generation_message="Windows Worker kill-switch generation is invalid",
+            revoke=lambda plugin_id, operation_id, decision: self._opt_in.revoke(
                 plugin_id=plugin_id,
                 operation_id=operation_id,
                 expected_generation=decision.generation,
-            )
-            return revoked.kill_switch_generation
+            ),
+        )
 
     def current_backend_capture_expectation(
         self, receipt: ProductWorkerActivationReceiptV1
