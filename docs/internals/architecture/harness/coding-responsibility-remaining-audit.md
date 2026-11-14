@@ -1,7 +1,7 @@
 # Coding 全量剩余职责与保留成本复核
 
-本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187、A189源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
-110399行，距15K仍95399行。下面28组不是可删除预算或最终保留成本。
+本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187、A189、A190源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
+110316行，距15K仍95316行。下面28组不是可删除预算或最终保留成本。
 A156托管服务完整控制已归原AppHost；Coding保产品身份/政策与错误薄适配。
 A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
@@ -23,6 +23,9 @@ A187完整Goal关闭/失败重试及18同实例资源字段归原Session Goal：
 系统+50（uniform+42），Harness目录不增；C12为25源6929，repository领域命令仍Code。
 A189完整bounded及repository工作区观察归原Workspace Git，Code−71/Harness+102/系统+31；
 当前C12为25源6858，118原项实际过，不合并两种观察合同，不称系统净减。
+A190六完整SDK预热程序/8原状态归原screen Application Host，Code−83/HarnessTUI+124/
+系统+41（uniform39），当前C18为5源791。130不同项129过/1旧G11失败；无新测试或gate变更，
+实际AI导入Task与pre-session startup非新增收益；原同步close/cancel不join保持。
 完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07整policy/receipt仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 A162完整暂存到prepared activation lease交接归原Continuity，Code−61/Core+90/系统+29，
 单消费者职责迁移，不计去重；KD003 bytes与C04整体仍未完成。
@@ -156,7 +159,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C15 AgentSession产品绑定 | 2/1,947 | P2 | 原AgentProductSession/Graph/publication/retirement及A176完整profile退休已实际复用 | 构造、选择见证/receipt及产品hooks仍混合；本片关闭协调退出不代表整类退出，BaseAssembly.close仍Code |
 | C16 Native UI产品绑定 | 14/2,189 | P4 | 原HarnessTUI conversation/controller/surface为实际机制 | 保产品文案/主题/领域动作；以公共观察替代私有字段耦合，不复制UI状态权威 |
 | C17 AgentSessionRuntime绑定 | 3/837 | P2/P3 | 原Session已承接A75 prepared、A106 history、A116 planning及A174完整根关闭/两drain；Code保Resume准入/Plan/fresh校验与关闭政策 | 按剩余领域与准入逐路径核实保留成本；不重开已共享Task机制，不据本片关闭整C17 |
-| C18 交互命令与预热 | 5/874 | P4 | 原Command/Session/展示机制已共享 | 保语法与业务动作；公共控制/观察端口代替跨owner私有访问 |
+| C18 交互命令与预热 | 5/791 | P4 | 原Command/Session/展示机制已共享；A190完整预热寿命归Screen Application Host | 保语法与业务动作及SDK政策；公共控制/观察端口代替跨owner私有访问 |
 | C19 压缩Profile | 4/440 | P4 | 原compaction runtime已接入 | 保编码摘要内容/标签；不为纯绑定再建抽象 |
 | C20 诊断Profile | 3/233 | P4 | 原Diagnostics owner及序列化已共享 | 保产品投影与来源，不建第二诊断存储 |
 | C21 Prompt | 3/132 | P4 | 编码内容和声明输入 | 保真实内容，移动至其它包仍计Code归属 |

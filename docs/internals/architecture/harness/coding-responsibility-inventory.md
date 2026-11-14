@@ -228,7 +228,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [interaction/__init__.py](../../../../src/loushang/coding/interaction/__init__.py) | C18 | 1 | K/M | C18 交互命令与预热 | b9cd83b1e2d9 | 1 | b9cd83b1e2d9 |
 | [interaction/goal.py](../../../../src/loushang/coding/interaction/goal.py) | C18 | 287 | K/M | F07：公共观察/控制；保留命令语义 | c780d0713b77 | 287 | c780d0713b77 |
 | [interaction/resume_history.py](../../../../src/loushang/coding/interaction/resume_history.py) | C18 | 335 | K/M | C18 交互命令与预热 | e454b90d7f61 | 335 | e454b90d7f61 |
-| [interaction/sdk_warmup.py](../../../../src/loushang/coding/interaction/sdk_warmup.py) | C18 | 184 | K/M | C18 交互命令与预热 | d2b83176982e | 184 | d2b83176982e |
+| [interaction/sdk_warmup.py](../../../../src/loushang/coding/interaction/sdk_warmup.py) | C18 | 184 | K/M | C18 交互命令与预热 | d2b83176982e | 101 | aaad677cc3c5 |
 | [interaction/settings_profile.py](../../../../src/loushang/coding/interaction/settings_profile.py) | C18 | 67 | K | C18 交互命令与预热 | 2ec5e1e25f9b | 67 | 2ec5e1e25f9b |
 | [lsp/__init__.py](../../../../src/loushang/coding/lsp/__init__.py) | C13 | 119 | K/M | C13 LSP Capability | e3447984912e | 119 | e3447984912e |
 | [lsp/_deferred_generation.py](../../../../src/loushang/coding/lsp/_deferred_generation.py) | C13 | 331 | K/M | C13 LSP Capability | 1eb9c229a6c2 | 331 | 1eb9c229a6c2 |
@@ -530,7 +530,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 ## 当前分组计量与剩余处置
 
 2026-11-14以`4de7d9251`主线及A156–A158、A160、A162、A163、A165、A167、A168、A171、A173、A174、A176、A179、A180、A181、A182、A185及A187当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
-当前Coding 110399行，完整≤15K目标差95399行；A189两条完整Workspace观察归原Git家族，Code−71/Harness+102/系统+31，原118实际通过，C12为25源6858；A187完整Goal寿命归原HarnessWork Session Goal，Code−88/HarnessWork+138/系统+50（统一格式+42），Harness目录不增；A185完整27行POSIX删除checkpoint归原Journal，Code−13/Harness+41/系统+28（含Code doc+1），不重计已共享physical remove；A182完整Catalog证据投影归原current_preview，Code−76/Harness+115/系统+39，不含open/编译或既有IO；A181完整按key的Process client实例寿命归原Process，Code−116/Harness+268/系统+152，非净精简；A180完整前台客户端启动/交接/关闭及Runner恢复归AppHost，Code−116/AppHost+275/生产系统+159，非系统净精简；A179完整Hosted prefix及失败清理归AppHost，Code−128/AppHost+224/生产系统+96，非系统净精简；A176完整Session profile退休归原owner，Code−95/Core+164/生产系统+69；A174根关闭及Continuity绑定寿命归原owner，Code−153（含1行导入布局）/Core+301/生产系统+148，非净精简；A173完整兼容发布authority归Config，Code−158/Core+246/系统+88，属于职责迁移非净精简；A171完整进程JSON-RPC传输归Process，Code−274/Core+391/系统+117；A169完整authority原型+580拒绝，A170/A172只读调查收益0；A168完整原Source重捕获custody归Resources并共享两Wheel核，Code−181/Core+234/系统+53，非系统精简；A167读取族真实重复归一，Code−43/Core+22/系统−21；A166通用mixin原型拒绝、收益0；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
+当前Coding 110316行，完整≤15K目标差95316行；A190完整屏幕SDK预热寿命归原HarnessTUI，Code−83/HarnessTUI+124/系统+41（uniform39），130不同项129过/1既有G11失败未改，C18为5源791；A189两条完整Workspace观察归原Git家族，Code−71/Harness+102/系统+31，原118实际通过，C12为25源6858；A187完整Goal寿命归原HarnessWork Session Goal，Code−88/HarnessWork+138/系统+50（统一格式+42），Harness目录不增；A185完整27行POSIX删除checkpoint归原Journal，Code−13/Harness+41/系统+28（含Code doc+1），不重计已共享physical remove；A182完整Catalog证据投影归原current_preview，Code−76/Harness+115/系统+39，不含open/编译或既有IO；A181完整按key的Process client实例寿命归原Process，Code−116/Harness+268/系统+152，非净精简；A180完整前台客户端启动/交接/关闭及Runner恢复归AppHost，Code−116/AppHost+275/生产系统+159，非系统净精简；A179完整Hosted prefix及失败清理归AppHost，Code−128/AppHost+224/生产系统+96，非系统净精简；A176完整Session profile退休归原owner，Code−95/Core+164/生产系统+69；A174根关闭及Continuity绑定寿命归原owner，Code−153（含1行导入布局）/Core+301/生产系统+148，非净精简；A173完整兼容发布authority归Config，Code−158/Core+246/系统+88，属于职责迁移非净精简；A171完整进程JSON-RPC传输归Process，Code−274/Core+391/系统+117；A169完整authority原型+580拒绝，A170/A172只读调查收益0；A168完整原Source重捕获custody归Resources并共享两Wheel核，Code−181/Core+234/系统+53，非系统精简；A167读取族真实重复归一，Code−43/Core+22/系统−21；A166通用mixin原型拒绝、收益0；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
 Code−93/Core+119/系统+26；当前两源及验证边界见执行记录。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
@@ -559,7 +559,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C15 | 2 | 1,947 |
 | C16 | 14 | 2,189 |
 | C17 | 3 | 837 |
-| C18 | 5 | 874 |
+| C18 | 5 | 791 |
 | C19 | 4 | 440 |
 | C20 | 3 | 233 |
 | C21 | 3 | 132 |

@@ -1,5 +1,34 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A190 屏幕SDK预热完整寿命归原Application Host（2026-11-14）
+
+原116类/105方法范围中六完整程序84方法span及8字段归原HarnessTUI screen
+application_host，同self拥有50ms timer、可见waiter Task、desired/active、completed/failed、
+hint与close；Code保provider、原SDK选择/已载入/加载3叶、日志1叶及3文本绑定。
+原attach与六公开签名保持，0新role/T/manager。实际AI共享importTask及pre-Session
+startup settlement本来已共享，不计本批收益；同步close仍cancel waiter而不join导入。
+
+全税raw Code184→101（−83）/HarnessTUI284→408（+124）/系统+41；uniform−85/+124/
+系统+39，差2仅格式。原14Core定义、2Code政策及attach AST同，六整程序逆叶/数据AST同。
+ctor最终九字段同值，provider私赋序、MRO/方法implementation owner及同步叶帧变化明示。
+详见[完整寿命设计](key-designs/screen-sdk-preparation-lifetime-convergence.md)。
+
+旧消费者83项为82过/1既有G11失败223.66s，旧screen44过17.95s及SDK loader3过2.41s；
+实际同83为82过/同1失败213.35s，screen/SDK同47过19.83s。共130不同项，
+129过/1既有失败；旧baseline不累加。G11集合遗漏原A179的AppHost optional
+_continuity_preparation消费者，发生于两源安装前，测试/gate未改；不称全绿。
+三模块父进程guard旧28/actual37声明、各130nodes/260checks，phase/PID分立（旧3进程、
+actual2），不声称child/native cold来源验证。实际project mypy两源、Ruff及文档静态过。
+无新增test/probe/fixture/gate；原hint/切换/loaded及UI/错误清理消费者有据，未独立逐点
+覆盖notify-before-try、selector/log BaseException、失败缓存、timer人工observe及close
+错误窗口，不强化原同步关闭合同。三设计/实际视角有界接受，不冒全失败矩阵或净精简。
+
+当前2059源659826，排GUI独立4524后655302；Code434源110316、距15K95316，
+Harness364480/HarnessTUI29466/HarnessWork8332/AppHost19717；C18为5源791。
+完整P1–P4/KD003/KD011仍开放。下一A191先评估systemd JSON控制/状态37及notify/
+SIGTERM寿命33两完整程序的全成本；plain CLI control20及领域准入不预搬，非whole171
+或整个backend，A156 managed控制和原LocalApplication运行关闭不重计。
+
 ## A189 完整工作区文件观察归原Workspace Git（2026-11-14）
 
 两条完整native程序退出Code：bounded workspace_snapshot64与repository inventory20。
