@@ -19,6 +19,7 @@ from loushang.ai.model.domain import (
     Endpoint,
     Model,
 )
+from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
 from loushang.ai.protocols.anthropic_messages import AnthropicMessagesAdapter
 from loushang.ai.types import (
     AssistantMessage,
@@ -1657,3 +1658,25 @@ class _Model:
     defaults: dict[str, object] = field(default_factory=dict)
     provider_id: str = "anthropic"
     endpoint_id: str = "anthropic-messages"
+
+
+def test_signed_thinking_block_with_omitted_text_is_replayed() -> None:
+    """[issue #827] display="omitted" returns an empty `thinking` plus a signature."""
+
+    block = ThinkingPart(
+        type="thinking", thinking="", thinking_signature="EqMBsig-reasoning-A"
+    )
+
+    payload = AnthropicMessagesProtocol.assistant_block_to_anthropic_payload(block)
+
+    assert payload == {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EqMBsig-reasoning-A",
+    }
+
+
+def test_unsigned_empty_thinking_block_is_still_dropped() -> None:
+    block = ThinkingPart(type="thinking", thinking="")
+
+    assert AnthropicMessagesProtocol.assistant_block_to_anthropic_payload(block) is None
