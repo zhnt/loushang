@@ -1,5 +1,57 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A167 读取族重复程序归一；A166泛型移入拒绝（2026-11-14）
+
+A166曾把四个Linux读取操作移入新Core mixin，并让Windows复用capture；全部适配计入后
+Code−149/Core+283/系统+134。三个设计视角认为主要是操作体迁移，新增4协议、2mixin与
+类型绑定未换来足够实际共享。隔离原型mypy还发现reader被放宽为object的1项错误；
+未运行或接受该原型，核清仅自身3文件后正常移除隔离worktree/branch。主任务未采用，收益0。
+
+A167直接扩充既有owner：Linux reader/receipt前置检查与GC内native读取各共用一份；
+原Code authority承接Windows原capture程序，供两Linux位置及Windows复用；Core原
+PackageProduct candidate增加`_read_product_selected_worker_payload_facts`，供3处取得
+已验证candidate/configuration/entrypoint/body。没有新class/Protocol/generic/MRO或状态。
+Code原authority共用顺序`!=`比较；前两项if取truth，末项bool取truth，保持各一次，
+不改成相反比较。Core仍只供事实，不接管GC、receipt、opt-in或native授权。
+
+原公开流程继续决定guard/重验/错误顺序及payload构造：Linux payload保4次witness、
+runtime binding保2次且在payload校验前读opt-in；Windows原两流程及公开backend读取不改。
+公开签名/doc/DTO/导出不变。helper增加栈帧，私有capture方法改为继承；verifier/hash
+实际调用点归各自新owner，不承诺任意旧私有alias猴补或逐字traceback兼容。
+
+最终POSIX896→889（−7）、Windows511→475（−36）、Core375→397（+22），
+Code−43/Core+22/系统−21。初始候选原始−36含15行排版压缩，已展开受影响span，
+不计作精简收益；三模块AST与初候选相同，同Ruff格式计量亦−21。Windows原两处
+无关格式债务净0保留，不宣称整文件format全绿。新显式probe360行与fixture3330B
+另外列示，不混入2053生产源码帧的净值；gzip解压逐字等原132650B观察JSON。
+
+接入前实际旧七公开flow冻结159项（152单项加7复合），另真实Product valid事务1过/25s。
+各单项覆盖每次witness失效、嵌套GC、native/三capture错误、取消、pin变化、候选/manifest/
+configuration/body、hash/config/artifact、opt-in与DTO构造拒绝。复合项固定opt-in提前读取、
+constructor与末witness、native/catalog/capture等首错。真实receipt/policy/config/payload DTO，
+但GC/runtime/native/verifier/current_witness等边界受控；Windows非原生验证，取消为端口
+抛CancelledError；富比较single-truth仅有静态语义证据，动态模型使用普通字符串。
+
+最终联合160过（159固定观察+原真实Product1），旧期待未重录；before/after与显式probe
+159复验均为相同覆盖，不累加。三源scoped mypy before/after、Ruff及静态AST逆展开通过。
+来源守卫pin实际taskroot下3模块path/SHA，递归比较实际callable代码字段与常量（含line/
+exception table）。首轮新增守卫错用marshal字节，因字符串驻留编码误拒未变Protocol，
+在收集前停止；保原失败，改为字段比较，未改Product/旧期待。格式成本脚本最初假定
+raw/uniform净值相同的断言亦保为工具错误，现记录真实计量。完整PR矩阵未运行。
+
+三设计/实际视角分别核职责复用、运行失败、数据兼容；本批有界接受，根owner仍承担
+合并前最终验证。架构方法查本地干净master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`，
+只本地查阅，不声称上游同步。未改默认发现/PR gate/workflow/platform matrix。
+现有显式probe可复验，不以放宽既有期待换绿。
+
+2053源码帧仅3源改变，其余2050源SHA原样；434份Code清单全行重核。当前Code111868、
+Harness362618（Python362269+原资源349）、AppHost19218、历史系统658755，剔除GUI
+测试4271后654484；C07为112文件/21132行。完整P1–P4及≤15K仍未完成，差96868行；
+A167消除真实重复但不声称整receipt读取族已下沉，A166不能借改名再次当成果。
+树外`coding-convergence-resumed-20261114/a167-worker-read-kernels/`保候选/原件、旧观察、
+源码帧、格式成本、失败及修正和评审。当前仍需核定完整receipt authority与平台政策边界，
+并继续处理其余职责簇；已有共享直接复用，不重复开发或计入收益。
+
 ## A165 两平台完整kill-switch事务去重（2026-11-14）
 
 A164找到两份真实重复：POSIX与Windows receipt owner均执行expected-generation

@@ -380,7 +380,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_provider.py](../../../../src/loushang/coding/package_product_worker_provider.py) | C07 | 288 | M | C07 插件 Worker 执行/持久化/恢复 | 33ebd66f42c1 | 288 | 33ebd66f42c1 |
 | [package_product_worker_provider_host.py](../../../../src/loushang/coding/package_product_worker_provider_host.py) | C07 | 290 | M | C07 插件 Worker 执行/持久化/恢复 | 97fc7aa0e78a | 237 | 2ed09625a33f |
 | [package_product_worker_query_consumer.py](../../../../src/loushang/coding/package_product_worker_query_consumer.py) | C07 | 159 | M | C07 插件 Worker 执行/持久化/恢复 | 3edc3bdf34d7 | 159 | 3edc3bdf34d7 |
-| [package_product_worker_receipt.py](../../../../src/loushang/coding/package_product_worker_receipt.py) | C07 | 1,287 | M | A165双平台kill-switch完整事务共用原Code authority；其余receipt读取/产品政策仍在 | 28b31f8d21d9 | 896 | bdc20d6c92b8 |
+| [package_product_worker_receipt.py](../../../../src/loushang/coding/package_product_worker_receipt.py) | C07 | 1,287 | M | A167读取重复程序共用原authority/Core事实接口；A165撤销事务已共享，Code政策保留 | 28b31f8d21d9 | 889 | d01191ba30a8 |
 | [package_product_worker_receipt_base_v2.py](../../../../src/loushang/coding/package_product_worker_receipt_base_v2.py) | C07 | 234 | M | C07 插件 Worker 执行/持久化/恢复 | 6e0d43651711 | 44 | e68d7ab4c84d |
 | [package_product_worker_registered_c5_settlement.py](../../../../src/loushang/coding/package_product_worker_registered_c5_settlement.py) | C07 | 368 | M | C07 插件 Worker 执行/持久化/恢复 | 4e651980106b | 102 | 2bdcfed63608 |
 | [package_product_worker_registered_payload_repair.py](../../../../src/loushang/coding/package_product_worker_registered_payload_repair.py) | C07 | 490 | M | registered恢复已直接复用RepairJournal；三旧转发退出，保DTO及绑定 | 154d62d8b4ea | 273 | c8ef4f38412d |
@@ -435,7 +435,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_worker_windows_provisioning.py](../../../../src/loushang/coding/package_product_worker_windows_provisioning.py) | C07 | 344 | M | C07 插件 Worker 执行/持久化/恢复 | 98ffbd480b88 | 318 | ec020f449488 |
 | [package_product_worker_windows_provisioning_base.py](../../../../src/loushang/coding/package_product_worker_windows_provisioning_base.py) | C07 | 410 | M | C07 插件 Worker 执行/持久化/恢复 | 0e8ef6cd61ab | 121 | 3292f03b8be6 |
 | [package_product_worker_windows_provisioning_journal.py](../../../../src/loushang/coding/package_product_worker_windows_provisioning_journal.py) | C07 | 759 | M | C07 插件 Worker 执行/持久化/恢复 | 6b1601a8cca0 | 37 | 182e668b09b0 |
-| [package_product_worker_windows_receipt.py](../../../../src/loushang/coding/package_product_worker_windows_receipt.py) | C07 | 594 | M | A165复用完整kill-switch事务；保Windows revoke口/文案与原receipt政策 | 085992880854 | 511 | b921a56ceac5 |
+| [package_product_worker_windows_receipt.py](../../../../src/loushang/coding/package_product_worker_windows_receipt.py) | C07 | 594 | M | A167复用capture/payload事实及比较；保Windows原流程/重验/opt-in政策 | 085992880854 | 475 | a94824878ab9 |
 | [package_product_worker_windows_receipt_base.py](../../../../src/loushang/coding/package_product_worker_windows_receipt_base.py) | C07 | 229 | M | C07 插件 Worker 执行/持久化/恢复 | 4c254c982190 | 101 | 1cf3848a47cb |
 | [package_product_worker_windows_receipt_journal.py](../../../../src/loushang/coding/package_product_worker_windows_receipt_journal.py) | C07 | 358 | M | C07 插件 Worker 执行/持久化/恢复 | 1e3b227fb315 | 69 | 9220ecbb87d1 |
 | [package_product_worker_windows_recovery_inventory.py](../../../../src/loushang/coding/package_product_worker_windows_recovery_inventory.py) | C07 | 948 | M | C07 插件 Worker 执行/持久化/恢复 | b27d4837686b | 571 | b37415006f16 |
@@ -529,8 +529,8 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 
 ## 当前分组计量与剩余处置
 
-2026-11-14以`4de7d9251`主线及A156–A158、A160、A162、A163及A165当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
-当前Coding 111911行，完整≤15K目标差96911行；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
+2026-11-14以`4de7d9251`主线及A156–A158、A160、A162、A163、A165及A167当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
+当前Coding 111868行，完整≤15K目标差96868行；A167读取族真实重复归一，Code−43/Core+22/系统−21；A166通用mixin原型拒绝、收益0；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
 Code−93/Core+119/系统+26；当前两源及验证边界见执行记录。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
@@ -548,7 +548,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C04 | 2 | 2,895 |
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
-| C07 | 112 | 21,175 |
+| C07 | 112 | 21,132 |
 | C08 | 31 | 6,691 |
 | C09 | 34 | 9,446 |
 | C10 | 12 | 5,324 |
@@ -570,4 +570,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 434 | 111,911 |
+| 合计 | 434 | 111,868 |

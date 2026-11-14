@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
-from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -17,13 +16,11 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
 from loushang.harness.package_product.product_worker_candidate import (
+    _read_product_selected_worker_payload_facts,
     verify_product_selected_worker_candidate,
 )
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
-    PackagePhysicalStagingError,
 )
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
@@ -231,58 +228,25 @@ class CodingWindowsWorkerProductReceiptOwner(_CodingWorkerReceiptAuthority):
                 raise CodingWorkerReceiptError("coding_worker_receipt_stale")
             return self._capture_selected_manifest_under_gc_guard(receipt)
 
-    def _capture_selected_manifest_under_gc_guard(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> PackageProductSelectedPluginManifestV1:
-        """Capture the selected root after the caller has checked the receipt."""
-
-        try:
-            selected = self._runtime.capture_selected_plugin_manifest_for(
-                receipt.policy.plugin_id,
-                max_files=64,
-                max_total_bytes=16 * 1024 * 1024,
-            )
-        except (
-            PackagePhysicalStagingError,
-            PackageProductRuntimeActivationError,
-            PackageProductRuntimeReadError,
-        ) as exc:
-            raise CodingWorkerReceiptError(
-                "coding_worker_selected_payload_stale"
-            ) from exc
-        if selected != self._selected:
-            raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
-        return selected
-
     @staticmethod
     def _payload_from_selected(
         receipt: ProductWorkerActivationReceiptV1,
         selected: PackageProductSelectedPluginManifestV1,
     ) -> CodingWorkerSelectedPayloadV1:
-        candidate = verify_product_selected_worker_candidate(
+        candidate, configuration, body = _read_product_selected_worker_payload_facts(
             selected,
             contribution_id=receipt.policy.contribution_id,
             native_platform="windows-amd64",
         )
-        manifest = selected.verified_manifest()
-        configuration = manifest.contribution_index.items[0].worker_configuration
-        assert configuration is not None
-        root = manifest.root_relative_path.as_posix()
-        prefix = "" if root == "." else f"{root}/"
-        body = dict(selected.snapshot.files).get(f"{prefix}{configuration.entrypoint}")
         if (
             body is None
-            or candidate.executable_digest != sha256(body).hexdigest()
-            or candidate.worker_configuration_fingerprint
-            != receipt.policy.worker_configuration_fingerprint
-            or selected.snapshot.root_ref.artifact_digest
-            != receipt.policy.plugin_revision_digest
+            or _CodingWorkerReceiptAuthority._selected_worker_payload_is_stale(
+                receipt, selected, candidate, body
+            )
         ):
             raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
         return CodingWorkerSelectedPayloadV1(
-            configuration=configuration,
-            body=body,
-            digest=candidate.executable_digest,
+            configuration=configuration, body=body, digest=candidate.executable_digest
         )
 
     def current_selected_payload(

@@ -34,7 +34,8 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
 from loushang.harness.package_product.product_worker_candidate import (
-    verify_product_selected_worker_candidate,
+    WorkerPackageCandidateV1,
+    _read_product_selected_worker_payload_facts,
 )
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
@@ -316,6 +317,48 @@ class _CodingWorkerReceiptAuthority:
             revoked = revoke(plugin_id, operation_id, decision)
             return revoked.kill_switch_generation
 
+    def _capture_selected_manifest_under_gc_guard(
+        self, receipt: ProductWorkerActivationReceiptV1
+    ) -> PackageProductSelectedPluginManifestV1:
+        """Capture the selected root after the caller has checked the receipt."""
+
+        try:
+            selected = self._runtime.capture_selected_plugin_manifest_for(
+                receipt.policy.plugin_id,
+                max_files=64,
+                max_total_bytes=16 * 1024 * 1024,
+            )
+        except (
+            PackagePhysicalStagingError,
+            PackageProductRuntimeActivationError,
+            PackageProductRuntimeReadError,
+        ) as exc:
+            raise CodingWorkerReceiptError(
+                "coding_worker_selected_payload_stale"
+            ) from exc
+        if selected != self._selected:
+            raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
+        return selected
+
+    @staticmethod
+    def _selected_worker_payload_is_stale(
+        receipt: ProductWorkerActivationReceiptV1,
+        selected: PackageProductSelectedPluginManifestV1,
+        candidate: WorkerPackageCandidateV1,
+        body: bytes,
+    ) -> bool:
+        if candidate.executable_digest != sha256(body).hexdigest():
+            return True
+        if (
+            candidate.worker_configuration_fingerprint
+            != receipt.policy.worker_configuration_fingerprint
+        ):
+            return True
+        return bool(
+            selected.snapshot.root_ref.artifact_digest
+            != receipt.policy.plugin_revision_digest
+        )
+
 
 class CodingWorkerProductReceiptOwner(
     _CodingReceiptHistory, _CodingWorkerReceiptAuthority
@@ -462,15 +505,9 @@ class CodingWorkerProductReceiptOwner(
             receipt.policy,
         )
 
-    def current_native_launch_material(
+    def _require_native_receipt_reader(
         self, receipt: ProductWorkerActivationReceiptV1
-    ) -> CodingWorkerNativeLaunchMaterialV1:
-        """Join an issued selected-Worker receipt to Product-owned Linux H6 bytes.
-
-        The result only locates material for Hosting's descriptor capture. The
-        activation coordinator must still hold admission through first effect.
-        """
-
+    ) -> CodingProductInstalledWorkerReleaseReader:
         reader = self._native_closure_reader
         if (
             not isinstance(reader, CodingProductInstalledWorkerReleaseReader)
@@ -483,15 +520,36 @@ class CodingWorkerProductReceiptOwner(
             != CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID
         ):
             raise CodingWorkerReceiptError("coding_worker_native_launch_unsupported")
+        return reader
+
+    def _read_native_receipt_material_under_gc_guard(
+        self,
+        reader: CodingProductInstalledWorkerReleaseReader,
+        receipt: ProductWorkerActivationReceiptV1,
+    ) -> CodingWorkerNativeLaunchMaterialV1:
+        if self.current_witness(receipt) != receipt.authority_witness:
+            raise CodingWorkerReceiptError("coding_worker_receipt_stale")
+        try:
+            material = reader.current_launch_material()
+        except CodingWorkerNativeClosureReadError as exc:
+            raise CodingWorkerReceiptError(
+                "coding_worker_native_launch_material_stale"
+            ) from exc
+        return material
+
+    def current_native_launch_material(
+        self, receipt: ProductWorkerActivationReceiptV1
+    ) -> CodingWorkerNativeLaunchMaterialV1:
+        """Join an issued selected-Worker receipt to Product-owned Linux H6 bytes.
+
+        The result only locates material for Hosting's descriptor capture. The
+        activation coordinator must still hold admission through first effect.
+        """
+        reader = self._require_native_receipt_reader(receipt)
         with self._product.gc_gate.guard():
-            if self.current_witness(receipt) != receipt.authority_witness:
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            try:
-                material = reader.current_launch_material()
-            except CodingWorkerNativeClosureReadError as exc:
-                raise CodingWorkerReceiptError(
-                    "coding_worker_native_launch_material_stale"
-                ) from exc
+            material = self._read_native_receipt_material_under_gc_guard(
+                reader, receipt
+            )
             if (
                 material.closure.native_profile_catalog_revision
                 != receipt.policy.native_profile_catalog_revision
@@ -504,32 +562,23 @@ class CodingWorkerProductReceiptOwner(
         self, receipt: ProductWorkerActivationReceiptV1
     ) -> CodingWorkerSelectedPayloadV1:
         """Reread the selected Store executable under the receipt/GC gate."""
-
         with self._product.gc_gate.guard():
             material = self.current_native_launch_material(receipt)
             selected = self.current_selected_manifest(receipt)
-            candidate = verify_product_selected_worker_candidate(
-                selected,
-                contribution_id=receipt.policy.contribution_id,
-                native_platform="linux-x86_64",
-            )
-            manifest = selected.verified_manifest()
-            configuration = manifest.contribution_index.items[0].worker_configuration
-            assert configuration is not None
-            root = manifest.root_relative_path.as_posix()
-            prefix = "" if root == "." else f"{root}/"
-            body = dict(selected.snapshot.files).get(
-                f"{prefix}{configuration.entrypoint}"
+            candidate, configuration, body = (
+                _read_product_selected_worker_payload_facts(
+                    selected,
+                    contribution_id=receipt.policy.contribution_id,
+                    native_platform="linux-x86_64",
+                )
             )
             if (
                 body is None
                 or material.closure.native_platform != "linux-x86_64"
-                or candidate.executable_digest != sha256(body).hexdigest()
-                or candidate.worker_configuration_fingerprint
-                != receipt.policy.worker_configuration_fingerprint
-                or selected.snapshot.root_ref.artifact_digest
-                != receipt.policy.plugin_revision_digest
-                or self.current_witness(receipt) != receipt.authority_witness
+                or self._selected_worker_payload_is_stale(
+                    receipt, selected, candidate, body
+                )
+                or (self.current_witness(receipt) != receipt.authority_witness)
             ):
                 raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
             return CodingWorkerSelectedPayloadV1(
@@ -542,56 +591,18 @@ class CodingWorkerProductReceiptOwner(
         self, receipt: ProductWorkerActivationReceiptV1
     ) -> tuple[CodingWorkerSelectedPayloadV1, CodingWorkerNativeLaunchMaterialV1, str]:
         """Capture one coherent selected payload, native release, and owner."""
-
-        reader = self._native_closure_reader
-        if (
-            not isinstance(reader, CodingProductInstalledWorkerReleaseReader)
-            or reader.product_owner is not self._product
-        ):
-            raise CodingWorkerReceiptError("coding_worker_native_launch_unbound")
-        if (
-            not isinstance(receipt, ProductWorkerActivationReceiptV1)
-            or receipt.policy.native_profile_id
-            != CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID
-        ):
-            raise CodingWorkerReceiptError("coding_worker_native_launch_unsupported")
+        reader = self._require_native_receipt_reader(receipt)
         with self._product.gc_gate.guard():
-            if self.current_witness(receipt) != receipt.authority_witness:
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            try:
-                material = reader.current_launch_material()
-            except CodingWorkerNativeClosureReadError as exc:
-                raise CodingWorkerReceiptError(
-                    "coding_worker_native_launch_material_stale"
-                ) from exc
-            try:
-                selected = self._runtime.capture_selected_plugin_manifest_for(
-                    receipt.policy.plugin_id,
-                    max_files=64,
-                    max_total_bytes=16 * 1024 * 1024,
-                )
-            except (
-                PackagePhysicalStagingError,
-                PackageProductRuntimeActivationError,
-                PackageProductRuntimeReadError,
-            ) as exc:
-                raise CodingWorkerReceiptError(
-                    "coding_worker_selected_payload_stale"
-                ) from exc
-            if selected != self._selected:
-                raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
-            candidate = verify_product_selected_worker_candidate(
-                selected,
-                contribution_id=receipt.policy.contribution_id,
-                native_platform="linux-x86_64",
+            material = self._read_native_receipt_material_under_gc_guard(
+                reader, receipt
             )
-            manifest = selected.verified_manifest()
-            configuration = manifest.contribution_index.items[0].worker_configuration
-            assert configuration is not None
-            root = manifest.root_relative_path.as_posix()
-            prefix = "" if root == "." else f"{root}/"
-            body = dict(selected.snapshot.files).get(
-                f"{prefix}{configuration.entrypoint}"
+            selected = self._capture_selected_manifest_under_gc_guard(receipt)
+            candidate, configuration, body = (
+                _read_product_selected_worker_payload_facts(
+                    selected,
+                    contribution_id=receipt.policy.contribution_id,
+                    native_platform="linux-x86_64",
+                )
             )
             decision = self._opt_in.current(receipt.policy.plugin_id)
             if (
@@ -599,15 +610,13 @@ class CodingWorkerProductReceiptOwner(
                 or material.closure.native_platform != "linux-x86_64"
                 or material.closure.native_profile_catalog_revision
                 != receipt.policy.native_profile_catalog_revision
-                or candidate.executable_digest != sha256(body).hexdigest()
-                or candidate.worker_configuration_fingerprint
-                != receipt.policy.worker_configuration_fingerprint
-                or selected.snapshot.root_ref.artifact_digest
-                != receipt.policy.plugin_revision_digest
-                or decision is None
-                or decision.action != "allow"
-                or not isinstance(decision.opt_in, CodingWorkerOptInV1)
-                or self.current_witness(receipt) != receipt.authority_witness
+                or self._selected_worker_payload_is_stale(
+                    receipt, selected, candidate, body
+                )
+                or (decision is None)
+                or (decision.action != "allow")
+                or (not isinstance(decision.opt_in, CodingWorkerOptInV1))
+                or (self.current_witness(receipt) != receipt.authority_witness)
             ):
                 raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
             return (
@@ -624,26 +633,10 @@ class CodingWorkerProductReceiptOwner(
         self, receipt: ProductWorkerActivationReceiptV1
     ) -> PackageProductSelectedPluginManifestV1:
         """Reread the exact selected manifest under the receipt/GC gate."""
-
         with self._product.gc_gate.guard():
             if self.current_witness(receipt) != receipt.authority_witness:
                 raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            try:
-                selected = self._runtime.capture_selected_plugin_manifest_for(
-                    receipt.policy.plugin_id,
-                    max_files=64,
-                    max_total_bytes=16 * 1024 * 1024,
-                )
-            except (
-                PackagePhysicalStagingError,
-                PackageProductRuntimeActivationError,
-                PackageProductRuntimeReadError,
-            ) as exc:
-                raise CodingWorkerReceiptError(
-                    "coding_worker_selected_payload_stale"
-                ) from exc
-            if selected != self._selected:
-                raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
+            selected = self._capture_selected_manifest_under_gc_guard(receipt)
             return selected
 
     def latch_kill_switch(self, *, expected_generation: int) -> int:
