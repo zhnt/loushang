@@ -126,7 +126,12 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
             or name.startswith("loushang.appservice.")
         } <= {"loushang.appservice.discovery_ports"}
     }
-    assert consumers - optional_catalog == {
+    # A179's optional shared attempt retains the original Product instance.
+    # Admit this consumer without requiring the optional module to exist.
+    optional_shared = optional_catalog | {
+        Path("src/loushang/apphost/integrations/_continuity_preparation.py"),
+    }
+    assert consumers - optional_shared == {
         CODING_ADAPTER,
         Path("src/loushang/apphost/application.py"),
         Path("src/loushang/apphost/continuity.py"),

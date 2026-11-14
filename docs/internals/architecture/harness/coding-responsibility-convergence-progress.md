@@ -1,5 +1,41 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A192 G11既有可选消费者库存修正（2026-11-14）
+
+A190前后都失败的原G11精确集合遗漏A179已接受的AppHost optional
+_continuity_preparation；其原四Continuity值及同Product实例闭包已源核，不是新Product
+adapter。仅从observed consumers减去该唯一可选路径，保原25 required集合及43条断言。
+不把路径加入右侧而新增“必须存在”条件，无新test/route/平台/trigger/PR gate。
+这是旧通过域单调保持的scope reduction，不是放宽其它消费者或新批准架构边界。
+
+原G11整模块8项实际通过20.72s；A190的129过/1旧失败历史不回写，也不称全CI通过。
+新增optional赋值逆除、断言减集名逆回后整模块AST同原；测试353→358行（+5），
+2059生产源逐SHA/行同A190，新增生产收益0。三独立视角复核实际diff、原owner依据及
+单调缩scope；Ruff/文档/链接/diff检查过。证据在树外a192-g11-consumer-inventory。
+当前Code110316/Harness364480/HarnessTUI29466、source659826不变，完整Goal仍开放。
+下一按较大完整范围核ManagedMuxCommand692类的实际资源/失败寿命及Code选择政策，
+不把整类行数预支为可迁量，不恢复已拒systemd小helper形状。
+
+## A191 systemd两完整程序成本决策：不采用（2026-11-14）
+
+cli/mux_service171整文件不是单个待迁事务；完整JSON控制/状态37与notify/SIGTERM
+寿命33为本片实际70方法span，plain CLI control20及准入/输出另有合同留Code。
+现AppHost LocalApplication已有真正run/fence/close，A156已接managed事务；二者不重计。
+原local承诺不做native IO，managed._process的Runner/多signal/maintenance也非drop-in。
+候选选择optional AppHost systemd adapter，复用实际LocalApplication类型而无新role/T/
+manager，保80/10s、实例预读非CAS、通知/信号/异常恢复及Code薄profile/公开run_host。
+
+完整正规两源raw Code171→115（−56）/新Core141/系统+85；统一格式212→138（−74）/
+Core141/系统+67，18行差仅格式。原两程序的三整body逆profile AST同、五留Code函数同，
+外部overlay mypy/Ruff通过，无明确源码兼容阻断。全部lazy导入/错误类/unit/路径/公开
+门面/typing已计；不是首raw系统+51或错误口头统一基线189→115。
+
+三视角据全成本不采用当前形状：完整native操作退出真实，但短单consumer平台外壳
+没有第二机制/整体依赖退出，真正应用关闭权威原已Core；与A190整段持久屏幕状态/
+Task/Timer决策权转交不同。本形状税不足值，不仅因系统为正，也不证明平台逻辑永久
+应在Code。不安装/不测/不造镜像oracle，不拆socket/argv helper挽救；生产收益0。
+树外a191-systemd-service-lifecycle留完整候选/逆AST/三报告/格式校正及拒绝依据。
+
 ## A190 屏幕SDK预热完整寿命归原Application Host（2026-11-14）
 
 原116类/105方法范围中六完整程序84方法span及8字段归原HarnessTUI screen

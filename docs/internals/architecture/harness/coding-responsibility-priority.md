@@ -29,14 +29,15 @@ A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+3
 | A188已核 / 不重造A38 | C13 deferred LSP generation | 原Slot/Component/Graph/owner-generation/assembly机制已直接复用；Code保LSP选择/准入与原协调 | 19 own fields/230类/181方法；5源同throughA63生产切点，Process新API未替本层整路径。A38原型缺失，+142仅历史账，不假重新实核或该类不可迁 |
 | 已完成 A189 | C12 workspace observation | 原Workspace Git家族；Code保GoalError/预算/消息与薄公开入口 | 两完整64/20程序退出，Code−71/Harness+102/系统+31；原118实际过，保不同观测合同，无第二算法退出 |
 | 已完成 A190 | Screen SDK预热完整寿命 | 原HarnessTUI screen application host同self接timer/可见Task/切换/缓存/提示/关闭；Code保SDK政策及薄门面 | 六完整程序84span/8字段，Code−83/HarnessTUI+124/系统+41；130不同项129过/同1旧G11失败，无新gate，AI importTask不重计 |
-| 下一完整平台接缝 / A191全成本待评 | systemd JSON控制/状态及通知信号寿命 | 原AppHost optional deployment integration；Code保CLI/unit/错误与路径命名政策 | 两完整37+33程序，实际Core LocalApplication类型可复用，plain CLI control20保原合同；先算完整API/门面/类型税，非whole171/backend，不预支收益 |
+| A191完整原型不采用 | systemd JSON控制/状态及通知信号寿命 | 原AppHost optional deployment adapter；Code保CLI/unit/错误与路径命名政策 | 两完整37+33程序全税Code−56/Core141/系统+85（uniform67）；逆AST/静态过但无第二机制或整依赖退出，短外壳税不足值。不安装/不测，不拆helper，非whole171/backend |
+| 下一较大完整范围 / A193 source核实 | ManagedMuxCommand资源与失败寿命 | 原AppHost managed owners及必要optional集成；Code保CLI准入/选择/输出和UI政策 | 692类为审计范围，先核run/async close/native close/probe/recovery与journal借用的真实寿命；A180 foreground及A156/原manager已共享IO不重计，不先造operation/phase callback池或预支行数 |
 | 后续开放 / A169、A178完整形状均拒绝 | Worker Product完整收据authority | 原Package Product/Resources；Code保政策、验证与兼容DTO | 892行类范围/803行方法定义已作A178完整13源原型。真实Records/MRO/3必要reader改善成立，但计入4事实契约、6TypeVar、8必要公开门面后Code−512/Core+944/系统+432（统一格式+434），仅静态通过，未采用。相比A169系统+580减少148，仍无另一authority/运行重复退出，不为已付原型成本启动大矩阵或摘叶救收益 |
 
 G17与C13本批实例寿命、C10两段中性证据投影已完成；后续核实顺序为：
-**systemd JSON控制/状态及通知信号完整寿命**（A191先全成本待评）。A188子图原接口未变；A187完成Goal寿命，A186命令门面无新替代；
+**ManagedMuxCommand完整资源与失败寿命**（A193先source核实，692类不是可删预算）。A188子图原接口未变；A187完成Goal寿命，A186命令门面无新替代；
 C08 checkpoint按A185完成，
 C01按A183暂缓，
-Windows完整快照按A184全成本拒绝；
+Windows完整快照按A184全成本拒绝，systemd两程序按A191完整原型拒绝；
 这是进入完整接缝验证的顺序，不是已接受迁移或
 预计减量。A182确认preview/open其余主体为Code产品政策及既有Core IO接入，
 不以厚compile/open回调强搬；A183实证C01与A112原件未变，不自动重试同池；C08先剔除已经共享的
@@ -48,7 +49,7 @@ A178已完成Worker新接缝的整物成本决策并拒绝接入；A179随后完
 完整prefix替代；A180完成foreground整控制，A181完成C13实例寿命，A182完成两段证据投影。
 A183确认C01原成本阻断，A184完整快照形状不采用，A185完成POSIX checkpoint；
 A186明确领域命令，A187完成Goal具体资源寿命；A188据当前及历史生产API不重启
-A38同形原型，A189已完成两条Workspace实际IO观察完整合同及全成本，A190再完成Screen SDK整寿命，下一核systemd两条完整native程序，
+A38同形原型，A189已完成两条Workspace实际IO观察完整合同及全成本，A190再完成Screen SDK整寿命，A191 systemd两条完整native程序全成本不采用，下一核ManagedMuxCommand较大完整寿命，
 不按目录总量承诺迁移收益。
 
 A178核对A169最终原件确认，其POSIX authority已经继承ReceiptHistory；直接继承本身
