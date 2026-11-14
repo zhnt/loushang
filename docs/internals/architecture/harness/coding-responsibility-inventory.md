@@ -520,7 +520,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [worktree.py](../../../../src/loushang/coding/worktree.py) | C06 | 158 | R/M | C06 其余根目录入口与策略 | 52d96c306803 | 158 | 52d96c306803 |
 | [_worker_history_access.py](../../../../src/loushang/coding/_worker_history_access.py) | C07 | — | M | Worker原存储访问绑定；共享机制已部分归位 | — | 54 | fd4112bace44 |
 | [_worker_preparation_inputs.py](../../../../src/loushang/coding/_worker_preparation_inputs.py) | C07 | — | M | Worker准备的Coding准入与配置；剩余须按场景复核 | — | 348 | 290a23d3566b |
-| [managed_service.py](../../../../src/loushang/coding/managed_service.py) | C02 | — | B | `loushang-mux service` 本地托管 Product 入口；不计本轮重构新增收益 | — | 164 | ba1005567517 |
+| [managed_service.py](../../../../src/loushang/coding/managed_service.py) | C02 | — | B | A156完整准入/控制/清理归原AppHost；保身份、时限、延迟factory及公开错误薄适配 | — | 68 | aaa917e414d9 |
 
 | [app_tunnel.py](../../../../src/loushang/coding/app_tunnel.py) | C02 | — | M | 托管凭据产品政策；通用凭据存储复用AppHost | — | 64 | ecfdc75a5acc |
 | [workspace_catalog.py](../../../../src/loushang/coding/workspace_catalog.py) | C02 | — | M | 工作区政策与Catalog接入；复用现有Transcript Catalog | — | 183 | 65143a2fd8a4 |
@@ -530,7 +530,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 ## 当前分组计量与剩余处置
 
 2026-11-13续作核对，以`481134a42`源码重新计算全部当前列，新增4个主线文件单列并注明原审计未覆盖。
-当前Coding 112139行，完整≤15K目标差97139行；当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
+当前Coding 112043行，完整≤15K目标差97043行；A156控制体归原AppHost，Code−96/AppHost+117/系统+21。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
 Code−93/Core+119/系统+26；当前两源及验证边界见执行记录。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
@@ -543,7 +543,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | 组 | 当前文件 | 当前物理行 |
 | --- | ---: | ---: |
 | C01 | 22 | 12,709 |
-| C02 | 31 | 8,478 |
+| C02 | 31 | 8,382 |
 | C03 | 15 | 4,132 |
 | C04 | 2 | 2,956 |
 | C05 | 6 | 3,565 |
@@ -570,4 +570,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 434 | 112,139 |
+| 合计 | 434 | 112,043 |

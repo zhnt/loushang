@@ -1,5 +1,35 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A156 托管服务完整控制归现有AppHost（2026-11-14）
+
+PR #890已合入主线`4de7d9251`；前次交付后的暂停已履行，用户恢复后完整Goal继续active。
+start/status/stop/restart及未知操作的原status回退归现有AppHost managed coordinator模块；
+Coding保身份、端点、时限、延迟启动factory和公开错误薄适配。原Coordinator类整AST不变，
+没有新manager、状态机或DTO，也不通过回调回借Coding IO。完整控制体退出Coding，
+本片不代表C02或P1–P4完成，不把余下68行视为已证明的不可精简下限。
+
+原源码冻结426份观察后只读重放，缺记录失败，全部manifest SHA保持；实际187场景触发
+221次故障，24场景执行Task.cancel（16异步边界、6原线程结清、2重复取消）。
+固定观察与原126项owner测试合计552通过、2项host-runtime排除；原导入/架构175项通过。
+两源Ruff、限定mypy通过。外部测试首次未加载项目conftest导致参数拒绝、未执行测试，
+改为显式项目配置及原conftest后通过；不改产品或门禁。
+
+三个独立视角的设计和实际代码评审均有界接受。保CAS、缺失状态、restart部分成功、
+属性读取、异常覆盖和LIFO清理次序；产品常量入口捕获不承诺运行中任意改写全局等价。
+模型native owners受控，6线程场景不证明真实服务启动；2项真实Kernel-host测试未运行。
+重复取消的遗留后台清理债务需模型手动drain，54项drain后active标记非空属于冻结的
+旧构造/清理失败状态；本片未全面清债，也不承诺每次退出所有资源结清。
+冷导入审计无文件写入/socket/subprocess尝试，但core模块292→296、mux创建312→316，
+增加原discovery/namespace_admission/service_admission/stopper四模块；Coding入口394不变。
+不将无副作用审计外推为零导入成本或启动性能证明。
+
+两源成本Coding−96（164→68）、AppHost+117（272→389）、系统净增21，Harness不变；
+这是职责迁移，不是净精简。当前Coding434源/112043行，AppHost19218、Harness362458
+（Python362109），历史全帧2053源/658770行；剔除GUI测试4271行后654499。
+距15K仍97043行，完整P1–P4未完成。全帧其余2051源未变。
+源码、观察、manifest、JUnit及冷导入审计保于树外
+`coding-convergence-resumed-20261114/a156-managed-service-control`。
+
 ## A147–A155本地交付核验（2026-11-13）
 
 生产源码冻结于`4b3c2b1a5`，对主线`4bbf65da5`：Coding−250、Harness+234、
