@@ -1,5 +1,61 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A195 四条完整工作区身份校验共用原Workspace路径组件（2026-11-14）
+
+PM read/command SDK、Arch backup SDK三个18行guard与private read owner的12行guard
+使用同一完整算法，共66方法span。原Workspace.paths扩充一个固定入口：lstat→strict
+resolve先完成、仅OSError映射并from原异常、再原dir/path/devino短路；Code保原公开
+wrapper和错误类型/消息/code工厂，工厂仅在失败点晚执行，不回借选择或IO程序。
+原resolve/canonicalize接口不含同样身份/异常合同，不能直接代替。CLI captureNone与
+Windows先dir再resolve/noCatch不同合同保原样，无新mode/Role/T/state或锁。
+
+四原kernel归一留一份，退出三份实际重复；Code−29/Harness+21/系统−8，raw=uniform，
+包含全部导入/lambda/typing/doc税。字段、dataclass基类/MRO、validators及wrapper签名
+不改；普通frozen字段在入口取值，较原重复属性读取有时点差，不承诺任意副作用getter/
+低层突变观测等价。错误global仍由lambda失败点lookup，额外函数/异常栈帧明示。
+详见[完整协议设计](key-designs/workspace-directory-identity-convergence.md)。
+
+五原模块限定真实SDK/CLI/离线读/路径节点：旧34过115.30s，实际同34过121.46s，
+各142 deselected，0fail/error/skip；不累计为68覆盖。五源父进程守卫旧65/actual66
+声明callable、各34nodes/68checks，phase/PID分立，核路径/SHA及19递归code字段；
+不称child/native冷导入证明。实际project mypy五源与Ruff通过。无新增test/probe/oracle/
+fixture/gate；真实原工作区替换、owner bind/开启后替换、pending恢复、只读缺失状态及
+private读route有据，未逐点独立注入权限/自定义getter/Error构造失败或所有复合故障。
+
+2059源仅五源变，其余2054逐SHA/行同；当前source659818，排GUI独立4524后655294。
+Code434源110287、距15K95287，Harness364501/HarnessTUI29466/HarnessWork8332/
+AppHost19717；C06为26源4444，C08为31源6665。三设计/实际视角有界接受，完整
+P1–P4/KD003/KD011仍开放。下一A196先评六Windows semantic record中性字段单一声明，
+原Core持有physical slots方案与旧ownslots观察冲突，不采用；保Core空slots、Code仍
+生成原slots的标准schema-only dataclass配置仅树外试算，未接入/未计收益。
+
+## A194 退役私有程序导航复查（2026-11-14）
+
+对src/tests/scripts/examples的3876个Python文件收集Name/Attribute/import及字符串
+identifier，导航Code顶层至少10行的私有完整函数。没有得到零名字引用候选；只是保守
+导航，不是全限定可达性/递归SCC/配置入口证明，不能据此宣称无死代码或Code不可压缩。
+无删除/生产收益/新测试，证据保树外a194-retired-private-programs；不伪造大块删除池。
+
+## A193 ManagedMuxCommand完整驱动试算：当前形状不采用（2026-11-14）
+
+整类692、21方法span668及39构造属性为审计范围，不是可删预算。完整试算接原run99、
+close40、probe/未入Runner交接与native parents释放等八整程序及35同self资源/状态锚点；
+Code留四输入绑定、prepare/确认/选择/输出/两UI绑定。Core直接执行workspace/RPC/
+inspect/issue/verify/record和原清理，不用厚Code operation callback，不造Task/phase池。
+旧13受保护端口、2UI roles/2T、product binding、public薄壳、trace/output全部成本计入。
+
+正规全税Code829→682（−147）/新Core439/系统+292；统一格式1310→1063（−247）/
+Core439/系统+192，差100仅旧长行格式，不作删除收益。八整程序及ctor逆绑定AST通过、
+12留Code方法同、公开签名有据；外部overlay mypy两源/Ruff过，未见具体源码兼容阻断。
+技术完整与不采用同时成立：外层custody改善真实，但原Core Tasks/许可/registry/lease/
+create/stop执行机制及Code大部分依赖仍在，13适配口的税不足值。三视角据本次完整物
+拒绝，不安装/不测/不录oracle，不摘finally/native-close helper救收益，新增生产收益0。
+
+历史引用核正：A128实际是已接受Method提交/结清；其证据目录的
+next-lmux-close-assessment.md是独立后续候选旁审，不称“A128拒绝close”。A193决定
+只依当前冻源/全成本，不依该历史简称。候选/逆AST/原始与正规成本/三报告保树外
+ a193-managed-mux-command；不把当前形状拒绝当整692行永久领域下界。
+
 ## A192 G11既有可选消费者库存修正（2026-11-14）
 
 A190前后都失败的原G11精确集合遗漏A179已接受的AppHost optional

@@ -1,7 +1,7 @@
 # Coding 全量剩余职责与保留成本复核
 
-本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187、A189、A190源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
-110316行，距15K仍95316行。下面28组不是可删除预算或最终保留成本。
+本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187、A189、A190、A195源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
+110287行，距15K仍95287行。下面28组不是可删除预算或最终保留成本。
 A156托管服务完整控制已归原AppHost；Coding保产品身份/政策与错误薄适配。
 A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
@@ -18,7 +18,7 @@ C13为21源5263行，LSP initialize/诊断/文档/status政策仍Code，不是�
 A182两个完整Catalog→typed evidence投影已归原current_preview：Code−76/Harness+115/
 系统+39；C10为12源5248行，open/产品编译/中间复核/最终DTO与clock仍在Code原点。
 A185原Journal接管POSIX删除replay/start/remove借用/receipt/completion，Code−13/Harness+41/
-系统+28，Code保准入/原offline及三薄绑定；当前C08为31源6678行，A184形状拒绝仍有效。
+系统+28，Code保准入/原offline及三薄绑定；A185时C08为31源6678行，A184形状拒绝仍有效。
 A187完整Goal关闭/失败重试及18同实例资源字段归原Session Goal：Code−88/HarnessWork+138/
 系统+50（uniform+42），Harness目录不增；C12为25源6929，repository领域命令仍Code。
 A189完整bounded及repository工作区观察归原Workspace Git，Code−71/Harness+102/系统+31；
@@ -26,6 +26,9 @@ A189完整bounded及repository工作区观察归原Workspace Git，Code−71/Har
 A190六完整SDK预热程序/8原状态归原screen Application Host，Code−83/HarnessTUI+124/
 系统+41（uniform39），当前C18为5源791。130不同项129过/1旧G11失败；无新测试或gate变更，
 实际AI导入Task与pre-session startup非新增收益；原同步close/cancel不join保持。
+A195四完整身份guard共用原Workspace.paths，Code−29/Harness+21/系统−8，34原节点实际过；
+当前C06为26源4444/C08为31源6665，错误/支持范围与字段ABI保原合同。A193整驱动
+全税292（uniform192）不采用，未改其829源；A194无可直接删私有程序候选不作领域下界。
 完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07整policy/receipt仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 A162完整暂存到prepared activation lease交接归原Continuity，Code−61/Core+90/系统+29，
 单消费者职责迁移，不计去重；KD003 bytes与C04整体仍未完成。
@@ -147,13 +150,13 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C03 Resume与SessionManager | 15/4,132 | P2/P3 | 原Transcript/Session lifecycle、live恢复已复用；Code保版本化输入/装配与授权政策 | 按new/resume/fork/reopen完整合同再拆；不重建提交器或自动重试 |
 | C04 Continuity | 2/2,809 | P3 | 原Continuity provider/runtime、A68 payload custody、A162暂存到lease及A174完整绑定shutdown/reservation/Task寿命已接入；Code保来源/限额/cwd和canonical restore端口 | KD003 bytes import未实施；非owned真实Path/FileCopy/引用合同仍在，不提前采用KD011 |
 | C05 Canary及作者验证入口 | 6/3,565 | P1/P3/P4 | 原Worker attempt及托管owner已有接入；Code保真实SDK/CLI验证入口和产品场景 | 存在真实运行消费者，不能按canary/smoke命名删除；剩余协调须随实际场景替代 |
-| C06 其余根入口与策略 | 26/4,460 | P2/P4 | 混合产品配置、模型/工具选择及既有薄绑定 | 逐具体声明/运行路径处置；不整体当领域保留或机械可删 |
+| C06 其余根入口与策略 | 26/4,444 | P2/P4 | 混合产品配置、模型/工具选择及既有薄绑定；A195完整workspace身份协议共用原Paths | 逐具体声明/运行路径处置；不整体当领域保留或机械可删 |
 | C07 插件Worker | 112/21,132 | P1 | 五流/Rooted/history/platform/native custody、普通准备/停止/reopen主机制已共享；A165撤销事务及A167读取重复程序归一，Code保产品准入/原读取时序 | Core已有candidate事实现供3处复用；A178真实Records/薄构造整物原型保公开接口后仍系统+432、成本拒绝未接入；完整authority/平台政策归属仍开放，非领域不可迁证明 |
-| C08 插件私有数据 | 31/6,678 | P4 | 原备份/删除/恢复/过期及A71 lineage已共享，A185完整27行checkpoint统调归原Journal | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
+| C08 插件私有数据 | 31/6,665 | P4 | 原备份/删除/恢复/过期及A71 lineage已共享，A185完整27行checkpoint统调归原Journal | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
 | C09 兼容迁移与快照证据 | 34/9,265 | P4 | 原capture/epoch/receipt等机制已共享，A157首次删除重放三入口合一，A168原Source重捕获/handle/stage custody及双Wheel核归Resources；存量分类、准入与恢复政策仍在 | 逐受支持状态和恢复入口给退出证明；legacy命名与静态无调用都不足以删支持 |
 | C10 包分发及Product管理 | 12/5,248 | P2/P4 | Package Product等已复用；A182两段Catalog证据投影归原current_preview，A155修复执行/释放归原ProductRuntime，Code保该入口准入/DTO/parent关闭，其它兼容/fenced装配仍混合 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |
 | C11 CLI | 26/9,362 | P4 | 大量命令调用原owner，A158四条review准备/重开合一，A180完整foreground控制/恢复归AppHost；语法、准入、确认、选择与呈现仍混合 | 同一业务接同一owner；lmux close须先证明输出/确认/CAS/期限屏障及全适配成本，未接受新形状 |
-| C12 Goal/Work/证据适配 | 25/6,929 | P3/P4 | 原Work/Goal/Method、A117冷读/A150验证执行及A187同实例Goal寿命已共享；Code保仓库/测试/评审策略与scope适配 | 按剩余领域判据/入口核保留或退出成本，不重开已共享cold reader/Task闭包；真实calculator/repository路线保持 |
+| C12 Goal/Work/证据适配 | 25/6,858 | P3/P4 | 原Work/Goal/Method、A117冷读/A150验证执行及A187同实例Goal寿命已共享；Code保仓库/测试/评审策略与scope适配 | 按剩余领域判据/入口核保留或退出成本，不重开已共享cold reader/Task闭包；真实calculator/repository路线保持 |
 | C13 LSP | 21/5,263 | P2/P4 | 语义查询/位置/结果及协议；进程端口已用Workspace/Hosting，A154退出waiter、A171完整stream/Future/Task/close及A181 keyed client实例寿命归Process | LSP初始化/配置/诊断/语义/重试/优雅握手仍Code；不把已移完整transport重计，也不把整目录当保留下界 |
 | C14 Arch | 13/3,608 | P2/P4 | Python AST/import分类/图查询及cache、读取适配 | 保编码分析；A159完整缓存泛化因系统+85/唯一消费者拒绝，缓存/IO范围仍open，不把领域算法换目录 |
 | C15 AgentSession产品绑定 | 2/1,947 | P2 | 原AgentProductSession/Graph/publication/retirement及A176完整profile退休已实际复用 | 构造、选择见证/receipt及产品hooks仍混合；本片关闭协调退出不代表整类退出，BaseAssembly.close仍Code |
