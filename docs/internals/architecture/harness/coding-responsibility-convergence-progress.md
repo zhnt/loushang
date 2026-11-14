@@ -1,5 +1,51 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A189 完整工作区文件观察归原Workspace Git（2026-11-14）
+
+两条完整native程序退出Code：bounded workspace_snapshot64与repository inventory20。
+原Harness workspace.git分别接固定observe_workspace_inventory/observe_git_inventory，
+不合并不同Git字节/解码、fallback、预算、symlink和错误合同，不引mode或IO callback。
+Code保公开签名、GoalError/预算/消息与薄profile；原repository digest另有用途，保持原样。
+原Workspace.capture会写index/artifact，SnapshotEvidenceStore有不同准入，均非drop-in。
+
+raw=uniform：Code−71（672→619、115→97）/Harness+102（170→272）/系统+31。
+全部新增API/profile/导入均计入；单producer职责迁移，无第二算法退出，不称系统净精简。
+详见[完整观察设计](key-designs/goal-workspace-observation-convergence.md)。
+
+同四原消费者模块旧118过646.58s，冻结三实际源码后118过745.20s，均0fail/error/skip；
+不累计旧基线为236覆盖。两phase父进程守卫各236checks，5模块声明旧48/actual50，
+核路径/SHA及19递归code字段；不称子进程native审计。Ruff/project mypy三源通过。
+原真实submodule/fallback/Goal worker与repository链保持；未逐点注入预算/编码/权限/
+读写race及subprocess故障，不新增test/probe/fixture/gate，不承诺原本没有的原子快照。
+
+当前2059源659785，排GUI独立4524后655261；Code434源110399，距15K95399；
+Harness364480/HarnessWork8332/AppHost19717；C12为25源6858。三独立设计及实际视角
+有界验收，完整P1–P4/KD003/KD011仍开放。下一大块A190为Screen SDK预热的
+定时器/Task/切换/缓存/提示/关闭完整寿命；外部原型待评，不预支生产收益。
+
+## A188 延迟LSP子图完整接缝复核（2026-11-14）
+
+原generation331文件、230类、5方法span181（prepare116）及19 own slots逐项核准。
+A171 transport/A181 supervisor在Provider内部，没有为本层Component/child graph/Tool
+receipt/management退役增加完整替代入口。现Slot outer activation/取消/重试、Component
+准入、Graph bind/dispose、owner stage/commit/dispose与assembly cleanup都已直接复用。
+
+当前5关键整源与首次持久A38记载的throughA63生产checkpoint `9a5285723`逐字同；
+CodeAssembly及本链ComponentHost方法AST同。只证明该生产切点至今的实物稳定，
+不冒A38原型字节比较；旧树外原型现机有界搜索未找到，Code−164/Core306/系统+142
+仅保KD009§16文档历史账，不当当前重算。新OwnerPublication语义也非drop-in：同步
+publish、flag-before-close、close失败跳过starts、partial dispose/management与原parent
+workspace dispose=None均须保留。一次owner.bind状态命令不能提前或当纯factory。
+
+三视角据实际接口不重造旧mixin/小starts或_run_sync helper，不假整230可删或永久领域
+下界；CLA0原constructor精确定位条件保持。无新原型/运行/生产/测试改动，完整Goal
+不因旧artifact缺失阻塞。树外`a188-deferred-lsp-generation`保当前API/历史生产对照及
+三报告；当前2059源仍同A187，Code110470/Harness364378/HarnessWork8332/全659754。
+转不同完整实际IO：interactive Goal的bounded workspace_snapshot64和repository task
+inventory20，先核原Workspace API与各自Git/fallback/hash/错误合同及全部适配成本，
+不合并不同状态/不引mode parser或再计已共享snapshot store。
+
+
 ## A187 完整Goal资源寿命归原Session Goal（2026-11-14）
 
 接A186领域门面审计的另一真实闭包：九个完整生命周期程序（方法span70）及18原字段

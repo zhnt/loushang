@@ -1,7 +1,7 @@
 # Coding 全量剩余职责与保留成本复核
 
-本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
-110470行，距15K仍95470行。下面28组不是可删除预算或最终保留成本。
+本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187、A189源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
+110399行，距15K仍95399行。下面28组不是可删除预算或最终保留成本。
 A156托管服务完整控制已归原AppHost；Coding保产品身份/政策与错误薄适配。
 A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
@@ -21,6 +21,8 @@ A185原Journal接管POSIX删除replay/start/remove借用/receipt/completion，Co
 系统+28，Code保准入/原offline及三薄绑定；当前C08为31源6678行，A184形状拒绝仍有效。
 A187完整Goal关闭/失败重试及18同实例资源字段归原Session Goal：Code−88/HarnessWork+138/
 系统+50（uniform+42），Harness目录不增；C12为25源6929，repository领域命令仍Code。
+A189完整bounded及repository工作区观察归原Workspace Git，Code−71/Harness+102/系统+31；
+当前C12为25源6858，118原项实际过，不合并两种观察合同，不称系统净减。
 完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07整policy/receipt仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 A162完整暂存到prepared activation lease交接归原Continuity，Code−61/Core+90/系统+29，
 单消费者职责迁移，不计去重；KD003 bytes与C04整体仍未完成。
