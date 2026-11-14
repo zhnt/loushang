@@ -1,34 +1,31 @@
 # Coding剩余职责实施优先级
 
-2026-11-14，承接A171当前434份Code源码111413行及[逐文件清单](coding-responsibility-inventory.md)。
-按用户最新要求，后续以大块完整可迁移职责为主线。A170/A172对第二、三整池实查
-确认原IO/Task主机制已共享，剩余政策与未处置协调须继续逐路径核；不机械搬大目录。
-A171按实际可迁移性先完成LSP整传输生命周期（Code−274/Core+391/系统+117）。以下是设计和实施顺序，不将待查目录
-宣称为已可直接迁移，也不把涉及行数当可删除量；已有共享机制不再开发或计益。
+2026-11-14，按用户要求优先完整可迁移职责。排序依据是实际尚未共享的操作体、现有
+owner能否完整承接、旧实现退出和全部适配成本；目录行数只作审计范围，不作可删除预算。
+当前计量见[逐文件清单](coding-responsibility-inventory.md)，完整P1–P4范围见
+[剩余责任账](coding-responsibility-remaining-audit.md)。
 
-| 顺序 | 完整工作件 | 当前涉及范围 | 正确接收者与现状 | 进入实施的条件 |
-| --- | --- | --- | --- | --- |
-| 1 | Worker Product收据authority：签发、currentness、选定payload/native读取及撤销结清 | receipt族1578、installed族299、policy317，共2194行；属于C07的21132行，含需保留的产品政策/DTO | 原Package Product及Resources native/source custody；原Worker activation继续拥有执行协调。现有candidate验证/receipt witness/kill-switch等共享直接复用，完整Product读取接口仍缺 | A169完整四源原型Code−543/Core+1123/系统+580，接口成本不抵实际复用，已拒；本目标仍开放，需不同完整接缝而非重启同形状 |
-| 2 | Legacy已安装状态的inventory/snapshot证据读取与重取一致性 | installation_inventory514、snapshot_member198，共712行；关联C09当前9265行 | 原Plugin Management及Resources epoch/snapshot owner；A168原Source重捕获、A157首次删除重放已完成 | 先区分通用读取/身份/结清与Code存量分类及授权政策；证明原snapshot/epoch与审阅后重验时点；不整搬分类表或删旧支持 |
-| 3 | 启动、Product装配、刷新及Resume/close的一条完整交接链 | C01 12774、C15 2042、C17 904，共15720行审计池 | 原Session construction/product composition/registration owner已接管多项主机制；剩余Code领域选择与跨阶段协调需拆清 | 按完整调用链提出原owner最小扩充；先核真实剩余操作体和全部端口成本，不能把bootstrap闭包池改成Context/厚回调。A168三seed泛化+60已拒，不重复尝试同形状 |
-| 4 | 托管/CLI跨入口的完整应用控制与生命周期 | C02 8385、C11 9478行为审计池 | 原AppHost/AppService/Host/Session；A156托管控制、A158review fence已共享 | 在前三项后处理剩余通用控制；严格Catalog、确认、CAS及输出合同保留；不为搬迁整lmux引入新框架 |
+| 顺序/状态 | 完整工作件 | 接收者及Coding保留边界 | 进入条件或实际处置 |
+| --- | --- | --- | --- |
+| 已完成 A171 | LSP进程传输完整生命周期 | 原Process拥有buffer/锁/Future/reader Task/request/cancel/close；Code保LSP初始化、诊断、服务器请求与优雅握手 | Code−274/Core+391/系统+117；126项通过；属于职责迁移，不是系统净精简 |
+| 已完成 A173 | 配置兼容发布完整authority | 原Config LegacyProjection owner承接cache/issuer、writer与projection注册、聚合、Condition/deque、逐请求receipt和异常结算；Code保存量迁移政策/领域capture、guard和薄profile | 整物Code317→159（−158）/Core+246/系统+88；原135及固定旧29项覆盖通过，保持5原平台skip；不复用异常合同不同的普通Config通知队列，属于职责迁移 |
+| 1 / 待设计 | Session关闭的完整失败保留链 | 原Session/Graph/resource owner；Code剩deferred LSP、worker lease、publication与证据的释放政策，涉及113/75行两条实际关闭程序 | 原cleanup group并非直接替代：首个子关闭失败须保留父能力，后续清理又有不同错误屏障；必须证明完整复合寿命与取消/重试，计算所有阶段端口，不拆十几行helper当主线 |
+| 2 / 待核 | 剩余托管/CLI跨入口控制与交接 | 原AppHost/AppService/Session；Code保产品身份、Resume/历史领域合同及严格源准入 | A156托管控制、A158review fence已共享；先定位尚未共享的完整程序，禁止用摘要API代替严格Catalog读取；无新的可删量承诺 |
+| 后续开放 / 当前形状拒绝 A169 | Worker Product完整收据authority | 原Package Product/Resources已有candidate验证、receipt witness、history、native/source custody；Code保政策和DTO | 四源完整原型Code−543/Core+1123/系统+580，14结构端口等接口税未带来相称复用，已拒；须不同完整接缝，不能用同形状小mixin重新进入 |
 
-A169已完成第一项完整原型成本评估并拒绝当前形状，第二、三项整池调查后，按实际可迁移性先完成A171的完整LSP传输；余项继续按下述完整边界核定。第一项
-保留开放，不重复优化同一大接口框架。所有工作件先输出完整设计、真实消费者、旧实现退出表及总成本，再作整条
-业务链的替换。至少覆盖两平台原读取差异、Linux payload四次/绑定两次witness、Windows
-原backend重验、opt-in读取时点、同GC内构造、撤销CAS/重试以及失败/取消/资源结清。
-不得回借Code完整IO程序或厚阶段协调；必要既有窄owner/准入端口及纯政策绑定须计入
-全部成本，实际资源寿命由接收owner掌握。三独立视角评审后才能把候选计为已接受；函数/目录搬迁不算退出证明。
+不再排作待整池搬迁的范围：A170核查的inventory/snapshot712行，其root/bundle/member/
+list/recheck/finally已由SnapshotEvidenceStore拥有；Code保存量分类、支持政策与新鲜度时点。
+A173核查的HostedCatalog943行，其canonical list/open/create/discovery/candidate custody已
+在A80–A85的AppHost/Transcript实现。两者仍有未处置边界，但不能重搬或重复计益。
+A172对C01/C15/C17共15720行的调查同样确认主构造、Task、Slot和历史读取寿命已共享；
+没有证据可把整组判为可删除或永久保留。
 
-第二、三项目前只有可核查的职责边界，尚没有已接受的完整替代API。排序不预支迁移收益，
-也不据无drop-in就停止设计。若第一项全成本仍不能形成有效替代，应记录具体拒绝原因并
-转下一完整工作件，不能连续用局部十几行去重替代主任务。
+每项先核真实消费者、旧操作体、失败/取消/重试/恢复与资源结清，再作完整替换。窄政策
+接口可以保留，但Code领域capture/guard回调不冒称纯函数，也不把已共享IO重计为本片收益。
+没有已证明可直接承接、且比关闭链更大的新程序时，继续设计下一完整接缝，不填虚构的大块
+承诺，不连续以局部十几行去重替代主任务。
 
-C04 Continuity仍保留KD003等明确待确认边界，不因“优先大块”提前采用；其余C05/C06、
-C08、C10、C12–C28继续在[剩余责任账](coding-responsibility-remaining-audit.md)中跟踪，
-没有从P1–P4范围移除。领域LSP/Arch/任务判据、内容和产品政策不能换目录后从Code归属
-扣除。暂未建立≤15K的不可压缩下界，也不把当前领域审计池当最终保留成本。
-
-后续每批同时报告Code、接收组件、兼容适配及系统源码净值；新增测试/探针另列。小修只
-用于解除主工作件的真实阻断，不再作为连续主线。完整目标仍是Code领域化及≤15000行，
-当前差96413行；本排序不是缩小Goal，也不是已完成迁移的清单。
+C04 Continuity的KD003、托管历史KD011等明确待确认边界保持原状态；其余C05/C06、C08、
+C10、C12–C28继续在责任账中，不因排序退出P1–P4。领域能力、内容与产品政策换目录后
+仍计Coding归属成本。未建立≤15K不可压缩下界；每批报告Coding、接收组件、兼容适配和
+系统源码净值，新增测试/探针另列。完整Goal仍以领域化及≤15000行为验收条件。

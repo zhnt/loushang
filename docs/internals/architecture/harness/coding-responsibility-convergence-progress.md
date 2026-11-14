@@ -1,5 +1,55 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A173 完整配置兼容发布authority归Config；按真实程序重排（2026-11-14）
+
+A173核实HostedCatalog943行：canonical list/open/create/discovery与candidate custody已
+在A80–A85的AppHost/Transcript，不能整搬重计或用摘要替严格读取。按真实可迁移性，
+本批接入完整Legacy compatibility authority：cache/global bind锁、issuer身份、writer与
+projection注册、跨workspace聚合、Condition/deque、逐请求receipt/等待/BaseException及
+失败后继续drain，统一归原Config agent LegacyProjection owner，仍同一个registry self。
+Code私有typed profile只给writer构造、layout读取、既有领域guard；保公开Writer/Error、
+迁移准入、领域capture/projection及原缺fence政策。回调不是全部纯函数，已共享的IO不重计。
+
+直接复用原Config SettingsManager fence/publisher与typed LegacyProjection；普通Config
+通知队列的origin drainer/Exception/BaseException合同不同，未代换或加入新queue mode。
+新私有模块只扩原owner，无第二状态/日志/DTO、0Protocol/2TypeVar。Code317→159（−158），
+Core新增246，系统+88，raw与统一Ruff同值；所有profile/hook/error/fallback适配已计。
+收益是完整权威与线程寿命归位，不宣称系统去重。原Writer/Error定义及cache常量/exports
+逐字不变，公开binder参数/返回AST同，5方法及完整binder逆hook/label后body同，原字段/
+default factory/顺序同；不保证继承方法的私global、frame或任意私反射位置不变。
+
+旧5文件初始134过/5平台skip/1原continuity prepare失败；同原源码使用既有私有tmp fixture
+focused1过，再建立整组135过/5skip的相同fixture基线14.85s，保留初失败不改Product。
+原实际程序另捕获29项并冻结：真实Condition/Event/Thread、多caller等待与同error对象、
+BaseException不丢tail、revision单侧退回/聚合、不rollback、writer身份、guard snapshot、
+cache冲突/占用与rollback；真实SettingsManager通知重入配受控领域capture。原source/
+递归编译函数守卫通过。旧JSON数组与运行tuple的载体差异曾使只读replay13失败，修输出
+JSON往返规范化后原期待字节不变，旧29过2.60s。晚启动的一次旧守卫在安装后拒绝29项，
+均未进入observe，单独保留，不能计旧或新行为失败/成功；不覆盖有效旧记录。
+
+actual联合163过/5skip/1旧完整errorcode字面量定位失败15.77s；相同原失败节点按Code
+prefix与Core suffix实际位置协调后1过。合计164独立通过节点，未假称重跑整组全绿。
+原另一个registry位置断言也仅跟随整物接收源；旧pass形态先短路，不读新Core，保持原
+10节点/91assert和route/scanner，未增加required文件或PR gate。默认probe发现不变。
+持久457行显式probe与1859B gzip另列；解压37743B逐字原da420a34932e…期待。原观察/
+分类/比较保，去capture/old路径；显式29项通过（日志0.39s/JUnit2.423s），不与前后29重复计数。同进程守卫
+pin两实际模块路径/SHA/递归编译函数及fixture/probe身份；冷启动模块集只多新registry，
+仅模块集合事实，不扩大为导入IO审计。Error.code额外断言只有旧静态及actual运行支持，
+不称旧29已含。真实journal/FS仍由原消费者回归覆盖，受控对照不是全平台/native证明。
+
+2055生产源全SHA核仅Code兼容模块改变、新增Core1，其余2053原源不变。Code434源
+111255，Harness363489（Python363140+原资源349），AppHost19218，历史系统659013，
+剔除GUI测试4271后654742；C01为22源12616行，距≤15K仍96255。新测试另计不混生产量。
+[优先队列](coding-responsibility-priority.md)已将A171/A173列完成，下一整块为两条关闭
+失败保留链，再核跨入口未共享协调；A169当前shape拒绝放后，A170/Hosted已共享池不再
+整搬。没有可删量承诺，不据这批建立领域下界，P1–P4及完整Goal仍active。
+
+证据在树外`coding-convergence-resumed-20261114/a173-hosted-catalog-compatibility`，含整物、
+全源码帧、旧观察/失败/来源、实际测试、成本与三独立设计/实际评审；本地架构方法仍为
+master 0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e，不宣称upstream同步。完整PR矩阵未跑。
+三独立设计/实际视角无剩余阻断；实施owner核完整帧、真实JUnit与保留边界，有界接受本批。
+实际两源mypy、4Python Ruff/format、9项文档、6文档相对链接与依赖freshness通过。
+
 ## A171 完整进程传输归Process；A170/A172整池实查（2026-11-14）
 
 按实际可迁移性推进完整工作件：A170调查inventory/snapshot712及邻接证据19源，确认原

@@ -1,7 +1,7 @@
 # Coding 全量剩余职责与保留成本复核
 
-本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168及A171源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
-111413行，距15K仍96413行。下面28组不是可删除预算或最终保留成本。
+本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171及A173源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
+111255行，距15K仍96255行。下面28组不是可删除预算或最终保留成本。
 A156托管服务完整控制已归原AppHost；Coding保产品身份/政策与错误薄适配。
 A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
@@ -118,12 +118,12 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
-数量按A171当前434源重计；A146/A72均为历史切点，前序减少不重复计入本次协调。
+数量按A173当前434源重计；A146/A72均为历史切点，前序减少不重复计入本次协调。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
 |---|---:|---|---|---|
-| C01 启动、Plugin/资源装配 | 22/12,774 | P2 | 原Construction/Session、Catalog/Graph已实际接入；A163公开SDK薄转发与私有原模型政策分离；Code剩跨阶段选择、审批、刷新与交接 | A168三seed聚合原型完整成本+60拒绝；继续拆领域选择与共用程序，不把bootstrap/回调池当删除预算 |
+| C01 启动、Plugin/资源装配 | 22/12,616 | P2 | 原Construction/Session、Catalog/Graph已实际接入；A163公开SDK薄转发与私有原模型政策分离；A173完整兼容cache/issuer/逐请求发布归Config；Code剩领域capture/guard、跨阶段选择、审批、刷新与交接 | A168三seed聚合原型完整成本+60拒绝；继续拆领域选择与共用程序，不把bootstrap/回调池当删除预算 |
 | C02 托管与受管接入 | 31/8,385 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用，A156完整控制体已退出Coding；A163 Hosted模型政策改绑私有入口；Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝 |
 | C03 Resume与SessionManager | 15/4,132 | P2/P3 | 原Transcript/Session lifecycle、live恢复已复用；Code保版本化输入/装配与授权政策 | 按new/resume/fork/reopen完整合同再拆；不重建提交器或自动重试 |
 | C04 Continuity | 2/2,895 | P3 | 原Continuity provider/runtime、A68 payload custody及A162完整暂存到lease交接已接入；Code保来源/限额/cwd和canonical restore端口 | KD003 bytes import未实施；非owned真实Path/FileCopy/引用合同仍在，不提前采用KD011 |
@@ -151,7 +151,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C26 配置/路径兼容导出 | 2/52 | P4 | 原Config owner已复用 | 保产品路径选择与支持中的导出，退出需合同证据 |
 | C27 版本检查 | 2/50 | P4 | 产品更新选择与原公共机制绑定 | 保必要产品选择，不为50行再建服务 |
 | C28 资源命名空间 | 5/5 | P4 | 支持中的Python布局标记 | 保真实加载/导出路径，空壳不是第二引擎 |
-| 合计 | **434/111,413** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
+| 合计 | **434/111,255** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
 
 ## A72保留合同与语法筛查（历史成本，非当前下界）
 
