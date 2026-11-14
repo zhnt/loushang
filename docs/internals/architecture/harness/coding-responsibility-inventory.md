@@ -201,7 +201,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [compaction/profiles.py](../../../../src/loushang/coding/compaction/profiles.py) | C19 | 266 | K | C19 压缩 profile/适配 | 5325b9284b25 | 266 | 5325b9284b25 |
 | [composition_provenance.py](../../../../src/loushang/coding/composition_provenance.py) | C01 | 214 | M | C01 启动、Plugin 与资源装配 | 30a8b59d8d49 | 214 | 30a8b59d8d49 |
 | [composition_sets.py](../../../../src/loushang/coding/composition_sets.py) | C01 | 236 | M | C01 启动、Plugin 与资源装配 | e77cb0ebf1e1 | 236 | e77cb0ebf1e1 |
-| [continuity.py](../../../../src/loushang/coding/continuity.py) | C04 | 1,555 | M | C04 Continuity | cb0943f7d549 | 1,359 | 0119e90b2357 |
+| [continuity.py](../../../../src/loushang/coding/continuity.py) | C04 | 1,555 | M | A162完整暂存/prepare/cleanup/lease交接归原Continuity；保来源/限额/cwd和canonical端口 | cb0943f7d549 | 1,298 | fb652a12ca57 |
 | [continuity_bootstrap.py](../../../../src/loushang/coding/continuity_bootstrap.py) | C04 | 1,622 | M | C04 Continuity | acbe4067566c | 1,597 | 42e150efd7e9 |
 | [control/__init__.py](../../../../src/loushang/coding/control/__init__.py) | C26 | 39 | R/K | C26 配置兼容导出与路径 | 6bbbc65acf54 | 39 | 6bbbc65acf54 |
 | [control/settings_store.py](../../../../src/loushang/coding/control/settings_store.py) | C26 | 13 | K | C26 配置兼容导出与路径 | ff84662c1150 | 13 | ff84662c1150 |
@@ -529,8 +529,8 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 
 ## 当前分组计量与剩余处置
 
-2026-11-14以`4de7d9251`主线及A156–A158及A160已接受实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
-当前Coding 111919行，完整≤15K目标差96919行；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
+2026-11-14以`4de7d9251`主线及A156–A158、A160及A162当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
+当前Coding 111858行，完整≤15K目标差96858行；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
 Code−93/Core+119/系统+26；当前两源及验证边界见执行记录。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
@@ -545,7 +545,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C01 | 22 | 12,709 |
 | C02 | 31 | 8,382 |
 | C03 | 15 | 4,132 |
-| C04 | 2 | 2,956 |
+| C04 | 2 | 2,895 |
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
 | C07 | 112 | 21,190 |
@@ -570,4 +570,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 434 | 111,919 |
+| 合计 | 434 | 111,858 |

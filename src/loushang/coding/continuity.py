@@ -190,43 +190,17 @@ class CodingContinuityActivationBridge:
             raise ValueError("Coding continuity activation source does not own target")
         if payload.byte_size > self._max_bytes:
             raise ValueError("Coding continuity activation exceeds Product limit")
-        staged = await _write_private_continuity_payload_atomic(
-            self._temporary_root,
-            payload,
-        )
-        try:
-            prepared = await self._runtime.prepare_restore_session_operation(
-                staged.path,
+        return await CallbackPreparedActivationLease._from_staged_payload(
+            target=target,
+            payload=payload,
+            staging=_CONTINUITY_PAYLOAD_STAGING,
+            root=self._temporary_root,
+            prepare=lambda path: self._runtime.prepare_restore_session_operation(
+                path,
                 fallback_cwd=self._fallback_cwd,
                 missing_cwd="fallback" if self._fallback_cwd is not None else "error",
-            )
-        except BaseException as operation_error:
-            try:
-                await _remove_private_continuity_payload_atomic(staged)
-            except BaseException as cleanup_error:
-                operation_error.add_note(
-                    "Coding continuity temporary cleanup also failed: "
-                    f"{cleanup_error!r}"
-                )
-            raise
-        try:
-            await _remove_private_continuity_payload_atomic(staged)
-        except BaseException as cleanup_error:
-            try:
-                abort_task = asyncio.create_task(prepared.abort())
-                await await_owned_task(abort_task)
-            except BaseException as abort_error:
-                cleanup_error.add_note(
-                    "Coding continuity prepared-operation abort also failed: "
-                    f"{abort_error!r}"
-                )
-            raise
-        settlement = _CodingPreparedSessionSettlement(prepared)
-        return CallbackPreparedActivationLease(
-            target=target,
-            disposition="in_place",
-            consume=settlement.consume,
-            abort=settlement.abort,
+            ),
+            settlement_error_label="Coding prepared Session",
         )
 
 
@@ -1093,41 +1067,6 @@ def _canonical_continuity_cwd(cwd: str | Path | None) -> str | None:
     return (
         str(Path(cwd).expanduser().resolve(strict=False)) if cwd is not None else None
     )
-
-
-@dataclass(slots=True)
-class _CodingPreparedSessionSettlement:
-    prepared: CodingPreparedSessionOperation
-    _abort_complete: bool = False
-
-    async def consume(self) -> object:
-        try:
-            return await self.prepared.consume()
-        except BaseException as operation_error:
-            try:
-                await self.abort()
-            except BaseException as abort_error:
-                operation_error.add_note(
-                    "Coding prepared Session abort also failed: "
-                    f"{type(abort_error).__name__}"
-                )
-            raise
-
-    async def abort(self) -> None:
-        if self._abort_complete:
-            return
-        abort_task = asyncio.create_task(self.prepared.abort())
-        try:
-            await await_owned_task(abort_task)
-        except BaseException:
-            if _task_completed_successfully(abort_task):
-                self._abort_complete = True
-            raise
-        self._abort_complete = True
-
-
-def _task_completed_successfully(task: asyncio.Task[object]) -> bool:
-    return task.done() and not task.cancelled() and task.exception() is None
 
 
 _CONTINUITY_PAYLOAD_STAGING = _ContinuityPayloadStaging(label="Coding continuity")

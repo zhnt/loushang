@@ -1,5 +1,54 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A162 Continuity完整暂存到激活lease交接（2026-11-14）
+
+接续[A68原owner](key-designs/continuity-payload-custody-convergence.md#a162-staged-payload-to-prepared-activation-handoff)：
+原CallbackPreparedActivationLease增加私有factory，接管write→canonical prepare→
+remove→settlement/lease及失败consume的abort程序；原lease FSM及staging实现不变。
+Code保五个准入guard、root/cwd/限额政策和晚调用的原restore端口。此端口会执行
+原prepare IO，不称纯函数；不回借扫描、清理、交付或状态机。新增两方法结构port，
+无新manager/registry。实际单消费者，不把A68/A92既有共享再次计收益。
+
+两实际源逐字等三视角设计候选。Code1359→1298（−61），Core168→258（+90），
+系统+29；含所有port/import/label/适配。是完整资源交接职责迁移，不是去重或
+系统净精简。2053源帧仅两源变化，其余2051源SHA不变；434份Code当前列逐份重核。
+当前Code111858、Harness362596（Python362247）、AppHost19218，历史系统658723；
+剔除GUI测试4271后654452，距15K仍96858。完整P1–P4及C04仍未完成。
+
+原真实bridge先跑17过/1原skip。另在原源码改动前冻结17种复合失败的有序trace、
+完整异常cause/context/notes和abort次数；source SHA守卫及阶段可达断言通过。
+第一次观察器误用不存在的payload.sha256，capture虽17绿却只记录fake write属性错；
+该记录明确拒绝并保留，修正digest及阶段守卫后才冻结采用，不计初轮为有效覆盖。
+新17的取消是受控端口抛CancelledError，不冒称全部为真实Task.cancel或native IO。
+
+实际联合126过/1原skip：17原bridge、43原FD custody、41原lease运行探针、4原
+activation、4原import DTO、17新复合失败。四个实际函数代码对象、module路径及SHA
+守卫通过。持久化显式probe移除capture分支、冻结JSON逐字保持后17过，是相同覆盖
+复验，不累加独立数量。Code atomic别名保留，实际bridge故障hook指向原staging方法。
+
+abort-cancel-retry原观察为底层abort一次、两次join均取消；该旧债务未修复。
+Task factory拒绝、lease构造失败等旧清理限制也保留。KD003 bytes仍draft，未改变
+真实Path、FileCopy、fingerprint、附件及非owned引用/rollback合同。Core冷导入
+325→327，只增加payload staging及journal IO-loop模块；Code入口模块集合658不变。
+模块名集合不是逐模块副作用、origin或性能证明，不称Core加载成本零增长。
+
+Ruff及原规则的scoped mypy两源通过；首次未加follow-imports=silent的广域mypy
+报告231错误/5份未改源；独立重构前`ed8ce6f3b`工作树同命令也为231/5。
+未逐条宣称两次类型诊断完全等价，不称所有类型检查全绿。
+
+额外九文件组合187过/1失败（242.24s）：含Continuity39、bootstrap30、Hub12、
+Plugin63、SDK13及架构30项通过。唯一失败是SDK公开签名多出_use_default_model；
+独立重构前工作树相同节点同样失败，追加实际bootstrap路径/SHA守卫后失败文本仍
+逐字同候选组合。bootstrap源码和签名两进程一致；该基线欠账没有修复，完整SDK
+验收仍未完成，不修改原断言或称整个组合通过。验证工作树干净、无独有提交后正常
+remove并branch -d，旧长期lane未动。9项文档、Ruff格式及依赖事实freshness通过；
+本片未运行整个Coding/Harness PR矩阵，不冒称完整CI完成。
+
+三份实际review对已完成范围有界接受；实施owner `/root`核源码、固定期待、JUnit、
+来源守卫及上述基线对照后接受本片职责迁移，保留SDK签名与类型欠账。
+树外证据为`coding-convergence-resumed-20261114/a162-continuity-activation-handoff`，
+含原件、拒绝捕获、固定观察、两实际源frame、source guard、JUnit与三设计/实际报告。
+
 ## A161 旧工作树交付对账（2026-11-14）
 
 对旧 `harness/coding-responsibility-convergence` 工作树只读核对，以其
