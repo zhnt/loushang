@@ -1,5 +1,62 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A180 完整前台客户端控制及Runner恢复归AppHost（2026-11-14）
+
+按已提交的整物顺序完成G17客户端启动、Mux单次读取/必要创建、UI交接、保留关闭任务、
+显式重试及外层Runner/SIGINT/物理债务控制。实际接收者为既有AppHost optional integrations，
+复用原HostedForegroundClient进程/协议owner和原terminal runner；没有再建进程管理器，
+Mux仍只借client。Code保实际argv/全环境、原stat单次准入、产品scope/theme、ProcessHost
+构造政策、公开名义类及薄run/close/execute。两个UI resolver只在原时点导入并返回原
+组件/纯Shell构造，不回借Code的启动、关闭或恢复程序。
+
+唯一prefix状态归Core；Code只持有control，不复制Task/Lock/关闭标记。原两个sleep(0)、
+30秒原始clock和loop deadline转换、close-before-publication屏障、普通close的同Task/
+同deadline/同异常、仅显式retry续预算及public close原两处晚lookup保留。新增Core模块
+在首clock/preflight之后、Host构造之前导入；原constructor Shell导入仍在owner之后。
+初稿的擦型Shell/cast/终端wrapper、正规化误删Shell导入及Core晚导入窗口均在源码复核
+中修正；16行无已证公开ABI的private生产代理也退出，真实测试挂点精准跟到control。
+
+完整生产计量Code377→261（−116）/AppHost新275/系统+159，Harness0；统一格式为
+Code428→290（−138）/Core275/系统+137。所有3协议、2个Shell variance变量、factory
+别名、两resolver、原始clock预检与公开门面均计入。首未展开稿系统+98、正规早稿+153
+及含private代理稿+175均非最终收益。没有第二套运行算法退出，本片是完整职责迁移，
+不是系统净精简；Code专属内容未换目录逃避归属计量。
+
+原Code5个领域定义逐字/AST同，5公开签名及原类doc保留。Root另核21项：Core原关闭、
+恢复和execute整body同；prepare/run仅两个UI绑定及public close接缝归一化后整AST同。
+原19个测试/helper在3个私字段真实owner迁位后整AST同，参数、嵌套体及断言不变。
+G17仅容许旧/新精确import组合，450/550预算、stdlib顶层与禁止方向不变；A03只容许
+该实际optional consumer，无新required文件、断言覆盖、CI route、平台或阻断条件。
+
+改后消费者在旧生产源码上96过44.94s。6个补充旧观察capture及去capture后fresh重放
+各6过（0.22/0.25s），不是12个不同场景。使用真实Code API、真实异步Task和受控
+Host/UI叶；假identity/绝对模型路径及一次startup哨兵不冒真实准入/重用/平台证明。
+观察原导入调用与受控clock，不称全部cold加载耗时。原11708B JSON SHA
+`0f46764e36f75926aee6594b8d29956bec6c76601cbc6c7aeec21adbb211d413`
+先冻再装；显式portable载体350测试行无capture/环境开关/工作区绝对路径，gzip999B
+逐字封装原期待。消费者另11测试行，总测试源码+361，独立于生产增量；未进自动gate。
+
+最终actual原96+旧观察6共102过65.96s，另原A0/A02/G12/G14/G15/Wave-A及focused
+C50架构39过31.79s；141个不同用例、0fail/error/skip。原真实SIGINT、child物理债务、
+取消后晚Mux响应和terminal结清测试直接复用。实际两源mypy、7源Ruff通过；外部路径
+首Ruff将未安装Core误分third-party，两I001仅要虚假空行，实际包overlay及安装后原
+配置均通过，不为外部分类改错导入顺序。旧定义保持逐字，不冒全文件格式绿。
+
+两actual命令都启用五模块path/SHA及递归19个code字段的90声明callable守卫。两个
+并行进程写同JSON回执，保留39nodes/78checks只代表最后架构进程，不能充作141项
+合计回执；各JUnit独立要求hook通过。portable6另用独立六源/fixture回执6过2.11s，
+12checks核94声明callable，不计新增6覆盖。新增定义格式正规，Code五原领域定义保持
+旧文本；三独立实际视角确认本片有界收敛，不据此声称native、wheel或全PR通过。
+
+证据在树外`coding-convergence-resumed-20261114/a180-foreground-client-control`，含
+原源/旧JSON、全阶段两源、完整成本、旧/新JUnit、消费者逆AST、两次import修正及三报告。
+当前帧2058源659485；Code434源110763、Harness363954、AppHost19717，距15K仍95763。
+独立GUI测试目录共4524行（gui/tests4271另加gui/web/tests253），排除后654961；
+前帧同口径654802，系统仍+159。此前只扣4271的口径少扣253，纠正不计删除收益，
+原历史报告保留。C11为26源9362行，整CLI、KD003/KD011及完整P1–P4均仍开放。
+下一完整接缝为C13 Supervisor实例寿命，不重迁A171已共享传输，不把384方法行当可删量。
+
+
 ## A179 完整Hosted准备/失败清理归AppHost，共享两attempt控制（2026-11-14）
 
 完成原176行prefix owner及26行construction cleanup的整物替代。Code只留exact请求

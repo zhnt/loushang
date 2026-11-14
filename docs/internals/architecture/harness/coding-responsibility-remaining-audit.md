@@ -1,7 +1,7 @@
 # Coding 全量剩余职责与保留成本复核
 
-本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176及A179源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
-110879行，距15K仍95879行。下面28组不是可删除预算或最终保留成本。
+本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179及A180源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
+110763行，距15K仍95763行。下面28组不是可删除预算或最终保留成本。
 A156托管服务完整控制已归原AppHost；Coding保产品身份/政策与错误薄适配。
 A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
@@ -11,6 +11,8 @@ A178已按大块优先完成Worker不同接缝的13源整物原型；保公开�
 系统+432（统一格式+434），类型与源码静态通过但总成本不足以抵相称复用，保外部、未采用，
 实际生产收益0。A179已完成完整Hosted Continuity准备/失败清理：Code−128/AppHost+224/
 系统+96，两个实际attempt共用固定生命周期，Code保薄profile；不将803方法行当可删承诺。
+A180完整前台客户端控制及Runner恢复已归AppHost：Code−116/AppHost+275/系统+159，
+公开Code门面保argv、准入及两UI绑定；C11为26源9362行，非整CLI完成。
 完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07整policy/receipt仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 A162完整暂存到prepared activation lease交接归原Continuity，Code−61/Core+90/系统+29，
 单消费者职责迁移，不计去重；KD003 bytes与C04整体仍未完成。
@@ -122,7 +124,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
-数量按A179当前434源重计；A146/A72均为历史切点，前序减少不重复计入本次协调。
+数量按A180当前434源重计；A146/A72均为历史切点，前序减少不重复计入本次协调。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
@@ -137,7 +139,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C08 插件私有数据 | 31/6,691 | P4 | 原备份/删除/恢复/过期及A71 lineage已由原Plugin Management/Resources承接 | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
 | C09 兼容迁移与快照证据 | 34/9,265 | P4 | 原capture/epoch/receipt等机制已共享，A157首次删除重放三入口合一，A168原Source重捕获/handle/stage custody及双Wheel核归Resources；存量分类、准入与恢复政策仍在 | 逐受支持状态和恢复入口给退出证明；legacy命名与静态无调用都不足以删支持 |
 | C10 包分发及Product管理 | 12/5,324 | P2/P4 | Package Product等已复用；A155修复执行/释放归原ProductRuntime，Code保该入口准入/DTO/parent关闭，其它兼容/fenced装配仍混合 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |
-| C11 CLI | 26/9,478 | P4 | 大量命令调用原owner，A158四条review准备/重开程序已合一；语法、确认、选择与呈现仍混合 | 同一业务接同一owner；lmux close须先证明输出/确认/CAS/期限屏障及全适配成本，未接受新形状 |
+| C11 CLI | 26/9,362 | P4 | 大量命令调用原owner，A158四条review准备/重开合一，A180完整foreground控制/恢复归AppHost；语法、准入、确认、选择与呈现仍混合 | 同一业务接同一owner；lmux close须先证明输出/确认/CAS/期限屏障及全适配成本，未接受新形状 |
 | C12 Goal/Work/证据适配 | 25/7,017 | P3/P4 | 原Work/Goal/Method、A117来源冷读及A150验证Bash完整执行已共享；Code保仓库/测试/评审策略与scope适配 | 按剩余领域判据/入口核保留或退出成本，不重开已共享cold reader/Task闭包；真实calculator/repository路线保持 |
 | C13 LSP | 21/5,379 | P2/P4 | 语义查询/位置/结果及协议；进程端口已用Workspace/Hosting，A154退出waiter及A171完整stream/Future/Task/close归Process | LSP初始化/配置/诊断/语义/重试/优雅握手仍Code；不把已移完整transport重计，也不把整目录当保留下界 |
 | C14 Arch | 13/3,608 | P2/P4 | Python AST/import分类/图查询及cache、读取适配 | 保编码分析；A159完整缓存泛化因系统+85/唯一消费者拒绝，缓存/IO范围仍open，不把领域算法换目录 |
@@ -155,7 +157,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C26 配置/路径兼容导出 | 2/52 | P4 | 原Config owner已复用 | 保产品路径选择与支持中的导出，退出需合同证据 |
 | C27 版本检查 | 2/50 | P4 | 产品更新选择与原公共机制绑定 | 保必要产品选择，不为50行再建服务 |
 | C28 资源命名空间 | 5/5 | P4 | 支持中的Python布局标记 | 保真实加载/导出路径，空壳不是第二引擎 |
-| 合计 | **434/110,879** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
+| 合计 | **434/110,763** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
 
 ## A72保留合同与语法筛查（历史成本，非当前下界）
 

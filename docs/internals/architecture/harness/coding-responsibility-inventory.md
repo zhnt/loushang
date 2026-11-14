@@ -177,7 +177,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [cli/args.py](../../../../src/loushang/coding/cli/args.py) | C11 | 310 | M | C11 CLI | 9eab2abc4a86 | 310 | 9eab2abc4a86 |
 | [cli/composition_choice.py](../../../../src/loushang/coding/cli/composition_choice.py) | C11 | 23 | M | C11 CLI | 65b964f0c258 | 23 | 65b964f0c258 |
 | [cli/hosted.py](../../../../src/loushang/coding/cli/hosted.py) | C11 | 290 | M | C11 CLI | a12baab90a66 | 288 | 1e52959ea9b6 |
-| [cli/hosted_client.py](../../../../src/loushang/coding/cli/hosted_client.py) | C11 | 377 | M | C11 CLI | ffa77827a460 | 377 | ffa77827a460 |
+| [cli/hosted_client.py](../../../../src/loushang/coding/cli/hosted_client.py) | C11 | 377 | M | C11 CLI | ffa77827a460 | 261 | 4635675c3223 |
 | [cli/lmux.py](../../../../src/loushang/coding/cli/lmux.py) | C11 | 116 | M | C11 CLI | cfdba2301a17 | 137 | 9249a2f70008 |
 | [cli/lmux_command.py](../../../../src/loushang/coding/cli/lmux_command.py) | C11 | 811 | M | C11 CLI | 90fe9fa9ddde | 829 | 1d063717836b |
 | [cli/lmux_stop_all.py](../../../../src/loushang/coding/cli/lmux_stop_all.py) | C11 | 125 | M | C11 CLI | 6a8803894cd7 | 34 | 35c0b12cb94d |
@@ -529,8 +529,8 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 
 ## 当前分组计量与剩余处置
 
-2026-11-14以`4de7d9251`主线及A156–A158、A160、A162、A163、A165、A167、A168、A171、A173、A174、A176及A179当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
-当前Coding 110879行，完整≤15K目标差95879行；A179完整Hosted prefix及失败清理归AppHost，Code−128/AppHost+224/生产系统+96，非系统净精简；A176完整Session profile退休归原owner，Code−95/Core+164/生产系统+69；A174根关闭及Continuity绑定寿命归原owner，Code−153（含1行导入布局）/Core+301/生产系统+148，非净精简；A173完整兼容发布authority归Config，Code−158/Core+246/系统+88，属于职责迁移非净精简；A171完整进程JSON-RPC传输归Process，Code−274/Core+391/系统+117；A169完整authority原型+580拒绝，A170/A172只读调查收益0；A168完整原Source重捕获custody归Resources并共享两Wheel核，Code−181/Core+234/系统+53，非系统精简；A167读取族真实重复归一，Code−43/Core+22/系统−21；A166通用mixin原型拒绝、收益0；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
+2026-11-14以`4de7d9251`主线及A156–A158、A160、A162、A163、A165、A167、A168、A171、A173、A174、A176、A179及A180当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
+当前Coding 110763行，完整≤15K目标差95763行；A180完整前台客户端启动/交接/关闭及Runner恢复归AppHost，Code−116/AppHost+275/生产系统+159，非系统净精简；A179完整Hosted prefix及失败清理归AppHost，Code−128/AppHost+224/生产系统+96，非系统净精简；A176完整Session profile退休归原owner，Code−95/Core+164/生产系统+69；A174根关闭及Continuity绑定寿命归原owner，Code−153（含1行导入布局）/Core+301/生产系统+148，非净精简；A173完整兼容发布authority归Config，Code−158/Core+246/系统+88，属于职责迁移非净精简；A171完整进程JSON-RPC传输归Process，Code−274/Core+391/系统+117；A169完整authority原型+580拒绝，A170/A172只读调查收益0；A168完整原Source重捕获custody归Resources并共享两Wheel核，Code−181/Core+234/系统+53，非系统精简；A167读取族真实重复归一，Code−43/Core+22/系统−21；A166通用mixin原型拒绝、收益0；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
 Code−93/Core+119/系统+26；当前两源及验证边界见执行记录。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
@@ -552,7 +552,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C08 | 31 | 6,691 |
 | C09 | 34 | 9,265 |
 | C10 | 12 | 5,324 |
-| C11 | 26 | 9,478 |
+| C11 | 26 | 9,362 |
 | C12 | 25 | 7,017 |
 | C13 | 21 | 5,379 |
 | C14 | 13 | 3,608 |
@@ -570,4 +570,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 434 | 110,879 |
+| 合计 | 434 | 110,763 |
