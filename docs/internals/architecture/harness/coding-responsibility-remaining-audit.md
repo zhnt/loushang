@@ -1,12 +1,12 @@
 # Coding 全量剩余职责与保留成本复核
 
-本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167及A168源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
-111687行，距15K仍96687行。下面28组不是可删除预算或最终保留成本。
+本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168及A171源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
+111413行，距15K仍96413行。下面28组不是可删除预算或最终保留成本。
 A156托管服务完整控制已归原AppHost；Coding保产品身份/政策与错误薄适配。
 A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
 具体接受/验证边界见[执行记录](coding-responsibility-convergence-progress.md)。
-后续实施顺序见[大块职责优先队列](coding-responsibility-priority.md)，A169完整authority原型系统+580拒绝，现转inventory/snapshot完整证据链；不以零碎去重代替主线。
+后续实施顺序见[大块职责优先队列](coding-responsibility-priority.md)，A169完整authority原型系统+580拒绝，A170/A172整池已调查，A171按可迁移性完成完整LSP传输；余项继续重选完整工作件，不以零碎去重代替主线。
 完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07整policy/receipt仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 A162完整暂存到prepared activation lease交接归原Continuity，Code−61/Core+90/系统+29，
 单消费者职责迁移，不计去重；KD003 bytes与C04整体仍未完成。
@@ -24,6 +24,8 @@ Code−181/Core+234/系统+53，138项通过。原namespace/安全预算为兼�
 不是把Coding选择政策换目录，亦不声称系统精简。另三seed泛化原型Code+24/Core+36/系统+60拒绝，收益0。
 A169已试算整个两平台Worker authority及邻接Windows opt-in，Code−543/Core+1123/系统+580；
 完整职责位置改善不足以抵14结构端口等接口成本，四源静态通过但拒绝接入，生产收益0，C07开放。
+A170 inventory/snapshot及A172启动交接整池调查确认原IO/Task主机制已有Core，支持政策与未处置协调仍在，不按712/15720行整搬。
+按实际可迁移性，A171完整LSP进程传输状态/生命周期归原Process，Code−274/Core+391/系统+117，126项通过，领域能力留Code。
 
 A161已将旧lane的535份脏文件逐项对账：361份与主线同路径一致、117份为
 主线已包含的同路径历史版本、48份与现行probe完全一致、9份为已更新probe。
@@ -80,7 +82,7 @@ A161已将旧lane的535份脏文件逐项对账：361份与主线同路径一致
 
 - Authority: descriptive audit under COD-RESP-GOAL-002；不替代已接受Target。
 - Design status: current-gap review；A72历史候选在当时未接受，后续A73/A74/A75等接受见各片记录，不重新列为待开发。
-- Implementation status: A155已合入；A156/A157/A158/A160/A161/A162/A163均已本地提交；A164实查无源码收益、A165/A167/A168实际有界接受，A159/A166/A169拒绝；完整Goal active。
+- Implementation status: A155已合入；A156/A157/A158/A160/A161/A162/A163均已本地提交；A164实查无源码收益、A165/A167/A168/A171实际有界接受，A159/A166/A169拒绝；完整Goal active。
 - Owner: Coding及各原组件owner；三独立视角复核，实施owner综合事实。
 - A117：完整Goal/Work来源冷读与原owner关闭归原GoalStore集成；C12整体仍未关闭，见[A117](key-designs/goal-work-source-custody-convergence.md)。
 - A116：完整规划waiter/cache寿命归原Session；C17整体仍未关闭，见[A116](key-designs/session-planning-slot-custody-convergence.md)。
@@ -116,7 +118,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
-数量按A168当前434源重计；A146/A72均为历史切点，前序减少不重复计入本次协调。
+数量按A171当前434源重计；A146/A72均为历史切点，前序减少不重复计入本次协调。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
@@ -133,7 +135,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C10 包分发及Product管理 | 12/5,324 | P2/P4 | Package Product等已复用；A155修复执行/释放归原ProductRuntime，Code保该入口准入/DTO/parent关闭，其它兼容/fenced装配仍混合 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |
 | C11 CLI | 26/9,478 | P4 | 大量命令调用原owner，A158四条review准备/重开程序已合一；语法、确认、选择与呈现仍混合 | 同一业务接同一owner；lmux close须先证明输出/确认/CAS/期限屏障及全适配成本，未接受新形状 |
 | C12 Goal/Work/证据适配 | 25/7,017 | P3/P4 | 原Work/Goal/Method、A117来源冷读及A150验证Bash完整执行已共享；Code保仓库/测试/评审策略与scope适配 | 按剩余领域判据/入口核保留或退出成本，不重开已共享cold reader/Task闭包；真实calculator/repository路线保持 |
-| C13 LSP | 21/5,653 | P2/P4 | 语义查询/位置/结果及协议；进程端口已用Workspace/Hosting，A154退出waiter寿命归公开Process | 领域能力继续计Code；通用任务/IO仍可复用，不能用整目录量当必要下界 |
+| C13 LSP | 21/5,379 | P2/P4 | 语义查询/位置/结果及协议；进程端口已用Workspace/Hosting，A154退出waiter及A171完整stream/Future/Task/close归Process | LSP初始化/配置/诊断/语义/重试/优雅握手仍Code；不把已移完整transport重计，也不把整目录当保留下界 |
 | C14 Arch | 13/3,608 | P2/P4 | Python AST/import分类/图查询及cache、读取适配 | 保编码分析；A159完整缓存泛化因系统+85/唯一消费者拒绝，缓存/IO范围仍open，不把领域算法换目录 |
 | C15 AgentSession产品绑定 | 2/2,042 | P2 | 原AgentProductSession/Graph/publication/retirement已实际复用 | 构造、选择见证/receipt及产品hooks仍混合；公开入口可薄化，不能声称整类是第二引擎 |
 | C16 Native UI产品绑定 | 14/2,189 | P4 | 原HarnessTUI conversation/controller/surface为实际机制 | 保产品文案/主题/领域动作；以公共观察替代私有字段耦合，不复制UI状态权威 |
@@ -149,7 +151,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C26 配置/路径兼容导出 | 2/52 | P4 | 原Config owner已复用 | 保产品路径选择与支持中的导出，退出需合同证据 |
 | C27 版本检查 | 2/50 | P4 | 产品更新选择与原公共机制绑定 | 保必要产品选择，不为50行再建服务 |
 | C28 资源命名空间 | 5/5 | P4 | 支持中的Python布局标记 | 保真实加载/导出路径，空壳不是第二引擎 |
-| 合计 | **434/111,687** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
+| 合计 | **434/111,413** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
 
 ## A72保留合同与语法筛查（历史成本，非当前下界）
 

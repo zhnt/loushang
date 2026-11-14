@@ -2,7 +2,7 @@
 
 ## Status
 
-Status: H1 and H2 accepted for `lane/harness`.
+Status: H1 and H2 accepted for `lane/harness`; A171 neutral process-client transport design and bounded implementation accepted.
 
 This document defines the Product-neutral substrate for session-owned,
 long-lived child processes. It does not make LSP a Harness concern.
@@ -18,7 +18,7 @@ Harness owns the mechanics required to keep a bounded child process alive:
 - process-group termination with kill fallback;
 - natural-exit, failed-start, cancellation, and Session-fallback cleanup.
 
-Products own executable admission, selection, protocol behavior, document
+Products own executable admission, selection, protocol-specific behavior, document
 state, semantic tools, restart policy, and user-facing diagnostics. Coding LSP
 therefore remains under `loushang.coding`; it consumes this substrate through a
 narrow launcher binding.
@@ -39,14 +39,32 @@ bypass.
 - `ProcessLaunchRequest`;
 - `ProcessHandle`;
 - `ProcessExit`;
-- `ProcessStderrTail`.
+- `ProcessStderrTail`;
+- `wait_for_process_exit` (the previously accepted bounded exit-wait helper).
 
 `ProcessHost`, the local transport, the spawner seam, reservations, process
 identifiers, and OS signaling remain Harness internals. There is no public
-`ProcessBackend`, transport API, process event family, Host snapshot, daemon,
+`ProcessBackend`, Host/spawner transport API, process event family, Host snapshot, daemon,
 or RPC service. H1 publishes `AuthorizedProcessLauncher` only as the consumer
 port. H2 provides its execution-scope binding without publishing the concrete
 launcher or Host.
+
+A171 adds the separate public module
+`loushang.harness.workspace.process.json_rpc` with
+`ContentLengthJsonRpcProcessTransport`. It is a bounded client-transport base
+for protocol subclasses over an **already obtained** `ProcessHandle`; it does
+not start or authorize a process. The process package root exports are not
+expanded for this type. It owns one stream buffer, writer/lifecycle locks,
+request-ID/Future map, reader Task, request metrics and transport close sequence.
+It is not a standalone client with public request/start APIs or an RPC service.
+
+Protocol subclasses supply incoming-method handling, graceful protocol
+shutdown and error policy. Coding still owns LSP initialize capabilities,
+configuration, ContentModified retry, diagnostics, server-request responses and
+the shutdown/exit handshake. In particular, `$/cancelRequest` is explicitly
+bound by Coding as its peer cancellation convention; it is not asserted to be
+a JSON-RPC 2.0 requirement. Content-Length parsing and request/stream lifetime
+are neutral mechanics; no LSP document or tool state moves into Harness.
 
 The launch request contains only the complete executable argv, an absolute
 cwd, and a frozen effective environment. It cannot carry caller-selected
@@ -129,10 +147,16 @@ H2 provides:
 - audit correlation and a private complete-launch fingerprint;
 - Coding adapter cleanup that preserves the primary Product disposal error.
 
-Deferred to Coding H3:
+A171 refines the original H1/H2 deferral: generic Content-Length framing,
+response correlation and process-client Task/Future lifetime move to the
+neutral transport above. The existing ProcessHost, authorization, containment
+and Session fallback contracts are unchanged; the client owns only its
+already-issued handle and its local stream/request state.
+
+Deferred to Coding H3 (and retained in Coding where already implemented):
 
 - binding the production launcher into the H3 LSP capability;
-- LSP framing and protocol handlers;
+- LSP message semantics and protocol handlers;
 - server definitions, admission, selection, and instance supervision;
 - document synchronization and semantic tools;
 - any restart, idle eviction, diagnostics inbox, or cross-Session pooling.

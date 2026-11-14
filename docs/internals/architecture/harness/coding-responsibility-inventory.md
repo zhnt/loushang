@@ -237,7 +237,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [lsp/_provider_api.py](../../../../src/loushang/coding/lsp/_provider_api.py) | C13 | 528 | K/M | C13 LSP Capability | 3c4dd6977507 | 502 | 80ec8935588f |
 | [lsp/binding.py](../../../../src/loushang/coding/lsp/binding.py) | C13 | 157 | K/M | C13 LSP Capability | b55f56930d77 | 157 | b55f56930d77 |
 | [lsp/catalog.py](../../../../src/loushang/coding/lsp/catalog.py) | C13 | 30 | K/M | C13 LSP Capability | 512fe3eee1e4 | 30 | 512fe3eee1e4 |
-| [lsp/client.py](../../../../src/loushang/coding/lsp/client.py) | C13 | 525 | K/M | LSP协议/状态留Code；单次process waiter寿命归公开Process接口 | b15726b74e15 | 510 | 4eaeb3937436 |
+| [lsp/client.py](../../../../src/loushang/coding/lsp/client.py) | C13 | 525 | K/M | A171完整stream/Future/Task/close归原Process组件，Code保LSP协议政策 | b15726b74e15 | 236 | 6d9cbc583e0b |
 | [lsp/commands.py](../../../../src/loushang/coding/lsp/commands.py) | C13 | 161 | K/M | C13 LSP Capability | 065ec24aa53a | 161 | 065ec24aa53a |
 | [lsp/definition_codec.py](../../../../src/loushang/coding/lsp/definition_codec.py) | C13 | 181 | K/M | C13 LSP Capability | 3d0bd53bb359 | 181 | 3d0bd53bb359 |
 | [lsp/diagnostics.py](../../../../src/loushang/coding/lsp/diagnostics.py) | C13 | 456 | K/M | C13 LSP Capability | 4fd63dad6f82 | 456 | 4fd63dad6f82 |
@@ -529,8 +529,8 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 
 ## 当前分组计量与剩余处置
 
-2026-11-14以`4de7d9251`主线及A156–A158、A160、A162、A163、A165、A167及A168当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
-当前Coding 111687行，完整≤15K目标差96687行；A168完整原Source重捕获custody归Resources并共享两Wheel核，Code−181/Core+234/系统+53，非系统精简；A167读取族真实重复归一，Code−43/Core+22/系统−21；A166通用mixin原型拒绝、收益0；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
+2026-11-14以`4de7d9251`主线及A156–A158、A160、A162、A163、A165、A167、A168及A171当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
+当前Coding 111413行，完整≤15K目标差96413行；A171完整进程JSON-RPC传输归Process，Code−274/Core+391/系统+117；A169完整authority原型+580拒绝，A170/A172只读调查收益0；A168完整原Source重捕获custody归Resources并共享两Wheel核，Code−181/Core+234/系统+53，非系统精简；A167读取族真实重复归一，Code−43/Core+22/系统−21；A166通用mixin原型拒绝、收益0；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
 Code−93/Core+119/系统+26；当前两源及验证边界见执行记录。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
@@ -554,7 +554,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C10 | 12 | 5,324 |
 | C11 | 26 | 9,478 |
 | C12 | 25 | 7,017 |
-| C13 | 21 | 5,653 |
+| C13 | 21 | 5,379 |
 | C14 | 13 | 3,608 |
 | C15 | 2 | 2,042 |
 | C16 | 14 | 2,189 |
@@ -570,4 +570,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 434 | 111,687 |
+| 合计 | 434 | 111,413 |

@@ -1,5 +1,55 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A171 完整进程传输归Process；A170/A172整池实查（2026-11-14）
+
+按实际可迁移性推进完整工作件：A170调查inventory/snapshot712及邻接证据19源，确认原
+SnapshotEvidenceStore已own root/bundle/member/list/recheck/finally；Code剩存量支持政策、
+错误先序及薄fence绑定，无新FD envelope。A172逐查C01/C15/C17的27源15720行，与
+A168源同；主构造/Task/Slot机制已共享，两段113/75行关闭协调与兼容发布队列仍明确
+open，现有关闭组/队列不等价。两调查不造新框架、不把712/15720整组判永久保留，收益0。
+
+真正可迁移的A171整块为原LspClient的stream buffer、唯一write/lifecycle锁、pending
+Future与ID、reader Task、request metrics、framing、response correlation、timeout/cancel、
+abort/shutdown/reader与handle结清。归原`harness.workspace.process`中具体
+`ContentLengthJsonRpcProcessTransport`，仍同一个LspClient self，没有第二状态或新
+manager。直接复用原ProcessHandle和A154 exit waiter，旧waiter不重计；0新Protocol/
+TypeVar/DTO，1具体owner。Code保初始化、诊断、配置/服务器请求、ContentModified
+重试、LSP shutdown/exit握手及公开错误类/接口；三个窄domain hooks不回借通用IO循环。
+
+最终Code510→236（−274）、Core新增391，系统+117，统一Ruff同值。初R1+112保历史；
+R2多5行使Code显式绑定`$/cancelRequest`，Core仅声明所需peer convention，不把LSP
+extension称JSON-RPC标准；另明确基类供协议子类使用，没有standalone public request/
+start或RPC服务声称。无root-package reexport，独立public json_rpc模块是有据的技术
+边界扩充；[Process边界](process-hosting-boundary.md)明确细化原H1/H3 deferral，Host/
+spawn/Sandbox/launch权限及原root exports不变，LSP语义仍Code。不改门禁或默认发现。
+
+接入前原非live/非host-runtime LSP88过/116.86s。旧实际client另冻结35项/1.18s：
+fragment/concat/budget/invalid帧、correlation、Future状态、timeout、写阶段及wait阶段
+真实Task.cancel、reader取消、EOF/错误、closed-abort与close/settle复合异常。IO handle
+受控；只将实际_request函数globals.time替为FakeClock，不改stdlib或loop clock。
+原有header cap/重复Length语法、EOF不主动close、settle异常覆盖且跳过末state更新等
+行为均保，不在迁移中修旧quirk。未穷举重复cancel/taskfactory异常/全部帧组合，非native
+子进程与全平台证明；原88覆盖完整LSP上层互补，不将35当全套协议验证。
+
+实际联合126过/124.79s（88+35+原3个Process边界）；before/after/持久35均为同覆盖，
+不重复累计。342行显式probe与1859B gzip另列，解压逐字等原28431B观察，主程序/
+CASES/断言同，观察后的自有资源teardown等价改suppress；无capture模式。15项public
+接口（解析继承）静态shape保，19body逆变换、ctor4赋值组及时序/start helper展开同。
+正规strict mypy old1/actual2、Ruff与整两源format通过；来源守卫pin实际task路径/两SHA
+及递归code字段。不是候选完整ABI/pickle实证，也未运行完整PR矩阵。
+
+old clean41b worktree与actual各新进程冷模块集合：Process root118→118同集，client
+268→269只多json_rpc；仅模块集合事实，不扩大为无任何导入IO的审计结论。Code真实
+class/FQN/错误类型保，继承方法的私定位/traceback frames及私global别名不承诺不变。
+三设计/实际视角分别核ownership、失败与数据/接口，实施owner有界接受本批。
+
+2054生产源码帧（原2053+新Core1）全SHA核：仅client改变并新增json_rpc，其余2052原源
+不变。434 Code清单全行重核；Code111413，Harness363243（Python362894+原资源349），
+AppHost19218，历史系统658925，剔除GUI测试4271后654654；C13为21文件5379行。
+距≤15K仍96413，完整P1–P4及Goal active。A169整authority+580拒绝保持，不预支其
+−543；本批虽Code薄化，也不称系统净精简。树外a170/a171/a172保存调查、整物、旧观察、
+源码帧、类型检查及独立评审；架构方法仍本地master 0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。
+
 ## A169 完整Worker authority原型拒绝；转第二大块（2026-11-14）
 
 按大块优先队列，已对整个两平台receipt authority与Windows opt-in邻接133行构建
