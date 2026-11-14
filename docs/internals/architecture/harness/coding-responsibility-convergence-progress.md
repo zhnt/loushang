@@ -1,5 +1,40 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A161 旧工作树交付对账（2026-11-14）
+
+对旧 `harness/coding-responsibility-convergence` 工作树只读核对，以其
+`2aa2f7deb` HEAD、主线 `4de7d9251` 和当前任务 `df092c8b2` 为固定起点。
+默认 status 的483项展开未跟踪目录后为535文件（270 modified、265 untracked），
+不是535份尚未交付的实现。逐文件字节与Git mode核对得到：
+
+| 文件数 | 已核实的交付关系 | 接续处置 |
+| --- | --- | --- |
+| 361 | 同路径、内容及mode与主线完全一致 | 不重复移植或计收益 |
+| 117 | 当前同路径内容不同；旧blob在主线祖先的同路径确实存在 | 保存具体holder提交，后续从当前实现接续，不覆盖后续重构 |
+| 48 | 旧 `test_` 内容及mode与同目录现行 `probe_` 完全一致 | 保留显式探针形式，不恢复自动测试发现 |
+| 9 | 有现行 `probe_`，内容已更新 | 逐份核对迁移后的绑定与旧期待；不直接复制旧测试 |
+
+117份均验证了具体holder的同路径blob及其主线祖先关系；仅搜索到历史对象
+不足以作此结论。九份probe差异涉及原owner接口、native IO绑定、repair journal
+端口、共享函数进口及probe间import；九份全部测试函数（含decorator）、全部
+assert及CASES的AST均未变。具体静态复核记录与限制保存在树外。
+此对账证明旧文件的交付来源，不替代后续实现的运行、恢复或兼容验收。
+职责复核独立确认117份blob/mode及51个holder祖先关系；兼容复核确认九份共15个
+测试函数、32条assert及14份直接引用fixture保持原样；保存复核确认535份归档与
+现状内容、大小、权限及原始status一致。实施owner `/root` 核三报告后有界接受。
+没有重跑产品测试，不把fixture抽核扩称全部传递资源，也不声明默认gate覆盖相同。
+
+树外 `coding-convergence-resumed-20261114/a161-old-worktree-reconciliation/`
+保存逐文件manifest、原始NUL status、分类、117份同路径holder和差异、九份probe
+差异及原件归档。归档SHA256为
+`43b044d72d67377ac02c71f61ce4a705e81d1d1eca9c1a67b49a6c372dc78763`。
+归档范围是535份非ignored脏文件，不是完整工作树、Git对象库或ignored运行数据备份。
+旧lane、分支、用户改动均保留；本片不reset、不stash、不删除、不恢复旧test命名。
+
+本片无生产源码变化，无新增测试或CI覆盖，不计精简收益。Coding仍111919行，
+距15K仍96919行，P1–P4完整Goal未完成。旧工作树文件数不再作为未完成职责数量；
+剩余实施继续以当前逐文件清单和28组职责审计为准。
+
 ## A160 Worker 记录直接复用现有字段遍历（2026-11-14）
 
 OptIn的编码、exact-keyset和解码，以及NativeClosure编码直接用原RecordSchema；

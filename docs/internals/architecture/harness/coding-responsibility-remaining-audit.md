@@ -8,6 +8,10 @@ Process，A150验证命令执行已归Session Bash；不得把这些已共享闭
 具体接受/验证边界见[执行记录](coding-responsibility-convergence-progress.md)。
 完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07整policy/receipt仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 
+A161已将旧lane的535份脏文件逐项对账：361份与主线同路径一致、117份为
+主线已包含的同路径历史版本、48份与现行probe完全一致、9份为已更新probe。
+该旧状态不是535项新增待开发；原件保留，不覆盖当前实现、不计新增减量。
+
 - A146 普通启动和操作员查询共用 Provider 签发与选择，续期共用签发，Coding 减45行、系统增12行。见[A146](coding-responsibility-convergence-progress.md#a146共用worker-provider签发与选择)。
 - A145 普通 Worker 待启动、实际 adapter 和操作员查询复用能力绑定或准入投影，Coding 减41行、系统减7行。见[A145](coding-responsibility-convergence-progress.md#a145共用普通worker能力绑定与准入投影)。
 - A144 五类 Windows Worker 离线审阅共用静止锁与 GC 读锁，Coding 减15行、系统增4行。见[A144](coding-responsibility-convergence-progress.md#a144共用windows-worker离线审阅作用域)。
