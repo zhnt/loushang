@@ -201,7 +201,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [compaction/profiles.py](../../../../src/loushang/coding/compaction/profiles.py) | C19 | 266 | K | C19 压缩 profile/适配 | 5325b9284b25 | 266 | 5325b9284b25 |
 | [composition_provenance.py](../../../../src/loushang/coding/composition_provenance.py) | C01 | 214 | M | C01 启动、Plugin 与资源装配 | 30a8b59d8d49 | 214 | 30a8b59d8d49 |
 | [composition_sets.py](../../../../src/loushang/coding/composition_sets.py) | C01 | 236 | M | C01 启动、Plugin 与资源装配 | e77cb0ebf1e1 | 236 | e77cb0ebf1e1 |
-| [continuity.py](../../../../src/loushang/coding/continuity.py) | C04 | 1,555 | M | A162完整暂存/prepare/cleanup/lease交接归原Continuity；保来源/限额/cwd和canonical端口 | cb0943f7d549 | 1,298 | fb652a12ca57 |
+| [continuity.py](../../../../src/loushang/coding/continuity.py) | C04 | 1,555 | M | A174完整composition/reservation/Task/identity-delete寿命归原Continuity；Code保领域provider/DTO及profile | cb0943f7d549 | 1,212 | 8116020c9b74 |
 | [continuity_bootstrap.py](../../../../src/loushang/coding/continuity_bootstrap.py) | C04 | 1,622 | M | C04 Continuity | acbe4067566c | 1,597 | 42e150efd7e9 |
 | [control/__init__.py](../../../../src/loushang/coding/control/__init__.py) | C26 | 39 | R/K | C26 配置兼容导出与路径 | 6bbbc65acf54 | 39 | 6bbbc65acf54 |
 | [control/settings_store.py](../../../../src/loushang/coding/control/settings_store.py) | C26 | 13 | K | C26 配置兼容导出与路径 | ff84662c1150 | 13 | ff84662c1150 |
@@ -491,7 +491,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [resume_model_outcome.py](../../../../src/loushang/coding/resume_model_outcome.py) | C03 | 134 | M | C03 Resume 与 SessionManager | 75ba0b4973c8 | 134 | 75ba0b4973c8 |
 | [resume_permission_confirmation.py](../../../../src/loushang/coding/resume_permission_confirmation.py) | C03 | 203 | M | C03 Resume 与 SessionManager | 52bd39c82949 | 203 | 52bd39c82949 |
 | [runtime/__init__.py](../../../../src/loushang/coding/runtime/__init__.py) | C17 | 7 | M | C17 AgentSessionRuntime Product 绑定 | 0e0b928bb2e0 | 7 | 0e0b928bb2e0 |
-| [runtime/agent_session_runtime.py](../../../../src/loushang/coding/runtime/agent_session_runtime.py) | C17 | 917 | M | C17 AgentSessionRuntime Product 绑定 | bb545ecdb45d | 780 | 5347b9ec6cc1 |
+| [runtime/agent_session_runtime.py](../../../../src/loushang/coding/runtime/agent_session_runtime.py) | C17 | 917 | M | A174完整根关闭与两drain归原Session Runtime；Code保Resume领域准入及薄profile | bb545ecdb45d | 713 | 1e329f9eeff2 |
 | [runtime/resume_planning.py](../../../../src/loushang/coding/runtime/resume_planning.py) | C17 | 194 | M | C17 AgentSessionRuntime Product 绑定 | b656eb2d13e8 | 117 | 5e2e59cdfa33 |
 | [runtime_capability_admission.py](../../../../src/loushang/coding/runtime_capability_admission.py) | C01 | 350 | M | C01 启动、Plugin 与资源装配 | 858c6823b287 | 350 | 858c6823b287 |
 | [sandbox.py](../../../../src/loushang/coding/sandbox.py) | C06 | 292 | R/M | C06 其余根目录入口与策略 | 924f1e5005ba | 292 | 924f1e5005ba |
@@ -529,8 +529,8 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 
 ## 当前分组计量与剩余处置
 
-2026-11-14以`4de7d9251`主线及A156–A158、A160、A162、A163、A165、A167、A168、A171及A173当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
-当前Coding 111255行，完整≤15K目标差96255行；A173完整兼容发布authority归Config，Code−158/Core+246/系统+88，属于职责迁移非净精简；A171完整进程JSON-RPC传输归Process，Code−274/Core+391/系统+117；A169完整authority原型+580拒绝，A170/A172只读调查收益0；A168完整原Source重捕获custody归Resources并共享两Wheel核，Code−181/Core+234/系统+53，非系统精简；A167读取族真实重复归一，Code−43/Core+22/系统−21；A166通用mixin原型拒绝、收益0；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
+2026-11-14以`4de7d9251`主线及A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
+当前Coding 111102行，完整≤15K目标差96102行；A174根关闭及Continuity绑定寿命归原owner，Code−153（含1行导入布局）/Core+301/生产系统+148，非净精简；A173完整兼容发布authority归Config，Code−158/Core+246/系统+88，属于职责迁移非净精简；A171完整进程JSON-RPC传输归Process，Code−274/Core+391/系统+117；A169完整authority原型+580拒绝，A170/A172只读调查收益0；A168完整原Source重捕获custody归Resources并共享两Wheel核，Code−181/Core+234/系统+53，非系统精简；A167读取族真实重复归一，Code−43/Core+22/系统−21；A166通用mixin原型拒绝、收益0；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
 Code−93/Core+119/系统+26；当前两源及验证边界见执行记录。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
@@ -545,7 +545,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C01 | 22 | 12,616 |
 | C02 | 31 | 8,385 |
 | C03 | 15 | 4,132 |
-| C04 | 2 | 2,895 |
+| C04 | 2 | 2,809 |
 | C05 | 6 | 3,565 |
 | C06 | 26 | 4,460 |
 | C07 | 112 | 21,132 |
@@ -558,7 +558,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C14 | 13 | 3,608 |
 | C15 | 2 | 2,042 |
 | C16 | 14 | 2,189 |
-| C17 | 3 | 904 |
+| C17 | 3 | 837 |
 | C18 | 5 | 874 |
 | C19 | 4 | 440 |
 | C20 | 3 | 233 |
@@ -570,4 +570,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 434 | 111,255 |
+| 合计 | 434 | 111,102 |

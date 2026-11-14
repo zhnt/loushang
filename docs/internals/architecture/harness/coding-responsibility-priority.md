@@ -9,7 +9,8 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 | --- | --- | --- | --- |
 | 已完成 A171 | LSP进程传输完整生命周期 | 原Process拥有buffer/锁/Future/reader Task/request/cancel/close；Code保LSP初始化、诊断、服务器请求与优雅握手 | Code−274/Core+391/系统+117；126项通过；属于职责迁移，不是系统净精简 |
 | 已完成 A173 | 配置兼容发布完整authority | 原Config LegacyProjection owner承接cache/issuer、writer与projection注册、聚合、Condition/deque、逐请求receipt和异常结算；Code保存量迁移政策/领域capture、guard和薄profile | 整物Code317→159（−158）/Core+246/系统+88；原135及固定旧29项覆盖通过，保持5原平台skip；不复用异常合同不同的普通Config通知队列，属于职责迁移 |
-| 1 / 待设计 | Session关闭的完整失败保留链 | 原Session/Graph/resource owner；Code剩deferred LSP、worker lease、publication与证据的释放政策，涉及113/75行两条实际关闭程序 | 原cleanup group并非直接替代：首个子关闭失败须保留父能力，后续清理又有不同错误屏障；必须证明完整复合寿命与取消/重试，计算所有阶段端口，不拆十几行helper当主线 |
+| 已完成 A174 | 根运行时关闭及Continuity完整绑定寿命 | 原Session Runtime接根关闭/两drain，原Continuity接composition/reservation/Task/identity-delete；Code保领域DTO、准入与薄profile | Code−153（含1行导入布局）/Core+301/生产系统+148（统一格式+139）；320项通过，持久55重放另验不重复累计；子Session113未迁 |
+| 1 / 待设计 | Session关闭的完整失败保留链 | 原Session/Graph/resource owner；Code剩deferred LSP、worker lease、publication与证据的释放政策，A174已接根75，剩113行实际子Session关闭程序 | 原cleanup group并非直接替代：首个子关闭失败须保留父能力，后续清理又有不同错误屏障；必须证明完整复合寿命与取消/重试，计算所有阶段端口，不拆十几行helper当主线 |
 | 2 / 待核 | 剩余托管/CLI跨入口控制与交接 | 原AppHost/AppService/Session；Code保产品身份、Resume/历史领域合同及严格源准入 | A156托管控制、A158review fence已共享；先定位尚未共享的完整程序，禁止用摘要API代替严格Catalog读取；无新的可删量承诺 |
 | 后续开放 / 当前形状拒绝 A169 | Worker Product完整收据authority | 原Package Product/Resources已有candidate验证、receipt witness、history、native/source custody；Code保政策和DTO | 四源完整原型Code−543/Core+1123/系统+580，14结构端口等接口税未带来相称复用，已拒；须不同完整接缝，不能用同形状小mixin重新进入 |
 
@@ -22,7 +23,7 @@ A172对C01/C15/C17共15720行的调查同样确认主构造、Task、Slot和历�
 
 每项先核真实消费者、旧操作体、失败/取消/重试/恢复与资源结清，再作完整替换。窄政策
 接口可以保留，但Code领域capture/guard回调不冒称纯函数，也不把已共享IO重计为本片收益。
-没有已证明可直接承接、且比关闭链更大的新程序时，继续设计下一完整接缝，不填虚构的大块
+没有已证明可直接承接、且比剩余关闭链更大的新程序时，继续设计下一完整接缝，不填虚构的大块
 承诺，不连续以局部十几行去重替代主任务。
 
 C04 Continuity的KD003、托管历史KD011等明确待确认边界保持原状态；其余C05/C06、C08、
