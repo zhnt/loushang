@@ -7,11 +7,10 @@ from pathlib import Path
 from typing import Literal
 
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.plugin_management.operations import PluginManagementCommandV1
-from loushang.harness.plugin_management.records import (
-    PluginDesiredStateMutationV1,
-    PluginInstallationKeyV1,
+from loushang.harness.package_product._plugin_bootstrap import (
+    preserve_removed_product_plugin,
 )
+from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
@@ -338,39 +337,12 @@ def _preserve_removed_builtin(
         plugin_id=plugin_id,
     )
     operation_id = acceptance.review.removed_builtin_operation_id(plugin_id)
-    history = tuple(
-        item
-        for item in product.desired_state.transitions()
-        if item.mutation.installation_key == key
+    preserve_removed_product_plugin(
+        product,
+        key,
+        operation_id,
+        error_prefix="Coding removed builtin Product",
     )
-    if history:
-        first = history[0]
-        if (
-            first.mutation.operation_id != operation_id
-            or not isinstance(first.mutation, PluginDesiredStateMutationV1)
-            or first.mutation.actor_id != product.actor_id
-            or first.committed_state.selection.desired_state != "absent"
-        ):
-            raise RuntimeError("Coding removed builtin Product history changed")
-        return
-    command = PluginManagementCommandV1(
-        action="remove",
-        mutation=PluginDesiredStateMutationV1(
-            operation_id=operation_id,
-            idempotency_key=operation_id,
-            expected_inventory_revision=(
-                product.desired_state.snapshot().inventory_revision
-            ),
-            installation_key=key,
-            desired_state="absent",
-            package_revision=None,
-            actor_id=product.actor_id,
-            policy_revision=product.desired_policy_revision,
-        ),
-    )
-    result = product.management.submit(command)
-    if result.result is None or result.result.disposition != "succeeded":
-        raise RuntimeError("Coding removed builtin Product tombstone refused")
 
 
 __all__ = [
