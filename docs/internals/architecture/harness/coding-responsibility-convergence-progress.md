@@ -1,5 +1,31 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A177 大块职责重新排序，候选未接入（2026-11-14）
+
+按用户要求重排[实施队列](coding-responsibility-priority.md)，先比较尚在Code的完整
+程序、已有owner复用及全成本，不用目录总量或已共享IO作迁移预算。A171/A173/A174/A176
+合计Code−680、生产系统+422，主要是职责归位；本次不把这些历史数重复记为新收益。
+
+跨簇比较将Worker四类收据authority的整物设计/成本验证排首：892行类范围、803行方法
+定义只是审计范围。新接缝须比较真实ReceiptHistory与Windows Records的直接复用，
+连同构造、journal、facade和保留政策计量；A169的14结构端口及系统+580形状仍拒绝。
+尚未证明新方案能退出这些成本，不接受新authority、不宣布迁移或净减803行。
+
+Hosted Continuity外层176行owner及26行失败清理列为次项，准备流程由三个真实入口
+共用；原AppHost inner attempt与outer catalog准备作用域不同，不能直接合并恢复/关闭。
+共享open/close控制的外部草案仅供成本比较，未安装、未完成新旧差分、无新oracle或READY。
+旧7文件78项基线通过20.74s；首跑44过/34项托管目录fixture错误保留，原托管准入拒绝
+workspace的非私有祖先，使用既有private tmp fixture后同范围通过，未改Product规避校验。
+
+prefix四源外部全文草案实际Code−41/AppHost+213/系统+172；其整文件格式化触及既有
+布局，统一格式基线比较为−121/+195/+74，不能将后者称当前生产净值。草案仅Ruff与
+格式检查通过，尚无mypy、结构对照或运行验证；保WIP、不安装、不增加源码收益。
+
+本次生产源码保持A176的2056源/659230行，Coding434源/111007行、Harness363954行、
+AppHost19218行，距15K仍96007行。树外调查、旧源/SHA与测试记录保存在
+`coding-convergence-resumed-20261114/a177-cross-entry-control`；候选不计生产收益，
+无新PR gate。完整P1–P4、KD003/KD011及15K目标继续开放。
+
 ## A176 完整Session profile退休归原AgentProductSession（2026-11-14）
 
 按优先队列完成原Code113行关闭程序的完整替代，而非分段close helper。新protected
