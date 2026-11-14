@@ -1,5 +1,44 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A160 Worker 记录直接复用现有字段遍历（2026-11-14）
+
+OptIn的编码、exact-keyset和解码，以及NativeClosure编码直接用原RecordSchema；
+仍是原Code实际类、字段、slots/frozen、validator、公开签名及原derive。编码metadata
+保原getter/key序，解码保原kwargs序，子类仍由实际cls构造并只编码原基类字段。
+不迁策略/生命周期，不增加Core实现或新抽象；导入时增加静态字段metadata编译工作。
+
+旧源171实际记录观察与8个原持久节点通过；实际179=8原节点+171固定观察，逐node无
+缺失或额外，全部通过。包含154个错误观察（141输入拒绝、12 getter故障、1构造故障）、strict dict、kwargs/子类/身份及
+canonical policy hash；11份旧pickle均为OptIn，候选cross-load通过。NativeClosure有
+字段/validator/getter/编码及hash覆盖，不写成其旧pickle已实测。source guard核实际路径、
+SHA及3个方法/derive代码对象；原171期待SHA不变。Ruff/mypy、原175架构检查通过。
+三独立设计/实际评审无新增阻断，实施owner有界接受；原非live/host选择与CI门禁不变。
+
+本片335→317，Code/系统净−18、Core0。与A108的不同不是新API：旧A108同样使用
+for_dataclass/排序schema/decode且Core0；旧六文件+17仍不采用。本片额外退出显式8-key表，
+合并同文件Closure遍历，完整单源净−18，不重启其它五个增量候选。
+for_dataclass绑定当前基类全部字段；未来增加字段会改变wire keys/构造/hash，应按既有
+存量兼容原则显式处置版本或字段投影，不能当普通内部字段修改；不是本片新增PR门禁。
+
+当前434源Code111919，Harness362506、AppHost19218，历史2053源658694；剔除GUI测试
+4271后654423。距15K仍96919行，C07及P1–P4未完成。源码/旧期待/原pickle/来源与XML
+保于树外`coding-convergence-resumed-20261114/a160-worker-record-schema`。
+
+## A159 大职责候选评估（2026-11-14，缓存原型未采用）
+
+C07整段policy/receipt重验没有等价现成替代：已共享candidate验证不重计；Code仍有产品
+身份/profile/hash/准入政策，Linux与Windows的native/discovery顺序和stale异常集合不同。
+原Package Product是后续正确候选owner，Worker Activation明确不拥有Product selection；
+本轮不整迁，不将某个57行尾部或整个335行文件当可删/不可删下界，完整C07保持open。
+
+C14完整缓存原型实际Code434→362（−72）、Core cache-publication38→195（+157），
+系统净+85、函数净+11。它迁了真实state/安全读取，但唯一FSM消费者仍是ImportFactCache，
+A111字节发布早已共享；新generic/Protocol/codec hooks和公私适配没有足够的新复用、
+重复退出或依赖简化抵消成本。三个独立视角建议拒绝，实施owner不采用；原两生产源
+保持，不为该原型改Windows probe或投入运行验证，不将Ruff静态通过当行为通过。
+原型、全成本与拒绝依据在树外`coding-convergence-resumed-20261114/a159-cache-evaluation`；
+收益0，C14仍待后续有实证的处置，不降格完整Goal。
+
 ## A157/A158 合成核验（2026-11-14）
 
 两批分别形成`7e21e01c9`与`8eee954e4`本地提交，原434组合与9项持久代表均通过；
