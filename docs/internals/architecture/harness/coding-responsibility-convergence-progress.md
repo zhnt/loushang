@@ -1,5 +1,61 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A168 完整Legacy Source custody归Resources；三seed泛化拒绝（2026-11-14）
+
+用户进一步要求优先大块可迁移职责；已建立[实施优先队列](coding-responsibility-priority.md)。下一主工作件为完整Worker Product收据authority，不以局部helper去重替代；涉及行数不预支为可删量。
+
+大职责实查未发现bootstrap/C10选择可直接替代的新大入口：构造、租约、普通恢复、修复与
+Plugin审批/清理机制已经共享，不重记收益。三条完整inert seed构造原型为保原求值顺序，
+需18个惰性generator；Code+24/Core+36/系统+60，虽静态通过仍拒绝。未接入、不计收益；
+不据本次未找到drop-in就把整簇认定为不可精简的领域下界。
+
+实际接入完整原Source重捕获→bounded scan→Parser→RevisionStore→同handle验证/读取→
+Wheel→末verify→Code值构造→handle.close→stage chmod/remove程序，归已有Resources
+`plugin_lifecycle._exact_product_source`。Code仍保POSIX/ID/digest/dependency closure准入、
+公开签名与原九字段DTO；选择、信任、审批和Product发布仍由原调用者负责。Core不回调
+Code IO，在原两层finally保护的try内通过准确8str+bytes tuple交一次末端值构造。
+
+同一原owner内，installed与legacy两个真实Wheel builder共用RECORD/ZIP序列化；
+保原CSV行序/编码/空self行/固定ZIP时间、ZIP_STORED及mode。installed全0644；legacy
+仍在各member写入前才lstat自身prefix成员的执行位。record-name getter使installed原
+spec.dist_info在hash行循环后读取，legacy仍先在原点构字符串。没有新class/Protocol/
+状态机，只有1 TypeVar及两个窄末端投影；未把Parser/RevisionStore原复用重计新收益。
+原legacy namespace/固定安全预算是支持的Source artifact格式，非Coding选择政策。
+
+Code273→92（−181）、Core356→590（+234），系统+53，统一Ruff口径亦+53；是职责
+归位兼双核去重，**不是系统源码精简**。初A稿+36、严格tuple B稿+50均保历史，不拿
+较低成本当最终值；3个only-recapture imports局部化避免installed冷依赖。三个冷入口
+（仅loushang模块集合）Code2、legacy module52、exact source63前后同集。新增显式
+probe与两个gzip另列，不混入2053生产源码帧或声称原Wheel全字节已保存。
+
+接入前原真实local_wheel7过，旧完整IO管线20项冻结（3成功、17阶段/复合故障）1.15s，
+installed三种原artifact的长度/SHA冻结。接入后联合138过/144.13s，包含这23项、原
+local/builtin Wheel、inventory/lock/policy reopen/binding四真实消费者文件与原架构检查。
+模型使用真实filesystem/Parser/RevisionStore/ZIP，published handle和stdlib/constructor
+端口注故障；记录FQN/notes/cause/context、先错、handle关闭及stage状态。注入的自身
+泄漏在观察后显式结清。取消是writestr端口抛CancelledError，非Task.cancel；非所有
+stream-exit/Zip.exit/lstat竞态/电源失败穷举，也非Windows原生验证。持久23重放属于
+相同覆盖，不与before/隔离/包装重复累计。新probe限定POSIX，未加入默认发现或PR路由。
+
+隔离首轮90过/1失败，失败仅通用架构扫描已发现的新verified_open_file:handle位置
+未登记。第一版全局必需行虽focused通过，评审指出它新增必需存在条件，未接任务树。
+最终沿同检查已有模式：仅精确新site实际存在时局部登记已有ExactProductSourceFiles
+owner/count1；缺site时旧expected完全原样，原owner全集、scanner、断言及路由均不改。
+它增加精确允许范围，不增加merge阻断条件；mandatory实验保为拒绝证据，不当采用。
+
+正规两源mypy before/isolated/actual通过，Ruff与来源守卫核实际task路径、两SHA及递归
+compiled code字段；shadow-file mypy曾进程139无诊断，保为工具失败，未反复重试，
+改真实隔离路径取得有效结果。原完整PR矩阵未运行。公开DTO定义、wire字段和返回
+身份保留；helper栈帧/私有函数归属改变，不承诺任意旧私有alias猴补或逐字traceback。
+
+三设计/实际视角核资源寿命、复用、数据兼容与门禁范围后有界接受；沿本地方法master
+`0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`，不复制方法或声称上游同步。
+2053源帧仅2源变化；434 Code清单全行重核，当前Code111687、Harness362852
+（Python362503+原资源349）、AppHost19218、历史系统658808，剔除GUI测试4271后
+654537；C09为34文件/9265行。距≤15K仍96687，完整P1–P4/Goal active，剩余选择、
+分类、授权及恢复合同继续逐路径处置。树外`coding-convergence-resumed-20261114/`
+下`a168-large-owner-paths/`保完整候选/原始期望、失败、清单、cold与独立评审。
+
 ## A167 读取族重复程序归一；A166泛型移入拒绝（2026-11-14）
 
 A166曾把四个Linux读取操作移入新Core mixin，并让Windows复用capture；全部适配计入后

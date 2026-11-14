@@ -1,11 +1,12 @@
 # Coding 全量剩余职责与保留成本复核
 
-本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165及A167源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
-111868行，距15K仍96868行。下面28组不是可删除预算或最终保留成本。
+本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167及A168源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
+111687行，距15K仍96687行。下面28组不是可删除预算或最终保留成本。
 A156托管服务完整控制已归原AppHost；Coding保产品身份/政策与错误薄适配。
 A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
 具体接受/验证边界见[执行记录](coding-responsibility-convergence-progress.md)。
+后续实施顺序见[大块职责优先队列](coding-responsibility-priority.md)，先完整Worker Product authority，再inventory/snapshot及启动交接链；不以零碎去重代替主线。
 完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07整policy/receipt仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 A162完整暂存到prepared activation lease交接归原Continuity，Code−61/Core+90/系统+29，
 单消费者职责迁移，不计去重；KD003 bytes与C04整体仍未完成。
@@ -18,6 +19,9 @@ Package Product的完整接管API。A165两平台完整kill-switch事务同域�
 A166通用读取mixin原型Code−149/Core+283/系统+134，新增端口与泛型成本未换来足够复用，拒绝且隔离原型已正常清理。
 A167在原authority消除capture/native/receipt比较重复，既有Core candidate新增payload事实提取供3处使用；
 Code−43/Core+22/系统−21，159冻结读取观察及真实Product1过；未声称整读取族或C07完成。
+A168完整Legacy Source重捕获及handle/stage结清归原Resources Source owner，installed/legacy两Wheel共用RECORD/ZIP核；
+Code−181/Core+234/系统+53，138项通过。原namespace/安全预算为兼容artifact格式，Code仍保准入/closure政策与公开DTO；
+不是把Coding选择政策换目录，亦不声称系统精简。另三seed泛化原型Code+24/Core+36/系统+60拒绝，收益0。
 
 A161已将旧lane的535份脏文件逐项对账：361份与主线同路径一致、117份为
 主线已包含的同路径历史版本、48份与现行probe完全一致、9份为已更新probe。
@@ -74,7 +78,7 @@ A161已将旧lane的535份脏文件逐项对账：361份与主线同路径一致
 
 - Authority: descriptive audit under COD-RESP-GOAL-002；不替代已接受Target。
 - Design status: current-gap review；A72历史候选在当时未接受，后续A73/A74/A75等接受见各片记录，不重新列为待开发。
-- Implementation status: A155已合入；A156/A157/A158/A160/A161/A162/A163均已本地提交；A164实查无源码收益、A165/A167实际有界接受，A159/A166拒绝；完整Goal active。
+- Implementation status: A155已合入；A156/A157/A158/A160/A161/A162/A163均已本地提交；A164实查无源码收益、A165/A167/A168实际有界接受，A159/A166拒绝；完整Goal active。
 - Owner: Coding及各原组件owner；三独立视角复核，实施owner综合事实。
 - A117：完整Goal/Work来源冷读与原owner关闭归原GoalStore集成；C12整体仍未关闭，见[A117](key-designs/goal-work-source-custody-convergence.md)。
 - A116：完整规划waiter/cache寿命归原Session；C17整体仍未关闭，见[A116](key-designs/session-planning-slot-custody-convergence.md)。
@@ -110,12 +114,12 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
-数量按A167当前434源重计；A146/A72均为历史切点，前序减少不重复计入本次协调。
+数量按A168当前434源重计；A146/A72均为历史切点，前序减少不重复计入本次协调。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
 |---|---:|---|---|---|
-| C01 启动、Plugin/资源装配 | 22/12,774 | P2 | 原Construction/Session、Catalog/Graph已实际接入；A163公开SDK薄转发与私有原模型政策分离；Code剩跨阶段选择、审批、刷新与交接 | 拆清领域选择和完整共用程序；不把bootstrap或装配回调池当删除预算 |
+| C01 启动、Plugin/资源装配 | 22/12,774 | P2 | 原Construction/Session、Catalog/Graph已实际接入；A163公开SDK薄转发与私有原模型政策分离；Code剩跨阶段选择、审批、刷新与交接 | A168三seed聚合原型完整成本+60拒绝；继续拆领域选择与共用程序，不把bootstrap/回调池当删除预算 |
 | C02 托管与受管接入 | 31/8,385 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用，A156完整控制体已退出Coding；A163 Hosted模型政策改绑私有入口；Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝 |
 | C03 Resume与SessionManager | 15/4,132 | P2/P3 | 原Transcript/Session lifecycle、live恢复已复用；Code保版本化输入/装配与授权政策 | 按new/resume/fork/reopen完整合同再拆；不重建提交器或自动重试 |
 | C04 Continuity | 2/2,895 | P3 | 原Continuity provider/runtime、A68 payload custody及A162完整暂存到lease交接已接入；Code保来源/限额/cwd和canonical restore端口 | KD003 bytes import未实施；非owned真实Path/FileCopy/引用合同仍在，不提前采用KD011 |
@@ -123,7 +127,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C06 其余根入口与策略 | 26/4,460 | P2/P4 | 混合产品配置、模型/工具选择及既有薄绑定 | 逐具体声明/运行路径处置；不整体当领域保留或机械可删 |
 | C07 插件Worker | 112/21,132 | P1 | 五流/Rooted/history/platform/native custody、普通准备/停止/reopen主机制已共享；A165撤销事务及A167读取重复程序归一，Code保产品准入/原读取时序 | Core已有candidate事实现供3处复用；完整receipt authority/平台政策归属仍须核定，A166泛型移入拒绝；尚无整簇完成证明 |
 | C08 插件私有数据 | 31/6,691 | P4 | 原备份/删除/恢复/过期及A71 lineage已由原Plugin Management/Resources承接 | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
-| C09 兼容迁移与快照证据 | 34/9,446 | P4 | 原capture/epoch/receipt等机制已共享，A157首次删除重放三入口合一；存量分类、准入与恢复政策仍在 | 逐受支持状态和恢复入口给退出证明；legacy命名与静态无调用都不足以删支持 |
+| C09 兼容迁移与快照证据 | 34/9,265 | P4 | 原capture/epoch/receipt等机制已共享，A157首次删除重放三入口合一，A168原Source重捕获/handle/stage custody及双Wheel核归Resources；存量分类、准入与恢复政策仍在 | 逐受支持状态和恢复入口给退出证明；legacy命名与静态无调用都不足以删支持 |
 | C10 包分发及Product管理 | 12/5,324 | P2/P4 | Package Product等已复用；A155修复执行/释放归原ProductRuntime，Code保该入口准入/DTO/parent关闭，其它兼容/fenced装配仍混合 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |
 | C11 CLI | 26/9,478 | P4 | 大量命令调用原owner，A158四条review准备/重开程序已合一；语法、确认、选择与呈现仍混合 | 同一业务接同一owner；lmux close须先证明输出/确认/CAS/期限屏障及全适配成本，未接受新形状 |
 | C12 Goal/Work/证据适配 | 25/7,017 | P3/P4 | 原Work/Goal/Method、A117来源冷读及A150验证Bash完整执行已共享；Code保仓库/测试/评审策略与scope适配 | 按剩余领域判据/入口核保留或退出成本，不重开已共享cold reader/Task闭包；真实calculator/repository路线保持 |
@@ -143,7 +147,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C26 配置/路径兼容导出 | 2/52 | P4 | 原Config owner已复用 | 保产品路径选择与支持中的导出，退出需合同证据 |
 | C27 版本检查 | 2/50 | P4 | 产品更新选择与原公共机制绑定 | 保必要产品选择，不为50行再建服务 |
 | C28 资源命名空间 | 5/5 | P4 | 支持中的Python布局标记 | 保真实加载/导出路径，空壳不是第二引擎 |
-| 合计 | **434/111,868** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
+| 合计 | **434/111,687** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
 
 ## A72保留合同与语法筛查（历史成本，非当前下界）
 

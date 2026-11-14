@@ -3479,6 +3479,16 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
         }
         counts = counts | {(*windows_cutover_temporary_root, "path_read"): 1}
 
+    legacy_source_capture = (
+        Path(
+            "src/loushang/harness/resources/packages/plugin_lifecycle/_exact_product_source.py"
+        ),
+        "_reacquire_legacy_local_plugin_wheel",
+    )
+    if legacy_source_capture in sites:
+        owners = owners | {legacy_source_capture: "ExactProductSourceFiles"}
+        counts = counts | {(*legacy_source_capture, "verified_open_file:handle"): 1}
+
     assert _plugin_package_boundary_sink_call_counts(sources) == counts
     assert sites == set(owners)
     assert set(owners.values()) == PLC9B_BOUNDARY_OWNERS | PLC9_CLOSURE_BOUNDARY_OWNERS | {
