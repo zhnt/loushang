@@ -24,6 +24,7 @@ from loushang.coding.package_cutover_backup import (
     inspect_coding_package_cutover_backup,
 )
 from loushang.coding.package_epoch_layout import (
+    CodingPackageEpochLayoutV1,
     resolve_coding_lifecycle_pre_b_members,
     resolve_coding_package_epoch_layout,
     resolve_coding_package_pre_b_store_members,
@@ -74,6 +75,7 @@ from loushang.coding.package_legacy_skill_cutover_admission import (
     require_coding_fenced_single_legacy_data,
 )
 from loushang.coding.package_pre_b_snapshot import (
+    CodingCutoverSnapshotAdmission,
     cutover_and_bootstrap_coding_package_product,
     prepare_and_cutover_coding_package_store_from_legacy,
     prepare_coding_package_cutover_roots,
@@ -257,34 +259,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 b"loushang.coding-fresh-product-epoch/v1\0" + epoch.store_id.encode()
             ).hexdigest()
             if args.prepare_legacy_removed_review:
-                try:
-                    (epoch.control_root / "epoch.jsonl").lstat()
-                except FileNotFoundError:
-                    prepared = prepare_and_cutover_coding_package_store_from_legacy(
-                        lifecycle,
-                        settings,
-                        namespace_id=namespace_id,
-                        minimum_runtime_version=version("loushang"),
-                        minimum_runtime_protocol_epoch=(
-                            CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH
-                        ),
-                        snapshot_admission=lambda preparation, snapshot: (
-                            admit_coding_removed_local_snapshot(
-                                lifecycle, preparation, snapshot
-                            )
-                        ),
-                    )
-                    if prepared.attempt.result.disposition != "fenced":
-                        raise RuntimeError("Coding Product fence was not committed")
-                else:
-                    reopened = reopen_coding_package_cutover(lifecycle)
-                    if (
-                        reopened.switch_receipt is None
-                        or reopened.switch_receipt.namespace_id != namespace_id
-                    ):
-                        raise RuntimeError(
-                            "Coding Product fence belongs to another cutover"
+                _prepare_review_cutover(
+                    lifecycle,
+                    settings,
+                    epoch,
+                    namespace_id,
+                    snapshot_admission=lambda preparation, snapshot: (
+                        admit_coding_removed_local_snapshot(
+                            lifecycle, preparation, snapshot
                         )
+                    ),
+                )
             owner = PackageProductPosixFencedRuntimeOwner.open(
                 **epoch.fenced_runtime_open_kwargs(), read_only=True
             )
@@ -307,34 +292,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 b"loushang.coding-fresh-product-epoch/v1\0" + epoch.store_id.encode()
             ).hexdigest()
             if args.prepare_legacy_builtin_review:
-                try:
-                    (epoch.control_root / "epoch.jsonl").lstat()
-                except FileNotFoundError:
-                    prepared = prepare_and_cutover_coding_package_store_from_legacy(
-                        lifecycle,
-                        settings,
-                        namespace_id=namespace_id,
-                        minimum_runtime_version=version("loushang"),
-                        minimum_runtime_protocol_epoch=(
-                            CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH
-                        ),
-                        snapshot_admission=lambda preparation, snapshot: (
-                            admit_coding_builtin_only_snapshot(
-                                lifecycle, preparation, snapshot
-                            )
-                        ),
-                    )
-                    if prepared.attempt.result.disposition != "fenced":
-                        raise RuntimeError("Coding Product fence was not committed")
-                else:
-                    reopened = reopen_coding_package_cutover(lifecycle)
-                    if (
-                        reopened.switch_receipt is None
-                        or reopened.switch_receipt.namespace_id != namespace_id
-                    ):
-                        raise RuntimeError(
-                            "Coding Product fence belongs to another cutover"
+                _prepare_review_cutover(
+                    lifecycle,
+                    settings,
+                    epoch,
+                    namespace_id,
+                    snapshot_admission=lambda preparation, snapshot: (
+                        admit_coding_builtin_only_snapshot(
+                            lifecycle, preparation, snapshot
                         )
+                    ),
+                )
             owner = PackageProductPosixFencedRuntimeOwner.open(
                 **epoch.fenced_runtime_open_kwargs(), read_only=True
             )
@@ -387,38 +355,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             namespace_id = sha256(
                 b"loushang.coding-fresh-product-epoch/v1\0" + epoch.store_id.encode()
             ).hexdigest()
-            try:
-                (epoch.control_root / "epoch.jsonl").lstat()
-            except FileNotFoundError:
-                prepared = prepare_and_cutover_coding_package_store_from_legacy(
-                    lifecycle,
-                    settings,
-                    namespace_id=namespace_id,
-                    minimum_runtime_version=version("loushang"),
-                    minimum_runtime_protocol_epoch=(
-                        CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH
-                    ),
-                    snapshot_admission=lambda preparation, snapshot: (
-                        admit_coding_single_legacy_skill_snapshot(
-                            lifecycle,
-                            preparation,
-                            snapshot,
-                            plugin_id=plugin_id,
-                            resource_kind=resource_kind,
-                        )
-                    ),
-                )
-                if prepared.attempt.result.disposition != "fenced":
-                    raise RuntimeError("Coding Product fence was not committed")
-            else:
-                reopened = reopen_coding_package_cutover(lifecycle)
-                if (
-                    reopened.switch_receipt is None
-                    or reopened.switch_receipt.namespace_id != namespace_id
-                ):
-                    raise RuntimeError(
-                        "Coding Product fence belongs to another cutover"
+            _prepare_review_cutover(
+                lifecycle,
+                settings,
+                epoch,
+                namespace_id,
+                snapshot_admission=lambda preparation, snapshot: (
+                    admit_coding_single_legacy_skill_snapshot(
+                        lifecycle,
+                        preparation,
+                        snapshot,
+                        plugin_id=plugin_id,
+                        resource_kind=resource_kind,
                     )
+                ),
+            )
             owner = PackageProductPosixFencedRuntimeOwner.open(
                 **epoch.fenced_runtime_open_kwargs(), read_only=True
             )
@@ -772,6 +723,41 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
+def _prepare_review_cutover(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    settings: SettingsManager,
+    epoch: CodingPackageEpochLayoutV1,
+    namespace_id: str,
+    *,
+    snapshot_admission: CodingCutoverSnapshotAdmission,
+) -> None:
+    """Prepare a missing review fence or verify its existing namespace.
+
+    Admission remains the original cutover owner's Product callback. Existing
+    fences do not run admission or a new preparation.
+    """
+    try:
+        (epoch.control_root / "epoch.jsonl").lstat()
+    except FileNotFoundError:
+        prepared = prepare_and_cutover_coding_package_store_from_legacy(
+            lifecycle,
+            settings,
+            namespace_id=namespace_id,
+            minimum_runtime_version=version("loushang"),
+            minimum_runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+            snapshot_admission=snapshot_admission,
+        )
+        if prepared.attempt.result.disposition != "fenced":
+            raise RuntimeError("Coding Product fence was not committed")
+    else:
+        reopened = reopen_coding_package_cutover(lifecycle)
+        if (
+            reopened.switch_receipt is None
+            or reopened.switch_receipt.namespace_id != namespace_id
+        ):
+            raise RuntimeError("Coding Product fence belongs to another cutover")
+
+
 def _require_disabled_only_preflight(
     lifecycle: CodingPluginLifecycleStateLayout,
     settings: SettingsManager,
@@ -838,30 +824,15 @@ def _run_windows_builtin_candidate(
         namespace_id = sha256(
             b"loushang.coding-fresh-product-epoch/v1\0" + epoch.store_id.encode()
         ).hexdigest()
-        try:
-            (epoch.control_root / "epoch.jsonl").lstat()
-        except FileNotFoundError:
-            prepared = prepare_and_cutover_coding_package_store_from_legacy(
-                lifecycle,
-                settings,
-                namespace_id=namespace_id,
-                minimum_runtime_version=version("loushang"),
-                minimum_runtime_protocol_epoch=(
-                    CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH
-                ),
-                snapshot_admission=lambda preparation, snapshot: (
-                    admit_coding_builtin_only_snapshot(lifecycle, preparation, snapshot)
-                ),
-            )
-            if prepared.attempt.result.disposition != "fenced":
-                raise RuntimeError("Coding Product fence was not committed")
-        else:
-            reopened = reopen_coding_package_cutover(lifecycle)
-            if (
-                reopened.switch_receipt is None
-                or reopened.switch_receipt.namespace_id != namespace_id
-            ):
-                raise RuntimeError("Coding Product fence belongs to another cutover")
+        _prepare_review_cutover(
+            lifecycle,
+            settings,
+            epoch,
+            namespace_id,
+            snapshot_admission=lambda preparation, snapshot: (
+                admit_coding_builtin_only_snapshot(lifecycle, preparation, snapshot)
+            ),
+        )
     owner = PackageProductWindowsFencedRuntimeOwner.open(
         **epoch.fenced_runtime_open_kwargs()
     )

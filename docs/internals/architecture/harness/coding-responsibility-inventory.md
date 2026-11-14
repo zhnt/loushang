@@ -185,7 +185,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [cli/multiagent.py](../../../../src/loushang/coding/cli/multiagent.py) | C11 | 295 | M | C11 CLI | 234f559b7d09 | 295 | 234f559b7d09 |
 | [cli/multiagent_scripted.py](../../../../src/loushang/coding/cli/multiagent_scripted.py) | C11 | 148 | M | C11 CLI | 7b8d699abde1 | 148 | 7b8d699abde1 |
 | [cli/mux.py](../../../../src/loushang/coding/cli/mux.py) | C11 | 258 | M | C11 CLI | e3e2a04252c2 | 277 | 35b741d76572 |
-| [cli/package_cutover.py](../../../../src/loushang/coding/cli/package_cutover.py) | C11 | 976 | M | C11 CLI | 5f42a0f9e1ad | 946 | d86189165409 |
+| [cli/package_cutover.py](../../../../src/loushang/coding/cli/package_cutover.py) | C11 | 976 | M | A158四条review准备/重开去重；保原CLI语法、准入及排除路线 | 5f42a0f9e1ad | 917 | 66c448193246 |
 | [cli/package_gc.py](../../../../src/loushang/coding/cli/package_gc.py) | C11 | 391 | M | C11 CLI | 3eb85096303e | 391 | 3eb85096303e |
 | [cli/package_repair.py](../../../../src/loushang/coding/cli/package_repair.py) | C11 | 72 | M | C11 CLI | 0b70bee5c48d | 72 | 0b70bee5c48d |
 | [cli/package_worker_native.py](../../../../src/loushang/coding/cli/package_worker_native.py) | C11 | 1,098 | M | C11 CLI | 1799d915325a | 936 | 363ff019b49c |
@@ -530,7 +530,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 ## 当前分组计量与剩余处置
 
 2026-11-13续作核对，以`481134a42`源码重新计算全部当前列，新增4个主线文件单列并注明原审计未覆盖。
-当前Coding 112043行，完整≤15K目标差97043行；A156控制体归原AppHost，Code−96/AppHost+117/系统+21。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
+当前Coding 112014行，完整≤15K目标差97014行；A158独立于待合成A157，Code/系统−29。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
 Code−93/Core+119/系统+26；当前两源及验证边界见执行记录。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
@@ -552,7 +552,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C08 | 31 | 6,691 |
 | C09 | 34 | 9,523 |
 | C10 | 12 | 5,324 |
-| C11 | 26 | 9,507 |
+| C11 | 26 | 9,478 |
 | C12 | 25 | 7,017 |
 | C13 | 21 | 5,653 |
 | C14 | 13 | 3,608 |
@@ -570,4 +570,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 434 | 112,043 |
+| 合计 | 434 | 112,014 |

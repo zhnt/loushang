@@ -1,5 +1,26 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A158 四条评审入口共用准备/重开 fence 程序（2026-11-14）
+
+POSIX builtin/removed/local与Windows builtin review在原CLI共用一份完整程序：
+仅lstat的FileNotFoundError触发原prepare，version/protocol仍惰性读取；已有fence只重开
+核namespace。原snapshot-admission会读取owner，本片仅透传其原端口，不新增IO回借。
+disabled-only预检、fresh/bootstrap及Windows gate保持；没有新owner、状态或DTO。
+新增私有helper栈帧及原lambda提前分配不承诺私有locals/逐指令ABI等价。
+
+三独立设计和实际代码视角核完整逆AST与源码指纹，无本片新增阻断。旧/新296固定观察
+均通过，200个模型边界故障全触达，总260故障场景；6条提交后失败重试均只prepare一次。
+额外origin guard核实际模块路径/SHA及入口函数代码对象，原/新296重放通过，oracle不改；
+此前capture仅核文件SHA的证据限制已补齐。模型Path/os/owners/准入均受控，不证明Windows native。
+原141持久基线通过；实际9个原节点通过（397.55s），覆盖builtin/removed及skill/prompt/theme；
+其余配置不重复累计覆盖。单源Ruff/mypy、原依赖图新鲜度通过，原CI门禁/平台/选择器不变。
+
+完整单源946→917，Code/系统均−29，接收组件0；早期70–90粗估作废。
+本片独立基于A156：Code434源/112014，Harness362458、AppHost19218、历史2053源658741；
+剔除GUI测试4271后654470。距15K仍97014行，C11/P1–P4未完成。
+另一检出的A157仍运行验收，尚未合成，不把两独立帧冒充联合通过。
+证据保于树外`coding-convergence-resumed-20261114/a158-review-fence`。
+
 ## A156 托管服务完整控制归现有AppHost（2026-11-14）
 
 PR #890已合入主线`4de7d9251`；前次交付后的暂停已履行，用户恢复后完整Goal继续active。
