@@ -142,7 +142,7 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
         }
         <= reviewed_catalog_imports[path]
     }
-    assert consumers - optional_consumers == {
+    expected_consumers = {
         # Existing Product preview/discovery consume immutable Catalog data.
         Path("src/loushang/coding/package_product_preview.py"),
         Path("src/loushang/coding/plugin_local_discovery.py"),
@@ -154,6 +154,14 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
         RESOURCE_ROOT / "_loader_pipeline.py",
         RESOURCE_ROOT / "loader.py",
     }
+    # A182 accepts the exact moved evidence owner, preserving the old source.
+    projection_owner = Path("src/loushang/harness/plugin_management/current_preview.py")
+    if projection_owner in consumers:
+        expected_consumers = (
+            expected_consumers
+            - {Path("src/loushang/coding/package_product_preview.py")}
+        ) | {projection_owner}
+    assert consumers - optional_consumers == expected_consumers
     assert "_catalog" not in (RESOURCE_ROOT / "__init__.py").read_text(encoding="utf-8")
 
 

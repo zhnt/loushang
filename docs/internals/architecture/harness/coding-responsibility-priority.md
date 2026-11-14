@@ -9,7 +9,7 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 失败/取消/重试和资源交接必须一起替换。最近A171、A173、A174、A176合计Coding−680、
 生产系统+422，属于职责收敛，不能作为系统净精简的证据。A179另Code−128/AppHost+224/
 系统+96；A180完整前台控制另Code−116/AppHost+275/系统+159（统一格式+137）。
-A181再Code−116/Harness+268/系统+152；当前Coding110647行，距15K尚95647行，仍须按完整工作件推进。
+A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；当前Coding110571行，距15K尚95571行，仍须按完整工作件推进。
 
 | 顺序/状态 | 完整工作件 | 接收者及Coding保留边界 | 进入条件或实际处置 |
 | --- | --- | --- | --- |
@@ -20,19 +20,21 @@ A181再Code−116/Harness+268/系统+152；当前Coding110647行，距15K尚9564
 | 已完成 A179 | Hosted Continuity完整准备及失败清理 | 原AppHost Continuity共享两actual attempt的固定open/close；原Core ownership接完整清理，optional callers显式供应原join；Code保准入及薄profile | Code−128/AppHost+224/系统+96（统一格式+95）；原78+固定22+Core缓存1+既有join10过，原A0/G12–G14架构33项。两scope/14slots/失败债务保留；未关闭C02/KD011整组 |
 | 已完成 A180 | G17 foreground CLI客户端完整启动/交接/关闭及Runner恢复 | 原AppHost optional integration接唯一控制状态，复用原launcher与terminal；Code保argv、准入、公开门面及两UI绑定 | Code−116/AppHost+275/系统+159；原135+旧观察6共141不同项过，显式portable6另重放不重复计。无另一算法退出，不称净精简；未关闭整C11 |
 | 已完成 A181 | C13 LSP Supervisor完整实例寿命 | 原Process supervision显式子模块拥有同实例10事实，Code保LSP构造/initialize及状态诊断政策 | Code−116/Harness+268/系统+152（无格式差异）；原97+旧观察6共103不同项过。10hook/4T/2roles全计，无第二FSM退出，不称净精简或整C13完成 |
-| 3 / 下一整物设计与成本验证 | C10只读Product preview完整选择与资源寿命 | 比较原Product/Resources实际capture/catalog/composition；Code保选择、编译、信任与新鲜度政策 | 先证剩余selected-input到preview/open及recheck/close完整接缝与全成本；已有IO不重复迁移，462方法行不是删除预算 |
+| 已完成 A182 / 仅中性投影闭包 | C10 Catalog→typed selection/admission/bundle evidence | 原current_preview直接使用既有Catalog/Input/Admission/Bundle与DTO；Code保产品选择/编译/open及中间复核/最终profile | 原84行两投影完整退出；Code−76/Harness+115/系统+39，35不同项过。单producer无第二算法退出；不是whole preview/open或整C10完成 |
+| 4 / 下一整物设计与成本验证 | C01 managed Base/Capability装配 | 比较现有Resources/Plugin lifecycle/Kernel/Construction实际API；Code保准入/reconcile/惰性来源政策 | 完整核208+198程序与A51/A112原件；需不同且有据接缝，不重做同一回调池，不按bootstrap整文件报收益 |
 | 后续开放 / A169、A178完整形状均拒绝 | Worker Product完整收据authority | 原Package Product/Resources；Code保政策、验证与兼容DTO | 892行类范围/803行方法定义已作A178完整13源原型。真实Records/MRO/3必要reader改善成立，但计入4事实契约、6TypeVar、8必要公开门面后Code−512/Core+944/系统+432（统一格式+434），仅静态通过，未采用。相比A169系统+580减少148，仍无另一authority/运行重复退出，不为已付原型成本启动大矩阵或摘叶救收益 |
 
-G17与C13本批实例寿命已完成；后续核实顺序为：**C10只读preview →
-C01 managed装配 → C08残留事务**。这是进入完整接缝验证的顺序，不是已接受迁移或
-预计减量。A181在A171已共享传输之上完成独立的实例寿命，C10接续核选择输入到
-preview/open的整条路径；C01须先跨过已有两次接缝阻断；C08先剔除已经共享的
+G17与C13本批实例寿命、C10两段中性证据投影已完成；后续核实顺序为：
+**C01 managed装配 → C08残留事务**。这是进入完整接缝验证的顺序，不是已接受迁移或
+预计减量。A182确认preview/open其余主体为Code产品政策及既有Core IO接入，
+不以厚compile/open回调强搬；C01须先跨过已有两次接缝阻断；C08先剔除已经共享的
 restore/archive，不能再计搬迁收益。
 Worker两次完整原型已拒绝，单列暂缓，不排成自动重试任务。
 
 其它较大操作体按下表保留比较；有阻断的范围不是排在小项之前无限等待的实施任务。
 A178已完成Worker新接缝的整物成本决策并拒绝接入；A179随后完成202行审计范围的
-完整prefix替代；A180完成foreground整控制，A181完成C13实例寿命。现转C10整条preview，
+完整prefix替代；A180完成foreground整控制，A181完成C13实例寿命，A182完成两段证据投影。
+现转C01完整装配接缝，
 不按目录总量承诺迁移收益。
 
 A178核对A169最终原件确认，其POSIX authority已经继承ReceiptHistory；直接继承本身
@@ -42,9 +44,12 @@ A178核对A169最终原件确认，其POSIX authority已经继承ReceiptHistory�
 
 | 核实顺序与较大比较范围 | 当前完整范围实数 | 已有复用与不能立即迁移的原因 | 重新进入条件 |
 | --- | --- | --- | --- |
-| 3 / C10只读Product preview | 类范围479行，方法定义462行；主preview271、open122行 | 原Product/Resources capture、catalog与composition已共享；仍有Coding插件选择、编译、身份/新鲜度和诊断政策，没有已证完整中性API | 证明capture→catalog→recheck→close完整合同及全部政策适配成本；不回调整条Code preview或以摘要替代严格catalog |
 | 4 / C01 managed Base/Capability装配 | 两完整函数208+198=406行 | Resources、Plugin lifecycle、Kernel已共享；剩余reconcile差异、严格/延迟源解析和失败顺序仍混合。A51完整形状系统+202已拒，A112未找到更小接缝 | 原owner有能替换完整程序的新API；不恢复阶段回调Context，不把bootstrap2210行作预算 |
 | 5 / C08私有数据三类owner | 类范围549行，方法定义510行 | 原DeletionCoordinator、POSIX archive及Windows事务已共享；RestoreOwner.restore83行已调用Core完整restore。31源扫描所见直接native调用多为路径/身份检查，不是未迁物理事务 | 先证明一条尚在Code的完整事务及窄codec边界；全成本未知，不按6691行整包搬迁 |
+
+A182审计原preview271/open122与462方法行：只有84行Catalog身份连接和admission/bundle
+投影可在不吞Code编译/信任政策、无厚IO回调的前提下整体交给原证据owner；其余保留
+并非最终不可压缩下界。完整字段/clock/复核顺序保留，不据方法总量承诺整类减量。
 
 A181核对A38原件：其拒绝对象是另一类`CodingDeferredLspGeneration`延迟子图，
 不是`LspServerSupervisor`。前版将该决定紧邻C13描述，只能表示泛化适配成本的风险，

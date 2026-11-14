@@ -330,7 +330,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_product_backup_types.py](../../../../src/loushang/coding/package_product_backup_types.py) | C08 | 259 | M | C08 插件私有数据生命周期 | 6ddc9d882c1c | 207 | d2dd305ee9f8 |
 | [package_product_cli.py](../../../../src/loushang/coding/package_product_cli.py) | C10 | 467 | M | C10 包分发与 Product 管理 | 99e20c686e5f | 467 | 99e20c686e5f |
 | [package_product_management_cli.py](../../../../src/loushang/coding/package_product_management_cli.py) | C10 | 548 | M | C10 包分发与 Product 管理 | fa812374945e | 539 | ce7c00c33ddb |
-| [package_product_preview.py](../../../../src/loushang/coding/package_product_preview.py) | C10 | 668 | M | C10 包分发与 Product 管理 | 9a98648bd20d | 661 | 7d6efd1494c9 |
+| [package_product_preview.py](../../../../src/loushang/coding/package_product_preview.py) | C10 | 668 | M | C10 包分发与 Product 管理 | 9a98648bd20d | 585 | 51852051216e |
 | [package_product_repair.py](../../../../src/loushang/coding/package_product_repair.py) | C10 | 321 | M | 11类修复执行/释放归原ProductRuntime；Code保DTO、准入、创建及parent关闭 | 2c060b56dfaf | 228 | ace479ee6a09 |
 | [package_product_repair_rpc.py](../../../../src/loushang/coding/package_product_repair_rpc.py) | C10 | 49 | M | C10 包分发与 Product 管理 | 74413ce3f304 | 49 | 74413ce3f304 |
 | [package_product_repair_ui.py](../../../../src/loushang/coding/package_product_repair_ui.py) | C10 | 86 | M | C10 包分发与 Product 管理 | f38309028385 | 86 | f38309028385 |
@@ -529,8 +529,8 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 
 ## 当前分组计量与剩余处置
 
-2026-11-14以`4de7d9251`主线及A156–A158、A160、A162、A163、A165、A167、A168、A171、A173、A174、A176、A179、A180及A181当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
-当前Coding 110647行，完整≤15K目标差95647行；A181完整按key的Process client实例寿命归原Process，Code−116/Harness+268/系统+152，非净精简；A180完整前台客户端启动/交接/关闭及Runner恢复归AppHost，Code−116/AppHost+275/生产系统+159，非系统净精简；A179完整Hosted prefix及失败清理归AppHost，Code−128/AppHost+224/生产系统+96，非系统净精简；A176完整Session profile退休归原owner，Code−95/Core+164/生产系统+69；A174根关闭及Continuity绑定寿命归原owner，Code−153（含1行导入布局）/Core+301/生产系统+148，非净精简；A173完整兼容发布authority归Config，Code−158/Core+246/系统+88，属于职责迁移非净精简；A171完整进程JSON-RPC传输归Process，Code−274/Core+391/系统+117；A169完整authority原型+580拒绝，A170/A172只读调查收益0；A168完整原Source重捕获custody归Resources并共享两Wheel核，Code−181/Core+234/系统+53，非系统精简；A167读取族真实重复归一，Code−43/Core+22/系统−21；A166通用mixin原型拒绝、收益0；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
+2026-11-14以`4de7d9251`主线及A156–A158、A160、A162、A163、A165、A167、A168、A171、A173、A174、A176、A179、A180、A181及A182当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
+当前Coding 110571行，完整≤15K目标差95571行；A182完整Catalog证据投影归原current_preview，Code−76/Harness+115/系统+39，不含open/编译或既有IO；A181完整按key的Process client实例寿命归原Process，Code−116/Harness+268/系统+152，非净精简；A180完整前台客户端启动/交接/关闭及Runner恢复归AppHost，Code−116/AppHost+275/生产系统+159，非系统净精简；A179完整Hosted prefix及失败清理归AppHost，Code−128/AppHost+224/生产系统+96，非系统净精简；A176完整Session profile退休归原owner，Code−95/Core+164/生产系统+69；A174根关闭及Continuity绑定寿命归原owner，Code−153（含1行导入布局）/Core+301/生产系统+148，非净精简；A173完整兼容发布authority归Config，Code−158/Core+246/系统+88，属于职责迁移非净精简；A171完整进程JSON-RPC传输归Process，Code−274/Core+391/系统+117；A169完整authority原型+580拒绝，A170/A172只读调查收益0；A168完整原Source重捕获custody归Resources并共享两Wheel核，Code−181/Core+234/系统+53，非系统精简；A167读取族真实重复归一，Code−43/Core+22/系统−21；A166通用mixin原型拒绝、收益0；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
 Code−93/Core+119/系统+26；当前两源及验证边界见执行记录。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
@@ -551,7 +551,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C07 | 112 | 21,132 |
 | C08 | 31 | 6,691 |
 | C09 | 34 | 9,265 |
-| C10 | 12 | 5,324 |
+| C10 | 12 | 5,248 |
 | C11 | 26 | 9,362 |
 | C12 | 25 | 7,017 |
 | C13 | 21 | 5,263 |
@@ -570,4 +570,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 434 | 110,647 |
+| 合计 | 434 | 110,571 |

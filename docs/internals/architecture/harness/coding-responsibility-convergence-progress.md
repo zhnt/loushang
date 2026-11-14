@@ -1,5 +1,44 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A182 Catalog只读证据投影归既有Preview模块（2026-11-14）
+
+按整物排序审计原preview271/open122及462方法行，原capture、严格Store与Catalog
+已经归Core。只有84行Catalog身份连接及admission/bundle证据投影可完整下沉；
+两段直接扩充既有current_preview，使用原实际类型，无新状态、回调、Protocol或框架。
+Code保选择、编译、信任政策、open/close寿命、中间after-read/currentness/evidence屏障、
+最终DTO与原晚clock/metadata读取；不是whole preview/open或整C10完成。
+原七个Code其它方法及原七个Core定义逐字保留，逆展开后非import AST同。
+
+最终Code661→585（−76）/Harness282→397（+115）/系统+39；统一格式为−79/+115/
+系统+36，差3行是保留旧Code格式，不能宣称全文件format绿。新增实际类型、导出与
+全部适配均已计入。新运行时类型import只在对应投影内，原顶层模块import集合不增；
+这是源码事实，不是实测cold加载或IO成本。单producer没有第二算法退出，不称净精简。
+
+改后两项精确source-locator测试先在旧生产运行：原消费者及RCP0/1共26过181.26s。
+六项旧观察先capture再fresh只读重放（0.43/0.39s），原期待10789B SHA
+`856d4a67061b7dfe2350d8fba3fa247f9cea7a40622fa0e7b8f47cda3ed37115`
+冻结后才装候选。覆盖完整投影、三类身份不匹配、after-read失败和admission构造失败；
+使用真实Catalog/DTO及受控叶、显式seeded名义Store字段，不称真实Store authority。
+currentness/evidence各自失败未独立观察，以原代码保留与逆AST限定证据。
+
+实际原26+旧6共32过224.77s；原Core合同与PLC9另3过47.17s，总35不同项，
+0fail/error/skip。仓库显式probe482行、5声明函数，gzip1797B逐字封装原10789B；
+Repo6过10.33s是同覆盖复验，不重复计数，受控POSIX模型不冒全平台native证明。
+两source-locator净增29测试行，旧pass状态/原assert及其它callable保持，整个测试源码
+另计511行、夹具另计字节。没有新CI route、required presence、平台或PR gate。
+
+五actual源103声明callable、六portable源108声明callable均用独立phase/PID的
+path/SHA及递归19个code字段守卫；只证明父进程，不替child/native/whole PR。
+实际生产mypy、相关Ruff及新区域格式检查过；三独立设计/实际视角有界接受。
+树外证据`coding-convergence-resumed-20261114/a182-readonly-product-preview`保留
+冻结原件、两稿全成本、操作体退出证明、旧观察、JUnit、逐进程守卫和三评审。
+
+当前2059源659676行（独立GUI测试4524，排除后655152），Code434源110571、
+Harness364337、AppHost19717；距15K仍95571。C10为12源5248行；完整P1–P4、
+KD003/KD011及15K仍未完成。下批先核C01 managed Base/Capability两完整装配
+208+198行及A51/A112原阻断，须有不同且有据的完整接缝，再核C08残留事务。
+
+
 ## A181 完整LSP Supervisor实例寿命归Process（2026-11-14）
 
 完成按key共享启动、实际authorized launch/handle/client、单次协议初始化交接、发布或
