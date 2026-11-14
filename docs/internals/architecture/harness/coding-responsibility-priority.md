@@ -7,8 +7,8 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 
 排序先比较能够整体退出的旧操作体和真实复用，再比较全部适配后Coding及系统的净值；
 失败/取消/重试和资源交接必须一起替换。最近A171、A173、A174、A176合计Coding−680、
-生产系统+422，属于职责收敛，不能作为系统净精简的证据。当前Coding111007行，距15K
-尚96007行；继续以十几行局部抽取推进不足以说明大块优先已经落实。
+生产系统+422，属于职责收敛，不能作为系统净精简的证据。A179另Code−128/AppHost+224/
+系统+96；当前Coding110879行，距15K尚95879行，仍须按完整工作件推进。
 
 | 顺序/状态 | 完整工作件 | 接收者及Coding保留边界 | 进入条件或实际处置 |
 | --- | --- | --- | --- |
@@ -16,12 +16,13 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 | 已完成 A173 | 配置兼容发布完整authority | 原Config LegacyProjection owner承接cache/issuer、writer与projection注册、聚合、Condition/deque、逐请求receipt和异常结算；Code保存量迁移政策/领域capture、guard和薄profile | 整物Code317→159（−158）/Core+246/系统+88；原135及固定旧29项覆盖通过，保持5原平台skip；不复用异常合同不同的普通Config通知队列，属于职责迁移 |
 | 已完成 A174 | 根运行时关闭及Continuity完整绑定寿命 | 原Session Runtime接根关闭/两drain，原Continuity接composition/reservation/Task/identity-delete；Code保领域DTO、准入与薄profile | Code−153（含1行导入布局）/Core+301/生产系统+148（统一格式+139）；320项通过，持久55重放另验不重复累计；该片未含子Session113，后续见A176 |
 | 已完成 A176 | Session profile完整失败保留链 | 原AgentProductSession接完整113退休程序，实际Slot/Registration/Publication/Assembly/Graph/Sandbox直接复用；Code保六字段/诊断绑定及两个纯状态hook | Code−95/Core+164/系统+69；原Core关闭Task/cancellation wrapper保原晚调用；BaseAssembly.close19仍Code，不据此关闭C01或C15整组 |
-| 1 / 下一完整验证工作件 | Hosted Continuity构造前缀及失败清理 | 原AppHost Continuity/Application；Code保请求准入、产品注册/Resolver构造与Workspace加载资格 | outer owner176行及失败清理26行；三真实入口共用。需复用原inner attempt的open/close控制，同时保两作用域不同的缓存/交接/清理合同。78项原测试基线通过；候选净成本及兼容对照未接受，不计迁移收益 |
+| 已完成 A179 | Hosted Continuity完整准备及失败清理 | 原AppHost Continuity共享两actual attempt的固定open/close；原Core ownership接完整清理，optional callers显式供应原join；Code保准入及薄profile | Code−128/AppHost+224/系统+96（统一格式+95）；原78+固定22+Core缓存1+既有join10过，原A0/G12–G14架构33项。两scope/14slots/失败债务保留；未关闭C02/KD011整组 |
+| 1 / 下一整物设计与成本验证 | G17 foreground CLI客户端完整启动/交接/关闭 | 比较原AppHost optional launcher/control与两窄UI端点；Code保argv、产品主题/身份和命令政策 | 前序已定位deadline/start/mux/UI发布/retained-close完整程序；须连实际launch preparation/执行入口计量。Mux仍只做client，不给它process-close能力，不借Protocol藏越界，不先改gate；总成本未知，不承诺减量 |
 | 后续开放 / A169、A178完整形状均拒绝 | Worker Product完整收据authority | 原Package Product/Resources；Code保政策、验证与兼容DTO | 892行类范围/803行方法定义已作A178完整13源原型。真实Records/MRO/3必要reader改善成立，但计入4事实契约、6TypeVar、8必要公开门面后Code−512/Core+944/系统+432（统一格式+434），仅静态通过，未采用。相比A169系统+580减少148，仍无另一authority/运行重复退出，不为已付原型成本启动大矩阵或摘叶救收益 |
 
 其它较大操作体按下表保留比较；有阻断的范围不是排在小项之前无限等待的实施任务。
-A178已完成Worker新接缝的整物成本决策并拒绝接入，现在进入下一可行的202行完整
-prefix场景；不是按较小目录更容易通过而跳过大块试验。
+A178已完成Worker新接缝的整物成本决策并拒绝接入；A179随后完成202行审计范围的
+完整prefix替代。现转下一完整跨入口程序，不按目录总量承诺迁移收益。
 
 A178核对A169最终原件确认，其POSIX authority已经继承ReceiptHistory；直接继承本身
 不是新方案或收益。待比较的是实际初始化/新鲜历史读取绑定、Windows原Records公共

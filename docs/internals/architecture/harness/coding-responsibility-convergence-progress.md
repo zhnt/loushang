@@ -1,5 +1,65 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A179 完整Hosted准备/失败清理归AppHost，共享两attempt控制（2026-11-14）
+
+完成原176行prefix owner及26行construction cleanup的整物替代。Code只留exact请求
+准入、实际Product factory绑定、Workspace加载资格、两个领域构造器及admit后sessions
+晚投影。加载hook调用已有Catalog.load，并非纯函数；没有回借整段Code构造/清理程序。
+AppHost的固定lifecycle实际供prefix与原inner两owner共用，退出两套cleanup_pending/
+open/close操作体；两资源scope、各自原Task/Lock和失败债务仍分开。inner保runtime缓存
+快返与原发布写入，prefix仍只复用openTask，不把continuity runtime写成AppHostRuntime。
+
+完整“runtime或catalog→始终尝试factory→聚合失败→owned Task结清”归现Core
+`_ownership`，G12薄调用和prefix共用。Core保标准库依赖；两个optional caller显式提供
+原同一Foundation failure-first join能力，资源操作及Task创建不回借Code。新close-only
+typing角色不前取factory.close，原晚lookup保留；不改CloseGroup/DependentCloseChain
+不同的failure合同。5字段readonly request/1 ForegroundT、close口/join能力及全部profile
+均计成本，没有新状态对象、phase语法、manager、queue或第二authority。
+采用范围保实际稳定primitive，不承诺任意私joinalias热替换或effectful类描述符的额外时点。
+
+最终R6 Code−128/AppHost+224/生产系统+96；统一格式Code−129/AppHost+224/系统+95。
+六目标源中application逐字恢复原553行；新增一个private integrations实现，另四源变，
+其余2052源SHA同。完整准备scope/5字段view/ForeT进`integrations/_continuity_preparation`，
+cont只保实际Runtime/inner及共享控制，无回导Prep，也没有第三owner实例或新状态。
+Code旧私join操作体及绑定不再执行而退出；初搜索漏掉Foundation probe的动态tuple
+消费者，已更正。仅exact旧label解析到真实Core join，HELPERS/CASES/nodeid/原fixture/
+断言全保，另6测试行，不冒称零消费者。新显式probe460行含原22模型及原Corecached
+检查1项；gzip1805B逐字封装旧38984B期待，raw SHA `03be6abb…ce2b031e`，无capture/
+环境切换/绝对路径/新CI route。G13原lease-before-catalog断言另12行仅保旧Code优先、迁位真实Prep查找，全部原assert不变；
+测试源码合478行，独立于生产增量。Core旧_void实为13行完整等待循环，并非薄wrapper；
+Foundation循环仅多保存/返回结果，sharedclose仍丢弃TaskNone返回，完整逆AST同。该重复
+在本完整路径退出，不改A29历史或再计早已共享的runtime/report aliases。
+
+旧22捕获及去capture后重放各22过；旧cached1另过。22用exact CodeRequest类型的
+受控字段/NS foreground绕过post-init，检查真实control和完整cleanup，资源leaf受控，
+不冒请求校验/平台IO；原78消费者互补实际请求/持久恢复与managed路径。两caller.cancel
+真实触达，覆盖失败、重试、并发open、close拒绝发布、lease-last及三cleanup分支。
+R3实际79+22+10过后原架构15过/1失败（application587>566）；R4移到ownership仍
+101+10过，但原架构15过/1失败（Core引入Foundation）。这两次实质失败均保留；R5
+显式join口通过原16项后，补齐直接G13检查又7过/2失败：cont805>675及旧Code方法
+source定位失效。R6按原scope拆implementation，使用既有optional integrations包保持
+A0根库存；仅迁旧断言的owner查找，原675/566预算、依赖与全部断言均不改。
+
+最终R6原78+portable23共101过，JUnit64.159s；既有join10过1.111s；
+原A0/G12/G13/G14全部33架构项过44.855s。合144个不同用例、0fail/skip，
+前阶段重复运行不累计。六源与第7repo载体逐case代码字段守卫、两actual类
+原14slots/128字节basic size/dict0/weakref0、公开签名及resolved hints按旧metadata对照；
+join身份、required kw-only绑定及原Core完整loop等价分别核验。
+首次actual carrier因pytest断言重写与plain compile不一致在0测试时退出3，保留记录，
+仅用--assert=plain后守卫通过，旧期待/观察未改。literal-empty-slots首次mypy23错误
+亦保留；typed empty tuple只表达无存储mixin，布局由上述actual证据证明，非mypy保证。
+
+六实际源mypy、Ruff及新增区域正规格式通过；未改旧定义保持逐字，旧整体格式差异
+不冒全format绿。R4→R5 fresh import闭包Code477/Corecontinuity42同集，单独Ownership
+移除Foundation两模块回7；仅模块集合，不是IO审计。源与数据schema/公开入口不变，
+三独立实际视角及实施owner `/root`作本片有界接受；无native、全PR或完整Goal完成声明。
+
+证据在树外`coding-convergence-resumed-20261114/a179-hosted-continuity-prefix`，含R3/R4/R5
+原阶段、预算/依赖/source定位失败、旧源/期待/重建脚本、R6六源清单、终态JUnit和三报告。
+历史源帧增一个private module至2057源659326（含GUI测试4271，排除后655055）；
+Code434源110879、Harness363954、AppHost19442，距15K仍95879。C02为31源8257行，仍非整组完成；KD003/KD011与
+完整P1–P4保持开放。下一完整工作件见优先队列，不以本片代替15K验收。
+
 ## A178 Worker完整authority不同接缝原型拒绝，生产不接入（2026-11-14）
 
 按A177大块首位完成四类authority的整物比较，覆盖原892类行/803方法行，未摘局部helper。
