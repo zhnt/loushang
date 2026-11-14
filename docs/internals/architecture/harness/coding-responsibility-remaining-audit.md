@@ -7,6 +7,9 @@ A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出w
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
 具体接受/验证边界见[执行记录](coding-responsibility-convergence-progress.md)。
 后续实施顺序见[大块职责优先队列](coding-responsibility-priority.md)，A169完整authority原型系统+580拒绝，A170/A172整池已调查，A171按可迁移性完成完整LSP传输；余项继续重选完整工作件，不以零碎去重代替主线。
+A178已按大块优先完成Worker不同接缝的13源整物原型；保公开兼容后Code−512/Core+944/
+系统+432（统一格式+434），类型与源码静态通过但总成本不足以抵相称复用，保外部、未采用，
+实际生产收益0。下一项为完整Hosted Continuity准备/失败清理，不将803方法行当可删承诺。
 完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07整policy/receipt仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 A162完整暂存到prepared activation lease交接归原Continuity，Code−61/Core+90/系统+29，
 单消费者职责迁移，不计去重；KD003 bytes与C04整体仍未完成。
@@ -129,7 +132,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C04 Continuity | 2/2,809 | P3 | 原Continuity provider/runtime、A68 payload custody、A162暂存到lease及A174完整绑定shutdown/reservation/Task寿命已接入；Code保来源/限额/cwd和canonical restore端口 | KD003 bytes import未实施；非owned真实Path/FileCopy/引用合同仍在，不提前采用KD011 |
 | C05 Canary及作者验证入口 | 6/3,565 | P1/P3/P4 | 原Worker attempt及托管owner已有接入；Code保真实SDK/CLI验证入口和产品场景 | 存在真实运行消费者，不能按canary/smoke命名删除；剩余协调须随实际场景替代 |
 | C06 其余根入口与策略 | 26/4,460 | P2/P4 | 混合产品配置、模型/工具选择及既有薄绑定 | 逐具体声明/运行路径处置；不整体当领域保留或机械可删 |
-| C07 插件Worker | 112/21,132 | P1 | 五流/Rooted/history/platform/native custody、普通准备/停止/reopen主机制已共享；A165撤销事务及A167读取重复程序归一，Code保产品准入/原读取时序 | Core已有candidate事实现供3处复用；完整receipt authority/平台政策归属仍须核定，A166泛型移入拒绝；尚无整簇完成证明 |
+| C07 插件Worker | 112/21,132 | P1 | 五流/Rooted/history/platform/native custody、普通准备/停止/reopen主机制已共享；A165撤销事务及A167读取重复程序归一，Code保产品准入/原读取时序 | Core已有candidate事实现供3处复用；A178真实Records/薄构造整物原型保公开接口后仍系统+432、成本拒绝未接入；完整authority/平台政策归属仍开放，非领域不可迁证明 |
 | C08 插件私有数据 | 31/6,691 | P4 | 原备份/删除/恢复/过期及A71 lineage已由原Plugin Management/Resources承接 | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
 | C09 兼容迁移与快照证据 | 34/9,265 | P4 | 原capture/epoch/receipt等机制已共享，A157首次删除重放三入口合一，A168原Source重捕获/handle/stage custody及双Wheel核归Resources；存量分类、准入与恢复政策仍在 | 逐受支持状态和恢复入口给退出证明；legacy命名与静态无调用都不足以删支持 |
 | C10 包分发及Product管理 | 12/5,324 | P2/P4 | Package Product等已复用；A155修复执行/释放归原ProductRuntime，Code保该入口准入/DTO/parent关闭，其它兼容/fenced装配仍混合 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |

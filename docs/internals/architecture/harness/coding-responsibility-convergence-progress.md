@@ -1,5 +1,46 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A178 Worker完整authority不同接缝原型拒绝，生产不接入（2026-11-14）
+
+按A177大块首位完成四类authority的整物比较，覆盖原892类行/803方法行，未摘局部helper。
+先校正旧假设：A169最终原型早已继承ReceiptHistory，直接继承本身不是本片新复用。
+新方案保原Code构造与一次History初始化、实际RecordT；改用真实WindowsRecords公共
+操作，复用原CurrentOptIn、保3个真实reader契约；4个empty-slots事实基类不搬Code字段、
+validator、schema或存量数据。原native/discovery及Windows kwargs读取时序保留；新鲜
+历史仍按原Product准入/path/access另构造，不能换成self.read_records。
+
+三版完整文本和SHA均留存。R1 Code−576/Core+949/系统+373；R2单policy hook及领域
+product_id/预算数据归位后−592/+944/+352。R3补齐8项真实公开返回注解的原签名/doc
+与薄super门面（80行），最终Code−512/Core+944/系统+432，统一格式口径+434。
+13源中2份原journal源逐字未变，实际11份修改/新增；所有profile、类型、门面与新API
+均计。相对A169+580只降148，不能把14结构端口变3 reader等同为全部适配税消失。
+
+R3全部13实际overlay源project mypy、Ruff及格式通过，可从保留R1逐字重建。
+初构建器误读Assign.decorator_list、首mypy的7个搭建错误保留，包括未绑定R及把实际
+nominal检查误换成参数化Protocol；均在树外修正，未污染Product或改变旧期望。
+静态逆绑定36个原程序，35整body同，1新鲜历史读取展开纯转发后同；3原构造整AST同，
+5个Code DTO的字段/方法/schema除4事实基类外同。8个公开返回签名finding已用门面关闭。
+原5个Core源71函数/方法AST同，另1个CurrentOptIn方法原AST移位，新增5个Records公共
+桥及1个native事实方法；不能将仍被Code兼容override遮住的公共桥计为运行重复退出。
+
+Root在完整原型前保存4个合法旧公开值的wire/字段/签名/slots及pickle；隔离4源value
+profile的mypy、旧pickle读取/重编码和wire对照通过，仅为局部数据证据，不证明完整
+authority或平台运行。首布局observer遗漏原future annotations编译flag导致字段比较失败，
+修正observer后同，未改Product。历史256项仅核原XML及三authority原SHA仍同，不冒新绿。
+Windows owner current/revoke及native/borrow退出后复核仍需成本接受后补少量完整事务观察；
+没有为被拒形状启动authority行为矩阵，也没有Windows/native或全PR验证声明。
+
+职责和运行视角均确认完整边界改善真实，但4事实契约/6TypeVar/8公开门面及双侧
+profile使原892类行变Core752+Code385=1137行；没有另一state authority或运行重复退出。
+兼容视角源码层无具体新增阻断不等于运行接受。实施owner `/root`据完整成本决定不采用，
+不因已付原型成本接入、不单摘facts/公共桥冒精简。下一项按队列回到完整prefix202行。
+
+树外证据`coding-convergence-resumed-20261114/a178-worker-receipt-authority`保13源R1/R2/R3、
+构建器、初错/修正、成本、原值及三独立报告。历史2056源帧仍659230行（含GUI测试
+4271行，排除后654959），Coding434源/111007行、Harness363954行、AppHost19218行，
+实际新增源码收益0、距15K仍96007行；原型+432均在生产Python中，不受上述测试口径影响。
+C07、完整P1–P4、KD003/KD011保持开放，本次拒绝不是不可压缩领域下界或15K冲突证明。
+
 ## A177 大块职责重新排序，候选未接入（2026-11-14）
 
 按用户要求重排[实施队列](coding-responsibility-priority.md)，先比较尚在Code的完整

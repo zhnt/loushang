@@ -16,11 +16,17 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 | 已完成 A173 | 配置兼容发布完整authority | 原Config LegacyProjection owner承接cache/issuer、writer与projection注册、聚合、Condition/deque、逐请求receipt和异常结算；Code保存量迁移政策/领域capture、guard和薄profile | 整物Code317→159（−158）/Core+246/系统+88；原135及固定旧29项覆盖通过，保持5原平台skip；不复用异常合同不同的普通Config通知队列，属于职责迁移 |
 | 已完成 A174 | 根运行时关闭及Continuity完整绑定寿命 | 原Session Runtime接根关闭/两drain，原Continuity接composition/reservation/Task/identity-delete；Code保领域DTO、准入与薄profile | Code−153（含1行导入布局）/Core+301/生产系统+148（统一格式+139）；320项通过，持久55重放另验不重复累计；该片未含子Session113，后续见A176 |
 | 已完成 A176 | Session profile完整失败保留链 | 原AgentProductSession接完整113退休程序，实际Slot/Registration/Publication/Assembly/Graph/Sandbox直接复用；Code保六字段/诊断绑定及两个纯状态hook | Code−95/Core+164/系统+69；原Core关闭Task/cancellation wrapper保原晚调用；BaseAssembly.close19仍Code，不据此关闭C01或C15整组 |
-| 1 / 整物设计及成本验证；A169形状仍拒绝 | Worker Product完整收据authority | 原Package Product/Resources；优先比较真实ReceiptHistory、WindowsReceiptRecords/WindowsOptInRecords及原authority的直接复用，Code保政策、验证与兼容DTO | 四类共892行类范围、803行方法定义，均非净删预算。旧四源原型Code−543/Core+1123/系统+580、14结构端口，未采用；新方案须连真实journal/构造和facade一起重切，不能只删视图定义再包装同一形状 |
-| 2 / 完整原型对照；暂缓接入 | Hosted Continuity构造前缀及失败清理 | 原AppHost Continuity/Application；Code保请求准入、产品注册/Resolver构造与Workspace加载资格 | outer owner176行及失败清理26行；三真实入口共用。需复用原inner attempt的open/close控制，同时保两作用域不同的缓存/交接/清理合同。78项原测试基线通过；候选净成本及兼容对照未接受，不计迁移收益 |
+| 1 / 下一完整验证工作件 | Hosted Continuity构造前缀及失败清理 | 原AppHost Continuity/Application；Code保请求准入、产品注册/Resolver构造与Workspace加载资格 | outer owner176行及失败清理26行；三真实入口共用。需复用原inner attempt的open/close控制，同时保两作用域不同的缓存/交接/清理合同。78项原测试基线通过；候选净成本及兼容对照未接受，不计迁移收益 |
+| 后续开放 / A169、A178完整形状均拒绝 | Worker Product完整收据authority | 原Package Product/Resources；Code保政策、验证与兼容DTO | 892行类范围/803行方法定义已作A178完整13源原型。真实Records/MRO/3必要reader改善成立，但计入4事实契约、6TypeVar、8必要公开门面后Code−512/Core+944/系统+432（统一格式+434），仅静态通过，未采用。相比A169系统+580减少148，仍无另一authority/运行重复退出，不为已付原型成本启动大矩阵或摘叶救收益 |
 
 其它较大操作体按下表保留比较；有阻断的范围不是排在小项之前无限等待的实施任务。
-先完成Worker新接缝的一份整物原型和成本接受/拒绝，再进入下一可行完整场景。
+A178已完成Worker新接缝的整物成本决策并拒绝接入，现在进入下一可行的202行完整
+prefix场景；不是按较小目录更容易通过而跳过大块试验。
+
+A178核对A169最终原件确认，其POSIX authority已经继承ReceiptHistory；直接继承本身
+不是新方案或收益。待比较的是实际初始化/新鲜历史读取绑定、Windows原Records公共
+操作与构造、泛型不变量，以及双侧facade/profile的全部成本。原Code薄构造可以保留，
+不为迁出几次字段赋值再增加一轮初始化回调；必要读取顺序优先于减少参数数量。
 
 | 较大比较范围 | 当前完整范围实数 | 已有复用与不能立即迁移的原因 | 重新进入条件 |
 | --- | --- | --- | --- |
@@ -31,12 +37,13 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 
 上述类/方法范围有包含关系，不能相加作可删量。跨簇扫描覆盖434份当前Code源码的
 长函数/owner导航，并深核表列实际程序及Core调用，不等于全树语义重复证明或领域下界。
-没有找到比202行prefix更大且已可直接替换的完整程序；因此先验证803方法行的Worker
-不同接缝，而不是承诺直接搬走803行，或回到零碎helper。
+没有找到比202行prefix更大且已可直接替换的完整程序；803方法行Worker不同接缝已作
+完整原型并因全部成本不足以抵相称复用而拒绝，不承诺直接搬走803行，也不回到零碎helper。
 
 A175实查已确认activation policy/receipt/witness及多数manifest/candidate事实早已Core；
-仅换剩余DTO不能消掉A169完整authority接口成本。新方案须先证明具体journal/最少中性facts
-确实能退出原适配层，并保generated/duck reader及整Windows opt-in事务；当前只调查，未采用。
+仅换剩余DTO不能消掉A169完整authority接口成本。A178已连具体journal/最少中性facts、
+generated/duck reader及整Windows opt-in事务作完整替代比较，仍保外部、不采用；今后重新
+进入须证明实际owner/API/重复机制退出带来不同的整物价值，不复刻已拒形状。
 
 不再排作待整池搬迁的范围：A170核查的inventory/snapshot712行，其root/bundle/member/
 list/recheck/finally已由SnapshotEvidenceStore拥有；Code保存量分类、支持政策与新鲜度时点。
