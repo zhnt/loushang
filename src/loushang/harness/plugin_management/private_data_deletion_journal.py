@@ -1,11 +1,13 @@
 """Exact deletion action history over the original Journal and pathname admission.
 
 The caller retains Product quiescence. This owner keeps the original POSIX
-phase/replay contract and does not perform native deletion or authorize it.
+phase/replay contract and invokes a borrowed native deletion operation only
+after the caller has admitted and fenced the exact plan.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Generic, TypeVar
@@ -30,6 +32,7 @@ from .private_data_deletion import (
     PluginPrivateDataDeletionEventV1,
     PluginPrivateDataDeletionPlanV1,
     PluginPrivateDataDeletionReceiptV1,
+    PrivateDataDeletionDisposition,
     PrivateDataDeletionTarget,
 )
 
@@ -98,6 +101,44 @@ class PrivateDataDeletionJournal(Generic[_TargetT, _EventT]):
             ):
                 return event.receipt
         return None
+
+    def execute_deletion(
+        self,
+        plan: PluginPrivateDataDeletionPlanV1,
+        confirmation: PluginPrivateDataDeletionConfirmationV1,
+        *,
+        capture_target: Callable[[], _TargetT],
+        remove_started: Callable[
+            [_EventT], tuple[PrivateDataDeletionDisposition, _EventT]
+        ],
+        receipt_id: Callable[[], str],
+        stale_message: str,
+        unfinished_message: str,
+    ) -> PluginPrivateDataDeletionReceiptV1:
+        """Execute original checkpoints inside the caller's admitted offline fence."""
+        replay = self.receipt_for(plan, confirmation)
+        if replay is not None:
+            return replay
+        started = self.current_start()
+        if started is None:
+            target = capture_target()
+            if plan.target_id != target.target_id:
+                raise ValueError(stale_message)
+            started = self.record_start(plan, confirmation, target)
+        elif started.plan != plan or started.confirmation != confirmation:
+            raise ValueError(unfinished_message)
+        disposition, terminal_start = remove_started(started)
+        receipt = PluginPrivateDataDeletionReceiptV1(
+            installation_key=plan.installation_key,
+            owner_id=plan.owner_id,
+            target_id=plan.target_id,
+            plan_fingerprint=plan.fingerprint,
+            confirmation_id=confirmation.confirmation_id,
+            receipt_id=receipt_id(),
+            disposition=disposition,
+        )
+        self.record_completion(terminal_start, receipt)
+        return receipt
 
     def record_start(
         self,

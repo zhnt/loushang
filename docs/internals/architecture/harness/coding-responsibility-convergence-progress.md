@@ -1,5 +1,28 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A185 完整POSIX删除检查点归原Journal（2026-11-14）
+
+原Journal接管replay→start→借用原physical remove→receipt→completion完整27行程序，
+原Code准入/offline/confirmation/Desired absent仍先于replay。POSIX完成用remove返回的
+terminal renamed；Windows仍用original start，未并引擎/加flag。0新roles/T/状态/锁/catch，
+3窄端点与两错误数据全计；CodeOwner−14加CodeJournal说明+1=Code−13/Core+41/系统+28，
+raw=uniform，不称第二算法退出或新迁物理IO。完整逆AST及原4Code/13Core方法逐字证据齐。
+
+旧原三模块14过23.54s；冻结3源接入后同14过23.69s，0fail/error/skip。不累计旧14；
+原真实删除、absent、renamed/收据前中断后reopen retry、篡改拒绝、Journal阶段与Harness
+confirmation/receipt场景覆盖；getter/receipt ctor/ID/compound exit未独立观察，不冒全窗口。
+5源旧81/actual82声明callable、各14nodes/28checks，独立phase/PID源码及递归19code字段
+守卫仅父进程。无新test/probe/oracle/fixture/gate；实际3源generic mypy/Ruff通过。
+三设计/实际视角对相称的原phase权威接管有界接受，详见[私有数据设计](key-designs/private-data-lifecycle-convergence.md#a185-原journal拥有完整posix删除检查点程序)。
+
+当前2059源659704，排GUI4524后655180；Code434源110558/Harness364378/AppHost19717，
+C08为31源6678，距15K95558。树外`a185-posix-deletion-checkpoint`保原/冻源、全账、
+完整控制流证明、两JUnit与逐PID守卫及三报告。完整P1–P4、KD003/KD011和15K仍开放。
+下一候选先核C12 Repository Goal的204行command facade及真实Goal/Work既有owner：
+其领域验证/review政策留Code，需找到完整寿命/协调接缝，不按1423整文件或157行
+observations政策预支减量，不重迁A117已共享cold facts。
+
+
 ## A184 完整Windows保留快照原型与采用取舍（2026-11-14）
 
 按队列完成110行完整读/状态程序的双源原型，接收候选为既有PackageProduct backup

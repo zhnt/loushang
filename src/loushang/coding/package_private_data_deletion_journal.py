@@ -1,7 +1,8 @@
 """Product-private start and receipt history for exact Arch data deletion.
 
-The journal records authority and recovery state. It performs no filesystem
-deletion; the Coding data-domain owner must hold Product quiescence around it.
+The journal records authority/recovery and sequences a caller-supplied deletion.
+Native IO and admission remain with their owners; the Coding data-domain owner
+must hold Product quiescence around execution.
 """
 
 from __future__ import annotations

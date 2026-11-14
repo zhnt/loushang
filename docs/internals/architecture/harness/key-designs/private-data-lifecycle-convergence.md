@@ -344,3 +344,37 @@ import在函数内，注解类型在TYPE_CHECKING；缺省模块仅新增typing/
 全税、控制流退出/加载源码证明及三报告。下一完整切点为POSIX delete_confirmed52中
 约30行replay→start→原物理删除→receipt→completion程序，核原Journal最小扩充；
 Code准入仍须先于replay，completion保terminal renamed，不直接套Windows执行器。
+
+
+## A185 原Journal拥有完整POSIX删除检查点程序
+
+原PrivateDataDeletionJournal已拥有started/renamed/completed的持久阶段、重放和短锁；
+新增execute_deletion把原Code120–146共27行统调完整接到该owner，不增状态、角色、
+TypeVar、外包锁、catch或新存储。Code仍先验command/root/offline/独立confirmation及
+Desired absent，再调用该入口；即使已有完成receipt，原准入也不跳过。三窄端点只绑定
+原target capture、原Core physical remove及纯Code receipt hash；两原错误文本作为数据。
+
+保持原!=方向/短路、receipt replay、current start/fresh target或pending拒绝、原remove
+返回(disposition, terminal_start)、收据字段从左至右及晚ID、completion用terminal_start。
+present target必须有renamed证据；Windows执行器仍回溯original started且remove只返
+ disposition，故未合并、不加flag。原Code其它4方法和Core13方法逐字同，展开三端点、
+消息及同一journal receiver后的完整delete AST同；原短锁仍只在各journal操作，不跨IO。
+
+最终CodeOwner181→167（−14），CodeJournal模块doc131→132（+1），Core271→312（+41）：
+Code合计−13/系统+28，raw=uniform。第三源码只是明确borrowed native/准入外置的说明，
+其行与SHA计入；不把27行操作退出当Code净减27，不计已共享物理算法为本片收益。
+不同于A184新跨owner envelope，本片直接补原phase权威的完整接口，0新角色/T和三个
+已有窄端点的成本相称；三独立设计及实际视角有界接受，Root接受该批，不关闭整C08。
+
+同三个原测试模块旧14过23.54s，装冻结三源后同14过23.69s、0fail/error/skip；测试源码、
+断言、fixture及CI路由均未改，无新oracle/portable。真实Product覆盖删除/absent/准入、
+重命名后及收据前中断后重开重试；篡改墓碑只证明拒绝及不产收据，不冒篡改也能恢复。
+原journal阶段与Harness confirmation/receipt合同一起覆盖；getter/receipt ctor/ID及
+compound-exit未独立故障观察，以整逆AST和原实际场景限定，不称全部错误窗口。
+
+旧/actual各独立phase/PID核5模块路径/SHA和递归19个code字段，分别81/82声明callable、
+14节点/28checks；仅父进程，不替child/wheel/Windows/native全平台或整PR。实际三源
+严格generic mypy/Ruff通过；没有新PR gate。当前2059源659704（排GUI4524后655180），
+Code434源110558/Harness364378/AppHost19717；距15K仍95558。树外
+`coding-convergence-resumed-20261114/a185-posix-deletion-checkpoint`保原/冻结三源、全税、
+完整退出证明、原消费者JUnit和逐进程守卫及三评审，完整Goal仍开放。

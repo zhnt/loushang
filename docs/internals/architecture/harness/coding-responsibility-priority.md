@@ -9,7 +9,7 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 失败/取消/重试和资源交接必须一起替换。最近A171、A173、A174、A176合计Coding−680、
 生产系统+422，属于职责收敛，不能作为系统净精简的证据。A179另Code−128/AppHost+224/
 系统+96；A180完整前台控制另Code−116/AppHost+275/系统+159（统一格式+137）。
-A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；当前Coding110571行，距15K尚95571行，仍须按完整工作件推进。
+A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；当前Coding110558行，距15K尚95558行，仍须按完整工作件推进。
 
 | 顺序/状态 | 完整工作件 | 接收者及Coding保留边界 | 进入条件或实际处置 |
 | --- | --- | --- | --- |
@@ -23,11 +23,13 @@ A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+3
 | 已完成 A182 / 仅中性投影闭包 | C10 Catalog→typed selection/admission/bundle evidence | 原current_preview直接使用既有Catalog/Input/Admission/Bundle与DTO；Code保产品选择/编译/open及中间复核/最终profile | 原84行两投影完整退出；Code−76/Harness+115/系统+39，35不同项过。单producer无第二算法退出；不是whole preview/open或整C10完成 |
 | A183已核 / 当前形状暂缓 | C01 managed Base/Capability装配 | 原Resources/PM/Session机制已直接使用；剩余完整选择和失败custody仍在Code | 两完整函数208+198及整文件与A112逐字同；现有owner没有新整入口，不重做A51系统+202形状。重开须有不同整事务接缝及全成本 |
 | A184完整原型不采用 | C08 Windows保留快照110行 | 既有PackageProduct backup family的stateless完整读入口；Code保实际typed/profile绑定 | 全税Code−72/Core+151/系统+79（raw=uniform），静态通过但无第二算法/实际依赖退出，不安装/不oracle；C08仍开放 |
-| 6 / 下一整程序成本验证 | C08 POSIX删除checkpoint | 原PrivateDataDeletionJournal拥有durable phases，Code保confirmation/Desired准入及薄domain profile | delete_confirmed52中约30行replay→start→remove→receipt→completion完整后缀；不重迁physical remove，不套Windows terminal事件 |
+| 已完成 A185 | C08 POSIX删除checkpoint | 原PrivateDataDeletionJournal完整27行phase统调，Code保确认/Desired准入和三窄绑定 | Code−13/Harness+41/系统+28（raw=uniform，含Code doc+1），同原14实际回归过；无新roles/T/锁，不重计physical remove或Windows去重 |
+| 7 / 下一完整接缝核实 | C12 Repository Goal command facade | 先比较原Goal/Work与Code _RepositoryGoal的实际寿命/协调；领域verification/review政策留Code | 类范围204/方法195，7方法；仅审计范围，需完整接口/全成本与原实现退出证明，不把1423整文件或observations157政策当预算 |
 | 后续开放 / A169、A178完整形状均拒绝 | Worker Product完整收据authority | 原Package Product/Resources；Code保政策、验证与兼容DTO | 892行类范围/803行方法定义已作A178完整13源原型。真实Records/MRO/3必要reader改善成立，但计入4事实契约、6TypeVar、8必要公开门面后Code−512/Core+944/系统+432（统一格式+434），仅静态通过，未采用。相比A169系统+580减少148，仍无另一authority/运行重复退出，不为已付原型成本启动大矩阵或摘叶救收益 |
 
 G17与C13本批实例寿命、C10两段中性证据投影已完成；后续核实顺序为：
-**C08 POSIX删除checkpoint**。C01按A183暂缓，Windows完整快照按A184全成本拒绝；
+**C12 Repository Goal command facade**。C08 checkpoint按A185完成；C01按A183暂缓，
+Windows完整快照按A184全成本拒绝；
 这是进入完整接缝验证的顺序，不是已接受迁移或
 预计减量。A182确认preview/open其余主体为Code产品政策及既有Core IO接入，
 不以厚compile/open回调强搬；A183实证C01与A112原件未变，不自动重试同池；C08先剔除已经共享的
@@ -37,7 +39,8 @@ Worker两次完整原型已拒绝，单列暂缓，不排成自动重试任务�
 其它较大操作体按下表保留比较；有阻断的范围不是排在小项之前无限等待的实施任务。
 A178已完成Worker新接缝的整物成本决策并拒绝接入；A179随后完成202行审计范围的
 完整prefix替代；A180完成foreground整控制，A181完成C13实例寿命，A182完成两段证据投影。
-A183确认C01原成本阻断，A184完成Windows完整快照原型并不采用，现转POSIX checkpoint，
+A183确认C01原成本阻断，A184完整快照形状不采用，A185完成POSIX checkpoint；
+现核C12 Repository Goal command facade的完整寿命/协调与原owner复用，
 不按目录总量承诺迁移收益。
 
 A178核对A169最终原件确认，其POSIX authority已经继承ReceiptHistory；直接继承本身
@@ -48,7 +51,7 @@ A178核对A169最终原件确认，其POSIX authority已经继承ReceiptHistory�
 | 核实顺序与较大比较范围 | 当前完整范围实数 | 已有复用与不能立即迁移的原因 | 重新进入条件 |
 | --- | --- | --- | --- |
 | A183核实后暂缓 / C01 managed Base/Capability装配 | 两完整函数208+198=406行，函数/整文件与A112逐字同 | Resources、PM、Session已共享；try边界、显式reconcile、禁用关闭、replay异常和lease先持有/失败custody仍不同。A51完整形状系统+202已拒，无新整入口 | 原owner提供有据且全成本更小的整事务API；不恢复阶段回调Context，不把当前bootstrap3626行作可删预算 |
-| 5 / C08私有数据三类owner | 三类合计549行/方法510：Read195/172、Restore170/161、WindowsBackup184/177 | 原DeletionCoordinator、POSIX archive及Windows事务已共享；RestoreOwner.restore83行已调用Core完整restore。31源扫描所见直接native调用多为路径/身份检查，不是未迁物理事务 | 先证明一条尚在Code的完整事务及窄codec边界；全成本未知，不按6691行整包搬迁 |
+| 5 / C08私有数据三类owner | 三类合计549行/方法510：Read195/172、Restore170/161、WindowsBackup184/177 | 原DeletionCoordinator、POSIX archive及Windows事务已共享；RestoreOwner.restore83行已调用Core完整restore。31源扫描所见直接native调用多为路径/身份检查，不是未迁物理事务 | 先证明一条尚在Code的完整事务及窄codec边界；整组仍开放，不按当前6678行整包搬迁 |
 
 A182审计原preview271/open122与462方法行：只有84行Catalog身份连接和admission/bundle
 投影可在不吞Code编译/信任政策、无厚IO回调的前提下整体交给原证据owner；其余保留
@@ -62,9 +65,10 @@ A184已完整试算Windows snapshot110，保GC/Desired/state pin/staged debt/rea
 原FD关闭和晚权威/hash后，全接口税系统+79；没有第二机制或实际依赖退出，未采用。
 不直接并POSIX snapshot63，也不摘小status切片挽救。expiry recovery102及preview91
 仍主要是产品授权join，底层复制/rename/收据事务已Core，路径/身份读取仍在Code原点。
-下一项为POSIX delete_confirmed52中约30行完整检查点调度的Journal最小接管成本；
-Code确认/Desired absent准入须先于replay，完成用physical remove返回的terminal renamed。
-既有remove_started与restore83不重计；尚无已接受新API或减量，不按方法跨度预支收益。
+A185已完成POSIX delete_confirmed52中原27行checkpoint的Journal接管；Code准入/offline
+和三个原窄端点保留，完成用terminal renamed。既有remove_started与restore83不重计；
+Code净减13不是27，C08整组仍非最终领域下界。下一C12需先区别原Goal/Work协调与
+Code领域verification/review准入；A117 cold事实已有owner，不重新搬迁或计益。
 
 上述类/方法范围有包含关系，不能相加作可删量。跨簇扫描覆盖434份当前Code源码的
 长函数/owner导航，并深核表列实际程序及Core调用，不等于全树语义重复证明或领域下界。
