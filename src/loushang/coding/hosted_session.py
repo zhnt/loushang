@@ -62,7 +62,10 @@ from .appservice_adapter import (
     CodingHostedSessionBindingV1,
     CodingHostedSnapshotProjectionV1,
 )
-from .bootstrap import BootstrapServices, create_agent_session
+from .bootstrap import BootstrapServices
+from .bootstrap import (
+    _create_agent_session_with_model_policy as create_agent_session,
+)
 from .hosted_catalog import (
     CodingHostedCandidateBindingV1,
     CodingHostedCatalogError,

@@ -168,7 +168,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [arch/providers/python.py](../../../../src/loushang/coding/arch/providers/python.py) | C14 | 876 | K/M | C14 Arch Capability | d9bcabaa1b18 | 876 | d9bcabaa1b18 |
 | [arch/tool.py](../../../../src/loushang/coding/arch/tool.py) | C14 | 367 | K/M | C14 Arch Capability | 0bf68940fd9a | 367 | 0bf68940fd9a |
 | [arch/tool_pack.py](../../../../src/loushang/coding/arch/tool_pack.py) | C14 | 38 | K/M | C14 Arch Capability | 502440220923 | 38 | 502440220923 |
-| [bootstrap.py](../../../../src/loushang/coding/bootstrap.py) | C01 | 3,531 | M | C01 启动、Plugin 与资源装配 | ec4749c8f2f0 | 3,561 | 424c68b8bf16 |
+| [bootstrap.py](../../../../src/loushang/coding/bootstrap.py) | C01 | 3,531 | M | A163公开28参数薄SDK；私有原构造/模型政策完整保留，非精简 | ec4749c8f2f0 | 3,626 | d07c2c846103 |
 | [capabilities.py](../../../../src/loushang/coding/capabilities.py) | C01 | 85 | K | C01 启动、Plugin 与资源装配 | 6153c385d06f | 85 | 6153c385d06f |
 | [cli/__init__.py](../../../../src/loushang/coding/cli/__init__.py) | C11 | 23 | M | C11 CLI | 45c2b744f50c | 23 | 45c2b744f50c |
 | [cli/__main__.py](../../../../src/loushang/coding/cli/__main__.py) | C11 | 91 | M | C11 CLI | b2450df4ae4a | 91 | b2450df4ae4a |
@@ -224,7 +224,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [hosted_method.py](../../../../src/loushang/coding/hosted_method.py) | C02 | 138 | B | C02 托管与受管运行接入 | 3413931a783f | 138 | 3413931a783f |
 | [hosted_method_application.py](../../../../src/loushang/coding/hosted_method_application.py) | C02 | 52 | B | C02 托管与受管运行接入 | df02bc67924c | 52 | df02bc67924c |
 | [hosted_resume.py](../../../../src/loushang/coding/hosted_resume.py) | C02 | 709 | B | C02 托管与受管运行接入 | 4d862cfad9ec | 793 | 6fc210a6a332 |
-| [hosted_session.py](../../../../src/loushang/coding/hosted_session.py) | C02 | 598 | B | C02 托管与受管运行接入 | 24f236328066 | 693 | 9c3b515e4299 |
+| [hosted_session.py](../../../../src/loushang/coding/hosted_session.py) | C02 | 598 | B | A163原Hosted模型政策改绑私有入口；调用/Writer/失败清理保持 | 24f236328066 | 696 | 2f2b2ef7bb4e |
 | [interaction/__init__.py](../../../../src/loushang/coding/interaction/__init__.py) | C18 | 1 | K/M | C18 交互命令与预热 | b9cd83b1e2d9 | 1 | b9cd83b1e2d9 |
 | [interaction/goal.py](../../../../src/loushang/coding/interaction/goal.py) | C18 | 287 | K/M | F07：公共观察/控制；保留命令语义 | c780d0713b77 | 287 | c780d0713b77 |
 | [interaction/resume_history.py](../../../../src/loushang/coding/interaction/resume_history.py) | C18 | 335 | K/M | C18 交互命令与预热 | e454b90d7f61 | 335 | e454b90d7f61 |
@@ -529,8 +529,8 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 
 ## 当前分组计量与剩余处置
 
-2026-11-14以`4de7d9251`主线及A156–A158、A160及A162当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
-当前Coding 111858行，完整≤15K目标差96858行；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
+2026-11-14以`4de7d9251`主线及A156–A158、A160、A162及A163当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
+当前Coding 111926行，完整≤15K目标差96926行；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
 Code−93/Core+119/系统+26；当前两源及验证边界见执行记录。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
@@ -542,8 +542,8 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 
 | 组 | 当前文件 | 当前物理行 |
 | --- | ---: | ---: |
-| C01 | 22 | 12,709 |
-| C02 | 31 | 8,382 |
+| C01 | 22 | 12,774 |
+| C02 | 31 | 8,385 |
 | C03 | 15 | 4,132 |
 | C04 | 2 | 2,895 |
 | C05 | 6 | 3,565 |
@@ -570,4 +570,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 434 | 111,858 |
+| 合计 | 434 | 111,926 |

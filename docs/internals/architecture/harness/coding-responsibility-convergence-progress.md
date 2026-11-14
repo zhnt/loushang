@@ -1,5 +1,48 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A163 SDK模型政策公开边界修复（2026-11-14）
+
+A162原SDK检查失败来自`d84d7a19d`将Hosted内部_use_default_model开关加到公开
+create_agent_session。真实直接调用者只有Hosted.created路线；原SDK合同是28个
+显式参数。不能删掉恢复会话的模型政策、绕过原factory失败清理，或修改SDK期待来报绿。
+
+公开入口恢复pre-d84的28个实际Python参数和默认表达式，显式同序按名转发；旧29参
+函数及其整段guard、factory选择、构造、异常/cleanup原样改名为同模块私有入口。
+Hosted仅将其import为原本地create_agent_session，保原created参数、saved model、
+Writer、manager交接和计时/故障hook。Core不变，不新增policy对象、全局context、
+settings代理、locals/Any透传或__signature__伪装。原公开函数pickle仍解析公开入口。
+
+有意修复边界：公开调用_use_default_model现在在绑定参数时TypeError、尚未进入body；
+内部Hosted仍支持它。不能声称d84后所有曾可执行的kwargs均等价，未知外部使用不能
+凭搜索排除。公开多一层转发frame，私有实现和Hosted本地别名反射名称改变，不承诺
+traceback逐字同。全部28个参数元数据与原签名去内部flag后一致；新SDK参数以后须
+显式维护两处声明和转发，不为此新增PR门禁。
+
+实际bootstrap3561→3626（+65）、Hosted693→696（+3），Code/系统+68、Core0。
+这是公开兼容边界的必要显式成本，不记精简或共享收益。434源Code111926，距15K
+仍96926；Harness362596、AppHost19218、历史系统658791，剔除GUI测试后654520。
+2053源帧仅两Code源变化，其余2051源SHA不变；C01当前12774、C02当前8385。
+
+原Hosted managed/deferred模型测试先2过/35.25s。改动前从真实SDK程序冻结8项
+边界观察：默认/显式输入身份、两类模型政策、未结清/Worker准入、构造失败及失败
+清理note；底层构造与Product选择受控，不当成完整Agent/真实Writer执行。
+首捕获含受控Factory地址、不能跨进程采用，保留原件；改为身份标签并加入阶段结果
+守卫后才冻结8项。修正过程产品源码未改，不累计前后捕获为额外覆盖。
+
+实际来源守卫核两module路径/候选SHA、三个真实代码对象及line/exception table；
+核公开28参数元数据、27个默认对象身份、旧六protocol公开函数pickle和root export。
+公开True/False内部开关在调用body前拒绝，Hosted仍绑定私有原程序。原期待只读
+复验，不从新实现重录；两显式源mypy before/after按原silent规则通过，Ruff通过。
+原两整文件已有格式欠账不在本片重排，新公开facade片段的Ruff格式检查通过。
+实际联合58过/1原Windows skip（pytest254.74s、JUnit259.226s）：原完整SDK14、
+Hosted23、真实模型2、原Bootstrap节点11和冻结边界观察8；before2/8不重复累计。
+两个原record_property/xunit2 warning保留，不改断言、期待、测试路由或marker。
+原签名失败节点现在通过；没有执行整个Coding/Harness PR矩阵，不宣称完整CI绿。
+三视角设计及实际代码复核后，由实施owner `/root`核源码、固定期待、来源guard、
+JUnit及当前清单作本片有界接受；旧A162基线失败记录保留，当前签名欠账关闭。
+P1–P4及整个Goal仍未完成，原广域类型欠账不因本片scoped检查通过而关闭。
+树外证据：`coding-convergence-resumed-20261114/a163-sdk-model-policy-boundary/`。
+
 ## A162 Continuity完整暂存到激活lease交接（2026-11-14）
 
 接续[A68原owner](key-designs/continuity-payload-custody-convergence.md#a162-staged-payload-to-prepared-activation-handoff)：
