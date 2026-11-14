@@ -20,6 +20,13 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 | 1 / 下一整物设计与成本验证 | G17 foreground CLI客户端完整启动/交接/关闭 | 比较原AppHost optional launcher/control与两窄UI端点；Code保argv、产品主题/身份和命令政策 | 前序已定位deadline/start/mux/UI发布/retained-close完整程序；须连实际launch preparation/执行入口计量。Mux仍只做client，不给它process-close能力，不借Protocol藏越界，不先改gate；总成本未知，不承诺减量 |
 | 后续开放 / A169、A178完整形状均拒绝 | Worker Product完整收据authority | 原Package Product/Resources；Code保政策、验证与兼容DTO | 892行类范围/803行方法定义已作A178完整13源原型。真实Records/MRO/3必要reader改善成立，但计入4事实契约、6TypeVar、8必要公开门面后Code−512/Core+944/系统+432（统一格式+434），仅静态通过，未采用。相比A169系统+580减少148，仍无另一authority/运行重复退出，不为已付原型成本启动大矩阵或摘叶救收益 |
 
+后续设计与全成本核实顺序明确为：**G17 → C13 Supervisor → C10只读preview →
+C01 managed装配 → C08残留事务**。这是进入完整接缝验证的顺序，不是已接受迁移或
+预计减量。C13在A171后已有真实Process传输可复用，先核剩余按key保留client的
+完整stop/dispose；C10随后核选择输入到preview/open的整条路径；C01须先跨过已有
+两次接缝阻断；C08先剔除已经共享的restore/archive，不能再计搬迁收益。
+Worker两次完整原型已拒绝，单列暂缓，不排成自动重试任务。
+
 其它较大操作体按下表保留比较；有阻断的范围不是排在小项之前无限等待的实施任务。
 A178已完成Worker新接缝的整物成本决策并拒绝接入；A179随后完成202行审计范围的
 完整prefix替代。现转下一完整跨入口程序，不按目录总量承诺迁移收益。
@@ -29,12 +36,12 @@ A178核对A169最终原件确认，其POSIX authority已经继承ReceiptHistory�
 操作与构造、泛型不变量，以及双侧facade/profile的全部成本。原Code薄构造可以保留，
 不为迁出几次字段赋值再增加一轮初始化回调；必要读取顺序优先于减少参数数量。
 
-| 较大比较范围 | 当前完整范围实数 | 已有复用与不能立即迁移的原因 | 重新进入条件 |
+| 核实顺序与较大比较范围 | 当前完整范围实数 | 已有复用与不能立即迁移的原因 | 重新进入条件 |
 | --- | --- | --- | --- |
-| C01 managed Base/Capability装配 | 两完整函数208+198=406行 | Resources、Plugin lifecycle、Kernel已共享；剩余reconcile差异、严格/延迟源解析和失败顺序仍混合。A51完整形状系统+202已拒，A112未找到更小接缝 | 原owner有能替换完整程序的新API；不恢复阶段回调Context，不把bootstrap2210行作预算 |
-| C08私有数据三类owner | 类范围549行，方法定义510行 | 原DeletionCoordinator、POSIX archive及Windows事务已共享；RestoreOwner.restore83行已调用Core完整restore。31源扫描所见直接native调用多为路径/身份检查，不是未迁物理事务 | 先证明一条尚在Code的完整事务及窄codec边界；全成本未知，不按6691行整包搬迁 |
-| C10只读Product preview | 类范围479行，方法定义462行；主preview271、open122行 | 原Product/Resources capture、catalog与composition已共享；仍有Coding插件选择、编译、身份/新鲜度和诊断政策，没有已证完整中性API | 证明capture→catalog→recheck→close完整合同及全部政策适配成本；不回调整条Code preview或以摘要替代严格catalog |
-| C13 LSP Supervisor | 类范围400行，方法定义384行；生命周期方法206行 | Process launcher及A171传输已共享；原Process不提供保留当前合同的keyed protocol-runtime池，start含LSP初始化/设置/诊断政策；A38宽泛形状已拒 | 先找到正确现有owner及最小完整接口，不另建通用RPC/服务管理框架或回借整条初始化 |
+| 2 / C13 LSP Supervisor | 类范围400行，方法定义384行；生命周期方法206行 | Process launcher及A171传输已共享；原Process不提供保留当前合同的keyed protocol-runtime池，start含LSP初始化/设置/诊断政策；A38宽泛形状已拒 | 先找到正确现有owner及最小完整接口，不另建通用RPC/服务管理框架或回借整条初始化 |
+| 3 / C10只读Product preview | 类范围479行，方法定义462行；主preview271、open122行 | 原Product/Resources capture、catalog与composition已共享；仍有Coding插件选择、编译、身份/新鲜度和诊断政策，没有已证完整中性API | 证明capture→catalog→recheck→close完整合同及全部政策适配成本；不回调整条Code preview或以摘要替代严格catalog |
+| 4 / C01 managed Base/Capability装配 | 两完整函数208+198=406行 | Resources、Plugin lifecycle、Kernel已共享；剩余reconcile差异、严格/延迟源解析和失败顺序仍混合。A51完整形状系统+202已拒，A112未找到更小接缝 | 原owner有能替换完整程序的新API；不恢复阶段回调Context，不把bootstrap2210行作预算 |
+| 5 / C08私有数据三类owner | 类范围549行，方法定义510行 | 原DeletionCoordinator、POSIX archive及Windows事务已共享；RestoreOwner.restore83行已调用Core完整restore。31源扫描所见直接native调用多为路径/身份检查，不是未迁物理事务 | 先证明一条尚在Code的完整事务及窄codec边界；全成本未知，不按6691行整包搬迁 |
 
 上述类/方法范围有包含关系，不能相加作可删量。跨簇扫描覆盖434份当前Code源码的
 长函数/owner导航，并深核表列实际程序及Core调用，不等于全树语义重复证明或领域下界。
