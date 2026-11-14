@@ -1,5 +1,19 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A157/A158 合成核验（2026-11-14）
+
+两批分别形成`7e21e01c9`与`8eee954e4`本地提交，原434组合与9项持久代表均通过；
+合成后五处源码逐字保持各自已接受候选。现统一重算434份Coding清单与28组，
+Code111937、Harness362506（Python362157）、AppHost19218；距15K仍96937。
+历史2053源658712，剔除GUI测试4271后654441。相对共同A156基线Code−106、
+Harness+48、系统−58；含A156后相对主线`4de7d9251` Code−202/AppHost+117/Harness+48，
+系统−37。其余2048源相对A156未变；不把独立帧或重复测试相加为新增覆盖。
+同一合成源码下592项通过（3条真实持久路径+589固定观察，JUnit74.682s；日志66.57s）；
+五源来源与入口代码守卫、依赖图及9项文档检查通过。fence与Desired提交各保原恢复边界。
+三独立合成评审无新增阻断，实施owner `/root` 有界接受两片合成，
+P1–P4仍partial，未关闭完整Goal。原证据与合成报告均保于树外
+`coding-convergence-resumed-20261114/a157-a158-integration`。
+
 ## A158 四条评审入口共用准备/重开 fence 程序（2026-11-14）
 
 POSIX builtin/removed/local与Windows builtin review在原CLI共用一份完整程序：
@@ -18,8 +32,30 @@ disabled-only预检、fresh/bootstrap及Windows gate保持；没有新owner、�
 完整单源946→917，Code/系统均−29，接收组件0；早期70–90粗估作废。
 本片独立基于A156：Code434源/112014，Harness362458、AppHost19218、历史2053源658741；
 剔除GUI测试4271后654470。距15K仍97014行，C11/P1–P4未完成。
-另一检出的A157仍运行验收，尚未合成，不把两独立帧冒充联合通过。
+本片独立接受时A157另树仍在运行；随后合成状态见本页首节，不以独立帧冒称联合通过。
 证据保于树外`coding-convergence-resumed-20261114/a158-review-fence`。
+
+## A157 三条迁移路径共用首次删除记录重放（2026-11-14）
+
+builtin-only、removed-local与active-local三个真实入口的history-first删除程序合一，
+归现有Package Product `_plugin_bootstrap`。Code保原hook、身份/key/操作编号与错误前缀，
+外层epoch/currentness/close不动；没有新DTO、状态或回调。首记录证明后直接返回，
+空历史才提交原V1 remove；保属性读取、失败覆盖与提交后报错的重试合同。
+三独立设计/实际代码视角核完整逆AST及四源指纹，无本片新增阻断；实施owner有界接受本片，不关闭完整Goal。
+
+旧源冻结293观察并只读重放通过，218个边界故障全部触达；共238故障场景，
+五条提交后报错路径重试均不重复提交。它是同步受控Product模型，不能代替持久IO。
+初次模型用了非法fence输入，15项失败；修正为合法SHA256后旧源完整通过，不改Product。
+实际四源Ruff/mypy、175项原导入/架构检查通过；三个冷导入模块集合均不变且无禁用效果。
+旧源141项持久迁移通过（2340.10s），实际141+293组合434项通过（2560.61s）；
+逐node核组合恰为旧141与固定293的无交叠并集，原native/live排除保持。
+补充origin guard逐模块核实际路径/SHA及入口代码对象；旧/新各293重放通过，oracle不改。
+
+完整成本Code−77/Harness+48/系统−29，含三个薄入口及导入，是重复机制消除。
+当前Code434源/111966行，Harness362506（Python362157）、AppHost19218；
+历史2053源658741，剔除GUI测试4271后654470；其它2049源未变。距15K仍96966行，
+完整P1–P4及C09未完成。源码/manifest/XML/限制保于树外
+`coding-convergence-resumed-20261114/a157-tombstone-replay`。
 
 ## A156 托管服务完整控制归现有AppHost（2026-11-14）
 
