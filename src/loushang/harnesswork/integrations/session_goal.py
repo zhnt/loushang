@@ -1,14 +1,16 @@
 """Goal-specific bridge into the original Session admission and Work resolver.
 
 Domain planning, requirements and acceptance stay in their injected policies.
-The Session scope owns task/cleanup mechanics; this bridge owns only the Goal
-association with its one pending reservation and canonical prepared Work slot.
+The Session scope owns invocation and outer retirement Tasks/stages. The
+coordinator owns Goal reservation/Work association; the fixed lifetime base
+owns concrete Goal dependency progress and unpublished-close retry.
 """
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
+from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from loushang.harness.session.execution_admission import (
     ExecutionReservation,
@@ -17,6 +19,7 @@ from loushang.harness.session.execution_admission import (
 )
 from loushang.harness.session.execution_scope import (
     ExecutionObservations,
+    ExecutionScopePorts,
     SessionExecutionScope,
 )
 from loushang.harnesswork.goal import GoalError
@@ -33,6 +36,12 @@ from loushang.harnesswork.goal.controller import GoalController
 from loushang.harnesswork.integrations.session import SessionWorkRuntime
 from loushang.harnesswork.ports import WorkExecutionBinding
 from loushang.harnesswork.types import WorkRecordingPolicy
+
+if TYPE_CHECKING:
+    from loushang.harness.session.runtime import SessionRuntime
+    from loushang.harness.transcript.source_reader import TranscriptSourceReader
+    from loushang.harnesswork.integrations.delegation import SessionGoalDelegation
+    from loushang.harnesswork.integrations.goal_store import JsonlGoalRecordStore
 
 
 class _AdmittedExecutor:
@@ -292,3 +301,132 @@ class SessionGoalPrompt:
     async def wait_for_idle(self):
         await self._session.settle_execution(interrupted=self._interrupted)
         self._interrupted = False
+
+
+class _GoalScopeSession(Protocol):
+    @property
+    def runtime(self) -> SessionRuntime: ...
+
+    def attach_execution_scope(self, scope: SessionExecutionScope) -> None: ...
+
+
+class _SessionGoalLifetime:
+    """Fixed Goal dependency retirement on the original Product facade instance.
+
+    SessionExecutionScope retains invocation/outer-close Tasks and stages; this
+    base retains the concrete Goal dependency progress for failed construction,
+    normal attached close and same-owner retry. Subclasses bind the actual
+    Session/SDK and two narrow SDK disposal leaves; no stage program is injected.
+    """
+
+    _goal_close_task_name: ClassVar[str]
+    _session: _GoalScopeSession
+    _sdk: object | None
+
+    def __init__(self) -> None:
+        self._store: JsonlGoalRecordStore | None = None
+        self._core: GoalController | None = None
+        self._closing = self._closed = False
+        self._observations = ExecutionObservations()
+        self._close_task: asyncio.Task[None] | None = None
+        self._callbacks_quiet = self._work_settled = False
+        self._session_retired = self._core_retired = self._writer_closed = False
+        self._prepared: dict[str, WorkExecutionBinding] = {}
+        self._source_reader: TranscriptSourceReader | None = None
+        self._source_retired = False
+        self._delegation: SessionGoalDelegation | None = None
+        self._scope: SessionExecutionScope | None = None
+        self._coordinator: SessionGoalCoordinator | None = None
+        self._dependents_released = False
+
+    async def _dispose_bound_goal_session(self) -> None:
+        raise NotImplementedError
+
+    async def _dispose_goal_runtime(self) -> None:
+        raise NotImplementedError
+
+    def _attach_scope(self) -> None:
+        if self._scope is not None:
+            return
+        scope = SessionExecutionScope(
+            self._session.runtime.execution_admission,
+            ExecutionScopePorts(
+                self._begin_close,
+                self._quiesce_goal,
+                self._settle_goal_work,
+                self._release_goal_resources,
+                self._finalize_goal,
+            ),
+            close_parent=self._dispose_owned_session if self._sdk is not None else None,
+        )
+        self._session.attach_execution_scope(scope)
+        self._scope = scope
+
+    def _begin_close(self) -> None:
+        self._closing = True
+        if self._core is not None:
+            self._core.begin_close()
+
+    async def close(self) -> None:
+        self._begin_close()
+        if self._closed:
+            return
+        if self._scope is not None:
+            self._close_task = self._scope.close_handle()
+        elif self._close_task is None or self._close_task.done():
+            self._close_task = asyncio.create_task(
+                self._close_unpublished(), name=self._goal_close_task_name
+            )
+        await asyncio.shield(self._close_task)
+
+    async def _close_unpublished(self) -> None:
+        await self._quiesce_goal()
+        await self._settle_goal_work()
+        await self._release_goal_resources()
+        if not self._session_retired:
+            if self._sdk is not None:
+                await self._dispose_goal_runtime()
+            self._session_retired = True
+        await self._finalize_goal()
+
+    async def _dispose_owned_session(self) -> None:
+        await self._dispose_bound_goal_session()
+        self._session_retired = True
+
+    async def _quiesce_goal(self) -> None:
+        if not self._callbacks_quiet:
+            await self._observations.quiesce()
+            if self._core is not None:
+                await self._core.quiesce()
+            self._callbacks_quiet = True
+
+    async def _settle_goal_work(self) -> None:
+        if not self._work_settled:
+            if self._core is not None:
+                await self._core.settle_work()
+            self._work_settled = True
+
+    async def _release_goal_resources(self) -> None:
+        if self._coordinator is not None:
+            self._coordinator.release()
+        if not self._dependents_released:
+            if self._delegation is not None:
+                await self._delegation.close()
+            if not self._source_retired:
+                if self._source_reader is not None:
+                    await self._source_reader.aclose()
+                self._source_retired = True
+            self._dependents_released = True
+
+    async def _finalize_goal(self) -> None:
+        self._session_retired = True
+        if not self._core_retired:
+            if self._core is not None:
+                self._core.retire()
+            self._core_retired = True
+        if not self._writer_closed:
+            if self._store is not None:
+                self._store.close()
+            self._writer_closed = True
+        self._prepared.clear()
+        self._closed = True

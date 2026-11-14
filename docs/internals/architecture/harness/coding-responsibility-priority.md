@@ -9,7 +9,7 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 失败/取消/重试和资源交接必须一起替换。最近A171、A173、A174、A176合计Coding−680、
 生产系统+422，属于职责收敛，不能作为系统净精简的证据。A179另Code−128/AppHost+224/
 系统+96；A180完整前台控制另Code−116/AppHost+275/系统+159（统一格式+137）。
-A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；当前Coding110558行，距15K尚95558行，仍须按完整工作件推进。
+A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；当前Coding110470行，距15K尚95470行，仍须按完整工作件推进。
 
 | 顺序/状态 | 完整工作件 | 接收者及Coding保留边界 | 进入条件或实际处置 |
 | --- | --- | --- | --- |
@@ -24,11 +24,15 @@ A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+3
 | A183已核 / 当前形状暂缓 | C01 managed Base/Capability装配 | 原Resources/PM/Session机制已直接使用；剩余完整选择和失败custody仍在Code | 两完整函数208+198及整文件与A112逐字同；现有owner没有新整入口，不重做A51系统+202形状。重开须有不同整事务接缝及全成本 |
 | A184完整原型不采用 | C08 Windows保留快照110行 | 既有PackageProduct backup family的stateless完整读入口；Code保实际typed/profile绑定 | 全税Code−72/Core+151/系统+79（raw=uniform），静态通过但无第二算法/实际依赖退出，不安装/不oracle；C08仍开放 |
 | 已完成 A185 | C08 POSIX删除checkpoint | 原PrivateDataDeletionJournal完整27行phase统调，Code保确认/Desired准入和三窄绑定 | Code−13/Harness+41/系统+28（raw=uniform，含Code doc+1），同原14实际回归过；无新roles/T/锁，不重计physical remove或Windows去重 |
-| 7 / 下一完整接缝核实 | C12 Repository Goal command facade | 先比较原Goal/Work与Code _RepositoryGoal的实际寿命/协调；领域verification/review政策留Code | 类范围204/方法195，7方法；仅审计范围，需完整接口/全成本与原实现退出证明，不把1423整文件或observations157政策当预算 |
+| A186已核 / 不造整类原型 | C12 Repository Goal command facade | 原Goal/Work/Delegation已接实际执行和取消；Code保trusted verification/review政策 | 204类/195方法/7methods完整核完；没有新Task/IO/关闭链可退出，busy与Core门控不等价，不摘busy helper或用宽政策callback整搬 |
+| 已完成 A187 | C12 CodingGoal资源寿命 | 原Session Goal同self拥有18字段/9完整程序；原Scope Task/stages复用，Code保2SDK叶/tasklabel与领域准入 | Code−88/HarnessWork+138/系统+50（uniform42），同原163实际过/7deselect，1role/0T；Ctor私序/MRO/帧差异明示，C12仍开放 |
+| 9 / 下一完整候选核实 | C13 deferred LSP generation | 比较原DeferredSlot/Process/Supervisor/能力图与Code真实generation寿命；领域选择/权限/receipt政策不搬 | 类230/方法181、prepare116，先对A38原拒绝和A171/A181现API证明不同接缝与全成本；331文件非预算，不重复已有outer activation/transport/start-stop |
 | 后续开放 / A169、A178完整形状均拒绝 | Worker Product完整收据authority | 原Package Product/Resources；Code保政策、验证与兼容DTO | 892行类范围/803行方法定义已作A178完整13源原型。真实Records/MRO/3必要reader改善成立，但计入4事实契约、6TypeVar、8必要公开门面后Code−512/Core+944/系统+432（统一格式+434），仅静态通过，未采用。相比A169系统+580减少148，仍无另一authority/运行重复退出，不为已付原型成本启动大矩阵或摘叶救收益 |
 
 G17与C13本批实例寿命、C10两段中性证据投影已完成；后续核实顺序为：
-**C12 Repository Goal command facade**。C08 checkpoint按A185完成；C01按A183暂缓，
+**C13 deferred LSP generation**。A187完成Goal寿命，A186命令门面无新替代；
+C08 checkpoint按A185完成，
+C01按A183暂缓，
 Windows完整快照按A184全成本拒绝；
 这是进入完整接缝验证的顺序，不是已接受迁移或
 预计减量。A182确认preview/open其余主体为Code产品政策及既有Core IO接入，
@@ -40,7 +44,8 @@ Worker两次完整原型已拒绝，单列暂缓，不排成自动重试任务�
 A178已完成Worker新接缝的整物成本决策并拒绝接入；A179随后完成202行审计范围的
 完整prefix替代；A180完成foreground整控制，A181完成C13实例寿命，A182完成两段证据投影。
 A183确认C01原成本阻断，A184完整快照形状不采用，A185完成POSIX checkpoint；
-现核C12 Repository Goal command facade的完整寿命/协调与原owner复用，
+A186明确领域命令边界，A187完成Goal具体资源寿命；现对C13 deferred generation的
+A38原件与A171/A181实际新API作完整接缝/成本核实，
 不按目录总量承诺迁移收益。
 
 A178核对A169最终原件确认，其POSIX authority已经继承ReceiptHistory；直接继承本身

@@ -1,5 +1,54 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A187 完整Goal资源寿命归原Session Goal（2026-11-14）
+
+接A186领域门面审计的另一真实闭包：九个完整生命周期程序（方法span70）及18原字段
+归原HarnessWork Session Goal固定same-self base，Scope仍own attached outer Task/stage，
+Code保领域命令/构造catch、两个原SDK dispose叶及task名。0第二状态owner/phase表/T，
+1窄Session role；retained fallbackTask、具体资源退役与原flag成功点一起退出Code。
+
+raw Code−88/HarnessWork+138/系统+50，uniform−96/+138/+42，差8格式不作额外迁移。
+Harness目录不增仍364378，HarnessWork单列8332。九body逆SDK/task名AST同，22原Code
+方法与4原Core定义同；Ctor字段同值但聚合有私dict插序/分配时点/MRO/实现owner/异步
+帧变化，未假全ctor/layout同。详见[寿命设计](key-designs/goal-session-lifetime-custody-convergence.md)。
+
+旧三个原模块163过143.97s/7deselect，实际冻结两源后同163过143.17s/7deselect，
+0fail/error/skip；151shell+2entry+10frozen兼容，不累计旧163。5模块旧101/actual108
+声明callable、各163nodes/326checks的phase/PID路径/SHA/19递归code字段守卫仅父进程。
+无新增test/probe/oracle/fixture/gate；原writer/source/observer/取消/outer-finally/owned/
+borrowed路线过，不冒逐点复合constructor/cleanup错误图覆盖。实际project mypy/Ruff过；
+额外strict generic仍有Core两旧诊断（旧shadow三），不称全strict或全文件format通过。
+
+三设计/实际视角有界接受。当前2059源659754，排GUI4524后655230；Code434源110470、
+Harness364378/HarnessWork8332/AppHost19717，C12为25源6929，距15K95470。完整P1–P4、
+KD003/KD011仍开放；下一大块先核C13 deferred LSP generation230类/181方法与原A38
+处分及A171/A181新Core API，116行prepare和dispose完整寿命一起核，不重迁DeferredSlot
+outer engine或原Supervisor，不按整331文件预支收益。
+
+
+## A186 Repository Goal命令门面完整审计（2026-11-14）
+
+核实际_RepositoryGoal类1192–1395共204行、7方法195行；源码文件1423行，
+observations157另属repository政策，不相加预支减量。三个独立源视角确认执行/intent/
+Work/cancel/reservation和delegated child release/retry/debt已由原GoalController、
+SessionGoalCoordinator/Controller、Scope与Delegation承担。53/81行的大方法保trusted
+host verification/review命名空间、内容/身份重放、fresh inventory/full pass、2slot/
+closeout预算、pending政策注入口与finally清空；没有尚未共享的独立Task/IO/关闭链。
+
+_repository_busy覆盖Core.advance前的query/准入和child release；Core._advancing/
+scope.invoke检查区间、cached绕行及require_current时点不等价。整搬会带领域政策或
+宽callback阶段口，busy小helper又不退出完整程序；据实际API不造相同调度包装原型。
+A117 cold事实已有owner不重迁，A119是C50库存协调，A172是其它启动范围，不误当本
+命令门面过去拒绝。真实取消/重放/未知append/评审冲突/child debt测试只作源导航，
+本轮未运行、无新runtime通过或新成本；不是全部195行的永久领域下界或15K不可能证明。
+
+当前生产逐SHA/行仍同A185：Code110558/Harness364378/AppHost19717，全2059源659704，
+排GUI4524后655180，距15K95558；生产/测试增删0。树外`a186-repository-goal-command`
+保实际owner/API/消费者/历史对照及三报告。完整C12/P1–P4仍开放，转同调用链上另一
+真实闭包：CodingGoal未发布构造失败与attached关闭的progress/依赖结清寿命；不把
+已共享Scope outer Task/stage或A117原source reader再计迁移收益。
+
+
 ## A185 完整POSIX删除检查点归原Journal（2026-11-14）
 
 原Journal接管replay→start→借用原physical remove→receipt→completion完整27行程序，
