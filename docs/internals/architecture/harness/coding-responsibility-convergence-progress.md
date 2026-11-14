@@ -1,5 +1,65 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A176 完整Session profile退休归原AgentProductSession（2026-11-14）
+
+按优先队列完成原Code113行关闭程序的完整替代，而非分段close helper。新protected
+`AgentProductSession._retire_session_profile_owners`保同self，复用实际RegistrationLease、
+两类OwnerPublication、PublishedCompositionCleanup、Graph/Sandbox及DeferredCapabilitySlot。
+仅BaseAssembly的management_lease存在性/close用1只读小Protocol；6字面字段名映射原位置，
+1诊断prefix、2个纯状态clear/read hook，无新Task/锁/实例/TypeVar/phase对象或阶段回调池。
+Core调用原management cleanup，Code不回借通用IO程序。BaseAssembly.close19行仍Code
+现有依赖，本批不计已迁，不据此关闭C01/C15整组；A174原收益不重复计。
+
+完整body逆字段名/diagnostics/casts/hook/原callee后AST同，Code其余48方法及Core原83方法
+（含constructor和原profile atomic wrapper）均同；class bases/公开SDK入口不变。Deferred泛型
+cast仅局部读取close，未读/写CandidateT、activate或修改shared泛型方差，未新增nominal检查。
+Code2016→1921（−95）、Core2904→3068（+164）、生产系统+69，raw/统一Ruff同值，所有
+接口、参数、标签、typing与hooks均计；属完整职责归位，非系统净精简。
+
+新Core helper显式晚调用原AgentProductSession._dispose_session_runtime_profile(self)。
+原Code super当前解析正是该方法；新词法super会错误跳过它去Adapter，self虚调用则递归。
+原Core方法仍创建owned-model-call Task并atomic join，defaultCore路径/constructor不变，
+仅显式绑定profile用新helper。当前MRO/实际classpatch挂点保持，不保证任意注入MI/私反射。
+两字段清点分开：child.close成功才清access并晚读management cleanup（其失败仍停后序）；
+cap证据/退休/资格确认/management/private cleanup全成功才清capture与access。首child/management
+错误立即停；worker/原Core错误聚首错但仍尝试证据/base/Sandbox，不放宽发布退休资格。
+Parent classmethod和cap publication等仍在原点读，kwargs顺序、Sandbox重复direct读取、
+错误identity/cause/context/notes及原错误覆盖行为不加修复或新guard。
+
+R1/R2外部拼接中曾出现hook返回未使用、读取不存在字段的类型错误，已修且保原件/log，
+未装入Product。正规两actual-module路径project mypy、显式Product pyproject Ruff及新增区域
+正规格式通过后freeze。旧原消费者8文件301过/371.88s，含原56项receipt发布冻结probe，
+36原warnings/0skip。新旧观察先119捕获，首observer错误将Base.close合法2次lease读取混同
+资格读取，初118过/1fail保留；区分实际close作用域后原119过/25.75s，再单独加晚parent
+替换1项/3.61s，原119期待不重录，最终120无capture旧源重放过/14.42s。
+逐case旧两路径/SHA与3函数编译字段守卫核同，明确READY才接入；误猜期待文件名曾令
+Root安装脚本在任何写入前FileNotFound，改为实际文件验SHA后才写，未污染生产。
+
+120场景含28故障点及精确retry、早停/后续继续/短路、2clear点、晚字段/parent替换、
+真实Task.cancel与notes顺序；Base/Cap原cleanup方法、CorePublication与Receipt/Disposal DTO真，
+effect leaves及parent受控。新120两pub均装tuple receipts，只验证本程序的方法/flags/顺序，
+不冒cap分组wire；原56互补实际group合同。actual联合421过/501.21s（301+120）、同原36warnings/0skip；
+持久120再过/12.40s，不累计为541不同覆盖。既有模型关闭/依赖无环等12架构项过/220.01s。
+源码/期待/载体保在树外
+`coding-convergence-resumed-20261114/a176-session-profile-retirement`，完整Runtime/native/
+全部调度交错不由这些受控对照证明。
+
+持久625行显式probe、13190B gzip另计，不改默认发现、门禁或平台。解压899712B逐字旧
+SHA1fc0ec6b32cd…期待，helpers/classes/120cases/分类与完整断言AST保；仅去oldguard/capture、
+改gzip读取与正规import/格式。两实际源同进程路径/SHA/递归17code字段及typed constants
+由外置guard核；probe只记磁盘SHA配AST，非编译载体身份保证，private实现globals/frame位置会变。
+实际两源project mypy、3Python Ruff、Code与probe整格式通过，Core旧主体布局保留。
+6文档相对链接、9项文档检查和依赖freshness通过；无PR门禁/默认发现/平台变化。
+新进程模块集Code1168→1168同集、Core952→953仅多原composition_cleanup，
+仅模块集合事实，不冒无导入IO/冷启动耗时结论。
+
+2056原生产源帧仅两源改、2054其余SHA同，434Code111007，Harness363954（Python363605+
+原资源349），AppHost19218，历史系统659230，剔GUI测试4271后654959；C15为2源1947。
+距≤15K仍96007。完整profile链已迁，领域与BaseAssembly依赖未冒成迁移/下界；C01/C15、
+KD003/KD011与全P1–P4仍open，完整Goal active。A175的model-only authority提议未采用。
+三独立设计/实际视角均无剩余具体阻断，实施owner核最终源码帧、精确421节点并集、
+原期待与受保护lane状态后有界接受本批并作本地交付。完整PR矩阵未跑。
+
 ## A174 根运行时关闭与Continuity完整绑定寿命归原owner（2026-11-14）
 
 沿大块优先队列核113/75两链，未用统一CloseGroup/phase框架掩盖不同失败屏障。

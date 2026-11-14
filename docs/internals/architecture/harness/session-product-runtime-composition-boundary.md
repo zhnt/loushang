@@ -113,5 +113,8 @@ Continuity shutdown is an existing dependency close call. Its complete binding
 lifetime is now implemented by the original Continuity scope's private
 `_binding_lifetime.py`; Coding supplies the slot, actual nominal data types and
 error policy. The Root coordinator does not borrow a Coding Task/slot algorithm.
-The separate Session profile retirement program remains open: this acceptance
-does not relocate its deferred child, Worker Tool, evidence and Sandbox chain.
+A174 did not relocate the separate Session profile retirement program. A176 now
+places its complete deferred-child, registration, publication/evidence and
+Sandbox coordination in the original AgentProductSession owner; see the
+[Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md#bound-product-profile-retirement-a176).
+The original underlying component close operations retain their own authority.
