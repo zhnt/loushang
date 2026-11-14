@@ -1,5 +1,33 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A183 managed装配完整接缝复核与下一工作件（2026-11-14）
+
+按整物顺序核C01两实际入口和现有owner。208+198完整函数、两整文件与A112切点
+`a5b59ddab`逐字同，相关Source/Materializer/spec/grant接口同；会员Core只多无退休
+intents时早退，没有新selection/replay/lease整入口。当前Construction接已选资源，
+PackageProduct bootstrap要求不同实际authority，不能冒直接替换。这是有原件对照的
+不采用处置，不重做A51完整双程序系统+202（统一结构+208），也不摘helper换新编号。
+
+三独立源码视角核准原try/migration、fresh显式reconcile、disabled关闭、异常翻译、
+lease先local/map持有、即时notes与前缀retry custody及惰性源时点仍全部在。
+底层IO、durable migration、family和cleanup本已Core；不是把406行判成领域下界。
+完整证据与重开条件见[KD009 §28](key-designs/startup-session-assembly-convergence.md#28-a183以a112原件核对完整managed装配当前形状仍不采用)。
+
+下一工作件转C08，31源6691行已按实际操作体盘点。549/510是三个owner合计：
+Read195/172、Restore170/161、WindowsBackup184/177；数字仍有效，非单个549行类。
+最大的操作体是Windows snapshot110，先作下一整候选的完整接口/成本核实；
+expiry recovery102及preview91主要是产品授权join，底层复制/rename/收据事务已Core，
+路径/身份读取仍在原点。POSIX delete52中
+另有约30行checkpoint调度，排其后；Windows/POSIX的恢复terminal事件不同，不能直接
+套原Windows执行入口。restore83已直接调用Core恢复，不重算已有archive/restore。
+当前bootstrap实数3626，旧队列2210只是旧范围，不据其整文件承诺可删预算。
+
+生产2059源逐SHA/行同A182，Code110571/Harness364337/AppHost19717；全源659676，
+排GUI独立测试4524后655152，距15K95571。生产/测试增删0，未新造候选或执行运行
+测试；历史37观察不当本轮新增。树外`a183-managed-assembly`保source/API/历史对照及
+三报告；方法clean local master0f9bd3ff。完整P1–P4、KD003/KD011及15K仍开放。
+
+
 ## A182 Catalog只读证据投影归既有Preview模块（2026-11-14）
 
 按整物排序审计原preview271/open122及462方法行，原capture、严格Store与Catalog

@@ -904,3 +904,35 @@ component_host，plugin_activation仍禁止。不增路由、触发、必需消�
 重构收益，也不关闭其它Catalog/Session、Hosting、AI覆盖率及完整Goal欠账。
 原测试、逐源SHA帧、逆AST证明、JUnit和三独立视角保存在树外
 `coding-convergence-continue/a114-catalog-inventory`。不据此声称全部架构检查绿。
+
+
+## 28. A183：以A112原件核对完整managed装配，当前形状仍不采用
+
+本轮按整物优先核两实际消费者及既有Resources/PM/Session/Construction owner，
+不是再次试做A51。当前`prepare_managed_coding_base_plugin_assembly`269–476共208行，
+`_resolve_managed_capability_plugins`824–1021共198行；两个完整函数和两整文件与
+A112切点`a5b59ddab`逐字相同。三Code源、Authority、Materializer、capability specs及
+dependency grant相同；会员Core仅新增无retirement intents时早退，没有新selection/
+replay/lease完整入口。当前Construction和Product composition接受已准备资源/选定plan，
+新Product bootstrap需要另一实际Product authority，不能直接替换这两个legacy消费者。
+
+原机制已经直接复用：Source inspect/publish及失败handle清理、immutable binding重开、
+持久enablement迁移、family/owner lease和重试cleanup。剩余真实跨owner程序仍有七个
+合同接缝：Base seen迁移在try外；fresh显式reconcile时点不同；禁用Base关闭runtime及
+state后return而group关闭当前handle后continue；Manifest/Revision异常映射不同；lease
+必须先存local/map再核属性；即时notes清理与保留前缀custodian不同；无lifecycle分支仍按原点逐项
+解析Source再批发布，已见历史重放不得额外调用source_root。acquire内部原有reconcile
+不抹掉外层时点差异。
+
+三独立源码视角据当前实物一致建议不重启相同双程序。A51全程序试装历史Code−201/
+Core+403/系统+202（统一结构+208）及37受控观察仍是原证据，不冒新成本或新验证；
+A50仅三helper也不是替代。没有新接缝就不造同一回调/flags/context池，不以去掉
+406行预支收益。今后仅在实际整事务接口与双侧完整适配成本证实不同价值时重开。
+这不是把全部406行判为必要领域下界，C01/P2及完整Goal仍未关闭。
+
+当前生产2059源全部SHA/行与A182帧相同：Code110571/Harness364337/AppHost19717，
+历史全源659676、排GUI独立测试4524后655152；生产/测试改动与新运行用例均0。
+本轮只做静态源审计和文档处置，不为相同候选重跑矩阵。方法仍为clean local master
+`0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`，未同步方法upstream或搬入Product。
+树外`coding-convergence-resumed-20261114/a183-managed-assembly`保原点帧、当前整函数、
+实际owner API、与A112逐字/AST对照及三独立报告；下一项转C08残余事务。
