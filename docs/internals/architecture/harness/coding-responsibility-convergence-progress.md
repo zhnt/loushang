@@ -1,5 +1,33 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A184 完整Windows保留快照原型与采用取舍（2026-11-14）
+
+按队列完成110行完整读/状态程序的双源原型，接收候选为既有PackageProduct backup
+家族的stateless入口，不给原ArchiveIO实例扩大Product权威。最终Code−72/Core+151/
+系统+79，raw与统一格式同；4readonly角色、2新T+R、5窄绑定及全部兼容/格式税计入。
+完整控制体退出候选Code成立，但原物理Archive/Restore/Expiry/GC已共享，Code其余
+retain/verify/profile依赖仍在，无第二算法或实际依赖退出；三视角审查后Root不采用本形状。
+这不是每片必须净减或C08领域下界，不摘status小helper/压行换采用。
+
+首raw+81有scan/close提前退出借用FD的实质scope错误，检查发现后修正并保首稿。
+最终整snapshot逆AST包含原With/Try嵌套同、其它三Code方法及原topology逐字同；
+严格generic mypy两源、Ruff两源通过。重PM依赖已移新函数内或TYPE_CHECKING，缺省
+仅增typing/collections源码边及四角色/两T分配；未测cold闭包。私有_directory_identity
+挂点不承诺保持，若采用须把原测试挂到实际tree owner，本轮未改test或运行oracle。
+未安装生产、未capture期待、未运行pytest/native，不以静态同态宣称运行接受。
+
+完整成本/失败修正及拒绝理由见[私有数据设计](key-designs/private-data-lifecycle-convergence.md#a184-完整windows保留快照原型不采用)。
+生产2059源全部SHA/行同A182/A183，Code110571/Harness364337/AppHost19717；全源
+659676、排GUI4524后655152，距15K95571；本轮生产/测试增删0。树外
+`a184-windows-backup-retention`保全候选/manifest/源码证明/三评审，方法仍clean local
+master0f9bd3ff；fresh origin/main仍4de7d9251，无新增主线需同步。
+
+下一整程序核POSIX delete_confirmed52的约30行checkpoint后缀：replay→start→已共享
+physical remove→receipt→completion归原Journal的完整接口/成本。Code原confirmation/
+Desired absent准入在replay前，present target完成必须保terminal renamed，不能直接套
+Windows executor。不预支减量或把小物理helper当整C08；完整P1–P4、KD003/KD011仍开放。
+
+
 ## A183 managed装配完整接缝复核与下一工作件（2026-11-14）
 
 按整物顺序核C01两实际入口和现有owner。208+198完整函数、两整文件与A112切点

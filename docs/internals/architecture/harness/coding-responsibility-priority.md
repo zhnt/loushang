@@ -22,11 +22,13 @@ A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+3
 | 已完成 A181 | C13 LSP Supervisor完整实例寿命 | 原Process supervision显式子模块拥有同实例10事实，Code保LSP构造/initialize及状态诊断政策 | Code−116/Harness+268/系统+152（无格式差异）；原97+旧观察6共103不同项过。10hook/4T/2roles全计，无第二FSM退出，不称净精简或整C13完成 |
 | 已完成 A182 / 仅中性投影闭包 | C10 Catalog→typed selection/admission/bundle evidence | 原current_preview直接使用既有Catalog/Input/Admission/Bundle与DTO；Code保产品选择/编译/open及中间复核/最终profile | 原84行两投影完整退出；Code−76/Harness+115/系统+39，35不同项过。单producer无第二算法退出；不是whole preview/open或整C10完成 |
 | A183已核 / 当前形状暂缓 | C01 managed Base/Capability装配 | 原Resources/PM/Session机制已直接使用；剩余完整选择和失败custody仍在Code | 两完整函数208+198及整文件与A112逐字同；现有owner没有新整入口，不重做A51系统+202形状。重开须有不同整事务接缝及全成本 |
-| 5 / 下一整物设计与成本验证 | C08私有数据残余事务 | 比较既有Deletion/Archive/Expiry/Restore owner及实际产品政策 | 先核尚在Code的完整操作，三owner549/510为合计，不把已共享restore/archive重算收益 |
+| A184完整原型不采用 | C08 Windows保留快照110行 | 既有PackageProduct backup family的stateless完整读入口；Code保实际typed/profile绑定 | 全税Code−72/Core+151/系统+79（raw=uniform），静态通过但无第二算法/实际依赖退出，不安装/不oracle；C08仍开放 |
+| 6 / 下一整程序成本验证 | C08 POSIX删除checkpoint | 原PrivateDataDeletionJournal拥有durable phases，Code保confirmation/Desired准入及薄domain profile | delete_confirmed52中约30行replay→start→remove→receipt→completion完整后缀；不重迁physical remove，不套Windows terminal事件 |
 | 后续开放 / A169、A178完整形状均拒绝 | Worker Product完整收据authority | 原Package Product/Resources；Code保政策、验证与兼容DTO | 892行类范围/803行方法定义已作A178完整13源原型。真实Records/MRO/3必要reader改善成立，但计入4事实契约、6TypeVar、8必要公开门面后Code−512/Core+944/系统+432（统一格式+434），仅静态通过，未采用。相比A169系统+580减少148，仍无另一authority/运行重复退出，不为已付原型成本启动大矩阵或摘叶救收益 |
 
 G17与C13本批实例寿命、C10两段中性证据投影已完成；后续核实顺序为：
-**C08残留事务**。C01已按A183核完当前接缝并暂缓；这是进入完整接缝验证的顺序，不是已接受迁移或
+**C08 POSIX删除checkpoint**。C01按A183暂缓，Windows完整快照按A184全成本拒绝；
+这是进入完整接缝验证的顺序，不是已接受迁移或
 预计减量。A182确认preview/open其余主体为Code产品政策及既有Core IO接入，
 不以厚compile/open回调强搬；A183实证C01与A112原件未变，不自动重试同池；C08先剔除已经共享的
 restore/archive，不能再计搬迁收益。
@@ -35,7 +37,7 @@ Worker两次完整原型已拒绝，单列暂缓，不排成自动重试任务�
 其它较大操作体按下表保留比较；有阻断的范围不是排在小项之前无限等待的实施任务。
 A178已完成Worker新接缝的整物成本决策并拒绝接入；A179随后完成202行审计范围的
 完整prefix替代；A180完成foreground整控制，A181完成C13实例寿命，A182完成两段证据投影。
-A183确认C01完整接缝仍受原成本阻断，现转C08残余事务，
+A183确认C01原成本阻断，A184完成Windows完整快照原型并不采用，现转POSIX checkpoint，
 不按目录总量承诺迁移收益。
 
 A178核对A169最终原件确认，其POSIX authority已经继承ReceiptHistory；直接继承本身
@@ -56,13 +58,13 @@ A181核对A38原件：其拒绝对象是另一类`CodingDeferredLspGeneration`�
 不是`LspServerSupervisor`。前版将该决定紧邻C13描述，只能表示泛化适配成本的风险，
 不能作为当前Supervisor曾被拒绝的证据。本类已按A181独立完成完整接缝与成本验证。
 
-C08下一整候选先核Windows备份snapshot110；expiry recovery102及preview91主要是
-Desired/deletion/confirmation/restore-publication的产品授权连接，底层复制/rename/收据
-事务已Core；Code仍在原点调用路径/身份读取。
-110的GC/Desired历史/state pin/staged debt/renamed reappearance合同须全计，不能直接
-并入POSIX snapshot63。POSIX delete_confirmed52中约30行检查点调度仍Code，另列
-其后；remove_started物理算法与restore83已Core，不能重计。两候选均无已证完整接管
-API或全成本结论，先核整物，不以单项跨度承诺减量。
+A184已完整试算Windows snapshot110，保GC/Desired/state pin/staged debt/reappearance、
+原FD关闭和晚权威/hash后，全接口税系统+79；没有第二机制或实际依赖退出，未采用。
+不直接并POSIX snapshot63，也不摘小status切片挽救。expiry recovery102及preview91
+仍主要是产品授权join，底层复制/rename/收据事务已Core，路径/身份读取仍在Code原点。
+下一项为POSIX delete_confirmed52中约30行完整检查点调度的Journal最小接管成本；
+Code确认/Desired absent准入须先于replay，完成用physical remove返回的terminal renamed。
+既有remove_started与restore83不重计；尚无已接受新API或减量，不按方法跨度预支收益。
 
 上述类/方法范围有包含关系，不能相加作可删量。跨簇扫描覆盖434份当前Code源码的
 长函数/owner导航，并深核表列实际程序及Core调用，不等于全树语义重复证明或领域下界。

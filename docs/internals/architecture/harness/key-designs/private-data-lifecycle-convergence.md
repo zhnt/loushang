@@ -311,3 +311,36 @@ POSIX 恢复归档绑定提取暂缓。普通借用描述符的原型使 Coding 
 
 三份生产文件净变化为 −68、+125、−73。Coding 与系统各净减16行，Harness 净0。
 其余1966份生产源码与13份资源逐字节一致。证据在树外 a131-private-archive。
+
+
+## A184 完整Windows保留快照原型不采用
+
+按整物队列完成原WindowsBackupOwner.snapshot110行的完整双源外部原型；原ArchiveIO
+仍不持Product或journal，新固定读入口放既有PackageProduct._backup_topology家族。
+原topology程序逐字保留；新入口覆盖原读权威、GC、Desired、目录ACL/FD、restore/
+expiry扫描及关闭、身份复核、保留收据、保守status/trust、摘要和最终DTO。Code保实际
+Installation、三懒导入、两个事务构造/扫描及原路径/名字/hash薄绑定，不回借整条snapshot。
+
+正规最终Code303→231（−72）/Core103→254（+151）/系统+79，raw与统一格式同。
+4个readonly角色、2个新TypeVar及复用R、5个callable绑定、tree/key/prefix/label与公开
+兼容均计入。无新状态、ledger或第二物理引擎；旧Archive/Restore/Expiry/GC本已共享。
+Code其余retain/verify及profile仍依赖同native/journal，未证实另一算法或实际依赖退出。
+正确接收层与完整程序退出成立，但不足抵这次单producer envelope的全接口税；Root
+在三视角审查后决定不采用该形状。不因正增长一律拒绝，也不以小status helper、
+flags/profile池或压行挽救已付原型成本。C08及整条读路径的最终处置仍开放。
+
+首raw系统+81的替换脚本错误让scan/finallyclose退到借用FD作用域外；三视角源码检查
+发现并修回，首稿及scope修复/重依赖修复各稿保留。最终整个snapshot逆展开AST核含
+With/Try嵌套同，Code其它3方法与原topology逐字同；严格generic mypy两源及Ruff两源
+通过。旧_directory_identity私有别名转原tree method不承诺任意hotpatch保持，既有
+受控测试第93行若采用需精准迁位；本轮未改任何测试。新helper的PM DTO/ACL/目录
+import在函数内，注解类型在TYPE_CHECKING；缺省模块仅新增typing/collections.abc
+源码边及四角色/两TypeVar分配，不冒完整cold加载或IO性能实测。
+
+未安装候选、未capture期待、未运行旧/新pytest或Windows native；静态通过不冒运行
+接受。当前2059生产源全部SHA/行同A182/A183：Code110571/Harness364337/AppHost19717，
+全源659676，排GUI独立测试4524后655152；生产/测试增删0。树外
+`coding-convergence-resumed-20261114/a184-windows-backup-retention`保完整候选、原件、
+全税、控制流退出/加载源码证明及三报告。下一完整切点为POSIX delete_confirmed52中
+约30行replay→start→原物理删除→receipt→completion程序，核原Journal最小扩充；
+Code准入仍须先于replay，completion保terminal renamed，不直接套Windows执行器。
