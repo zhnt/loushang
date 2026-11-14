@@ -1,7 +1,7 @@
 # Coding 全量剩余职责与保留成本复核
 
-本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179及A180源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
-110763行，距15K仍95763行。下面28组不是可删除预算或最终保留成本。
+本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180及A181源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
+110647行，距15K仍95647行。下面28组不是可删除预算或最终保留成本。
 A156托管服务完整控制已归原AppHost；Coding保产品身份/政策与错误薄适配。
 A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
@@ -13,6 +13,8 @@ A178已按大块优先完成Worker不同接缝的13源整物原型；保公开�
 系统+96，两个实际attempt共用固定生命周期，Code保薄profile；不将803方法行当可删承诺。
 A180完整前台客户端控制及Runner恢复已归AppHost：Code−116/AppHost+275/系统+159，
 公开Code门面保argv、准入及两UI绑定；C11为26源9362行，非整CLI完成。
+A181完整Supervisor启动/保留/停止/释放归Process，Code−116/Harness+268/系统+152；
+C13为21源5263行，LSP initialize/诊断/文档/status政策仍Code，不是整C13完成。
 完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07整policy/receipt仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 A162完整暂存到prepared activation lease交接归原Continuity，Code−61/Core+90/系统+29，
 单消费者职责迁移，不计去重；KD003 bytes与C04整体仍未完成。
@@ -124,7 +126,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 ## 全部28组的当前处置账
 
 每行说明当前已复用事实和仍需完成的责任，**不是整组最终保留/迁移接受**。
-数量按A180当前434源重计；A146/A72均为历史切点，前序减少不重复计入本次协调。
+数量按A181当前434源重计；A146/A72均为历史切点，前序减少不重复计入本次协调。
 通用运行、IO、恢复归原组件；产品域实现不因换目录、插件或配置而退出归属计量。
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
@@ -141,7 +143,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C10 包分发及Product管理 | 12/5,324 | P2/P4 | Package Product等已复用；A155修复执行/释放归原ProductRuntime，Code保该入口准入/DTO/parent关闭，其它兼容/fenced装配仍混合 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |
 | C11 CLI | 26/9,362 | P4 | 大量命令调用原owner，A158四条review准备/重开合一，A180完整foreground控制/恢复归AppHost；语法、准入、确认、选择与呈现仍混合 | 同一业务接同一owner；lmux close须先证明输出/确认/CAS/期限屏障及全适配成本，未接受新形状 |
 | C12 Goal/Work/证据适配 | 25/7,017 | P3/P4 | 原Work/Goal/Method、A117来源冷读及A150验证Bash完整执行已共享；Code保仓库/测试/评审策略与scope适配 | 按剩余领域判据/入口核保留或退出成本，不重开已共享cold reader/Task闭包；真实calculator/repository路线保持 |
-| C13 LSP | 21/5,379 | P2/P4 | 语义查询/位置/结果及协议；进程端口已用Workspace/Hosting，A154退出waiter及A171完整stream/Future/Task/close归Process | LSP初始化/配置/诊断/语义/重试/优雅握手仍Code；不把已移完整transport重计，也不把整目录当保留下界 |
+| C13 LSP | 21/5,263 | P2/P4 | 语义查询/位置/结果及协议；进程端口已用Workspace/Hosting，A154退出waiter、A171完整stream/Future/Task/close及A181 keyed client实例寿命归Process | LSP初始化/配置/诊断/语义/重试/优雅握手仍Code；不把已移完整transport重计，也不把整目录当保留下界 |
 | C14 Arch | 13/3,608 | P2/P4 | Python AST/import分类/图查询及cache、读取适配 | 保编码分析；A159完整缓存泛化因系统+85/唯一消费者拒绝，缓存/IO范围仍open，不把领域算法换目录 |
 | C15 AgentSession产品绑定 | 2/1,947 | P2 | 原AgentProductSession/Graph/publication/retirement及A176完整profile退休已实际复用 | 构造、选择见证/receipt及产品hooks仍混合；本片关闭协调退出不代表整类退出，BaseAssembly.close仍Code |
 | C16 Native UI产品绑定 | 14/2,189 | P4 | 原HarnessTUI conversation/controller/surface为实际机制 | 保产品文案/主题/领域动作；以公共观察替代私有字段耦合，不复制UI状态权威 |
@@ -157,7 +159,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C26 配置/路径兼容导出 | 2/52 | P4 | 原Config owner已复用 | 保产品路径选择与支持中的导出，退出需合同证据 |
 | C27 版本检查 | 2/50 | P4 | 产品更新选择与原公共机制绑定 | 保必要产品选择，不为50行再建服务 |
 | C28 资源命名空间 | 5/5 | P4 | 支持中的Python布局标记 | 保真实加载/导出路径，空壳不是第二引擎 |
-| 合计 | **434/110,763** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
+| 合计 | **434/110,647** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
 
 ## A72保留合同与语法筛查（历史成本，非当前下界）
 

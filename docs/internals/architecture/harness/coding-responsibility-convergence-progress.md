@@ -1,5 +1,60 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A181 完整LSP Supervisor实例寿命归Process（2026-11-14）
+
+完成按key共享启动、实际authorized launch/handle/client、单次协议初始化交接、发布或
+失败回滚、stop和retained dispose的完整程序替换，归既有Workspace Process显式
+`supervision`子模块。原ProcessHost、AuthorizedProcessLauncher及A171 transport直接
+复用，不另计为新收益。Code保实际公开Handle、定义/环境/请求与Client构造、单次
+LspClient.initialize、状态/诊断counter及文档退休政策；初始化是实际IO端点，不冒纯函数。
+Core没有回借整条_start_runtime，不新增Host/backend/授权、后台restart或通用池配置。
+
+同实例Base.__init__一次拥有原连续10字段，Code在原位置调用super后接其余领域字段，
+展开后整个原constructor AST同。完整七程序按实际Code端点逆展开后AST同；6个领域
+方法及Handle类逐字同，公开4签名及继承dispose签名同。未声称Supervisor MRO/方法
+归属或任意私有热patch不变；实际公开名义类及调用/返回类型保留，Handle仍原3slots。
+先解析definition/copy环境再进入try、请求构造仍try内，task name第二次读取仍原点。
+保初次waiter取消不丢共享start、stop不阻挡新ensure、只抑制abort/handle close错误而
+不抑制后续domain release、全部关闭完成后按原stop-before-runtime顺序报首错，以及
+失败dispose仍保原Task/原异常不自动重试。状态128为保护active key的软预算，不改硬限额。
+
+完整正规及统一格式均Code441→325（−116）/Harness新268/系统+152，AppHost0。
+4个TypeVar、2个readonly角色、10个protected域hook、晚task-name supplier、实际launcher、
+3个文本绑定及公开门面全部计入；Core是protocol-specific owner基类，不是无配置独立服务。
+首压长行raw系统+93不是最终收益；Base普通初始化替代原暗中依赖子类初始化的草稿。
+单一真实消费者，没有第二FSM退出；本片是完整职责迁移，不声称系统净精简。
+A38原件实为另一类CodingDeferredLspGeneration，已澄清其不是本Supervisor既有拒绝。
+
+实际旧LSP目录88过125.08s；恰6个补充观察capture及去capture后fresh重放分别6过
+0.45/0.43s，原10070B期待SHA
+`6c65c2a9373206048af240787df3efb15594247330d2c16d3241737651f54360`
+先冻再装，未用候选生成期待。观察首waiter取消/peer、无client的launch失败、initialize/
+abort/文档release错误覆盖、多shutdown错误选择/失败dispose保留、状态软cap和pending
+start被stop；公开Handle/签名metadata只附第一例，不计第7例。使用真实原控制/Task和
+受控叶，cap例直接布置受控active maps，非129个真实进程或pickle/native证明。
+
+最终实际原88+旧6共94过154.88s，原Process类型及H1/H2/H3边界另9过7.10s：
+103个不同用例、0fail/error/skip。显式仓库probe380行，gzip1548B逐字封装原10070B；
+Repo6最终过2.04s，不重复累计覆盖。无capture/环境开关/工作区绝对路径或新CI route；
+受控POSIX模型仅在Linux运行。新增测试源码380行/夹具字节独立于生产增量。
+
+外部载体放入仓库后Ruff将Code识别为first-party，首次I001只修import分组，
+由379→380行；4函数/断言/CASES整AST同，原JSON/两生产SHA均不动，只重放载体6例。
+
+旧5源、actual6源和portable7源分别用phase/PID独立path/SHA/递归19个code字段守卫，
+actual94及9的188/18checks核102声明callable，portable6的12checks核106个，回执未并写。
+这些只证明各父进程，不替isolated child、全平台native/wheel或全PR。实际两源project/
+严格generic mypy、Ruff及全格式均过；旧真实Harness进程/协议/Plugin/Session消费者直接复用。
+三独立实际视角对本片有界接受；完整P1–P4、KD003/KD011及≤15K仍未完成。
+
+树外证据`coding-convergence-resumed-20261114/a181-lsp-supervisor-custody`保原源、完整
+首稿/正规冻结两源、全税/逆AST、原JSON/capture/readonly、分进程守卫、JUnit及三报告。
+当前帧2059源659637（独立GUI测试仍4524，排除后655113），Code434源110647、
+Harness364222、AppHost19717，距15K仍95647。C13为21源5263行，非整组最终保留成本。
+下一整物为C10只读Product preview，先核已有capture/catalog复用及剩余完整政策适配，
+不把462方法行承诺为可删除预算，也不重迁已共享IO。
+
+
 ## A180 完整前台客户端控制及Runner恢复归AppHost（2026-11-14）
 
 按已提交的整物顺序完成G17客户端启动、Mux单次读取/必要创建、UI交接、保留关闭任务、
