@@ -6,7 +6,7 @@ A156托管服务完整控制已归原AppHost；Coding保产品身份/政策与�
 A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
 具体接受/验证边界见[执行记录](coding-responsibility-convergence-progress.md)。
-后续实施顺序见[大块职责优先队列](coding-responsibility-priority.md)，先完整Worker Product authority，再inventory/snapshot及启动交接链；不以零碎去重代替主线。
+后续实施顺序见[大块职责优先队列](coding-responsibility-priority.md)，A169完整authority原型系统+580拒绝，现转inventory/snapshot完整证据链；不以零碎去重代替主线。
 完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07整policy/receipt仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 A162完整暂存到prepared activation lease交接归原Continuity，Code−61/Core+90/系统+29，
 单消费者职责迁移，不计去重；KD003 bytes与C04整体仍未完成。
@@ -22,6 +22,8 @@ Code−43/Core+22/系统−21，159冻结读取观察及真实Product1过；未�
 A168完整Legacy Source重捕获及handle/stage结清归原Resources Source owner，installed/legacy两Wheel共用RECORD/ZIP核；
 Code−181/Core+234/系统+53，138项通过。原namespace/安全预算为兼容artifact格式，Code仍保准入/closure政策与公开DTO；
 不是把Coding选择政策换目录，亦不声称系统精简。另三seed泛化原型Code+24/Core+36/系统+60拒绝，收益0。
+A169已试算整个两平台Worker authority及邻接Windows opt-in，Code−543/Core+1123/系统+580；
+完整职责位置改善不足以抵14结构端口等接口成本，四源静态通过但拒绝接入，生产收益0，C07开放。
 
 A161已将旧lane的535份脏文件逐项对账：361份与主线同路径一致、117份为
 主线已包含的同路径历史版本、48份与现行probe完全一致、9份为已更新probe。
@@ -78,7 +80,7 @@ A161已将旧lane的535份脏文件逐项对账：361份与主线同路径一致
 
 - Authority: descriptive audit under COD-RESP-GOAL-002；不替代已接受Target。
 - Design status: current-gap review；A72历史候选在当时未接受，后续A73/A74/A75等接受见各片记录，不重新列为待开发。
-- Implementation status: A155已合入；A156/A157/A158/A160/A161/A162/A163均已本地提交；A164实查无源码收益、A165/A167/A168实际有界接受，A159/A166拒绝；完整Goal active。
+- Implementation status: A155已合入；A156/A157/A158/A160/A161/A162/A163均已本地提交；A164实查无源码收益、A165/A167/A168实际有界接受，A159/A166/A169拒绝；完整Goal active。
 - Owner: Coding及各原组件owner；三独立视角复核，实施owner综合事实。
 - A117：完整Goal/Work来源冷读与原owner关闭归原GoalStore集成；C12整体仍未关闭，见[A117](key-designs/goal-work-source-custody-convergence.md)。
 - A116：完整规划waiter/cache寿命归原Session；C17整体仍未关闭，见[A116](key-designs/session-planning-slot-custody-convergence.md)。

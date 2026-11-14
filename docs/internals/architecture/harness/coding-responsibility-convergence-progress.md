@@ -1,5 +1,39 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A169 完整Worker authority原型拒绝；转第二大块（2026-11-14）
+
+按大块优先队列，已对整个两平台receipt authority与Windows opt-in邻接133行构建
+完整外部原型，非A166四读方法mixin。保同一个self，接签发、witness、payload/native/
+manifest读取、撤销、admission、两个异序derive、Windows opt-in读写及open/history尾部；
+原ReceiptHistory/WindowsRecords/native custody直接复用。现有Code领域policy及其一个
+窄Runtime currentness检查保原时点，不拆多阶段框架；所有Code DTO与政策仍计Code。
+
+完整三Code原1497→954（POSIX889→580、Windows475→253、WinOptIn133→121），
+Code−543、新Core1123，**系统+580**，raw与统一Ruff口径同。14个结构端口、3 TypeVar、
+4个实现基类加必要Code名义类型/构造桥，仍带来显著接口税。已移除无依据的标准Core
+返回own-method反射壳，改直接继承真实ReceiptHistory/typed类绑定后依旧如此。
+虽然完整职责位置改善，却没有新重复算法或第二持久/状态机制退出，也无足够实际依赖
+简化抵消成本；三独立视角及实施owner拒绝当前shape，不安装、不以局部helper救活。
+此拒绝不证明整个authority不能下沉，也不关闭C07或完整Goal。
+
+候选四源正规Ruff与mypy（follow-imports=silent、disallow-any-generics）通过；35项
+逆binding body对照、9项显式特殊边界与13个未改定义有静态证据。未运行候选，未声称
+cold/MRO/pickle/完整ABI通过；不把类型通过当架构价值通过。原型、全部接口成本、
+脚本与三评审保树外`a169-worker-product-authority/whole-prototype/`，拒绝收益0。
+
+迁移前基线发现旧A165显式kill-switch探针在A167之后仍patch已退出的Windows.sha256
+私有alias，原206组合160过/46项setup失败；原失败保留。现在只对选中owner实际
+_latch_kill_switch.__globals__取原canonical/hash并setitem注故障，避免两模块别名假设。
+兼容复核确认逆掉两hook绑定块后整probe AST同、assert序列及46项gzip期待字节同，
+未恢复生产无用import或放宽期待。修后原206过/26.76s；额外原签发排序/真实rooted
+access/checkpoint/V2路线50过/5.50s，256独立node无交叠，不把原失败计成功覆盖。
+这是解除大块验证阻断的载体修复，不计为生产精简；默认发现/门禁/路由不变。
+
+2053份生产源逐SHA核对与A168完全相同；当前Code111687/Harness362852/AppHost19218、
+历史系统658808，Code距≤15K仍96687。本批生产变化0，不预支候选−543收益。保完整
+P1–P4、C07及待确认边界；按[优先队列](coding-responsibility-priority.md)转向第二工作件
+inventory/snapshot完整证据链，先核真实通用程序与原owner，不整搬Code存量分类政策。
+
 ## A168 完整Legacy Source custody归Resources；三seed泛化拒绝（2026-11-14）
 
 用户进一步要求优先大块可迁移职责；已建立[实施优先队列](coding-responsibility-priority.md)。下一主工作件为完整Worker Product收据authority，不以局部helper去重替代；涉及行数不预支为可删量。

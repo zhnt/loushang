@@ -195,8 +195,9 @@ def observe(platform, case, monkeypatch):
         def revoke(self, **kwargs):
             return self.mutation("revoke", kwargs)
 
-    canonical = posix.canonical_json_bytes
-    sha = posix.sha256
+    execution_globals = owner_type._latch_kill_switch.__globals__
+    canonical = execution_globals["canonical_json_bytes"]
+    sha = execution_globals["sha256"]
 
     def encode(value):
         events.append(["canonical", value, depth])
@@ -210,10 +211,8 @@ def observe(platform, case, monkeypatch):
             raise ValueError("hash failure")
         return sha(value)
 
-    for target in (posix, windows):
-        if hasattr(target, "canonical_json_bytes"):
-            monkeypatch.setattr(target, "canonical_json_bytes", encode)
-        monkeypatch.setattr(target, "sha256", digest)
+    monkeypatch.setitem(execution_globals, "canonical_json_bytes", encode)
+    monkeypatch.setitem(execution_globals, "sha256", digest)
     owner = object.__new__(owner_type)
     owner._product = SimpleNamespace(
         gc_gate=Gate(),
