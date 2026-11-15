@@ -17,6 +17,7 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 
 | 顺序 | 完整交付边界与源码审查池 | 现有接收组件与Code保留 | 先解决的问题与退出条件 |
 | --- | --- | --- | --- |
+| 已完成本批 A206 | C10完整factory/release家族，原3类8操作实例 | 原Package Product local Wheel runtime；Code保名义dataclass/Selection政策/构造桥 | 8→7实际执行体，两Worker lookup归一；Code−63/Harness+114/系统+51（raw=uniform）；原native机制与A155不重计 |
 | 已完成本批 A205 | C11受管命令完整run/close/probe及native退出，原829行 | 原AppHost managed组件；Code保准入/选择/输出/UI/既有Runner | 39同self字段、8完整程序接入；Code−147/AppHost+439/系统+292（uniform192），原引擎不重计；A193静态拒绝保历史 |
 | 已完成本批 A204 | C07完整双平台receipt authority及相邻Windows opt-in，13源 | 原Package Product/History/Windows Records/native readers；Code保DTO/codec/constructors/policy与八公开门面 | 按新准则接受完整职责价值，Code−514/Harness+944/系统+430（uniform+432）；五journal门面真实复用Core，原native机制不重计；A178历史静态拒绝保留 |
 | 已完成本批 A203 | C02共享连接配置完整read/mutate/write/list，原173行文件 | 原AppHost client navigation与原Harness Config writer；Code保平台/临时工作区/请求政策与五公开绑定 | Code−107/AppHost+123/系统+16（uniform+14），无新对象/Role/T或gate；原40及另7局部对照通过，A149原writer不重计；Rust入口仍独立，不称Python dead |
@@ -40,7 +41,7 @@ A202完成新原集合协调接缝，原183不是迁出量；Code保98行实际�
 失败/取消/重试和资源交接必须一起替换。最近A171、A173、A174、A176合计Coding−680、
 生产系统+422，属于职责收敛，不能作为系统净精简的证据。A179另Code−128/AppHost+224/
 系统+96；A180完整前台控制另Code−116/AppHost+275/系统+159（统一格式+137）。
-A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；A196六流字段契约去重Code−46/Harness+12/系统−34；A197四类字段契约再Code−39/Harness+7/系统−32；A199完整接受/消费事务Code−340/Harness+480/系统+140；A201完整Journal scope再Code−148/Harness+284/系统+136；当前Coding108861行，距15K尚93861行，仍须按完整工作件推进。
+A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；A196六流字段契约去重Code−46/Harness+12/系统−34；A197四类字段契约再Code−39/Harness+7/系统−32；A199完整接受/消费事务Code−340/Harness+480/系统+140；A201完整Journal scope再Code−148/Harness+284/系统+136；当前Coding108798行，距15K尚93798行，仍须按完整工作件推进。
 
 | 顺序/状态 | 完整工作件 | 接收者及Coding保留边界 | 进入条件或实际处置 |
 | --- | --- | --- | --- |

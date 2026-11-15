@@ -1,5 +1,52 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A206 完整Session Product factory/release归原Product（2026-11-15）
+
+基于23d6f460c核2063源起点与clean任务树；控制主线仍4de7d9251，前A205 fetch已确认其为任务
+祖先；本轮不假称再次fetch。archmethod仍clean local master 0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。
+先核完整Selection388 class-span/373方法池：兼容输入/平台/历史/bootstrap政策仍Code；只迁scope/
+close不足以称整选择退出。转入三factory/release名义类的完整create→交付→bound release及
+unbound失败/重试程序。详见[工厂归属设计](key-designs/session-product-factory-ownership-convergence.md)。
+
+原Package Product local Wheel runtime已有两实际native factory、lease/compose及Windows身份
+检查，直接复用；三Code dataclass保原8字段、slots、构造、Lock defaultfactory与init/compare标志。
+四无状态empty-slots基类接固定完整程序；两相同Worker owner lookup合一，原8method实例归
+7实际执行体。Code保原3行late _dispose_binding构造原Code名义release；没有新manager/锁/Task/
+状态容器。1label、2roles（selection lookup/close；仅bool可写slot）、0T税全计。
+
+保持native create在try外；原binding dispose与selection close在同try内串行，先失败跳后者，
+原error加固定note。仅replace/包装成功后交付issued=True；与底层create-issued各为原阶段权威，
+不合并。release先原lease再selection close，后者失败仍保Binding disposed=False可重试；
+unbound可重复且不置flag，app借用不关selection。Windows生产仍读on_dispose.__self__.registry，
+实际construction probe仍可读该wrapper.release.__self__原lease，不换匿名closure。
+
+raw与uniform均Code1713→1650（−63）、原Core2398→2512（+114）、系统+51。全量接口税含4base/
+2role/标签/名义构造桥及slot alias；完整职责归位伴一处lookup重复退出，不是系统净精简。
+初mypy拒empty-slot基类直接赋字段；改为明确单字段Protocol与同self typed alias，仍普通动态
+attribute写原Code物理slot，不用Any/ignore/object.__setattr__/额外dict。原静态失败保留记录。
+
+原主组142节点旧479.36s全过；实际同序142节点469.74s全过，两组0fail/error/skip。另14局部受控案例+原help
+共15节点，旧24.53s/实际18.05s全过；14JSON逐byte同。help不在主组，非重叠。观察含innercreate、
+no-release、wrap/replace及首/后cleanup失败、unbound重试/失败、release重试/失败、app借用和
+nominal lookup。Binding/Factory为受控模型，缺native锁/实际Windows/Task.cancel证明，不泛化为
+所有native组合退出。原消费者载体与config八份字节固定，不充运行时oracle/child来源守卫。
+
+3名义ctor/8方法签名及resolved hints、8字段/slots/match_args/物理size及offset/no_dict同；
+两旧inert值pickle加载同，正常带Lock factory仍原TypeError，不承诺live owner可pickle。组合
+import/metadata/pickle模块计数651同，非逐入口/IO审计。私MRO/实现module/global/qualname/frame演进，
+Code旧replace别名不再执行挂点，不保任意private热换。原8实例逆label/同self slot alias后AST同，
+Code原构造桥/三类fields/decorators/其余类及Core旧声明同。实际Ruff/mypy两源通过，9改变声明
+format通过；保旧紧凑layout，不声称整文件format。API artifact不含同进程来源pin；测试父守卫旧/实际各3模块184/186声明callables，
+主各142nodes/284checks、局部各15/30，19递归code字段限定声明程序。两XML同序、主/局部
+交集空，总157不同节点，不把help错减为重叠；不覆盖allglobals/生成/子进程来源。
+
+当前2063源仅2改、2061原源同；Code434源108798、距15K93798，Harness366342/AppHost20449/
+HarnessTUI29466/HarnessWork8332；系统660902，排GUI独立4524后656378，C10为12源5185。
+无Product测试、门禁或fixture修改；树外观察150行、API支持28行、复用父guard每相位94行
+另计，不进入默认PR。批次check plan仍选architecture/coding/harness/host_runtime/windows_shell；
+本轮是上述有限本地验收，未运行所有PR scope/native平台检查，未声称可直接打开PR。三设计/候选及
+三实际视角有界接受，主组已terminal；证据a206-product-application-selection。完整P1–P4和≤15K仍开放。
+
 ## A205 完整受管命令生命周期归原AppHost（2026-11-15）
 
 承接8e759f34f的2062源起点；本轮fetch后origin/main仍4de7d9251且为任务祖先，
