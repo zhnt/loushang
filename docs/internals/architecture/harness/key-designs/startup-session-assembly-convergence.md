@@ -993,3 +993,36 @@ enabled在最终投影成功后才发布。两branch的receipt/clock/source-poli
 共享字段。须保裸顺序mask/skip与notes-continue的不同合同，不摘临时类或少量except。
 三独立源码报告及整字段读写坐标在树外a212-product-catalog-projection。本节是Current/
 Gap审查，无新实现/API/Target接受；Code108291，完整C01及P1–P4保持开放。
+
+
+## 31. A213两Product preparation的完整中性Scope
+
+A213细化§30而不追认整体382迁移：Code open/approval入口已是到原Core owners的窄政策
+与Resume nominal边界，不能仅因涉及IO就当厚回调。现原PackageProduct selected-revision
+family以class-CM拥有两完整preparation共同的runtime acquisition、第二capture/lineage/
+verify、异常close及成功转移；Code领域plan/信任/authority/nominal结果在with内执行，
+不把整个Code工作体回借Core。Root/clock/三个native-root兼容入口原体保留，不重计其物理实现。
+
+opener在enter自身try外；第二capture/校验失败enter自己close，因为enter失败无exit；
+body异常由exit同步close，close可替换原错，成功不close。第二capture独立于opener原捕获，
+不能复用其结果减fence。ID与预算维持原方法lookup→ID→files→bytes逐项顺序。class避免
+body StopIteration被generator-CM改写，capture自身tuplegen的PEP479保持。晚recheck工厂
+只持同runtime，每次读当时packages/handle.verify，不捕Context/selected快照或预绑verify。
+
+原0T ID-iterator稿存在顺序差异，在产品安装/期待捕获前修成items/id及1T；坏稿/原proof
+另存，最新Code700/Core522。全成本Code−33/Harness+94/系统+61（raw=uniform），含
+0Protocol/1T、全部fields/thin ports/imports/兼容facade。收益是两中性程序共享、职责归位，
+非系统净减或声称253行领域体全部退出。原A212临时root/九nonlocal/list仍需完整接管。
+
+首实际主组1原installed-second trace不符（128过），单项/全probe复验通过；继承__del__
+虚调用全局instrumented close的跨场景记录已由受控foreign-GC见证确认。原probe仅2行
+current-handles identity隔离，外来仍真实close，原fixtures/assert不改。首次被截断diff的
+具体身份未知，控制见证只证明机制，不能冒精确归因。失败/诊断/修后范围分列执行记录。
+原主组旧129过/2旧warnings/281.41s；修正carrier范围后相同129过/2旧warnings/288.78s，
+零fail/error/skip，与局部交集原recheck1，总141不同节点（129+12）。诊断节点另列不充收益。
+另12不可覆写旧观察逐byte同，覆盖开/捕/验证/领域/关闭异常、两种StopIteration、方法/ID
+顺序、预算与晚recheck/成功转移。真实runtime/lineage/nominal results执行，root/open/
+审批/编译叶受控，不充Task.cancel或新原生平台。PLC9仅4assert可选减集，保Builtin2/
+155assert/scanner/required数据/route，无newgate；库存测试+34行及probe隔离+2行。API六fn/两class布局/六旧
+fn身份、685冷模块名及静态检查证据见执行记录；无percase compiled guard或全PR声明。
+Code108258/系统661277，完整15K差93258。三视角技术接受限该Scope，C01与全Goal开放。

@@ -1,5 +1,67 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A213 两Product preparation的完整中性资源寿命归原PackageProduct（2026-11-15）
+
+承接3a930afec的clean树，沿A211已fetch main4de7d9251祖先，不冒本轮再次fetch；方法仍
+clean local master0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。细化A212判断：原Code open
+只是集合/顺序政策接Core open_selected_resolution，_finalize_selection是Resume nominal
+准入/政策接Core resolve_for_product；既有native/Journal/批准引擎不重计，调用IO服务
+本身不等于厚阶段回调。见[完整Scope设计](key-designs/startup-session-assembly-convergence.md#31-a213两product-preparation的完整中性scope)。
+
+完整审两public preparation143/110行及三个root入口。原selected-revision family的class-CM
+直接拥有opener→第二独立capture→lineage/逐项verify→Code领域body→失败close或成功
+handoff，另给只捕同runtime的晚packages recheck。Code body/nominal ctor与builtin replace
+真实留with内，不回借完整bodycallback，也不称全部253领域行已迁出。Root/clock/准入
+在open前保原体；opener在enter自身try外，capture/verify失败由enter自身close，body任意
+BaseException由exit close，close可替换primary，成功不close。class避免generator-CM对
+body StopIteration转换；capture原tuplegen的PEP479保原。recheck不持Scope/Product/
+secondselected，不预绑handle/verify，保原runtime唯一freevar与每次晚读packages。
+
+首外稿lazy ID先投影再查capture方法，三视角指出顺序风险；before-install改为items/id两口
+及1个Generic T，在tuplegen内保持方法lookup→ID→max_files→max_bytes；预算每项晚读。
+旧0T/系统57稿与proof归档first-id-projection-order，不冒修后身份/wholeAST。修后两shadow
+54581终0，实际两源mypy silent-followimports/disallow-any-generics、Ruff/fullformat三文件
+过；两个独立whole逆AST覆盖完整admission/领域体/lineage/handler，原Core与其余Code
+声明、三root body不变。证明工具首次旧schema KeyError在树外修复，不当Product失败。
+
+Code733→700（−33）、Harness428→522（+94）、系统+61，raw=uniform，无格式收益。
+0新Protocol/1T、7policy fields+runtime、5个thin callables和validator兼容门面/所有imports
+全计，+94含实际公共程序。两capture/close/recheck统一是中性责任改善，非系统净精简；
+Source与Approval原引擎不算新增。A212九nonlocal/list与双临时root进度问题仍开放。
+
+首次实际主组51636为128过/1原installed-second trace不符、2旧warnings/331.68s；原完整
+差异因pytest截断未留，不假定其确切对象身份。单项6089为1过/3.06s，全原probe58638为
+48过/7.18s，均未改期待但不足单独解释首次失败。原handle基类__del__虚调用当前close，
+全局probe hook会记录外来前场景handle。控制见证62745的1诊断+原recheck共2过/3.48s：
+唯一已注入closed foreign事件令55→56，其余所有字段同；这证明carrier串扰机制，不冒
+首次未知diff的精确归因。probe加2行identity-current-handles guard，外来仍original_close，
+只跳本case无权的trace/故障注入，当前list内全部原行为保。逆guard全旧module AST同，
+fixtures/CASES/断言不改。修后同一受控见证56766为2过/7.60s且完整观察等原期待。
+原主组旧129过/2旧warnings/281.41s；修正carrier范围后相同129过/2旧warnings/288.78s，
+零fail/error/skip，与局部交集原recheck1，总141不同节点（129+12）。诊断节点另列不充收益。
+局部12固定全场景+原recheck交集1共13，旧3.44s/实际8.83s全过、12JSON逐byte同。
+含success不close/late recheck、open失败、capture/lineage/close mask、body/capture两类
+StopIteration、方法/ID失败顺序、每项动态预算与末builtin ctor失败。真实2Code入口、Core
+runtime.close/lineage与nominal preparation/close执行；root/open/capture/领域审批叶受控，
+部分配置/编译输入用未初始化nominal marker，手动recheck/drain分列，非真实审批/Native
+发布/完整Session lease/Task.cancel证明。树外375行观察另计，不进default发现或PRgate。
+
+PLC9仅4旧assert同减精确文件/old-new validator各可选1；既有Builtin manifest2仍必需，
+原required字面常量/scanner/155assert数/route保。逆投影后整旧module AST同，old A=E
+必有A−C=E−C，不新增presence；duplicate/unknownscope/missingBuiltin仍拒。库存测试+34行、原probe隔离+2行，共36行。
+HEAD plan-only选docs/architecture/coding/harness/host-runtime宽路线，本批只跑所列141
+受影响节点/诊断/静态检查，不称所有PR或host-runtime/原生平台全绿。
+API两public+三root+validator六fn签名/hints/annotation/doc/exports、六旧fn pickle identity
+及两class构造/字段/slots/布局整JSON同；685冷模块名字列表同。仅实际__file__路径断言/
+旧capture源diskSHA，未设percase compiled guard，不充子进程全来源或IO审计。
+
+2063生产源仅2改/2061逐SHA/行同；Code434源108258、15K差93258，Harness367257/
+AppHost20449/HarnessTUI29466/HarnessWork8332；系统661277，排GUI独立4524后656753。
+当前434行与28组对齐，C01为22源12220；本批不关闭完整C01/P1–P4。下一复用已接Scope
+处理双root→config/preparation→成功cleanup移交/outer失败消费的单一实际状态，包含legacy；
+不重迁原open/approval引擎、不摘临时类或guard替代整族。树外a213-product-preparation保
+原件/两个形状/全成本/XML/12不可覆写旧观察与三设计/源码/实际视角。
+
 ## A212 完整Product Catalog投影接缝核实（2026-11-15）
 
 承接94704d4f9的clean树，沿A211已fetch的main4de7d9251祖先，不冒本轮再次fetch。
