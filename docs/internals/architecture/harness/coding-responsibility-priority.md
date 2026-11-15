@@ -17,6 +17,8 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 
 | 顺序 | 完整交付边界与源码审查池 | 现有接收组件与Code保留 | 先解决的问题与退出条件 |
 | --- | --- | --- | --- |
+| A209完整历史形状不采用 | C02三binding/source类+四catalog历史入口，并包含稳定snapshot读完整四源 | 原AppHost canonical family/Transcript源，Code保历史投影/名义构造/17公开方法属性入口 | 全税Code−20、接收+339、系统+319（uniformCode−38/sys301）；四源shadow静态过但成本不值，不安装/不跑矩阵，不摘close/fence |
+| 下一完整成本复核 | C08 Windows backup retention snapshot原110行完整程序 | 原Package Product backup family、原Windows archive/expiry/restore readers；Code保DTO/codec/安装政策 | A184原−72/+151/系统+79历史不改；按新增长准则复核现源/现owner与全部端口，再决定，不预报采纳/收益 |
 | 已完成本批 A208 | C13/C14两完整reserved Tool owner准入/绑定/capture | 原Session tool_owner_binding，保Code五字段/域Consumer/工具工厂/nominal family | 六操作实例合三共享程序，Code−72/Harness+88/系统+16（raw=uniform）；原注册/释放机制复用不重计 |
 | 已完成本批 A207 | C01公开SDK default完整137span三方法 | 原PM assembly及same desired/management；Code保原12字段/名义class/8profile事实 | 32次CAS、latest-own历史、command提交及部分commit原样；Code−128/Harness+181/系统+53（raw=uniform）；非活跃Base路线、未重造A51 |
 | 已完成本批 A206 | C10完整factory/release家族，原3类8操作实例 | 原Package Product local Wheel runtime；Code保名义dataclass/Selection政策/构造桥 | 8→7实际执行体，两Worker lookup归一；Code−63/Harness+114/系统+51（raw=uniform）；原native机制与A155不重计 |
@@ -36,7 +38,8 @@ A200已核完整outer handoff四源形状，所有适配后Coding raw+4/系统+2
 静态通过但整形价值不足，不安装/不测；不是C03保留成本下界，也不重试同形参数压缩。
 A201已完成C05中性lock/store整接缝，G10启停/代际/历史政策仍Code；实际Code−148而非567。
 A202完成新原集合协调接缝，原183不是迁出量；Code保98行实际领域/兼容成本。
-后续继续从剩余完整职责选择，C01同形仍条件暂缓、A200不重试；不以小timeout/字段片代主线。
+A209已实作完整历史custody/reader四源形状并按全税拒绝；不把其196行方法池作迁出预算，
+后续先核下一完整Windows retention读，再从剩余完整职责选择，C01同形仍条件暂缓、A200不重试；不以小timeout/字段片代主线。
 可迁移性排序优先于名义行数；完整剩余责任账中其余簇仍开放，不被本队列排除。
 
 排序先比较能够整体退出的旧操作体和真实复用，再比较全部适配后Coding及系统的净值；

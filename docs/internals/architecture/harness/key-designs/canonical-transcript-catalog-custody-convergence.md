@@ -352,3 +352,71 @@ import and does not promise arbitrary class-wide runtime type-hint reflection.
 Public call signatures and their existing resolved hints are separately checked.
 Source, local fault and real persistent-test evidence is tracked in the
 [A202 execution record](../coding-responsibility-convergence-progress.md).
+
+
+## A209 Complete History Custody Trial: Current Shape Not Adopted
+
+2026-11-15 evaluates the remaining three candidate/source classes and four history
+catalog operations as one complete program, together with the original bounded
+snapshot reader. Existing A80/A202 catalog, Transcript IO and StoreAdmission
+mechanisms remain authoritative and are not counted as new migration gains.
+
+The external four-source candidate moves stable fingerprint/read/recheck into
+Transcript and invokes a pure Code history projector in the same caller. Thus an
+AppHost `settled_io` call still includes both native capture and domain projection
+in its original worker; projection is not moved onto the event loop. AppHost then
+owns candidate transfer, source refresh and history preview/open custody. Code
+retains historical interpretation, budgets/error facts, original constructors and
+seventeen public method/property entries (including necessary typed facades and
+unchanged pure Product adapters). No new public protocol or accepted Target is
+established by this trial.
+
+Three original close contracts are deliberately different. Writable and detached
+candidate close clear their retained owner only after success and can retry.
+Resume Source close sets closed before awaiting and does not retry a failed close.
+Refresh publishes the new binding before closing the old one, has no added closed
+or accepting guard, and cannot acquire a new cleanup debt registry. Public
+`self.preview_history_snapshot`/`self.open_history_binding` dispatch, lock scopes,
+source fences and close-error replacement must remain at their original points.
+An ordinary CloseGroup or live writable candidate cannot replace these contracts.
+
+All facade, constructor, five new read/state roles, five new TypeVars, three
+provenance/exact-type casts and pure callback/getter costs are included:
+
+| Source | Original | Candidate | Raw delta | Uniform delta |
+| --- | ---: | ---: | ---: | ---: |
+| Code hosted catalog | 943 | 921 | −22 | −40 |
+| Code Resume history | 233 | 235 | +2 | +2 |
+| Existing AppHost integration | 885 | 1179 | +294 | +294 |
+| Existing Transcript source | 101 | 146 | +45 | +45 |
+| Complete system | — | — | +319 | +301 |
+
+Coding's complete net reduction is only 20 raw lines (38 uniform), against 339
+receiving lines. The initial full-format trial gave Code +15/system +349; original
+layout was restored for 51 unchanged declarations, with no semantic credit for
+formatting. One missing virtual-method declaration initially failed mypy; the
+corrected four-shadow-source check passes, and final Code separator correction
+has identical AST. Ruff check passes; retained old compact layout is not advertised
+as a full hosted-file format pass.
+
+The complete shape is not adopted: responsibility placement is sensible, but its
+public/typing/constructor surface buys too little simplification for the total
+cost. This decision is not based solely on lack of another duplicated engine,
+and does not revoke permission for necessary modest system growth. No Product
+source/test/fixture/gate was installed or changed, no business pytest matrix was
+run, and no behavioral, cancellation, metadata or cold-load acceptance is claimed.
+Actual tests would also need precise relocation of the old Code loader fault hook
+to the canonical reader while keeping its race/assertion; no such test adjustment
+was made for this rejected shape.
+
+Three independent complete-candidate views support non-adoption and independently
+confirm the four source hashes and costs. They found no new source-level contract
+blocker; this is not runtime acceptance. Receiving growth includes real shared
+programs, as well as compatibility and typing costs.
+
+The external candidate, hashes, complete cost and source reviews remain under
+`a209-hosted-history-ownership`. The actual 2063-source frame stays byte/line equal
+to A208, with Code 108598 and 93598 lines still above the 15K target. The whole
+history family and full Goal remain open. Do not salvage a small close/fence
+fragment and count it as completion, or interpret this cost result as a permanent
+domain lower bound.

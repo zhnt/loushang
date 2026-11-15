@@ -1,5 +1,41 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A209 完整托管历史custody四源试算：当前形状不采用（2026-11-15）
+
+上一轮A208为真实生产进展，本轮承接9ea66d058的clean任务树；fetch成功，origin/main仍
+4de7d9251且为任务祖先。archmethod仍clean local master 0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。
+完整三binding/source类104方法span与四catalog历史方法92span，连Code原snapshot reader一起
+成四源树外原型，不只摘close或guard。见[完整历史试算](key-designs/canonical-transcript-catalog-custody-convergence.md#a209-complete-history-custody-trial-current-shape-not-adopted)。
+
+既有AppHost catalog与Transcript源是正确owner，但现header/tail/revision API不能直接替整
+snapshot。原型在Transcript固定执行fp→原只读digest loader→fp重核→同caller纯Code projection；
+不把projection移loop改变settled_io取消/异常优先级，也不让Core回借原Code90行混合IO体。
+AppHost承接完整transfer/preview/open/refresh/close，Code保原名义构造、历史语义与17公开
+方法/属性入口。保三close区别、refresh先new后old/public preview虚调用与锁内复核；这些是
+候选源码设计，不冒实际运行接受。五roles/五新T/三provenance或exact-type cast及全部typed
+门面/纯factory/getter均计，不造新registry/manager或改用户历史格式。
+
+全四源最终raw：hosted943→921（−22）、history233→235（+2）、AppHost885→1179（+294）、
+Transcript101→146（+45）；Code−20/接收+339/系统+319。统一格式Code−38/系统+301。
+初全format形状Code+15/系统+349；其后保51未改声明原排版，分隔空白修正保持同AST，
+不计格式为机制收益。初四shadow mypy缺原self.manager_for_construction虚接口声明，补后
+3615 terminal0四源silent-followimports过；首修脚本文本needle断言失败未改候选及重复静态
+失败也留记录。最终Ruff四源过，不声称旧compact hosted整文件format过。
+
+Root不采用完整形状：职责可归位，但仅20行Code减量不足以承担339行接收实现及兼容/typing
+成本；其中含真实公共程序，不全是接口税，也不是因无第二引擎退出就机械拒绝。无Product源码/测试/fixture/gate更改、无pytest运行，
+不做为换采用扩大实验，也不摘少数close/fence规避完整范围。旧values固定public fq/annotations，
+原Code loader的真实append-after-read故障挂点若采用须精确迁位；本轮未改旧期待/载体。
+三独立完整候选视角均支持不采用，四源SHA/成本独立复核一致；源码未发现新增合同阻断，
+但静态原型可审查不等于用户能力/取消/元数据验证完成。candidate-responsibility-review、
+candidate-runtime-review、candidate-compatibility-review与独立证明留在树外证据目录。
+
+2063生产源逐SHA/行与A208帧全同；Code434源108598、距15K93598，Harness366611/
+AppHost20449/HarnessTUI29466/HarnessWork8332；系统660971、排GUI独立4524后656447。
+本轮生产精简与新增运行用例均0，完整P1–P4仍开放，不据此认定历史协议或17入口不可再缩。
+证据树外a209-hosted-history-ownership。下一核C08 Windows retention完整原110程序在新
+增长准则下的实际复用/全部成本；A184旧拒绝不改成旧已采纳，不机械重跑其它全部原型。
+
 ## A208 两完整reserved Tool owner适配归原Session（2026-11-15）
 
 承接c68b98bd2的2063源clean任务起点；本轮沿前次已fetch的4de7d9251祖先，不假称再次fetch。
