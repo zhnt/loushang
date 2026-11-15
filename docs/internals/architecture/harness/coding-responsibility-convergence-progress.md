@@ -1,5 +1,49 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A218完整应用Transcript绑定归原Product owner（2026-11-15）
+
+承接clean 08e792055，fresh fetch main仍4de7d9251且为祖先；方法仍clean local master
+0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。三视角核SessionManager整783行及真实
+new/open/resume/fork/replacement链：主CRUD、Resume Writer获取/投影失败/cancel custody
+已由原ProductTranscriptSession、Transcript factory与Session owners执行，不重迁计益。
+原97行_load_resume_writer含Code Plan/版本/历史选择政策，本批整AST保留；不重启A200/
+A209高税外层回借形状，不将全文件当可删预算。
+
+完整ApplicationSessionManager四方法（factory选择、owned rename、维护身份delete、
+拒绝path-return fork）归原product_session固定私有基类。Code原local名义class以该基类
+与原SessionManager继承，只绑定原两个实际factory引用；原transient/owned factory
+构造和产品header/runtime/namespace/enroll配置留Code。无新factory实例、资源owner、
+Task/锁/Protocol/TypeVar/callback；复用既有两个T。两个class refs替原closure refs全计。
+
+_factory_for_persistence即使persist=False也先原application factory._accepting()；
+rename直接原factory，原_owned_source内构造cls、append、取summary后才退出scope。
+失败/cancel/close债仍原owner结清，不走legacy open/dispose。delete先原maintenance
+identity校验再委托原factory删除，无pathname/blob fallback；path-return fork仍无条件
+拒绝，继承的Session-return fork仍用原_creation_factory，不改变默认Product路径。
+
+Code783→749（−34），Core917→969（+52），系统+18 raw=uniform；全部引用/继承/
+类型/导入成本已计，属于完整职责收敛而非系统净精简。两shadow和两安装源mypy按项目
+follow-imports=silent隔离cache均过，Ruff/依赖图检查过，无失败后改Product迎合测试。
+旧/新同序111项全过（95原节点+16树外观察已含于111），不重复相加；原实际owned
+create/restore/preview/maintenance/cleanup债、import、Resume、Product delivery/delete/
+fork路径回归。16固定观察逐byte同，用controlled factory/context与原Code构造patch
+核四方法全族，包含selfTask.cancel；不代真实Writer取消清理、完整error graph或native
+平台证明。真实owner由另95项有限场景承载；error观察仅类型名/消息与事件顺序。
+
+API七条有效方法记录（六公开+原私Writer）、class构造/FQN/doc、布局24/−48/16/
+56/288及434组合导入名同。实际MRO保原Code constructor patch路径。私factory选择器
+返回hints由具体Code类型变既有两个T，四方法origin/私MRO/两class facts代closure/
+继承私注解自然演进，不宣称全部反射相等。未测pickle；API/probe未嵌同进程source/
+compiled guard。Code公开__all__及显式Product reexport保；两无本地消费者的旧注解
+import退出。无repository test/gate/route改动；observer88/API21行及其它树外工具另计。
+
+2063源账本仅2变/2061同，账本661388含31 GUI测试/support4524，生产2032源656864；
+Code434源107998、Harness367448、AppHost20629，C03为15源4098，15K差92998。
+三独立实源视角及实施owner `/root` 作本族有界接受，未推送；整C03/P1–P4仍partial。
+下一优先核C07 POSIX/Windows Worker payload、receipt与recovery输入完整族，先查既有
+RecordSchema/PackageProduct owner；不把DTO/namespace/产品字段整搬或预记删行。
+完整成本、旧新XML、原件/候选、冻结观察、API与三视角证据在树外a218-session-manager-ownership。
+
 ## A217两条Hosted审批展示程序去重（2026-11-15）
 
 承接clean 9b8756250，fresh fetch main仍4de7d9251且为祖先；方法仍clean local

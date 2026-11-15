@@ -420,3 +420,34 @@ to A208, with Code 108598 and 93598 lines still above the 15K target. The whole
 history family and full Goal remain open. Do not salvage a small close/fence
 fragment and count it as completion, or interpret this cost result as a permanent
 domain lower bound.
+
+## A218 Complete Application Transcript Binding
+
+Current: the existing Harness `product_session` owner now has a fixed private
+application-bound profile that executes all four original application manager
+operations: factory selection, owned rename, maintenance-identity deletion and
+path-return fork rejection. Code's original local nominal class binds its two
+actual factory objects and retains Product configuration and Resume policy.
+No new factory instance, Task, resource owner, callback, Protocol or TypeVar is
+introduced; two existing type parameters and original native IO owners are reused.
+
+Persistent and preview selection still check the original application factory.
+Rename constructs the dynamic Code class inside the original owned-source scope;
+summary delivery waits for cleanup, and failed cleanup remains original debt.
+Delete preserves the original maintenance identity check; inherited Session-return
+fork still uses its creating factory. Default Product operations remain unchanged.
+The full Code Writer admission program is retained because acquisition and failure
+custody already belong to the factory; no phase callbacks are extracted from it.
+
+Cost is Code−34/Harness+52/system+18, raw=uniform. Old and actual same111 nodes pass;
+16 frozen observations are included, not extra. Seven method metadata records,
+nominal constructor/doc/layout and434 import names match; private factory hints
+become generic, MRO/origins and class references replace closure implementation
+details. No pickle or loaded-source/compiled guard is claimed. Controlled ports
+and task self-cancellation do not prove all native/Writer cleanup paths; real owned
+consumers are verified by the listed original95 nodes. No tests/gates are changed;
+external observer/API tools88/21 lines are separate. Three independent actual
+views and implementer `/root` accept this bounded family; full Goal remains active.
+Current Code107998/Harness367448/AppHost20629; ledger661388 includes GUI test/support
+4524, so production is656864. Full costs, failure limits and source pins are in A218
+of the Coding execution record and external `a218-session-manager-ownership` evidence.
