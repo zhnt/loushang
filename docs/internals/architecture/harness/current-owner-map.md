@@ -386,6 +386,13 @@ Desired/GC/committed facts, runtime factory and lifecycle cleanup. Coding retain
 approval/revocation, native platform interpretation, CAS and CLI projection;
 no additional admission, execution or persistence authority is introduced.
 
+The existing Session Tool owner binding now also shares the complete reserved-pack
+validation, single-bind admission and capture checks for actual Arch/LSP owners.
+Coding retains nominal fields, typed Domain Consumers/factories and exact pack
+facts; stage/commit/rollback/disposal keep using the unchanged original binder.
+See [reserved Tool owners](key-designs/reserved-tool-owner-convergence.md) for
+late mutable reads, consumed bind failures and nominal generation-family identity.
+
 The bounded [Plugin enablement compatibility capture](key-designs/plugin-session-lifecycle-convergence.md#11-d3-实现接缝完整兼容捕获路径候选)
 uses Plugin Management for the existing four-lock desired/migration capture,
 Resources for the original directory observations and fixed Windows pin, and
@@ -400,7 +407,11 @@ retains directory preparation. Coding retains its deployed values, paths,
 identity/error policy and thin adapters. Family acquisition, exact-owner retirement coordination and the outer close
 barrier now run through stateless Session mechanisms on the same original
 facade fields. PM assembly owns GC sealing and the explicit settled direct-host
-handoff/completion. Coding retains domain policy, values and projection;
+handoff/completion. Its fixed same-object [default bootstrap](key-designs/first-party-default-bootstrap-convergence.md)
+also owns the retained public SDK's complete install/enable CAS retry and latest
+own-install history proof. Coding retains the eight Product facts, nominal
+lifecycle/fields and virtual hooks; current managed Base still uses migration.
+Coding retains domain policy, values and projection;
 KD-007's lifecycle cluster is implemented, while broader startup/bootstrap
 convergence remains within the active Goal.
 The first [startup assembly slice](key-designs/startup-session-assembly-convergence.md)

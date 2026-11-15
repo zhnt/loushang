@@ -509,3 +509,7 @@ class _OptInBaseMethods(_BaseWireMethods):
             latest_decisions=tuple(latest[key] for key in sorted(latest)),
             operation_ids=frozenset(operations),
         )
+
+
+class CurrentOptIn(Protocol):
+    def current(self, plugin_id: str) -> _OptInDecisionMethods | None: ...

@@ -304,3 +304,150 @@ integrates the three independent responsibility/runtime/compatibility reviews fo
 this bounded correction; the original source snapshots, test/AST proofs and results
 are retained outside Git in A102. This closes these two observed inventory failures,
 not the complete P1–P4 Goal or the five broader Hosting audit obligations.
+
+## A202 Complete Workspace Collection Coordination
+
+2026-11-15 extends this existing optional integration with the complete workspace
+collection program. `WorkspaceRegistry` already owns canonical membership, private
+locking and persistence; child canonical catalogs already own discovery, writable
+creation, candidates and transcript lifetime. Their IO is reused, not migrated or
+credited again. The previously Code-owned collection now routes load/register/
+select/unregister, discovery/create/recovery lookup, aggregate limits, fencing,
+parallel child close, failure grouping and eventual registry close in this owner.
+
+The actual `CodingWorkspaceCatalog` remains the sole collection instance, with its
+original six constructor fields in their original order. There is no additional
+manager, map, Task, lock, selected-workspace state or initialization convention.
+One catalog TypeVar and one private structural role reuse
+`SessionIdentityCatalogPortV1` and `CanonicalTranscriptScope`; the role adds only
+actual child scope/pending/discovery/fence/close capabilities. Pending values are
+opaque aggregation observations, not independently closed Session owners.
+
+Code keeps exact nominal admission, actual catalog construction, SHA-derived
+storage layout, surviving old-store witness selection, Windows two-scope factory,
+POSIX history versus Windows live candidate policy and the original history byte
+budget. Its thin `workspace` reply adapter retains the lazy AppServer DTO import
+before effects and projects the actual returned entries afterward. The neutral
+entries operation introduces no reply callback or additional AppServer import.
+The existing core facade, optional module inventory and PR gates are unchanged.
+
+Original debts remain: partial load keeps successful earlier children and retries;
+register cancellation may leave a completed native registry mutation without a
+published child; unregister closes its child before removing durable membership;
+a child or fence failure prevents registry close; close retries retained children.
+No shield, rollback, cancellation-atomic mutation or new retry state is introduced.
+
+Full raw cost is Code 183→98 (−85), existing AppHost integration 715→885 (+170),
+system +85. Uniform Ruff format gives Code 214→98 (−116), AppHost 717→885 (+168),
+system +52. Both qualified policy hooks, the retained reply and typing costs are
+included. This is complete responsibility convergence with modest necessary
+system growth, not duplicate-engine removal. Most old dynamic methods remain
+unannotated; the selected mypy check is not a full strict proof of their bodies.
+
+Expanding the entries helper and candidate-open policy into their original call
+sites reproduces all 22 old methods; existing Core non-import AST is unchanged.
+Private implementation module/qualname, MRO, extra async frames and class-wide
+annotations evolve. TYPE_CHECKING-only Registry naming avoids a new eager storage
+import and does not promise arbitrary class-wide runtime type-hint reflection.
+Public call signatures and their existing resolved hints are separately checked.
+Source, local fault and real persistent-test evidence is tracked in the
+[A202 execution record](../coding-responsibility-convergence-progress.md).
+
+
+## A209 Complete History Custody Trial: Current Shape Not Adopted
+
+2026-11-15 evaluates the remaining three candidate/source classes and four history
+catalog operations as one complete program, together with the original bounded
+snapshot reader. Existing A80/A202 catalog, Transcript IO and StoreAdmission
+mechanisms remain authoritative and are not counted as new migration gains.
+
+The external four-source candidate moves stable fingerprint/read/recheck into
+Transcript and invokes a pure Code history projector in the same caller. Thus an
+AppHost `settled_io` call still includes both native capture and domain projection
+in its original worker; projection is not moved onto the event loop. AppHost then
+owns candidate transfer, source refresh and history preview/open custody. Code
+retains historical interpretation, budgets/error facts, original constructors and
+seventeen public method/property entries (including necessary typed facades and
+unchanged pure Product adapters). No new public protocol or accepted Target is
+established by this trial.
+
+Three original close contracts are deliberately different. Writable and detached
+candidate close clear their retained owner only after success and can retry.
+Resume Source close sets closed before awaiting and does not retry a failed close.
+Refresh publishes the new binding before closing the old one, has no added closed
+or accepting guard, and cannot acquire a new cleanup debt registry. Public
+`self.preview_history_snapshot`/`self.open_history_binding` dispatch, lock scopes,
+source fences and close-error replacement must remain at their original points.
+An ordinary CloseGroup or live writable candidate cannot replace these contracts.
+
+All facade, constructor, five new read/state roles, five new TypeVars, three
+provenance/exact-type casts and pure callback/getter costs are included:
+
+| Source | Original | Candidate | Raw delta | Uniform delta |
+| --- | ---: | ---: | ---: | ---: |
+| Code hosted catalog | 943 | 921 | −22 | −40 |
+| Code Resume history | 233 | 235 | +2 | +2 |
+| Existing AppHost integration | 885 | 1179 | +294 | +294 |
+| Existing Transcript source | 101 | 146 | +45 | +45 |
+| Complete system | — | — | +319 | +301 |
+
+Coding's complete net reduction is only 20 raw lines (38 uniform), against 339
+receiving lines. The initial full-format trial gave Code +15/system +349; original
+layout was restored for 51 unchanged declarations, with no semantic credit for
+formatting. One missing virtual-method declaration initially failed mypy; the
+corrected four-shadow-source check passes, and final Code separator correction
+has identical AST. Ruff check passes; retained old compact layout is not advertised
+as a full hosted-file format pass.
+
+The complete shape is not adopted: responsibility placement is sensible, but its
+public/typing/constructor surface buys too little simplification for the total
+cost. This decision is not based solely on lack of another duplicated engine,
+and does not revoke permission for necessary modest system growth. No Product
+source/test/fixture/gate was installed or changed, no business pytest matrix was
+run, and no behavioral, cancellation, metadata or cold-load acceptance is claimed.
+Actual tests would also need precise relocation of the old Code loader fault hook
+to the canonical reader while keeping its race/assertion; no such test adjustment
+was made for this rejected shape.
+
+Three independent complete-candidate views support non-adoption and independently
+confirm the four source hashes and costs. They found no new source-level contract
+blocker; this is not runtime acceptance. Receiving growth includes real shared
+programs, as well as compatibility and typing costs.
+
+The external candidate, hashes, complete cost and source reviews remain under
+`a209-hosted-history-ownership`. The actual 2063-source frame stays byte/line equal
+to A208, with Code 108598 and 93598 lines still above the 15K target. The whole
+history family and full Goal remain open. Do not salvage a small close/fence
+fragment and count it as completion, or interpret this cost result as a permanent
+domain lower bound.
+
+## A218 Complete Application Transcript Binding
+
+Current: the existing Harness `product_session` owner now has a fixed private
+application-bound profile that executes all four original application manager
+operations: factory selection, owned rename, maintenance-identity deletion and
+path-return fork rejection. Code's original local nominal class binds its two
+actual factory objects and retains Product configuration and Resume policy.
+No new factory instance, Task, resource owner, callback, Protocol or TypeVar is
+introduced; two existing type parameters and original native IO owners are reused.
+
+Persistent and preview selection still check the original application factory.
+Rename constructs the dynamic Code class inside the original owned-source scope;
+summary delivery waits for cleanup, and failed cleanup remains original debt.
+Delete preserves the original maintenance identity check; inherited Session-return
+fork still uses its creating factory. Default Product operations remain unchanged.
+The full Code Writer admission program is retained because acquisition and failure
+custody already belong to the factory; no phase callbacks are extracted from it.
+
+Cost is Code−34/Harness+52/system+18, raw=uniform. Old and actual same111 nodes pass;
+16 frozen observations are included, not extra. Seven method metadata records,
+nominal constructor/doc/layout and434 import names match; private factory hints
+become generic, MRO/origins and class references replace closure implementation
+details. No pickle or loaded-source/compiled guard is claimed. Controlled ports
+and task self-cancellation do not prove all native/Writer cleanup paths; real owned
+consumers are verified by the listed original95 nodes. No tests/gates are changed;
+external observer/API tools88/21 lines are separate. Three independent actual
+views and implementer `/root` accept this bounded family; full Goal remains active.
+Current Code107998/Harness367448/AppHost20629; ledger661388 includes GUI test/support
+4524, so production is656864. Full costs, failure limits and source pins are in A218
+of the Coding execution record and external `a218-session-manager-ownership` evidence.

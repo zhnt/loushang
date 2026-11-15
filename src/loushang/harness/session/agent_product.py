@@ -8,6 +8,11 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 if TYPE_CHECKING:
+    from loushang.harness.capabilities.deferred_slot import (
+        DeferredCapabilitySlot,
+        PreparedDeferredCapability,
+    )
+    from loushang.harness.sandbox import SandboxExecutionRuntime
     from loushang.harness.session.prompt_execution import PromptExecutionResult
 
 from loushang.agent import Agent, ModelCallPreparation
@@ -139,6 +144,7 @@ from loushang.harness.runtime.registration import (
     RegistrationLease,
     RegistrationOwner,
 )
+from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.agent_adapter import (
     AgentSessionAdapterMixin,
     initialize_composed_session,
@@ -196,7 +202,14 @@ from loushang.harness.session.output_artifacts import (
     SessionOutputPersistingExecService,
     persist_session_command_outputs,
 )
+from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
+    _Closeable,
+    _PublishedCompositionCleanup,
+)
 from loushang.harness.session.plugin_lifecycle._publication import (
+    OwnerReceiptGroups,
+    OwnerReceipts,
+    _OwnerPublication,
     _OwnerPublicationHooks,
 )
 from loushang.harness.session.request_evidence import (
@@ -275,12 +288,18 @@ class FooterDataPort(Protocol):
     def dispose(self) -> None: ...
 
 
+class _SessionBasePluginEvidence(_Closeable, Protocol):
+    @property
+    def management_lease(self) -> _Closeable | None: ...
+
+
 class AgentProductSession(AgentSessionAdapterMixin):
     """Bind Product callbacks to the existing standard session runtimes."""
 
     resource_bundle: ResourceBundle | None
 
     _owner_publication_hooks: tuple[_OwnerPublicationHooks, ...] = ()
+    _sandbox_runtime: SandboxExecutionRuntime | None
 
     async def prompt(
         self,
@@ -1406,6 +1425,151 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 "Session disposal cannot run from its active "
                 f"{owner} task; request disposal from the Session host"
             )
+
+    async def _retire_session_profile_owners(
+        self,
+        *,
+        deferred_slot_attribute: str,
+        worker_tool_lease_attribute: str,
+        base_plugin_assembly_attribute: str,
+        base_owner_publication_attribute: str,
+        capability_plugin_assembly_attribute: str,
+        capability_owner_publication_attribute: str,
+        diagnostic_prefix: str,
+    ) -> None:
+        primary_error: BaseException | None = None
+        deferred_slot = cast(
+            "DeferredCapabilitySlot[PreparedDeferredCapability] | None",
+            getattr(self, deferred_slot_attribute, None),
+        )
+        if deferred_slot is not None:
+            # Keep borrowed parent owners and retirement handles alive until
+            # the original deferred candidate closes successfully.
+            await deferred_slot.close()
+            deferred_cleanup = self._clear_deferred_profile_access()
+            if deferred_cleanup is not None:
+                deferred_cleanup()
+        worker_tool_lease = cast(
+            "RegistrationLease | None", getattr(self, worker_tool_lease_attribute, None)
+        )
+        if worker_tool_lease is not None:
+            try:
+                result = (
+                    worker_tool_lease.rollback_registration()
+                    if worker_tool_lease.state == "staged"
+                    else await worker_tool_lease.dispose()
+                )
+                if result.state not in {"removed", "already_removed"}:
+                    raise RuntimeError(
+                        f"{diagnostic_prefix} Worker turn Tool retirement failed: {result.diagnostic_code or result.state}"
+                    )
+            except BaseException as exc:
+                if primary_error is None:
+                    primary_error = exc
+                else:
+                    primary_error.add_note(
+                        f"{diagnostic_prefix} Worker turn Tool retirement also failed: {exc}"
+                    )
+        try:
+            await AgentProductSession._dispose_session_runtime_profile(self)
+        except BaseException as exc:
+            if primary_error is None:
+                primary_error = exc
+            else:
+                primary_error.add_note(f"Session runtime retirement also failed: {exc}")
+        base_plugin_assembly = cast(
+            "_SessionBasePluginEvidence | None",
+            getattr(self, base_plugin_assembly_attribute, None),
+        )
+        base_publication = cast(
+            "_OwnerPublication[OwnerReceipts] | None",
+            getattr(self, base_owner_publication_attribute, None),
+        )
+        if (
+            primary_error is None
+            and base_plugin_assembly is not None
+            and (base_plugin_assembly.management_lease is not None)
+            and (base_publication is not None)
+            and base_publication.receipts
+            and (not base_publication.retired)
+        ):
+            primary_error = run_cleanup_steps(
+                primary_error,
+                (
+                    (
+                        f"{diagnostic_prefix} base owner-generation retirement",
+                        base_publication.retire_after_graph,
+                    ),
+                ),
+            )
+        plugin_assembly = cast(
+            "_PublishedCompositionCleanup | None",
+            getattr(self, capability_plugin_assembly_attribute, None),
+        )
+        if plugin_assembly is not None:
+            primary_error = run_cleanup_steps(
+                primary_error,
+                (
+                    (
+                        f"{diagnostic_prefix} Capability Plugin evidence cleanup",
+                        plugin_assembly.close,
+                    ),
+                ),
+            )
+            if primary_error is None:
+                try:
+                    publication = cast(
+                        "_OwnerPublication[OwnerReceiptGroups] | None",
+                        getattr(self, capability_owner_publication_attribute),
+                    )
+                    if publication is not None:
+                        publication.retire_after_graph()
+                    plugin_assembly.confirm_runtime_retirement(
+                        graph_closed=self._capability_graph_runtime.is_closed,
+                        runtime_was_published=publication is not None
+                        and publication.prepared,
+                        graph_has_pending_retirements=self._capability_graph_runtime.has_pending_retirements,
+                        owner_generations_remaining=bool(
+                            self._capability_owner_generations
+                        ),
+                        component_generations_remaining=bool(
+                            self._pending_capability_components
+                        ),
+                    )
+                    plugin_assembly.release_management()
+                    plugin_assembly.cleanup_private_state()
+                except BaseException as error:
+                    primary_error = error
+                else:
+                    self._clear_retired_profile_access()
+        if base_plugin_assembly is not None:
+            primary_error = run_cleanup_steps(
+                primary_error,
+                (
+                    (
+                        f"{diagnostic_prefix} base Plugin evidence cleanup",
+                        base_plugin_assembly.close,
+                    ),
+                ),
+            )
+        if self._sandbox_runtime is not None:
+            try:
+                await self._sandbox_runtime.close()
+            except BaseException as cleanup_error:
+                if primary_error is None:
+                    primary_error = cleanup_error
+                else:
+                    primary_error.add_note(
+                        f"process host or sandbox cleanup also failed: {cleanup_error}"
+                    )
+        if primary_error is not None:
+            raise primary_error
+
+    def _clear_deferred_profile_access(self) -> Callable[[], None] | None:
+        raise NotImplementedError
+
+    def _clear_retired_profile_access(self) -> None:
+        raise NotImplementedError
 
     async def _dispose_session_runtime_profile(self) -> None:
         base_dispose = super()._dispose_session_runtime_profile

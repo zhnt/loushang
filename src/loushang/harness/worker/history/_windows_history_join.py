@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from hashlib import sha256
 from typing import ClassVar, Self, cast
 
@@ -33,6 +34,7 @@ from loushang.harness.worker.history._windows_supervisor_base import (
 )
 
 
+@dataclass(frozen=True, init=False, repr=False, eq=False)
 class _WindowsHistoryJoinMethods:
     __slots__ = ()
     scope_id: str

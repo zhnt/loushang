@@ -1,4 +1,4 @@
-"""Default Plugin install/enable coordination over existing Product owners."""
+"""Plugin bootstrap/adoption coordination over existing Product owners."""
 
 from __future__ import annotations
 
@@ -238,3 +238,51 @@ def bootstrap_product_plugin(
     if enabled.result is None or enabled.result.disposition != "succeeded":
         raise RuntimeError(f"{policy.error_prefix} enable refused")
     return True
+
+
+def preserve_removed_product_plugin(
+    product: _ProductOwner,
+    key: PluginInstallationKeyV1,
+    operation_id: str,
+    *,
+    error_prefix: str,
+) -> None:
+    """Replay one reviewed absent choice through existing Product management.
+
+    A matching first transition proves the choice was already seeded; later
+    operator choices are preserved. Only an empty history submits a tombstone.
+    The caller owns selection, admission and the Product resource scope.
+    """
+    history = tuple(
+        item
+        for item in product.desired_state.transitions()
+        if item.mutation.installation_key == key
+    )
+    if history:
+        first = history[0]
+        if (
+            first.mutation.operation_id != operation_id
+            or not isinstance(first.mutation, PluginDesiredStateMutationV1)
+            or first.mutation.actor_id != product.actor_id
+            or first.committed_state.selection.desired_state != "absent"
+        ):
+            raise RuntimeError(f"{error_prefix} history changed")
+        return
+    command = PluginManagementCommandV1(
+        action="remove",
+        mutation=PluginDesiredStateMutationV1(
+            operation_id=operation_id,
+            idempotency_key=operation_id,
+            expected_inventory_revision=(
+                product.desired_state.snapshot().inventory_revision
+            ),
+            installation_key=key,
+            desired_state="absent",
+            package_revision=None,
+            actor_id=product.actor_id,
+            policy_revision=product.desired_policy_revision,
+        ),
+    )
+    result = product.management.submit(command)
+    if result.result is None or result.result.disposition != "succeeded":
+        raise RuntimeError(f"{error_prefix} tombstone refused")

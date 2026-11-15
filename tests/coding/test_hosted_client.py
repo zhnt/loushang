@@ -93,6 +93,10 @@ def test_G17_COMMAND_budget_exhausted_before_construction_cannot_start_host(tmp_
         CodingHostedTuiCommandV1(_launch(tmp_path), started_at=time.monotonic() - 31)
 
 
+def _foreground_control(command):
+    return getattr(command, "_control", command)
+
+
 def _fake_command(tmp_path, monkeypatch, *, read_error=None, create_error=None):
     from loushang.apphost import launcher
     from loushang.appserver.protocol import MuxSpaceV1
@@ -188,7 +192,7 @@ def test_G17_COMMAND_unknown_mutation_or_read_failure_never_retries(tmp_path, mo
         with pytest.raises((TimeoutError, AppServiceError)):
             await command.run(stdin=StringIO(), stdout=StringIO())
         assert calls.count("read") == 1 and calls.count("create") == int(failed_create)
-        assert "terminal" not in calls and command._shell is None
+        assert "terminal" not in calls and _foreground_control(command)._shell is None
         assert not command.cleanup_pending
 
     asyncio.run(scenario())
@@ -198,7 +202,7 @@ def test_G17_COMMAND_close_fences_cancel_resistant_late_mux_response(tmp_path, m
     async def scenario():
         command, calls = _fake_command(tmp_path, monkeypatch)
         entered, release = asyncio.Event(), asyncio.Event()
-        read = command._owner.client.read_mux
+        read = _foreground_control(command)._owner.client.read_mux
 
         async def late_read(request):
             entered.set()
@@ -208,7 +212,7 @@ def test_G17_COMMAND_close_fences_cancel_resistant_late_mux_response(tmp_path, m
                 await release.wait()
             return await read(request)
 
-        command._owner.client.read_mux = late_read
+        _foreground_control(command)._owner.client.read_mux = late_read
         running = asyncio.create_task(command.run(stdin=StringIO(), stdout=StringIO()))
         await asyncio.wait_for(entered.wait(), 1)
         closing = asyncio.create_task(command.close())
@@ -216,7 +220,7 @@ def test_G17_COMMAND_close_fences_cancel_resistant_late_mux_response(tmp_path, m
         release.set()
         await asyncio.wait_for(closing, 1)
         await asyncio.gather(running, return_exceptions=True)
-        assert command._shell is None and "terminal" not in calls
+        assert _foreground_control(command)._shell is None and "terminal" not in calls
         assert calls.count("close") == 1 and calls.count("create") == 0
         assert not command.cleanup_pending
 
@@ -227,13 +231,13 @@ def test_G17_COMMAND_close_fences_cancel_resistant_late_mux_response(tmp_path, m
 def test_G17_COMMAND_exit_result_is_computed_after_settlement(tmp_path, monkeypatch, exit_code, forced):
     async def scenario():
         command, _ = _fake_command(tmp_path, monkeypatch)
-        close = command._owner.close
+        close = _foreground_control(command)._owner.close
 
         async def settle(**kwargs):
             await close(**kwargs)
-            command._owner.diagnostics = SimpleNamespace(exit_code=exit_code, forced_exit=forced)
+            _foreground_control(command)._owner.diagnostics = SimpleNamespace(exit_code=exit_code, forced_exit=forced)
 
-        command._owner.close = settle
+        _foreground_control(command)._owner.close = settle
         result = await command.run(stdin=StringIO(), stdout=StringIO())
         assert result == int(forced or exit_code != 0)
 
@@ -289,7 +293,7 @@ def test_G17_COMMAND_real_child_ignores_workspace_and_pythonpath_shadow(tmp_path
         except BaseException as error:
             # Test-owned, bounded lifecycle facts only: no stderr, argv, env
             # or exception messages from the Product enter the diagnostic.
-            owner = command._owner
+            owner = _foreground_control(command)._owner
             phases = {}
             for name in ("detach", "client", "eof", "drain", "terminate", "lease", "host"):
                 task = owner._phases.get(name)
@@ -300,7 +304,7 @@ def test_G17_COMMAND_real_child_ignores_workspace_and_pythonpath_shadow(tmp_path
                 )
             error.add_note(f"Hosted settlement phases: {phases}; forced={owner.forced_exit}")
             raise
-        assert not command.cleanup_pending and not command._owner.cleanup_pending
+        assert not command.cleanup_pending and not _foreground_control(command)._owner.cleanup_pending
         assert events == ["enter", "restore"]
         assert not (tmp_path / "shadow-executed").exists()
 
@@ -317,8 +321,8 @@ def test_G17_COMMAND_mux_phase_uses_remaining_startup_budget(tmp_path, monkeypat
             calls.append("read")
             await asyncio.Event().wait()
 
-        command._owner.client.read_mux = pending
-        command._started_at = time.monotonic() - 29.98
+        _foreground_control(command)._owner.client.read_mux = pending
+        _foreground_control(command)._started_at = time.monotonic() - 29.98
         with pytest.raises(TimeoutError):
             await command.run(stdin=StringIO(), stdout=StringIO())
         assert calls == ["start", "read", "close"]

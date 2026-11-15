@@ -40,6 +40,7 @@ from loushang.harness.plugin_management.operation_explanation import (
     PluginOperationExplanationRequestV1,
     project_plugin_operation_explanation,
 )
+from loushang.harness.workspace.paths import assert_workspace_directory_identity
 
 
 class CodingPluginManagementReadSdkError(RuntimeError):
@@ -219,23 +220,14 @@ class CodingPluginManagementReadClientV1:
         return explanation
 
     def _assert_workspace_identity(self) -> None:
-        try:
-            metadata = self.workspace.lstat()
-            current = self.workspace.resolve(strict=True)
-        except OSError as exc:
-            raise CodingPluginManagementReadSdkError(
+        assert_workspace_directory_identity(
+            self.workspace,
+            self.workspace_identity,
+            changed=lambda: CodingPluginManagementReadSdkError(
                 "Coding management workspace changed",
                 code="coding_management_workspace_changed",
-            ) from exc
-        if (
-            not stat.S_ISDIR(metadata.st_mode)
-            or current != self.workspace
-            or (metadata.st_dev, metadata.st_ino) != self.workspace_identity
-        ):
-            raise CodingPluginManagementReadSdkError(
-                "Coding management workspace changed",
-                code="coding_management_workspace_changed",
-            )
+            ),
+        )
 
     def assert_workspace_current(self) -> None:
         """Keep the original workspace identity across a CLI or RPC operation."""

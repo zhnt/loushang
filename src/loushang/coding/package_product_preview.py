@@ -12,9 +12,6 @@ from pathlib import Path
 from types import TracebackType
 
 from loushang.harness.capabilities.consumer_requirements import ProductCompositionError
-from loushang.harness.capabilities.contribution_admission import (
-    ResourceContributionSpec,
-)
 from loushang.harness.environment.probe import LocalHostEnvironmentProbe
 from loushang.harness.journal import JournalLoadPolicy
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -29,7 +26,8 @@ from loushang.harness.plugin_management.assembly import bind_plugin_desired_stat
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentCompositionPreviewV1,
     PluginCurrentResourceAdmissionV1,
-    PluginCurrentResourceSelectionV1,
+    project_current_product_resource_facts,
+    project_current_product_resource_selections,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
 from loushang.harness.plugin_management.package_gc_binding import (
@@ -42,7 +40,6 @@ from loushang.harness.plugin_management.package_product import (
     PackageProductSelectedRootReader,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources._catalog_records import VerifiedPluginResourceOrigin
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
     PackageCommittedSetJournal,
 )
@@ -325,49 +322,9 @@ class CodingFencedProductReadOnlyPreviewOwner:
         )
         bundle = catalog_result.bundle
         catalog = catalog_result.catalog
-        selected_candidates = {
-            entry.primary_candidate_fingerprint
-            for entry in catalog.effective_entries
-        }
-        candidates = {
-            item.candidate_fingerprint: item
-            for item in catalog.candidate_summaries
-        }
-        inputs_by_admission = {
-            item.admission.fingerprint: item for item in product_inputs
-        }
-        selections: list[PluginCurrentResourceSelectionV1] = []
-        for fingerprint in sorted(selected_candidates):
-            candidate = candidates[fingerprint]
-            origin = candidate.content_origin
-            if not isinstance(origin, VerifiedPluginResourceOrigin):
-                continue
-            product_input = inputs_by_admission.get(origin.resource_admission_fingerprint)
-            if product_input is None:
-                continue  # Legacy or built-in package Resources have no Product input.
-            admission = product_input.admission
-            snapshot = product_input.selected_manifest.snapshot
-            instance = admission.candidate.instance_revision_ref
-            if (
-                admission.contribution_id != origin.resource_contribution_id
-                or admission.candidate.package_content_digest != origin.package_content_digest
-                or f"{instance.instance_id}:{instance.plugin_id}@{instance.revision}"
-                != origin.plugin_instance_revision_ref
-            ):
-                raise ValueError("Product preview Catalog selection changed owner identity")
-            selections.append(
-                PluginCurrentResourceSelectionV1(
-                    installation_key=snapshot.installation_key,
-                    package_revision=snapshot.package_revision,
-                    instance_revision_ref=instance,
-                    contribution_id=admission.contribution_id,
-                    resource_kind=candidate.identity.resource_kind,
-                    admission_fingerprint=admission.fingerprint,
-                    candidate_fingerprint=fingerprint,
-                    catalog_generation=catalog.catalog_generation,
-                    catalog_snapshot_fingerprint=catalog.snapshot_fingerprint,
-                )
-            )
+        selections = project_current_product_resource_selections(
+            catalog, product_inputs
+        )
         after, _ = desired.capture_read_only()
         self.epoch_runtime.assert_current()
         executable, gaps = _selection_evidence(
@@ -379,46 +336,13 @@ class CodingFencedProductReadOnlyPreviewOwner:
             gaps.discard("disabled_skill_settings")
         if before.inventory_revision != after.inventory_revision:
             gaps.add("stale_snapshot")
-        admissions = tuple(
-            sorted(
-                (
-                    CodingDataResourceAdmissionPreviewV1(
-                        plugin_id=item.plugin_id,
-                        contribution_id=item.contribution_id,
-                        resource_kind=item.candidate.contribution.resource_kind,
-                        owner_id=item.owner_id,
-                        admission_fingerprint=item.fingerprint,
-                    )
-                    for item in (
-                        compiled.product_composition.resource_admissions
-                        if compiled is not None
-                        else ()
-                    )
-                    if isinstance(item.candidate.contribution, ResourceContributionSpec)
-                ),
-                key=lambda item: (item.plugin_id, item.contribution_id),
-            )
-        )
-        catalog_resources = tuple(
-            sorted(
-                (
-                    *(
-                        ("skill", item.name, item.source_kind)
-                        for item in bundle.skills
-                        if item.enabled
-                    ),
-                    *(
-                        ("prompt", item.name, item.source_kind)
-                        for item in bundle.prompts
-                        if item.enabled
-                    ),
-                    *(
-                        ("theme", item.name, item.source_kind)
-                        for item in bundle.themes
-                        if item.enabled
-                    ),
-                )
-            )
+        admissions, catalog_resources = project_current_product_resource_facts(
+            (
+                compiled.product_composition.resource_admissions
+                if compiled is not None
+                else ()
+            ),
+            bundle,
         )
         return CodingCurrentDataResourcePreviewV1(
             product_id=self.policy.product_id,

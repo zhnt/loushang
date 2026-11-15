@@ -504,7 +504,12 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     assert {
         path.relative_to(APPHOST_SOURCE).as_posix()
         for path in APPHOST_SOURCE.rglob("*.py")
-    } - {"integrations/_canonical_transcript_catalog.py"} == {
+    } - {
+        "integrations/_canonical_transcript_catalog.py",
+        "integrations/_continuity_preparation.py",
+        "integrations/_foreground_client_control.py",
+        "integrations/_managed_mux_command.py",
+    } == {
         "__init__.py",
         "_ownership.py",
         "catalog.py",
@@ -677,10 +682,20 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
             Path("src/loushang/coding/_hosted_execution_work.py"),
             Path("src/loushang/coding/hosted_resume.py"),
         }
-        and {
-            imported for imported in resolved_imports(path)
-            if imported == "loushang.apphost" or imported.startswith("loushang.apphost.")
-        } <= {execution_work, execution_work + "._HostedAgentExecutionWork"}
+        and (
+            {
+                imported for imported in resolved_imports(path)
+                if imported == "loushang.apphost" or imported.startswith("loushang.apphost.")
+            }
+            - (
+                {
+                    execution_work + "._DeferredSessionControl",
+                    execution_work + "._HostedApprovalPresentation",
+                }
+                if path == Path("src/loushang/coding/hosted_resume.py")
+                else set()
+            )
+        ) <= {execution_work, execution_work + "._HostedAgentExecutionWork"}
     }
     assert reverse_apphost_consumers - optional_execution_consumers == {
         Path("src/loushang/coding/client_settings.py"),

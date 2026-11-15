@@ -10,6 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.package_product._backup_topology import (
+    read_windows_private_backup_retention,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -17,17 +20,11 @@ from loushang.harness.plugin_management._private_data_backup_windows import (
     WindowsPrivateArchiveIO,
 )
 from loushang.harness.plugin_management.application import (
-    PluginBackupRetentionRecordV1,
     PluginBackupRetentionSnapshotV1,
-    PluginBackupRetentionStatus,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages._private_tree_windows import (
-    private_windows_directory,
-)
 from loushang.harness.resources.packages._tree_observation import logical_tree_members
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
-    inspect_windows_product_private_directory_identity,
     prepare_windows_product_private_directory_chain,
 )
 
@@ -155,102 +152,33 @@ class CodingWindowsArchPrivateDataBackupOwner:
             scope_id=self.layout.scope_id,
             plugin_id="coding.arch.default",
         )
-        status: PluginBackupRetentionStatus = "unknown"
-        expiry_receipt_id: str | None = None
-        trust = "verified"
-        receipts: tuple[CodingArchPrivateDataBackupReceiptV1, ...] = ()
-        self.product.assert_private_data_read_authority_current()
-        with self.product.gc_gate.read_guard():
-            try:
-                state = self.product.desired_state.snapshot().installation(key)
-                state_identity = inspect_windows_product_private_directory_identity(
-                    self.product.state_root
-                )
-                with WindowsPrivateDirectoryAcl() as state_acl:
-                    with private_windows_directory(
-                        self.product.state_root, acl=state_acl
-                    ) as fd:
-                        if _directory_identity(fd) != state_identity:
-                            raise ValueError("Windows Coding Arch expiry state changed")
-                        restore = CodingWindowsArchPrivateDataRestoreTransaction(
-                            self.layout, self.product, fd
-                        )
-                        try:
-                            events, staged = CodingWindowsArchBackupExpiryTransaction(
-                                self.layout, self.product, restore
-                            )._scan()
-                        finally:
-                            restore._close()
-                if (
-                    inspect_windows_product_private_directory_identity(
-                        self.product.state_root
-                    )
-                    != state_identity
-                ):
-                    raise ValueError("Windows Coding Arch expiry state changed")
-                if staged is not None:
-                    raise ValueError("Windows Coding Arch expiry event needs recovery")
-                latest = events[-1] if events else None
-                if latest is not None and latest.plan.installation_key != key:
-                    raise ValueError("Windows Coding Arch expiry Installation changed")
-                if latest is not None and state.latest_instance_revision_ref is None:
-                    raise ValueError(
-                        "Windows Coding Arch expiry Product history changed"
-                    )
-                pending = latest is not None and latest.phase in {"started", "renamed"}
-                allowed_tombstone = (
-                    _tombstone_name(latest.plan, latest.confirmation)
-                    if pending and latest is not None
-                    else None
-                )
-                if state.latest_instance_revision_ref is not None:
-                    receipts = _retained_receipts(
-                        self.layout,
-                        key,
-                        allowed_tombstone=allowed_tombstone,
-                        pending_backup_id=(
-                            latest.plan.backup_id
-                            if pending and latest is not None
-                            else None
-                        ),
-                    )
-                if (
-                    latest is not None
-                    and latest.phase in {"renamed", "completed"}
-                    and any(
-                        item.backup_id == latest.plan.backup_id for item in receipts
-                    )
-                ):
-                    raise ValueError("Windows Coding Arch expired archive reappeared")
-                if pending:
-                    status = "expiry_pending"
-                elif receipts:
-                    status = "retained"
-                elif latest is not None and latest.phase == "completed":
-                    if latest.receipt is None:
-                        raise ValueError("Windows Coding Arch expiry receipt changed")
-                    status = "expired"
-                    expiry_receipt_id = latest.receipt.receipt_id
-            except (OSError, ValueError):
-                trust = "untrusted"
-                receipts = ()
-                status = "unknown"
-                expiry_receipt_id = None
-            revision = _backup_retention_revision(
-                status, expiry_receipt_id, receipts, trust
-            )
-        self.product.assert_private_data_read_authority_current()
-        return PluginBackupRetentionSnapshotV1(
-            owner_revision="coding-arch-backup:" + revision,
-            records=(
-                PluginBackupRetentionRecordV1(
-                    key, status, expiry_receipt_id=expiry_receipt_id
-                ),
+        return read_windows_private_backup_retention(
+            self,
+            key,
+            tree_io=_native_io,
+            restore_factory=lambda fd: CodingWindowsArchPrivateDataRestoreTransaction(
+                self.layout, self.product, fd
             ),
+            scan_expiry=lambda restore: CodingWindowsArchBackupExpiryTransaction(
+                self.layout, self.product, restore
+            )._scan(),
+            tombstone_name=lambda latest: _tombstone_name(
+                latest.plan, latest.confirmation
+            ),
+            retained_receipts=lambda key, tombstone, pending: _retained_receipts(
+                self.layout,
+                key,
+                allowed_tombstone=tombstone,
+                pending_backup_id=pending,
+            ),
+            revision_for=lambda status, receipt_id, receipts, trust: (
+                _backup_retention_revision(status, receipt_id, receipts, trust)
+            ),
+            revision_prefix="coding-arch-backup:",
+            label="Windows Coding Arch",
         )
 
 
-_directory_identity = _native_io.directory_identity
 _logical_members = logical_tree_members
 
 

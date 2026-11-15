@@ -83,6 +83,9 @@ def test_hosting_package_dependencies_are_bounded_and_product_neutral() -> None:
         | H6_PRIVATE_MODULES
         | OPTIONAL_MANAGED_SERVICE_MODULES
     )
+    windows_service = HOSTING_ROOT / "service_windows.py"
+    if windows_service.is_file():
+        modules = modules | {windows_service}
     assert {path for path in HOSTING_ROOT.rglob("*.py")} == modules
 
     shared_task_consumers = {
@@ -101,6 +104,11 @@ def test_hosting_package_dependencies_are_bounded_and_product_neutral() -> None:
             } == task_symbols
         for imported in _imports(path):
             if path.name in shared_task_consumers and imported == task_module:
+                continue
+            if (
+                path == windows_service
+                and imported == "loushang.foundation.windows_private_acl"
+            ):
                 continue
             assert imported.partition(".")[0] in sys.stdlib_module_names, (path, imported)
 

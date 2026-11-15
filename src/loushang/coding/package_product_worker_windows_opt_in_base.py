@@ -47,14 +47,7 @@ class CodingWindowsWorkerOptInSemanticBaseV1(_WindowsOptInBaseMethods):
     _error_type = CodingWorkerOptInJournalError
     _replay_type = CodingWindowsWorkerOptInReplayV1
 
-    scope_id: str
-    store_id: str
-    source_snapshot_digest: str
-    cutoff_revision: int
     latest_decisions: tuple[CodingWorkerOptInDecisionV1, ...]
-    retired_operation_ids: tuple[str, ...]
-    record_digest: str
-    version: int = 1
 
     @classmethod
     def from_semantic_read(

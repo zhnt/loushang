@@ -251,10 +251,10 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     const client = createMockAppClient();
     render(<HarnessGui client={client} />);
     await screen.findByRole("heading", { name: "GUI development" });
-    await user.click(screen.getByRole("button", { name: "Operational ontology · Idle" }));
+    await user.click(screen.getByLabelText("Operational ontology · Idle"));
     const input = screen.getByRole("textbox", { name: "Message for Operational ontology" });
-    await user.type(input, "Test streaming");
-    await user.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.change(input, { target: { value: "Test streaming" } });
+    await user.click(screen.getByLabelText("Send"));
     expect(input).toHaveValue("");
     expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Interrupt" })).toBeEnabled();
@@ -263,12 +263,12 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       await act(async () => { await client.advanceFixture(); });
     }
     expect(screen.getByText(/The GUI keeps a separate client scope/)).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Interrupt" }));
+    await user.click(screen.getByLabelText("Interrupt"));
     expect(screen.getByRole("button", { name: "Operational ontology · Interrupted" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Interrupt" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
-    await user.type(input, "Complete another Run");
-    await user.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.change(input, { target: { value: "Complete another Run" } });
+    await user.click(screen.getByLabelText("Send"));
     await act(async () => {
       for (let steps = 0; steps < 30 && client.remainingFixtureSteps() > 0; steps++) await client.advanceFixture();
     });

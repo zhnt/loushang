@@ -6,8 +6,9 @@ from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.plugin_management.operations import PluginManagementCommandV1
-from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
+from loushang.harness.package_product._plugin_bootstrap import (
+    preserve_removed_product_plugin,
+)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
@@ -118,37 +119,12 @@ def _preserve_removed(
     product = owner.runtime_owner.product_owner
     key = _key(owner, plugin_id)
     operation_id = _removed_operation_id(receipt, plugin_id)
-    history = tuple(
-        item
-        for item in product.desired_state.transitions()
-        if item.mutation.installation_key == key
+    preserve_removed_product_plugin(
+        product,
+        key,
+        operation_id,
+        error_prefix="Coding removed local Product",
     )
-    if history:
-        first = history[0]
-        if (
-            first.mutation.operation_id != operation_id
-            or not isinstance(first.mutation, PluginDesiredStateMutationV1)
-            or first.mutation.actor_id != product.actor_id
-            or first.committed_state.selection.desired_state != "absent"
-        ):
-            raise RuntimeError("Coding removed local Product history changed")
-        return
-    command = PluginManagementCommandV1(
-        action="remove",
-        mutation=PluginDesiredStateMutationV1(
-            operation_id=operation_id,
-            idempotency_key=operation_id,
-            expected_inventory_revision=product.desired_state.snapshot().inventory_revision,
-            installation_key=key,
-            desired_state="absent",
-            package_revision=None,
-            actor_id=product.actor_id,
-            policy_revision=product.desired_policy_revision,
-        ),
-    )
-    result = product.management.submit(command)
-    if result.result is None or result.result.disposition != "succeeded":
-        raise RuntimeError("Coding removed local Product tombstone refused")
 
 
 __all__ = ["adopt_coding_first_b_removed_local"]

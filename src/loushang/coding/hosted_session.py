@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
 import sys
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import replace
 from functools import cached_property
 from pathlib import Path
@@ -18,6 +17,7 @@ from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
 from loushang.ai.types import AssistantMessage, ToolCall, UserMessage
 from loushang.apphost import SessionBindingKeyV1
+from loushang.apphost.integrations.session_control import _HostedApprovalPresentation
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -62,7 +62,10 @@ from .appservice_adapter import (
     CodingHostedSessionBindingV1,
     CodingHostedSnapshotProjectionV1,
 )
-from .bootstrap import BootstrapServices, create_agent_session
+from .bootstrap import BootstrapServices
+from .bootstrap import (
+    _create_agent_session_with_model_policy as create_agent_session,
+)
 from .hosted_catalog import (
     CodingHostedCandidateBindingV1,
     CodingHostedCatalogError,
@@ -176,7 +179,16 @@ class CodingHostedHistoryBindingV1:
         self._closed = True
 
 
-class CodingRealHostedSessionV1:
+class CodingRealHostedSessionV1(_HostedApprovalPresentation):
+    _approval_action = "Tool approval"
+    _approval_limit = staticmethod(lambda: _MAX_INTERACTIONS)
+    _approval_text_limit = staticmethod(lambda: _TEXT_LIMIT)
+    _approval_id = staticmethod(lambda: token_hex(16))
+    _approval_publish_rollback = True
+
+    def _approval_dispatcher(self) -> Callable[[RuntimeEvent[object]], Awaitable[None]]:
+        return self._session.runtime.dispatch_event
+
     def __init__(
         self,
         session: AgentSession,
@@ -321,52 +333,6 @@ class CodingRealHostedSessionV1:
                 cast(str, payload["interaction_id"]),
             )
         return None
-
-    async def _present_approval(self, request: dict[str, object]) -> None:
-        action_id = request.get("action_id")
-        if (
-            not isinstance(action_id, str)
-            or len(self._interactions) >= _MAX_INTERACTIONS
-        ):
-            raise RuntimeError("hosted_approval_unavailable")
-        # Publish only once the existing ApprovalBroker has registered its waiter.
-        text = "\n".join(
-            (
-                str(request.get("action", "Tool approval")),
-                str(request.get("risk", "")),
-                json.dumps(
-                    request.get("arguments", {}), ensure_ascii=False, sort_keys=True
-                ),
-            )
-        )
-        if len(text) > _TEXT_LIMIT:
-            raise RuntimeError("hosted_approval_too_large")
-        interaction_id = token_hex(16)
-        self._interactions[interaction_id] = action_id
-        try:
-            await self._session.runtime.dispatch_event(
-                {
-                    "type": "tool_approval_requested",
-                    "hosted_presentation": True,
-                    "interaction_id": interaction_id,
-                    "text": text,
-                }
-            )
-        except BaseException:
-            self._interactions.pop(interaction_id, None)
-            raise
-
-    async def _dismiss_approval(self, action_id: str) -> None:
-        for interaction_id, pending in tuple(self._interactions.items()):
-            if pending == action_id:
-                self._interactions.pop(interaction_id, None)
-                await self._session.runtime.dispatch_event(
-                    {
-                        "type": "tool_approval_resolved",
-                        "hosted_presentation": True,
-                        "interaction_id": interaction_id,
-                    }
-                )
 
     async def respond_interaction(self, interaction_id: str, outcome: str) -> bool:
         action_id = self._interactions.get(interaction_id)

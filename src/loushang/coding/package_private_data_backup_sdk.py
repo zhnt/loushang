@@ -63,6 +63,7 @@ from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
+from loushang.harness.workspace.paths import assert_workspace_directory_identity
 
 _PLUGIN_ID = "coding.arch.default"
 _EXPIRY_POLICY_REVISION = "coding-arch-backup-expiry-sdk:1"
@@ -257,23 +258,14 @@ class CodingArchPrivateDataBackupClientV1:
         return application
 
     def _assert_workspace_identity(self) -> None:
-        try:
-            metadata = self.workspace.lstat()
-            current = self.workspace.resolve(strict=True)
-        except OSError as exc:
-            raise CodingArchPrivateDataBackupSdkError(
+        assert_workspace_directory_identity(
+            self.workspace,
+            self.workspace_identity,
+            changed=lambda: CodingArchPrivateDataBackupSdkError(
                 "Coding Arch backup workspace changed",
                 code="coding_arch_backup_workspace_changed",
-            ) from exc
-        if (
-            not stat.S_ISDIR(metadata.st_mode)
-            or current != self.workspace
-            or (metadata.st_dev, metadata.st_ino) != self.workspace_identity
-        ):
-            raise CodingArchPrivateDataBackupSdkError(
-                "Coding Arch backup workspace changed",
-                code="coding_arch_backup_workspace_changed",
-            )
+            ),
+        )
 
     @contextmanager
     def _reader(self) -> Iterator[CodingArchPrivateDataReadOwner]:

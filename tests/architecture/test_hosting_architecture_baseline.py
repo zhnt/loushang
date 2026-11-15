@@ -698,6 +698,10 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
     apphost = REPOSITORY_ROOT / "src/loushang/apphost"
     assert {
         path.relative_to(apphost).as_posix() for path in apphost.rglob("*.py")
+    } - {
+        "integrations/_continuity_preparation.py",
+        "integrations/_foreground_client_control.py",
+        "integrations/_managed_mux_command.py",
     } == {
         "__init__.py",
         "_ownership.py",

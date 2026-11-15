@@ -50,19 +50,12 @@ class CodingWindowsWorkerHistorySemanticJoinV1(_WindowsHistoryJoinMethods):
     _launch_intent_type = CodingWindowsWorkerLaunchIntentSemanticBaseV1
     _provisioning_type = CodingWindowsWorkerNativeProvisioningSemanticBaseV1
 
-    scope_id: str
-    store_id: str
-    source_snapshot_digest: str
     opt_in: CodingWindowsWorkerOptInSemanticBaseV1
     receipt: CodingWindowsWorkerReceiptSemanticBaseV1
     supervisor: CodingWindowsWorkerSupervisorSemanticBaseV1
     c5: CodingWindowsWorkerC5SemanticBaseV1
     launch_intent: CodingWindowsWorkerLaunchIntentSemanticBaseV1
     native_provisioning: CodingWindowsWorkerNativeProvisioningSemanticBaseV1
-    observed_attempt_ids: tuple[str, ...]
-    effect_attempt_ids: tuple[str, ...]
-    launched_attempt_ids: tuple[str, ...]
-    review_digest: str
 
     @classmethod
     def from_semantic_read(

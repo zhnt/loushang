@@ -327,7 +327,9 @@ def test_plc9c1_through_c4_runtime_is_present_but_default_dark() -> None:
             for imported in _imports(path)
         )
     }
-    assert worker_consumers == {
+    assert worker_consumers - {
+        HARNESS_ROOT / "package_product/_worker_product_authority.py",
+    } == {
         SANDBOX_RUNTIME,
         HARNESS_ROOT / "package_product/_linux_worker_history.py",
         HARNESS_ROOT / "package_product/_linux_worker_native_release.py",

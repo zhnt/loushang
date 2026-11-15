@@ -373,7 +373,13 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
         } <= {
             "loushang.apphost.integrations.session_control",
             "loushang.apphost.integrations.session_control._HostedAgentExecutionWork",
-        }
+        } | (
+            {
+                "loushang.apphost.integrations.session_control._DeferredSessionControl",
+                "loushang.apphost.integrations.session_control._HostedApprovalPresentation",
+            }
+            if path == Path("src/loushang/coding/hosted_resume.py") else set()
+        )
     }
     assert consumers - optional_execution == {
         Path("src/loushang/coding/client_settings.py"),

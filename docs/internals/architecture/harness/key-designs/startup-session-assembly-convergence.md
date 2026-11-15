@@ -904,3 +904,173 @@ component_host，plugin_activation仍禁止。不增路由、触发、必需消�
 重构收益，也不关闭其它Catalog/Session、Hosting、AI覆盖率及完整Goal欠账。
 原测试、逐源SHA帧、逆AST证明、JUnit和三独立视角保存在树外
 `coding-convergence-continue/a114-catalog-inventory`。不据此声称全部架构检查绿。
+
+
+## 28. A183：以A112原件核对完整managed装配，当前形状仍不采用
+
+本轮按整物优先核两实际消费者及既有Resources/PM/Session/Construction owner，
+不是再次试做A51。当前`prepare_managed_coding_base_plugin_assembly`269–476共208行，
+`_resolve_managed_capability_plugins`824–1021共198行；两个完整函数和两整文件与
+A112切点`a5b59ddab`逐字相同。三Code源、Authority、Materializer、capability specs及
+dependency grant相同；会员Core仅新增无retirement intents时早退，没有新selection/
+replay/lease完整入口。当前Construction和Product composition接受已准备资源/选定plan，
+新Product bootstrap需要另一实际Product authority，不能直接替换这两个legacy消费者。
+
+原机制已经直接复用：Source inspect/publish及失败handle清理、immutable binding重开、
+持久enablement迁移、family/owner lease和重试cleanup。剩余真实跨owner程序仍有七个
+合同接缝：Base seen迁移在try外；fresh显式reconcile时点不同；禁用Base关闭runtime及
+state后return而group关闭当前handle后continue；Manifest/Revision异常映射不同；lease
+必须先存local/map再核属性；即时notes清理与保留前缀custodian不同；无lifecycle分支仍按原点逐项
+解析Source再批发布，已见历史重放不得额外调用source_root。acquire内部原有reconcile
+不抹掉外层时点差异。
+
+三独立源码视角据当前实物一致建议不重启相同双程序。A51全程序试装历史Code−201/
+Core+403/系统+202（统一结构+208）及37受控观察仍是原证据，不冒新成本或新验证；
+A50仅三helper也不是替代。没有新接缝就不造同一回调/flags/context池，不以去掉
+406行预支收益。今后仅在实际整事务接口与双侧完整适配成本证实不同价值时重开。
+这不是把全部406行判为必要领域下界，C01/P2及完整Goal仍未关闭。
+
+当前生产2059源全部SHA/行与A182帧相同：Code110571/Harness364337/AppHost19717，
+历史全源659676、排GUI独立测试4524后655152；生产/测试改动与新运行用例均0。
+本轮只做静态源审计和文档处置，不为相同候选重跑矩阵。方法仍为clean local master
+`0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`，未同步方法upstream或搬入Product。
+树外`coding-convergence-resumed-20261114/a183-managed-assembly`保原点帧、当前整函数、
+实际owner API、与A112逐字/AST对照及三独立报告；下一项转C08残余事务。
+
+
+## 29. A211两固定managed装配归原PM
+
+2026-11-15按适度增长准则试算完整208/198原程序，原Code与A183相同；A51/A183历史
+暂缓不追认。A207默认CAS不替legacy迁移，现由已有PM assembly直接执行两条固定程序，
+不增加Session模块、模式FSM、owner实例或第二机制。三独立完整设计/候选视角支持有限
+old-first，首错误消息事实冲突已在安装前修正，见[执行记录](../coding-responsibility-convergence-progress.md)。
+
+Code保原准入/归一化/环境、领域plan/trust/OwnerAuthority/nominal assembly终投影，纯贡献/
+错误事实/名义custodian工厂及attachment；源位置getter有strict resolve作用，非pure且不在
+seen replay预读。Core自己构造失败包/绑定/plugin/lease前缀，再调用薄名义构造，原清理
+引擎及真实Source/Materializer/migration/membership仍原权威，不重复记作本次新迁移。
+
+Base seen迁移在try外；Base fresh与group显式reconcile时点不同。禁用的关闭/重试、
+Manifest/Revision映射、lease先存再读、包append→clearcurrent→project→binding→config
+顺序保；group resolver只交custodian而不立即close，Base仍即时notes清理。两完整逆AST
+核准上述不同合同，旧Core定义和Code其余声明AST不变。公开Code函数FQN/hints/default/
+exports不换别名。私有global/hook和额外调用frame演进披露，无新授权/存储或记录格式。
+
+完整成本Code−235/Harness+401/系统+166；统一格式Code−229/系统+172，6行是原Base
+排版差。三readonly角色/四T/错误数据profile与所有薄绑定全计。+401含真实程序，不能
+全称接口税；本批是完整职责改善，非系统净精简或第二Product通用性实证。
+
+原五载体旧139过/333.59s、实际同序139过/371.18s，零fail/error/skip；与局部交集原1，
+总151不同节点（139+12），不计152，也不重计A51历史37场景。
+另12固定旧观察与实际逐byte同，涵盖两Manifest错误/原因、try外迁移、disabled双重关闭/
+notes、lease证据不符、group中途投影/配置/lease字段异常与部分成功前缀。真实Core runtime
+和custodian执行；原生发布/持久迁移/Session lease受控，手动drain分列，不充Task.cancel。
+PLC9只两assert同减四个精确位置的可选一次计数，无新required位置；原scanner/RHS/
+155assert/route不改，测试+34行，无gate增加。旧pass必仍pass，额外第2次仍拒。
+
+实际三源mypy、四文件Ruff/fullformat、两函数API+两旧pickle身份、634冷模块名字列表与
+生成依赖check过；没有per-case compiled guard，不冒全平台/全分支PR验收。
+Code108291、完整15K差93291；C01及全部P1–P4仍开放，最终技术接受限上述完整事务。
+
+
+## 30. A212完整Product Catalog投影的前置接缝
+
+2026-11-15核94704d4f9当前382行完整Product callback与实际外层消费者。Construction已
+拥有runtime激活/外围失败结清；Catalog已拥有receipt以后输入/发现/合并/投影及后续发布。
+没有现API可直接替这段上游Product准备，不重复实现或重计上述共享机制。
+
+九个nonlocal加adapter list在失败途中向外可见；disabled早发布base selection/runtime，
+enabled在最终投影成功后才发布。两branch的receipt/clock/source-policy时点及cleanup
+合同不同，root分配/配置失败还在inner try之外。成功结果tuple、新副本或统一cleanup
+不能替原实际状态。27闭包变量和382行只作审查范围，不作永久成本下界。
+
+两个Code Product preparation自己打开/捕获/审批/编译/关闭；其完整IO体回借给Core
+不能称纯领域profile。当前没有已证完整薄接缝，所以不作目录迁移原型，不测试或预支
+删行；新成本未知，Code与系统生产增删0，原A51/A183/A211各自历史与接受范围不变。
+
+进入下一候选前必须核清两preparation真实native resolution/approval/close边界，并用
+单一实际custody覆盖双root、配置/prepare、cleanup成功转移及outer失败消费，包含legacy
+共享字段。须保裸顺序mask/skip与notes-continue的不同合同，不摘临时类或少量except。
+三独立源码报告及整字段读写坐标在树外a212-product-catalog-projection。本节是Current/
+Gap审查，无新实现/API/Target接受；Code108291，完整C01及P1–P4保持开放。
+
+
+## 31. A213两Product preparation的完整中性Scope
+
+A213细化§30而不追认整体382迁移：Code open/approval入口已是到原Core owners的窄政策
+与Resume nominal边界，不能仅因涉及IO就当厚回调。现原PackageProduct selected-revision
+family以class-CM拥有两完整preparation共同的runtime acquisition、第二capture/lineage/
+verify、异常close及成功转移；Code领域plan/信任/authority/nominal结果在with内执行，
+不把整个Code工作体回借Core。Root/clock/三个native-root兼容入口原体保留，不重计其物理实现。
+
+opener在enter自身try外；第二capture/校验失败enter自己close，因为enter失败无exit；
+body异常由exit同步close，close可替换原错，成功不close。第二capture独立于opener原捕获，
+不能复用其结果减fence。ID与预算维持原方法lookup→ID→files→bytes逐项顺序。class避免
+body StopIteration被generator-CM改写，capture自身tuplegen的PEP479保持。晚recheck工厂
+只持同runtime，每次读当时packages/handle.verify，不捕Context/selected快照或预绑verify。
+
+原0T ID-iterator稿存在顺序差异，在产品安装/期待捕获前修成items/id及1T；坏稿/原proof
+另存，最新Code700/Core522。全成本Code−33/Harness+94/系统+61（raw=uniform），含
+0Protocol/1T、全部fields/thin ports/imports/兼容facade。收益是两中性程序共享、职责归位，
+非系统净减或声称253行领域体全部退出。原A212临时root/九nonlocal/list仍需完整接管。
+
+首实际主组1原installed-second trace不符（128过），单项/全probe复验通过；继承__del__
+虚调用全局instrumented close的跨场景记录已由受控foreign-GC见证确认。原probe仅2行
+current-handles identity隔离，外来仍真实close，原fixtures/assert不改。首次被截断diff的
+具体身份未知，控制见证只证明机制，不能冒精确归因。失败/诊断/修后范围分列执行记录。
+原主组旧129过/2旧warnings/281.41s；修正carrier范围后相同129过/2旧warnings/288.78s，
+零fail/error/skip，与局部交集原recheck1，总141不同节点（129+12）。诊断节点另列不充收益。
+另12不可覆写旧观察逐byte同，覆盖开/捕/验证/领域/关闭异常、两种StopIteration、方法/ID
+顺序、预算与晚recheck/成功转移。真实runtime/lineage/nominal results执行，root/open/
+审批/编译叶受控，不充Task.cancel或新原生平台。PLC9仅4assert可选减集，保Builtin2/
+155assert/scanner/required数据/route，无newgate；库存测试+34行及probe隔离+2行。API六fn/两class布局/六旧
+fn身份、685冷模块名及静态检查证据见执行记录；无percase compiled guard或全PR声明。
+Code108258/系统661277，完整15K差93258。三视角技术接受限该Scope，C01与全Goal开放。
+
+## 32. A214三路线共享root与preparation进度
+
+Current：原Construction持有唯一PreparationRootCustody，替掉bootstrap的四共享闭包变量，
+涵盖legacy与两Product路线及config/composition/workspace/outer消费者。其余领域状态/list
+仍在Code；§30的完整Catalog编排并未全部迁出。现有Prepared/Failure cleanup负责退休，
+新holder仅保部分进度、移交原回调并在原outer时点选择已有owner，不形成第二清理器。
+
+逐步赋值保第二root/path/config失败，legacy started先置且不回退；两Product先发布prep
+再依次写state/private回调，失败仍由该prep接管。两类清理保裸顺序mask/skip与先取callback
+再notes/continue的不同合同。outer先保retained Session早退/原名义custodian，再选prep或
+裸root，实际deferred→management→prep/state→private→base清理顺序不改。
+
+原无GC临时目录整体归现有_cleanup且Code保晚alias；原native方法AST仅类名变，实例字典/
+重试/FileNotFound语义保；新FQN和dump目标演进，旧pickle经alias仍可读。Code保三处领域
+factory/条件/prefix/persistent路径、config和实际准备调用，没有把整个领域体包成callback。
+1T借原真实cleanup界面、0新Protocol/flag，原A213 Scope及native/审批机制不重计。
+
+Code−86raw/−84uniform、Harness+139、系统+53raw/+55uniform；两个排版行不作机制收益。
+独立逆展开整模块证明限定nonlocal/局部注解/两None纯赋值正规化，不作任意反射/traceback/
+MemoryError等价承诺。源生成器偏移错、证明器和探针两次setup失败均保原记录，未改Product
+来迎合探针。九观察通过真实public入口和原闭包/outer，域/工厂/Construction叶受控；不充
+真实native/审批/完整取消证明。原202/14过；实际24及九JSON逐byte/22原声明metadata/
+14旧pickle/930导入名和三源静态通过；同202项实际主回归全过709.59s、节点/顺序同原，
+与局部GC重叠1，总225不同项全过。三独立实际源码视角后，实施owner `/root`核终态
+作本片有界技术接受；不冒全PR/其它原生平台通过，也不关闭整Catalog或完整Goal。
+
+2063生产源仅3改；Code108172/系统661330，距15K93172。完整C01与P1–P4仍开放。
+详细证据/失败与局限见[本批执行记录](../coding-responsibility-convergence-progress.md)。
+
+## 33. A215完整捕获资源族试型未采用
+
+完整源核确认Core已有贡献编译/Provider解析/批准与Session inputs和Catalog Source；
+Code仍混合名义资源记录、关系验证及早期capture，不能把618/1650文件池当可迁预算。
+完整169行族加external投影试型跨原Records/Snapshot/Session三个owner，Code保名义字段/
+根与信任政策/晚factory桥。原早期capture与晚Input严格验证、首匹配与末dict、external
+重复检查和预算异常先后保持独立，没有挪早强校验或借回整个Code阶段程序。
+
+最终全税Code−111/Core+276/系统+165 raw=uniform，4roles/1T和所有兼容桥已计；首全
+format稿178至165仅稿间布局/操作体形式差，不计生产收益。最终五shadow mypy及Ruff过；
+未安装/未运行/无新probe，不能充API/布局/旧pickle/cold/行为验收。有限逆AST和原定义
+证明通过，具体数量与初false修正见执行记录/树外原件。
+
+职责与兼容视角不建议整形，运行视角支持有限old-first；Root保留分歧并因实际接口分散
+及276接收税不采用当前整形，非禁止必要增长或要求重复引擎退出。Code字段保留是公共
+合同，非独立否决理由；单一具体evidence接缝尚未建立，不发明新planner/框架或拆小片。
+当前仍A214的Code108172/系统661330/15K差93172，2063源全SHA与行不变，Goal开放。
+后续按[大块优先队列](../coding-responsibility-priority.md)核完整deferred-control状态寿命。
