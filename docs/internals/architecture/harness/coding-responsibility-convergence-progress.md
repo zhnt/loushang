@@ -1,5 +1,39 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A201 完整private Journal持锁/存储scope归原Journal（2026-11-15）
+
+原G10 Code Journal保持唯一选择权威、原Record/Snapshot/Error/codec、状态/代际/历史/
+准入/路径政策与八个名义返回入口。原Harness Journal扩一个same-self中性operations base，
+持原三个mechanism字段，直接用原filelock/load/append与strict/no-nested-lock profiles，
+拥有完整private检查、同步/异步snapshot/mutate/admitted scope、同线程deadline轮询及退出。
+Code pure decision交record可空、late Snapshot factory及late旧error-context getter；
+Core不读enabled/generation，不回借原IO程序，不新建selector/manager/Task或第二状态。
+详见[完整Journal协议](key-designs/private-policy-journal-operation-scopes.md)。
+
+全税raw=uniform：Code567→419（−148），Harness新增284，系统+136，属于完整职责归位，
+不是系统净精简/第二算法去重。2T/0newRole/原3field、全部typed门面/纯policy/错误与profile
+成本均计。原leaf native IO不重计；新private base/MRO、CM/property帧及profile纯值绑定
+明确演进，不承诺任意私global/反射/栈等价；公开类型提示、名义记录字段/slots保持。
+
+原六载体34项旧35.68s、实际同34项38.85s全过，0fail/error/skip；六原test源逐SHA未改。
+含原installed native-run与注入BlockingHost的实际Task.cancel/真实control锁结清，两者不混
+作native child取消证明。另补5个本地失败时序观察，先原5过2.86s、实际同5过5.81s，
+五JSON含错误cause/context/suppress与持久wire SHA完全同：sync/async consumer OSError、
+initial exists后进入私scope时注入FNF、append后Snapshot构造失败仍留原record。
+这5项单独计，不充原34；外部支持脚本80行及有限API/冷导入观察21行另记，
+未新增产品测试/fixture/PR gate。未覆盖Stop*/GeneratorExit或所有compound native close。
+
+父进程来源守卫主套旧3/实际4模块、143/163声明callables、各34nodes/68前后checks；
+补充套各5nodes/10checks另列，路径/SHA+19递归code字段不覆盖生成方法或installed子进程。
+另进程有限检查10个公开signature/resolved hints、2DTO fields/slots/FQN相同，源路径/SHA
+独立记录；cold11→12仅新Core模块，不称所有导入effect等价。实际mypy两源/Ruff/格式通过。
+G10原四文件1767→1619，原1800门禁及依赖/路由/断言不变；实际政策仍归Code。
+
+2061源仅一原Code改及一新Core，其余2059 SHA/行同；当前source660028，排GUI独立4524
+后655504。Code434源109714、距15K94714，Harness365284/HarnessTUI29466/HarnessWork8332/
+AppHost19717，C05为6源3417。三设计/实际视角按本批接受；完整P1–P4/KD003/KD011/15K
+及C05其余领域/验证入口仍开放，不把3417或419判永久下界。
+
 ## A200 完整Resume外层交接原型按全成本不采用（2026-11-15）
 
 已完成四源完整原型，不是397行导航估算：原Session continuation family固定操作接完整

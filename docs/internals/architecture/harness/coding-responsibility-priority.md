@@ -13,7 +13,7 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 | 顺序 | 完整交付边界与源码审查池 | 现有接收组件与Code保留 | 先解决的问题与退出条件 |
 | --- | --- | --- | --- |
 | 已完成本批 A199 | C09旧安装review→acceptance→binding catalog→source消费及崩溃恢复；原local_acceptance542/source_consumption397/binding_catalog391，共1330行原审查池 | 原Package Product/Resources、Journal/Config；Code保历史格式/产品支持范围、操作员选择与精确领域复核 | A199已完整接管accept/reopen/consume/consumed原双锁/parent身份/发布、prepared/settled重放、Settings事务及live source CAS；Code−340/Harness+480/系统+140，原74项实际过。1330并非迁出量，原分类/准入保Code；binding catalog已有_LegacyLocalSourceCatalog直接复用，A168已共享的Wheel重捕获不重做计益 |
-| 下一源码核 / A201 | C05 durable canary control Journal，567行完整文件为审查池 | 原Harness Journal持锁/严格读写；Code保G10启停/代际/历史/准入、路径与名义记录 | 源码确认完整sync/async锁与存储协调尚Code，native leaf已Core；先证完整neutral receiver与全税。保sync/async FNF和consumer异常差异、跨完整run保锁，不搬选择政策，不新增PRgate或删支持；未原型/计益 |
+| 已完成本批 A201 | C05 durable canary control Journal，567行完整文件为审查池 | 原Harness Journal持锁/严格读写；Code保G10启停/代际/历史/准入、路径与名义记录 | 已接完整neutral Journal scope，Code−148/Harness+284/系统+136，原34与另5本地对照过。Code状态/代际/历史仍原权威，scope保全部FNF/consumer异常差异和跨run锁；无新gate、无leaf IO重复收益 |
 | A200完整形状不采用 | C03 Plan→隔离Writer→V1/V2 attempt→首输入commit→runtime publication及失败custody；continuation486/SessionManager783/activation_plan400，共1669行主要审查池 | 原Transcript/Session/Resume effects；Code保composition选择、授权和版本化产品记录 | 四源整原型raw Code+4/Core+277/系统+281，统一格式Code−54/系统+223；十个必要域/creation口及typing/facade税过高，无第二机制/依赖退出，不采用/不runtime/不摘fence。原97非pure领域构造保Code且寿命已Core，不重计397 |
 | 后续条件设计 | C01/C15装配交接；先比较原Base/Capability两完整函数406行，不将bootstrap3626当预算 | 原Construction/Resources/Session | A183确认与A112同源，A51系统+202形状仍拒绝。只有新的完整事务接缝能显著减少适配才重开；无新接缝则继续下一未处置簇 |
 | 暂缓重试 | C07 Worker authority、ManagedMuxCommand完整驱动 | 原Package Product、AppHost | 已有完整原型分别系统+432、+292（统一格式+434/+192），无另一机制退出。须有不同API/复用收益证据才重开，不按112文件/21047行整搬 |
@@ -22,14 +22,15 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 A199已完成第1项的接受/消费固定事务，保原领域政策及catalog绑定；不是整C09完成。
 A200已核完整outer handoff四源形状，所有适配后Coding raw+4/系统+281（uniform−54/+223），
 静态通过但整形价值不足，不安装/不测；不是C03保留成本下界，也不重试同形参数压缩。
-下一A201比较C05完整neutral lock/store接缝，G10启停/代际/历史政策仍Code；567行不是删除量。
+A201已完成C05中性lock/store整接缝，G10启停/代际/历史政策仍Code；实际Code−148而非567。
+后续继续从剩余完整职责选择，C01同形仍条件暂缓、A200不重试；不以小timeout/字段片代主线。
 可迁移性排序优先于名义行数；完整剩余责任账中其余簇仍开放，不被本队列排除。
 
 排序先比较能够整体退出的旧操作体和真实复用，再比较全部适配后Coding及系统的净值；
 失败/取消/重试和资源交接必须一起替换。最近A171、A173、A174、A176合计Coding−680、
 生产系统+422，属于职责收敛，不能作为系统净精简的证据。A179另Code−128/AppHost+224/
 系统+96；A180完整前台控制另Code−116/AppHost+275/系统+159（统一格式+137）。
-A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；A196六流字段契约去重Code−46/Harness+12/系统−34；A197四类字段契约再Code−39/Harness+7/系统−32；A199完整接受/消费事务Code−340/Harness+480/系统+140；当前Coding109862行，距15K尚94862行，仍须按完整工作件推进。
+A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；A196六流字段契约去重Code−46/Harness+12/系统−34；A197四类字段契约再Code−39/Harness+7/系统−32；A199完整接受/消费事务Code−340/Harness+480/系统+140；A201完整Journal scope再Code−148/Harness+284/系统+136；当前Coding109714行，距15K尚94714行，仍须按完整工作件推进。
 
 | 顺序/状态 | 完整工作件 | 接收者及Coding保留边界 | 进入条件或实际处置 |
 | --- | --- | --- | --- |
@@ -58,7 +59,7 @@ A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+3
 | 后续开放 / A169、A178完整形状均拒绝 | Worker Product完整收据authority | 原Package Product/Resources；Code保政策、验证与兼容DTO | 892行类范围/803行方法定义已作A178完整13源原型。真实Records/MRO/3必要reader改善成立，但计入4事实契约、6TypeVar、8必要公开门面后Code−512/Core+944/系统+432（统一格式+434），仅静态通过，未采用。相比A169系统+580减少148，仍无另一authority/运行重复退出，不为已付原型成本启动大矩阵或摘叶救收益 |
 
 G17与C13本批实例寿命、C10两段中性证据投影已完成；后续核实顺序为：
-**C09接受/消费固定事务按A199完成；A200完整Resume形状按成本拒绝，下一C05中性持锁/存储整链**；A197已完成四类契约，停止连续挑字段和薄适配器作主线。C19按A198降优先级；固定ownannotations不能直接套A196。A188子图原接口未变；A187完成Goal寿命，A186命令门面无新替代；
+**C09接受/消费固定事务按A199完成；A200完整Resume形状按成本拒绝，C05中性持锁/存储整链按A201完成，余大块继续重选**；A197已完成四类契约，停止连续挑字段和薄适配器作主线。C19按A198降优先级；固定ownannotations不能直接套A196。A188子图原接口未变；A187完成Goal寿命，A186命令门面无新替代；
 C08 checkpoint按A185完成，
 C01按A183暂缓，
 Windows完整快照按A184全成本拒绝，systemd两程序按A191完整原型拒绝；

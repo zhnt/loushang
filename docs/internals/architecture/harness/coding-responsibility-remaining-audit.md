@@ -1,7 +1,7 @@
 # Coding 全量剩余职责与保留成本复核
 
-本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187、A189、A190、A195、A196、A197、A199源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
-109862行，距15K仍94862行。下面28组不是可删除预算或最终保留成本。
+本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187、A189、A190、A195、A196、A197、A199、A201源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
+109714行，距15K仍94714行。下面28组不是可删除预算或最终保留成本。
 A156托管服务完整控制已归原AppHost；Coding保产品身份/政策与错误薄适配。
 A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
@@ -38,6 +38,8 @@ A199完整接受/来源消费/只读结清事务归原Package Product，Code−3
 原74节点实际过；当前C09为34源8925，Code保领域分类/准入及公开记录，非整组完成。
 A200完整Resume外层四源原型raw Code+4/Core+277/系统+281（uniform Code−54/系统+223），
 四源overlay静态通过但全部接口税不值，未采用/未runtime/生产收益0；原Code构造与Core寿命不重复计益。
+A201完整private Journal操作scope按G10 Code政策/Journal机制边界接入，Code−148/Harness+284/系统+136，
+原34项与另5本地old-first观察通过；当前C05为6源3417，未删canary支持/改gate或重复计leaf IO。
 完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07整policy/receipt仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 A162完整暂存到prepared activation lease交接归原Continuity，Code−61/Core+90/系统+29，
 单消费者职责迁移，不计去重；KD003 bytes与C04整体仍未完成。
@@ -158,7 +160,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C02 托管与受管接入 | 31/8,257 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用；A179完整prefix/失败清理及两attempt生命周期归AppHost，Code保请求、资格与领域构造profile；Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝；不据A179关闭整组 |
 | C03 Resume与SessionManager | 15/4,132 | P2/P3 | 原Transcript/Session lifecycle、live恢复已复用；Code保版本化输入/装配与授权政策 | A200完整outer/fence形状全税不采用，未改原源码；继续按new/resume/fork/reopen判领域与共享接缝，不重建提交器/重试器或摘guard |
 | C04 Continuity | 2/2,809 | P3 | 原Continuity provider/runtime、A68 payload custody、A162暂存到lease及A174完整绑定shutdown/reservation/Task寿命已接入；Code保来源/限额/cwd和canonical restore端口 | KD003 bytes import未实施；非owned真实Path/FileCopy/引用合同仍在，不提前采用KD011 |
-| C05 Canary及作者验证入口 | 6/3,565 | P1/P3/P4 | 原Worker attempt及托管owner已有接入；Code保真实SDK/CLI验证入口和产品场景 | 存在真实运行消费者，不能按canary/smoke命名删除；剩余协调须随实际场景替代 |
+| C05 Canary及作者验证入口 | 6/3,417 | P1/P3/P4 | 原Worker attempt及托管owner已有接入；A201完整private Journal锁/存储scope归Journal，Code保G10状态/代际/历史/准入和真实SDK/CLI验证场景 | 存在真实运行消费者，不能按canary/smoke命名删除；剩余协调须随实际场景替代 |
 | C06 其余根入口与策略 | 26/4,444 | P2/P4 | 混合产品配置、模型/工具选择及既有薄绑定；A195完整workspace身份协议共用原Paths | 逐具体声明/运行路径处置；不整体当领域保留或机械可删 |
 | C07 插件Worker | 112/21,047 | P1 | 五流/Rooted/history/platform/native custody、普通准备/停止/reopen主机制已共享；A165撤销事务及A167读取重复程序归一，Code保产品准入/原读取时序 | Core已有candidate事实现供3处复用；A178真实Records/薄构造整物原型保公开接口后仍系统+432、成本拒绝未接入；完整authority/平台政策归属仍开放，非领域不可迁证明 |
 | C08 插件私有数据 | 31/6,665 | P4 | 原备份/删除/恢复/过期及A71 lineage已共享，A185完整27行checkpoint统调归原Journal | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
