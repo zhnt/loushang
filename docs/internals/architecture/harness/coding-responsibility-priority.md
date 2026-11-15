@@ -19,7 +19,7 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 | --- | --- | --- | --- |
 | A209完整历史形状不采用 | C02三binding/source类+四catalog历史入口，并包含稳定snapshot读完整四源 | 原AppHost canonical family/Transcript源，Code保历史投影/名义构造/17公开方法属性入口 | 全税Code−20、接收+339、系统+319（uniformCode−38/sys301）；四源shadow静态过但成本不值，不安装/不跑矩阵，不摘close/fence |
 | 已完成 A210 | C08 Windows retention snapshot原110行完整程序 | 原PackageProduct完整读/GC/目录/历史证据custody；Code保DTO/codec/构造薄绑定 | Code−72/Harness+151/系统+79（raw=uniform），原91/边界71及另31旧观察同；A184历史拒绝保留，不称去重 |
-| 下一整物接缝复核 | C01 managed Base208与Capability198完整装配池 | 原Resources/PM assembly/Session，Code保准入/领域选择与profile | 优先核A207现有PM入口与真实managed路径能否复用；须消除厚阶段回调并付全部构造/公开兼容成本，不照搬A51原型或预报可删406行 |
+| 已完成 A211 | C01 managed Base208与Capability198完整装配池 | 原PM assembly直接执行两固定程序；Code保准入/领域选择与profile | Code−235/Harness+401/系统+166（uniform172），3roles/4T/错误数据与所有薄绑定全计；最终测试范围见执行记录，不计406为删行 |
 | 已完成本批 A208 | C13/C14两完整reserved Tool owner准入/绑定/capture | 原Session tool_owner_binding，保Code五字段/域Consumer/工具工厂/nominal family | 六操作实例合三共享程序，Code−72/Harness+88/系统+16（raw=uniform）；原注册/释放机制复用不重计 |
 | 已完成本批 A207 | C01公开SDK default完整137span三方法 | 原PM assembly及same desired/management；Code保原12字段/名义class/8profile事实 | 32次CAS、latest-own历史、command提交及部分commit原样；Code−128/Harness+181/系统+53（raw=uniform）；非活跃Base路线、未重造A51 |
 | 已完成本批 A206 | C10完整factory/release家族，原3类8操作实例 | 原Package Product local Wheel runtime；Code保名义dataclass/Selection政策/构造桥 | 8→7实际执行体，两Worker lookup归一；Code−63/Harness+114/系统+51（raw=uniform）；原native机制与A155不重计 |

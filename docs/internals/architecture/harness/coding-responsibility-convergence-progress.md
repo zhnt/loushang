@@ -1,5 +1,68 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A211 完整managed Base／Capability装配归原PM（2026-11-15）
+
+承接183448896的clean专用树，本轮fetch origin成功，main仍4de7d9251且为任务祖先；
+控制/旧lane不改。方法复核仍clean local master 0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。
+原208/198两程序及整Code源与A183同；A207默认CAS不是legacy migration的drop-in。
+见[完整装配设计](key-designs/startup-session-assembly-convergence.md#29-a211两固定managed装配归原pm)。
+
+原PM assembly直接拥有两完整snapshot/migration/publish/replay/revision/lease及失败交接
+程序，不造Session新模块或模式框架。Base准入/环境在Code、seen迁移仍try外，fresh不多
+reconcile；group每spec都reconcile。禁用Base原runtime/state关闭可在外catch再试；group
+关闭当前handle后continue。lease必须local/map先持有再读；group先append包/clearcurrent
+再project/binding/config，失败构造完整prefix交原nominal custodian，不提前close。
+Code保领域plan/OwnerAuthority/assembly终投影（不是只有DTO）、错误内容及薄构造/贡献
+绑定；source-location原严格resolve有作用，明确非pure且只fresh/unmanaged按旧点调用。
+全部Code叶仍归Code；Core直接用原Resources/Materializer与原lifecycle，不重计旧机制。
+
+三readonly角色（lease/lifecycle/spec）、四T、错误数据profile、所有imports/lazy source/
+factory/facade都计。无Any/cast/ignore，无新authority/store/Task/锁；错误class仍Code，
+原package_revision_ref公开入口保留，本程序改用其原Core DTO构造；privateglobal随意重绑
+与额外frames不承诺。新Resources imports在函数内/TYPE_CHECKING，原PM默认入口不新增
+Resources eager依赖。两原Code非import余体及全部原Core定义AST不变，两独立整逆AST核
+包含全部With/Try/顺序与Code准入/spec前缀，不把406当删行预算。
+
+首候选错误事实按同code合并，遗漏lookup ManifestError文案的binding lock；三视角发现后
+独立kind修正，两消息同原code并存，未装Product/未捕获坏期待。坏稿和builder/facts保留
+first-lazy-error-collision；外部生成器增加不同fact不得覆盖的断言，不入Product/gate。
+首eager Core841、lazy855修前shadow检查过，不冒修后结果；修后18725三shadow终0，
+实际22297三源mypy silent-followimports/disallow-any-generics亦过，Ruff/fullformat四文件过。
+源码证明器首次工具自身替错prelude/漏类型反向替换曾false，修工具范围后whole AST真，
+不作为Product修正。业务期待保持；源码库存的单调减集另列。
+
+最终Base1082→977（−105）、Capability1780→1650（−130）、Core454→855（+401）；
+Code−235/系统+166。统一格式Code−229/系统+172；6行原Base空白差不作机制退出。
+Root按完整职责改善和适度增量准则接受有界实施，不因缺第二引擎机械否决，亦不把这批
+说成系统精简。原A51/A183暂缓历史保留；这次位置、数据错误profile与接口形状不同。
+
+原五载体旧139过/333.59s、实际同序139过/371.18s，零fail/error/skip；与局部交集原1，
+总151不同节点（139+12），不计152，也不重计A51历史37场景。
+局部12固定整场景+原managed禁用重叠1共13，旧3.60s/实际11.09s全过；12JSON逐byte同。
+实际Code validation/errors、Core revision DTO/runtime.close与Code custodian执行，Source/
+迁移/lease及domain finalizer受控；手动custodian drain明确独立于resolver，无native发布/
+持久迁移/真实Session lease/Task.cancel证明。原主组另含真实legacy managed成功/更新/
+并发/持久恢复，边界以实际139节点为准，不充全平台或全分支PR绿。
+
+原PLC9只两assert同减可选集：原2Code路径+原PM路径、原2qualified+新2qualified各可选
+减1；原required字面常量/scanner/其余断言/155总数/route不变。old A=E必有A−C=E−C，
+没有新required存在条件，optional第2次和unknown scope仍拒；是scope reduction不扩门禁。
+逆掉精确投影及optional常量后整旧module AST同。测试+34行、树外484行观察另计，无新
+默认发现用例；不把外部12算现有PR覆盖增加。
+
+两原函数signature/hints/ownannotations/doc/FQN和__all__整API JSON同，两个旧function
+pickle identity同；634冷模块名字列表同，不充IO审计。
+HEAD工作区plan-only选择docs/architecture/coding/harness与host-runtime宽路线，本批只跑
+上述151节点和静态检查，不声称整分支全PR/host-runtime/所有平台路线已跑齐。API仅三__file__实际路径断言，旧
+capture额外核三源disk SHA；无per-case compiled guard/子进程完整来源证明。生成依赖
+freshness已过；所有observer期待均旧源xb捕获且不覆盖。
+
+2063生产源仅3改/2060逐SHA与行同；Code434源108291、距15K93291，Harness367163/
+AppHost20449/HarnessTUI29466/HarnessWork8332；系统661216，排GUI独立4524后656692。
+434清单逐行和28组当前账同步，C01为22源12253。完整C01及P1–P4仍开放；本批不接受
+保留成本下界或降低15K。树外a211-managed-assembly保三原件/候选/全部成本/XML/12冻结
+观察/代码与文档三独立视角；下一按完整剩余装配/启动事务选现有owner接缝，不摘tiny guard。
+
 ## A210 完整Windows备份保留读事务归原Package Product（2026-11-15）
 
 承接5e3df1452的clean专用任务树；沿A209已fetch的origin/main 4de7d9251祖先，

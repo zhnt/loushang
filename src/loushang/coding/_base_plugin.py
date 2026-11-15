@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import secrets
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -16,7 +15,6 @@ from loushang.coding._plugin_lifecycle import (
     CodingPluginLifecycle,
     CodingPluginManagementChange,
     CodingPluginSessionLease,
-    package_revision_ref,
 )
 from loushang.coding.composition_sets import CodingCompositionSetPlan
 from loushang.coding.product_plan import CODING_PRODUCT_ID
@@ -39,8 +37,9 @@ from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
 )
 from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
-from loushang.harness.plugin_management import (
-    plugin_enablement_legacy_input_fingerprint,
+from loushang.harness.plugin_management.assembly import (
+    _ManagedPluginErrors,
+    _prepare_managed_plugin_runtime,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.plugins.authority import (
@@ -50,8 +49,6 @@ from loushang.harness.resources.plugins.authority import (
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
 )
-from loushang.harness.resources.plugins.manifest import PluginManifestError
-from loushang.harness.resources.plugins.revisions import PluginRevisionError
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef,
     PluginEffectiveConfigurationEntry,
@@ -266,6 +263,50 @@ def prepare_coding_base_plugin_assembly(
         raise
 
 
+_MANAGED_ASSEMBLY_ERRORS = _ManagedPluginErrors(
+    facts={
+        "management_selection_incomplete": (
+            "Enabled Coding base selection lacks exact lifecycle evidence",
+            "coding_base_management_selection_incomplete",
+        ),
+        "binding_lock_replay_invalid": (
+            "Selected Coding base binding lock failed exact replay",
+            "coding_base_binding_replay_invalid",
+        ),
+        "binding_replay_unavailable": (
+            "Selected Coding base binding is unavailable for replay",
+            "coding_base_binding_replay_unavailable",
+        ),
+        "revision_replay_unavailable": (
+            "Selected Coding base revision failed exact replay",
+            "coding_base_revision_replay_unavailable",
+        ),
+        "revision_replay_integrity_failed": (
+            "Selected Coding base revision failed exact replay",
+            "coding_base_revision_replay_integrity_failed",
+        ),
+        "binding_replay_invalid": (
+            "Selected Coding base binding failed exact replay",
+            "coding_base_binding_replay_invalid",
+        ),
+        "selected_revision_mismatch": (
+            "Replayed Coding base package is not the selected revision",
+            "coding_base_selected_revision_mismatch",
+        ),
+        "session_lease_mismatch": (
+            "Coding base Session lease is outside the management snapshot",
+            "coding_base_session_lease_mismatch",
+        ),
+    },
+    make_error=lambda message, code: CodingBasePluginAssemblyError(message, code=code),
+    cleanup_notes={
+        "lease": "Coding base Session lease cleanup failed: {error}",
+        "revision": "Coding base revision cleanup failed: {error}",
+        "state": "Coding base state cleanup failed: {error}",
+    },
+)
+
+
 def prepare_managed_coding_base_plugin_assembly(
     composition_set: CodingCompositionSetPlan,
     *,
@@ -302,147 +343,23 @@ def prepare_managed_coding_base_plugin_assembly(
     _validate_base_request(composition_set)
     normalized_session_id = _normalized(session_id, name="Coding Session id")
     environment = host_environment or LocalHostEnvironmentProbe().detect()
-    key = lifecycle.installation_key(_PLUGIN_ID)
-    snapshot = lifecycle.desired.snapshot()
-    state = snapshot.installation(key)
-    seen = any(item.installation_key == key for item in snapshot.installations)
-    if seen and lifecycle.enablement_migrations.journal.snapshot(key) is None:
-        lifecycle.migrate_legacy_enablement(
-            key,
-            state.selection.package_revision,
-            legacy_disabled=legacy_disabled,
-            manifest_enabled_default=True,
-            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
-                key,
-                legacy_disabled=legacy_disabled,
-                manifest_enabled_default=True,
-            ),
-        )
-        state = lifecycle.desired.snapshot().installation(key)
-    runtime: PluginRuntimeResolution | None = None
-    lease: CodingPluginSessionLease | None = None
-    try:
-        if not seen:
-            authority = PluginResolutionAuthority()
-            inspection = authority.inspect(PluginSource(path=coding_base_plugin_root()))
-            runtime = authority.publish_runtime(
-                (inspection,),
-                binding_store=package_materializer,
-            )
-            [package] = runtime.packages
-            [binding] = runtime.bindings
-            revision = package_revision_ref(
-                plugin_id=package.manifest.name,
-                plugin_version=package.manifest.version,
-                package_content_digest=package.content_digest,
-                dependency_lock_digest=package.dependency_lock.digest,
-                package_source_identity=binding.source_identity,
-            )
-            manifest_default = package.manifest.enabled
-            lifecycle.migrate_legacy_enablement(
-                key,
-                revision,
-                legacy_disabled=legacy_disabled,
-                manifest_enabled_default=manifest_default,
-                legacy_input_fingerprint=(
-                    plugin_enablement_legacy_input_fingerprint(
-                        key,
-                        legacy_disabled=legacy_disabled,
-                        manifest_enabled_default=manifest_default,
-                    )
-                ),
-            )
-            state = lifecycle.desired.snapshot().installation(key)
-        else:
-            lifecycle.reconcile_retirements()
-        if state.selection.desired_state != "installed_enabled":
-            if runtime is not None:
-                runtime.close()
-            if state_cleanup is not None:
-                state_cleanup()
-            return None
-        selected_revision = state.selection.package_revision
-        selected_instance = state.selection.instance_revision_ref
-        if selected_revision is None or selected_instance is None:
-            raise CodingBasePluginAssemblyError(
-                "Enabled Coding base selection lacks exact lifecycle evidence",
-                code="coding_base_management_selection_incomplete",
-            )
-        if runtime is None:
-            try:
-                replay_binding = package_materializer.get_plugin_binding_by_revision(
-                    selected_revision.package_source_identity,
-                    content_digest=selected_revision.package_content_digest,
-                    dependency_lock_digest=selected_revision.dependency_lock_digest,
-                )
-            except PluginManifestError as exc:
-                raise CodingBasePluginAssemblyError(
-                    "Selected Coding base binding lock failed exact replay",
-                    code="coding_base_binding_replay_invalid",
-                ) from exc
-            if replay_binding is None:
-                raise CodingBasePluginAssemblyError(
-                    "Selected Coding base binding is unavailable for replay",
-                    code="coding_base_binding_replay_unavailable",
-                )
-            try:
-                package = package_materializer.reopen_plugin_package(replay_binding)
-            except PluginRevisionError as exc:
-                code = (
-                    "coding_base_revision_replay_unavailable"
-                    if exc.code == "plugin_revision_unavailable"
-                    else "coding_base_revision_replay_integrity_failed"
-                )
-                raise CodingBasePluginAssemblyError(
-                    "Selected Coding base revision failed exact replay",
-                    code=code,
-                ) from exc
-            except PluginManifestError as exc:
-                raise CodingBasePluginAssemblyError(
-                    "Selected Coding base binding failed exact replay",
-                    code="coding_base_binding_replay_invalid",
-                ) from exc
-            runtime = PluginRuntimeResolution(
-                packages=(package,),
-                plugins=(),
-                bindings=(replay_binding,),
-            )
-        [package] = runtime.packages
-        [binding] = runtime.bindings
-        actual_revision = package_revision_ref(
-            plugin_id=package.manifest.name,
-            plugin_version=package.manifest.version,
-            package_content_digest=package.content_digest,
-            dependency_lock_digest=package.dependency_lock.digest,
-            package_source_identity=binding.source_identity,
-        )
-        if actual_revision != selected_revision:
-            raise CodingBasePluginAssemblyError(
-                "Replayed Coding base package is not the selected revision",
-                code="coding_base_selected_revision_mismatch",
-            )
-        lease = lifecycle.acquire_session(
-            key,
-            session_id=normalized_session_id,
-            lease_attempt_id=secrets.token_hex(16),
-            owner_contributions=_selected_owner_contributions(
-                host_environment=environment,
-                include_tools=include_tool_contribution,
-                include_prompt=include_tool_claim_prompt,
-                include_skill=include_skill_contribution,
-                include_command=include_command_contribution,
-            ),
-            session_owner_id=session_owner_id,
-        )
-        if (
-            lease.package_revision != selected_revision
-            or lease.instance_revision_ref != selected_instance
-        ):
-            raise CodingBasePluginAssemblyError(
-                "Coding base Session lease is outside the management snapshot",
-                code="coding_base_session_lease_mismatch",
-            )
-        return _assemble_base_runtime(
+
+    return _prepare_managed_plugin_runtime(
+        lifecycle=lifecycle,
+        package_materializer=package_materializer,
+        plugin_id=_PLUGIN_ID,
+        session_id=normalized_session_id,
+        session_owner_id=session_owner_id,
+        legacy_disabled=legacy_disabled,
+        source_root=lambda: coding_base_plugin_root(),
+        owner_contributions=lambda: _selected_owner_contributions(
+            host_environment=environment,
+            include_tools=include_tool_contribution,
+            include_prompt=include_tool_claim_prompt,
+            include_skill=include_skill_contribution,
+            include_command=include_command_contribution,
+        ),
+        finish=lambda runtime, selected_instance, lease: _assemble_base_runtime(
             runtime=runtime,
             composition_set=composition_set,
             session_id=normalized_session_id,
@@ -454,26 +371,10 @@ def prepare_managed_coding_base_plugin_assembly(
             instance_revision_ref=selected_instance,
             management_lease=lease,
             state_cleanup=state_cleanup,
-        )
-    except BaseException as error:
-        if lease is not None:
-            try:
-                lease.close()
-            except BaseException as cleanup_error:
-                error.add_note(
-                    f"Coding base Session lease cleanup failed: {cleanup_error}"
-                )
-        if runtime is not None:
-            try:
-                runtime.close()
-            except BaseException as cleanup_error:
-                error.add_note(f"Coding base revision cleanup failed: {cleanup_error}")
-        if state_cleanup is not None:
-            try:
-                state_cleanup()
-            except BaseException as cleanup_error:
-                error.add_note(f"Coding base state cleanup failed: {cleanup_error}")
-        raise
+        ),
+        errors=_MANAGED_ASSEMBLY_ERRORS,
+        state_cleanup=state_cleanup,
+    )
 
 
 def prepare_coding_base_plugin_session(
@@ -617,9 +518,7 @@ def _build_coding_base_owners_from_admissions(
         if item.plugin_id == _PLUGIN_ID
     }
     command_selected = "coding.standard" in selected_contribution_ids
-    expected_admissions = int(tool_contribution_id is not None) + int(
-        command_selected
-    )
+    expected_admissions = int(tool_contribution_id is not None) + int(command_selected)
     if (
         len(admissions) != expected_admissions
         or (command_selected and command_admission is None)
@@ -627,10 +526,7 @@ def _build_coding_base_owners_from_admissions(
         or (tool_contribution_id is not None and tool_admission is None)
     ):
         raise ValueError("Coding base requires exact Tool and Command admissions")
-    authorities = {
-        item.owner_key: item.authority
-        for item in owner_bindings
-    }
+    authorities = {item.owner_key: item.authority for item in owner_bindings}
     context = product_composition.authority_context
     if tuple(item.authority.snapshot() for item in owner_bindings) != (
         context.owner_snapshots
@@ -793,8 +689,7 @@ def prepare_coding_base_product_plan(
             code="coding_base_product_selection_mismatch",
         )
     contributions = tuple(
-        reservation
-        for reservation, _ in selected.verified_data_only_declarations()
+        reservation for reservation, _ in selected.verified_data_only_declarations()
     )
     scope_id = f"session:{_normalized(session_id, name='Coding Session id')}"
     plan, tool_id, tool_names = _build_selection_plan_from_evidence(

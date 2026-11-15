@@ -936,3 +936,38 @@ A50仅三helper也不是替代。没有新接缝就不造同一回调/flags/cont
 `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`，未同步方法upstream或搬入Product。
 树外`coding-convergence-resumed-20261114/a183-managed-assembly`保原点帧、当前整函数、
 实际owner API、与A112逐字/AST对照及三独立报告；下一项转C08残余事务。
+
+
+## 29. A211两固定managed装配归原PM
+
+2026-11-15按适度增长准则试算完整208/198原程序，原Code与A183相同；A51/A183历史
+暂缓不追认。A207默认CAS不替legacy迁移，现由已有PM assembly直接执行两条固定程序，
+不增加Session模块、模式FSM、owner实例或第二机制。三独立完整设计/候选视角支持有限
+old-first，首错误消息事实冲突已在安装前修正，见[执行记录](../coding-responsibility-convergence-progress.md)。
+
+Code保原准入/归一化/环境、领域plan/trust/OwnerAuthority/nominal assembly终投影，纯贡献/
+错误事实/名义custodian工厂及attachment；源位置getter有strict resolve作用，非pure且不在
+seen replay预读。Core自己构造失败包/绑定/plugin/lease前缀，再调用薄名义构造，原清理
+引擎及真实Source/Materializer/migration/membership仍原权威，不重复记作本次新迁移。
+
+Base seen迁移在try外；Base fresh与group显式reconcile时点不同。禁用的关闭/重试、
+Manifest/Revision映射、lease先存再读、包append→clearcurrent→project→binding→config
+顺序保；group resolver只交custodian而不立即close，Base仍即时notes清理。两完整逆AST
+核准上述不同合同，旧Core定义和Code其余声明AST不变。公开Code函数FQN/hints/default/
+exports不换别名。私有global/hook和额外调用frame演进披露，无新授权/存储或记录格式。
+
+完整成本Code−235/Harness+401/系统+166；统一格式Code−229/系统+172，6行是原Base
+排版差。三readonly角色/四T/错误数据profile与所有薄绑定全计。+401含真实程序，不能
+全称接口税；本批是完整职责改善，非系统净精简或第二Product通用性实证。
+
+原五载体旧139过/333.59s、实际同序139过/371.18s，零fail/error/skip；与局部交集原1，
+总151不同节点（139+12），不计152，也不重计A51历史37场景。
+另12固定旧观察与实际逐byte同，涵盖两Manifest错误/原因、try外迁移、disabled双重关闭/
+notes、lease证据不符、group中途投影/配置/lease字段异常与部分成功前缀。真实Core runtime
+和custodian执行；原生发布/持久迁移/Session lease受控，手动drain分列，不充Task.cancel。
+PLC9只两assert同减四个精确位置的可选一次计数，无新required位置；原scanner/RHS/
+155assert/route不改，测试+34行，无gate增加。旧pass必仍pass，额外第2次仍拒。
+
+实际三源mypy、四文件Ruff/fullformat、两函数API+两旧pickle身份、634冷模块名字列表与
+生成依赖check过；没有per-case compiled guard，不冒全平台/全分支PR验收。
+Code108291、完整15K差93291；C01及全部P1–P4仍开放，最终技术接受限上述完整事务。

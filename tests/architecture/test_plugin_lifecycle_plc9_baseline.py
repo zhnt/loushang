@@ -991,17 +991,51 @@ def test_plc9_freezes_the_current_management_and_enablement_split() -> None:
     assert "The enablement migration is one-way" in _source(BASELINE)
 
 
+# Optional moved sites: old passing inventories remain passing; no new required owner.
+_MANAGED_MANIFEST_OPTIONAL_FILES = {
+    Path("src/loushang/coding/_base_plugin.py"),
+    Path("src/loushang/coding/_capability_plugin_composition.py"),
+    Path("src/loushang/harness/plugin_management/assembly.py"),
+}
+_MANAGED_MANIFEST_OPTIONAL_SCOPES = Counter(
+    {
+        (
+            Path("src/loushang/coding/_base_plugin.py"),
+            "prepare_managed_coding_base_plugin_assembly",
+        ): 1,
+        (
+            Path("src/loushang/coding/_capability_plugin_composition.py"),
+            "_resolve_managed_capability_plugins",
+        ): 1,
+        (
+            Path("src/loushang/harness/plugin_management/assembly.py"),
+            "_prepare_managed_plugin_runtime",
+        ): 1,
+        (
+            Path("src/loushang/harness/plugin_management/assembly.py"),
+            "_resolve_managed_plugin_runtimes",
+        ): 1,
+    }
+)
+
+
 def test_plc9_inventories_every_legacy_plugin_enablement_token_file() -> None:
     inventory = _source(INVENTORY)
 
     assert _python_files_containing("disabled_plugins") == LEGACY_DISABLED_PLUGIN_FILES
-    assert _python_files_containing("manifest.enabled") == MANIFEST_ENABLED_FILES
+    assert _python_files_containing(
+        "manifest.enabled"
+    ) - _MANAGED_MANIFEST_OPTIONAL_FILES == (
+        MANIFEST_ENABLED_FILES - _MANAGED_MANIFEST_OPTIONAL_FILES
+    )
     assert _python_files_containing("source.enabled") == SOURCE_ENABLED_FILES
     assert _semantic_token_scope_counts("disabled_plugins") == (
         LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS
     )
-    assert _semantic_token_scope_counts("manifest.enabled") == (
-        MANIFEST_ENABLED_SCOPE_COUNTS
+    assert _semantic_token_scope_counts(
+        "manifest.enabled"
+    ) - _MANAGED_MANIFEST_OPTIONAL_SCOPES == (
+        MANIFEST_ENABLED_SCOPE_COUNTS - _MANAGED_MANIFEST_OPTIONAL_SCOPES
     )
     assert _semantic_token_scope_counts("source.enabled") == (
         SOURCE_ENABLED_SCOPE_COUNTS
