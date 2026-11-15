@@ -431,6 +431,11 @@ after Product/OEM admission, never through a derived module name.
   discovery values on the same original Product catalog instance; this adds no
   hosted binder, service, transport or default entrypoint. See the
   [accepted custody design](../harness/key-designs/canonical-transcript-catalog-custody-convergence.md);
+  A202 extends that same optional owner with complete workspace collection
+  routing and retirement. Existing WorkspaceRegistry and child Transcript owners
+  retain native IO; Code keeps the actual catalog class, old-store/Windows
+  construction, candidate-open policy and thin workspace response adapter.
+  There is no additional AppHost, registry, Session owner or core-facade edge.
 - `tests/coding/test_apphost_product.py` and
   `tests/architecture/test_hosted_product_runtime_g8_join.py` prove the exact
   G8 receipt, recovery, ownership, multi-profile/Session, fault, cleanup, and

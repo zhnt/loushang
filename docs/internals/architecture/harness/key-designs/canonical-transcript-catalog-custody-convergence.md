@@ -304,3 +304,51 @@ integrates the three independent responsibility/runtime/compatibility reviews fo
 this bounded correction; the original source snapshots, test/AST proofs and results
 are retained outside Git in A102. This closes these two observed inventory failures,
 not the complete P1–P4 Goal or the five broader Hosting audit obligations.
+
+## A202 Complete Workspace Collection Coordination
+
+2026-11-15 extends this existing optional integration with the complete workspace
+collection program. `WorkspaceRegistry` already owns canonical membership, private
+locking and persistence; child canonical catalogs already own discovery, writable
+creation, candidates and transcript lifetime. Their IO is reused, not migrated or
+credited again. The previously Code-owned collection now routes load/register/
+select/unregister, discovery/create/recovery lookup, aggregate limits, fencing,
+parallel child close, failure grouping and eventual registry close in this owner.
+
+The actual `CodingWorkspaceCatalog` remains the sole collection instance, with its
+original six constructor fields in their original order. There is no additional
+manager, map, Task, lock, selected-workspace state or initialization convention.
+One catalog TypeVar and one private structural role reuse
+`SessionIdentityCatalogPortV1` and `CanonicalTranscriptScope`; the role adds only
+actual child scope/pending/discovery/fence/close capabilities. Pending values are
+opaque aggregation observations, not independently closed Session owners.
+
+Code keeps exact nominal admission, actual catalog construction, SHA-derived
+storage layout, surviving old-store witness selection, Windows two-scope factory,
+POSIX history versus Windows live candidate policy and the original history byte
+budget. Its thin `workspace` reply adapter retains the lazy AppServer DTO import
+before effects and projects the actual returned entries afterward. The neutral
+entries operation introduces no reply callback or additional AppServer import.
+The existing core facade, optional module inventory and PR gates are unchanged.
+
+Original debts remain: partial load keeps successful earlier children and retries;
+register cancellation may leave a completed native registry mutation without a
+published child; unregister closes its child before removing durable membership;
+a child or fence failure prevents registry close; close retries retained children.
+No shield, rollback, cancellation-atomic mutation or new retry state is introduced.
+
+Full raw cost is Code 183→98 (−85), existing AppHost integration 715→885 (+170),
+system +85. Uniform Ruff format gives Code 214→98 (−116), AppHost 717→885 (+168),
+system +52. Both qualified policy hooks, the retained reply and typing costs are
+included. This is complete responsibility convergence with modest necessary
+system growth, not duplicate-engine removal. Most old dynamic methods remain
+unannotated; the selected mypy check is not a full strict proof of their bodies.
+
+Expanding the entries helper and candidate-open policy into their original call
+sites reproduces all 22 old methods; existing Core non-import AST is unchanged.
+Private implementation module/qualname, MRO, extra async frames and class-wide
+annotations evolve. TYPE_CHECKING-only Registry naming avoids a new eager storage
+import and does not promise arbitrary class-wide runtime type-hint reflection.
+Public call signatures and their existing resolved hints are separately checked.
+Source, local fault and real persistent-test evidence is tracked in the
+[A202 execution record](../coding-responsibility-convergence-progress.md).

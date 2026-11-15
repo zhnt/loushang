@@ -5,6 +5,11 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 当前计量见[逐文件清单](coding-responsibility-inventory.md)，完整P1–P4范围见
 [剩余责任账](coding-responsibility-remaining-audit.md)。
 
+2026-11-15补充准则：优先直接复用已有组件，系统净减优先；若完整职责归属改善，
+可接受必要且适度的共享通用化/Code适配增量，不要求必须另有重复机制退出。
+历史否决保原证据；接口税过高、Code不减或未接完整旧体的实证仍有效，不能只因无去重
+重下结论，也不按新准则机械重跑全部原型。
+
 ## 当前执行顺序：先完整大块，再局部精简
 
 用户2026-11-15要求大块可迁移优先。下表列本批交付和剩余大块设计/成本审查队列，
@@ -12,6 +17,7 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 
 | 顺序 | 完整交付边界与源码审查池 | 现有接收组件与Code保留 | 先解决的问题与退出条件 |
 | --- | --- | --- | --- |
+| 已完成本批 A202 | C02完整多workspace集合协调，原183行文件 | 原AppHost canonical integration、WorkspaceRegistry与child Transcript；Code保构造/历史/平台/open政策和薄回复 | 同一实例完整接管集合/路由/retirement，Code−85/AppHost+170/系统+85（uniform+52），无新manager/Task/lock/gate；原native IO不重计，client_settings已有writer不再迁益 |
 | 已完成本批 A199 | C09旧安装review→acceptance→binding catalog→source消费及崩溃恢复；原local_acceptance542/source_consumption397/binding_catalog391，共1330行原审查池 | 原Package Product/Resources、Journal/Config；Code保历史格式/产品支持范围、操作员选择与精确领域复核 | A199已完整接管accept/reopen/consume/consumed原双锁/parent身份/发布、prepared/settled重放、Settings事务及live source CAS；Code−340/Harness+480/系统+140，原74项实际过。1330并非迁出量，原分类/准入保Code；binding catalog已有_LegacyLocalSourceCatalog直接复用，A168已共享的Wheel重捕获不重做计益 |
 | 已完成本批 A201 | C05 durable canary control Journal，567行完整文件为审查池 | 原Harness Journal持锁/严格读写；Code保G10启停/代际/历史/准入、路径与名义记录 | 已接完整neutral Journal scope，Code−148/Harness+284/系统+136，原34与另5本地对照过。Code状态/代际/历史仍原权威，scope保全部FNF/consumer异常差异和跨run锁；无新gate、无leaf IO重复收益 |
 | A200完整形状不采用 | C03 Plan→隔离Writer→V1/V2 attempt→首输入commit→runtime publication及失败custody；continuation486/SessionManager783/activation_plan400，共1669行主要审查池 | 原Transcript/Session/Resume effects；Code保composition选择、授权和版本化产品记录 | 四源整原型raw Code+4/Core+277/系统+281，统一格式Code−54/系统+223；十个必要域/creation口及typing/facade税过高，无第二机制/依赖退出，不采用/不runtime/不摘fence。原97非pure领域构造保Code且寿命已Core，不重计397 |
@@ -23,6 +29,7 @@ A199已完成第1项的接受/消费固定事务，保原领域政策及catalog�
 A200已核完整outer handoff四源形状，所有适配后Coding raw+4/系统+281（uniform−54/+223），
 静态通过但整形价值不足，不安装/不测；不是C03保留成本下界，也不重试同形参数压缩。
 A201已完成C05中性lock/store整接缝，G10启停/代际/历史政策仍Code；实际Code−148而非567。
+A202完成新原集合协调接缝，原183不是迁出量；Code保98行实际领域/兼容成本。
 后续继续从剩余完整职责选择，C01同形仍条件暂缓、A200不重试；不以小timeout/字段片代主线。
 可迁移性排序优先于名义行数；完整剩余责任账中其余簇仍开放，不被本队列排除。
 
@@ -30,7 +37,7 @@ A201已完成C05中性lock/store整接缝，G10启停/代际/历史政策仍Code
 失败/取消/重试和资源交接必须一起替换。最近A171、A173、A174、A176合计Coding−680、
 生产系统+422，属于职责收敛，不能作为系统净精简的证据。A179另Code−128/AppHost+224/
 系统+96；A180完整前台控制另Code−116/AppHost+275/系统+159（统一格式+137）。
-A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；A196六流字段契约去重Code−46/Harness+12/系统−34；A197四类字段契约再Code−39/Harness+7/系统−32；A199完整接受/消费事务Code−340/Harness+480/系统+140；A201完整Journal scope再Code−148/Harness+284/系统+136；当前Coding109714行，距15K尚94714行，仍须按完整工作件推进。
+A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；A196六流字段契约去重Code−46/Harness+12/系统−34；A197四类字段契约再Code−39/Harness+7/系统−32；A199完整接受/消费事务Code−340/Harness+480/系统+140；A201完整Journal scope再Code−148/Harness+284/系统+136；当前Coding109629行，距15K尚94629行，仍须按完整工作件推进。
 
 | 顺序/状态 | 完整工作件 | 接收者及Coding保留边界 | 进入条件或实际处置 |
 | --- | --- | --- | --- |

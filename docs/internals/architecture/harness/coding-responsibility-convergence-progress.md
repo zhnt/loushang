@@ -1,5 +1,48 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A202 完整工作区集合协调归原AppHost（2026-11-15）
+
+基于28e7696b2核对2061源起点；fetch后origin/main仍4de7d9251且已为任务祖先。
+计算器/仓库验证driver实查为不同受限AST与pytest子进程合同，未假设重复或换目录计益。
+本批选择managed bootstrap真实消费的完整workspace集合流程：原Registry持久化与child
+Transcript engine已共享，原AppHost canonical integration接集合load/register/select/
+unregister、发现/创建/恢复路由、限额、fence/gather/失败保留与registry最终关闭。
+Code保实际名义class/原六字段构造、旧store/witness/Windows选择、open/history预算、
+产品准入及薄workspace回复。无新manager/状态/Task/lock；详见[原Catalog设计A202](key-designs/canonical-transcript-catalog-custody-convergence.md#a202-complete-workspace-collection-coordination)。
+
+全税raw Code183→98（−85）、原AppHost715→885（+170）、系统+85；uniform Code214→98
+（−116）、AppHost717→885（+168）、系统+52。新增1Catalog T/1小Protocol直接复用现有
+SessionIdentityCatalogPort与CanonicalScope，两个qualified Code政策口、薄回复和typing
+全计，无cast/view池/第二状态权威。按用户最新准则，这是适度系统增量的完整职责归位，
+不是系统净精简；没有第二套机制退出不再作为单独否决条件，原native IO不重计。
+
+原七载体97节点：旧96过/1既有库存失败145.43s，实际同96过/同1失败150.54s；0error/skip。
+失败是原expected inventory未豁免A179/A180已接受的两个optional文件，不是新模块。
+随后仅在原LHS optional减集增加这两个确切路径，RHS/扫描/断言/route/门禁不增，
+不要求两文件存在；原required缺失或未知文件仍失败。该范围缩减原节点单独1过3.88s，
+不是声称完整97节点最后重跑全绿。初97/1失败完整保留，test成本净+4行另计。
+
+另七项树外受控port故障观察及一项原真实持久化重叠节点：旧8过6.89s/实际8过18.74s；
+七JSON错误/cause/context/suppress/group children、实例/registry状态、调用顺序及重试相同。
+覆盖partial load、unregister child/registry失败、fence失败、child exception/cancel分组、
+真实parent Task.cancel于gather及to_thread注册取消后native port完成而未发布child。
+这是实际协调程序+受控边界观察，不是额外native Store/OS进程取消证明；重叠节点不重复计。
+初旧观察6过2失败因stub fingerprint无效，改树外夹具为原合格64字符后重跑；初XML保留。
+生产测试/fixture未加新场景；树外观察脚本168行及API/冷导入检查23行另计，不进入PR gate。
+
+父来源守卫5模块：旧193/实际202声明callables，主各97nodes/194checks；本地各8/16另计，
+scope缩减单节点1/2另计。路径/SHA+19递归code字段只覆盖父进程声明函数，不证子进程来源。
+23逆AST核全部22旧方法及旧Core非import体；三个独立视角另核实际代码/成本/有限证据。
+16公开signature/resolved hints和cold530个模块名集合相同；私MRO/qualname/async帧及class
+annotations演进，不承诺任意私global或class-wide反射。mypy两源follow-imports=silent及
+Ruff/格式通过；原动态方法未全部严格类型检查。旧root缺目录但存witness、Windows
+native分支按源码保持，本地Linux证据不充native Windows覆盖。
+
+全2061源仅两原源变化，其余2059 SHA/行同；Code434源109629、距15K94629；
+Harness365284/HarnessTUI29466/HarnessWork8332/AppHost19887；系统660113，排GUI独立
+4524后655589；C02为31源8172。三视角与实施owner接受本批有限范围，完整P1–P4、
+KD003/KD011及≤15K仍开放。证据保存树外a202-workspace-catalog；不将98判永久保留下界。
+
 ## A201 完整private Journal持锁/存储scope归原Journal（2026-11-15）
 
 原G10 Code Journal保持唯一选择权威、原Record/Snapshot/Error/codec、状态/代际/历史/
