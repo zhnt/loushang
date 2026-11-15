@@ -1,5 +1,36 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A197 四类剩余记录的中性字段契约去重（2026-11-15）
+
+Checkpoint、Windows history join、activation base V2及provisioning retained attempt四类
+共44个有效字段，保7个Code名义类型覆写，删除37份中性重复声明。复用原Core方法基类的
+标准schema-only dataclass，保持原空slots；Code仍持有原physical slots、生成构造函数、
+FQN、profile、schema及原验证/codec方法。不引入新记录框架或执行机制。
+
+全税raw=uniform：Code558→519（−39），Harness1073→1080（+7），系统−32。
+必要运行时导入`_Record as _Record`计入成本：生成的Code构造函数须在Code globals中
+解析继承的字符串注解。默认值未变，A196同模块的另两完整类定义逐字保护。
+Code ownannotations缩减、继承字段表增加8个ClassVar pseudo-fields及Core dataclass/
+frozen setter是明确元数据演进，不承诺原始反射信息全等。
+详见[四契约设计](key-designs/remaining-semantic-record-field-contract-convergence.md)。
+
+原10模块旧1138过149.06s，实际冻结八源后同1138过161.84s，0fail/error/skip；不累计覆盖。
+原public-values939、checkpoint translation1、target/persisted/cutover15、wire/旧pickle12及
+受控reader171，原fixture与断言未改，12份fixture逐SHA不变。旧pickle仅原观察覆盖的
+protocol4范围；不称全部四类任意协议、原生Windows或全PR矩阵通过。
+父进程来源守卫10模块（八改源加原codec/schema）、54声明callable、各1138nodes/
+2276前后checks；路径/SHA与19递归code字段约束不覆盖生成函数或子进程。
+四个构造函数的get_type_hints另进程有限检查解析结果相同，命令/PYTHONPATH/退出码
+另记；该JSON不含模块路径/SHA，不用pytest守卫替它作同进程来源证明。
+实际project mypy八源/Ruff通过；无新增test/probe/oracle/fixture/gate。
+
+2059源仅八源变，其余2051 SHA/行同；当前source659752，排GUI独立4524后655228。
+Code434源110202、距15K95202，Harness364520/HarnessTUI29466/HarnessWork8332/
+AppHost19717；C07为112源21047。三设计/实际视角有界接受，完整P1–P4/KD003/KD011
+仍开放。后续按用户要求重排大块完整职责；25类原ownannotations固定观察不硬套本形状。
+A198对compaction四源440行仅源核：执行已Core，现保产品内容与公开绑定，不新增计益，
+也不把440行认定为永久下界。
+
 ## A196 六流中性字段契约单一声明（2026-11-15）
 
 六Windows semantic base原有46有效字段同时写在Code值类与Core方法基类。现复用原

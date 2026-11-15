@@ -36,6 +36,7 @@ def _name(attempt_id: str) -> str:
     return f"{_PREFIX}{attempt_id}.jsonl"
 
 
+@dataclass(frozen=True, init=False, repr=False, eq=False)
 class _WindowsProvisioningRetainedMethods:
     __slots__ = ()
     attempt_id: str
