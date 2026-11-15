@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Iterable
 from contextlib import suppress
-from typing import Protocol
+from tempfile import TemporaryDirectory as _TemporaryDirectoryCleanup
+from tempfile import mkdtemp
+from typing import Protocol, cast
 
 from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 
@@ -151,3 +153,25 @@ __all__ = [
     "retain_session_construction_failure",
     "run_cleanup_steps",
 ]
+
+
+class ExplicitTemporaryDirectory:
+    """Temporary root with no GC finalizer and retryable explicit cleanup."""
+
+    def __init__(self, *, prefix: str) -> None:
+        self.name = mkdtemp(prefix=prefix)
+        self._cleaned = False
+
+    def cleanup(self) -> None:
+        if self._cleaned:
+            return
+        with suppress(FileNotFoundError):
+            # Reuse the stdlib's read-only/reparse-aware deletion routine
+            # without constructing TemporaryDirectory (and therefore without
+            # registering its weakref finalizer).
+            cleanup_tree = cast(
+                Callable[[str], None],
+                getattr(_TemporaryDirectoryCleanup, "_rmtree"),
+            )
+            cleanup_tree(self.name)
+        self._cleaned = True
