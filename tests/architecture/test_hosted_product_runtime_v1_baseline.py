@@ -688,7 +688,10 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
                 if imported == "loushang.apphost" or imported.startswith("loushang.apphost.")
             }
             - (
-                {execution_work + "._DeferredSessionControl"}
+                {
+                    execution_work + "._DeferredSessionControl",
+                    execution_work + "._HostedApprovalPresentation",
+                }
                 if path == Path("src/loushang/coding/hosted_resume.py")
                 else set()
             )

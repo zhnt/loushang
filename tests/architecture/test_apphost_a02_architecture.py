@@ -164,7 +164,10 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
                 if imported == "loushang.apphost" or imported.startswith("loushang.apphost.")
             }
             - (
-                {execution_work + "._DeferredSessionControl"}
+                {
+                    execution_work + "._DeferredSessionControl",
+                    execution_work + "._HostedApprovalPresentation",
+                }
                 if path == Path("src/loushang/coding/hosted_resume.py")
                 else set()
             )

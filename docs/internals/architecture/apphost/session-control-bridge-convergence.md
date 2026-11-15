@@ -103,3 +103,25 @@ A02/V1仅exact路径/exact新member观察侧减集，原RHS/scanner/133assert不
 单调放宽无新必需条件；外部观察/API支持315/100行另计。三实际视角后，实施owner `/root`
 核终态作本片有界接受；当前Goal按后续用户准则允许必要适度增长，旧A20预算为历史，
 本批+26不是系统精简。当前Code108090/系统661356，15K差93090，完整Goal仍active。
+
+## 7. A217两条Hosted审批展示程序共用
+
+Current：原session_control新增固定同对象_HostedApprovalPresentation，普通与Deferred
+Code binding共用完整present/dismiss及发布回滚程序。原Broker/Resolver/Session批准权威
+直接复用，不新增broker/决定状态；两个binding各保独立map，Code仅在原构造/reply/close
+点分配/lookup/成功clear，及五class facts与晚dispatcher getter。没有第二owner/Task/锁。
+
+Real发布try涵盖map写后dispatcher lookup/call/await，BaseException回滚；Deferred失败
+保map。dismiss快照逐匹配先pop再await、首错停；reply active优先/成员检查短路、原abort
+路径与关闭/激活/资源结清均保留。旧presenter可撤回原Deferred map，新Real不迁移它。
+
+Code−58raw/−75uniform，AppHost+72，系统+14raw/−3uniform；17行旧格式差另列。
+原/新同序90节点各89过/1原skip，32外部冻结观察含于其中；三实源视角、Ruff、聚焦
+mypy通过。两class原18/22方法有效元数据、空实例布局/995导入名同；私MRO/方法origin/
+own-classdict自然演进，classpickle仅即时roundtrip。probe受控端口与dispatcher真实取消
+不代完整binding/native/全部CI；没有compiledguard。两既有gate仅exact观察减集放宽，
+原RHS/scanner/133assert不变，测试+6；observer/API支持118/30行另计。
+
+源码账本661370含GUI测试/support4524，生产656846；Code108032/Harness367396/
+AppHost20629，15K差93032。实施owner `/root` 在三独立设计与实源视角后作本族有界
+接受，完整Goal仍active；详细失败历史、成本与验证限制见Coding执行记录A217。

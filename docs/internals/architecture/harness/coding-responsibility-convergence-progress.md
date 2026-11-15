@@ -1,5 +1,57 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A217两条Hosted审批展示程序去重（2026-11-15）
+
+承接clean 9b8756250，fresh fetch main仍4de7d9251且为祖先；方法仍clean local
+master0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。完整Real/Deferred binding与真实
+Broker/Resolver/Session/AppService消费者经三视角源核：既有批准权威全部直接复用，
+opaque interaction-ID→action展示映射不由Broker或AgentSessionApprovalRuntime代管。
+
+原AppHost session_control新增固定同对象presentation基类，两条完整present/dismiss
+程序归一。每个原binding仍持自己的唯一map；Code在原构造点分配、原reply点lookup、
+原close成功末尾clear，这些薄接入未称迁出。五class profile事实与晚dispatcher getter
+全计，不增加实例profile字段、Protocol/T/Task/锁/第二broker或决定存储。
+
+Real插map后，在try内晚取dispatcher并发布，BaseException含取消回滚；Deferred原样
+失败保map。dismiss保tuple快照、每项先pop再晚取dispatcher/await、首错停止、不补偿。
+两reply保active优先/允许outcome与原不同短路顺序，Real经Session处理abort，Deferred
+直接resolver；激活新Real仍有独立map，旧presenter可回到原Deferred map撤回，不转移。
+close Task/重试、注册时点、Resume准入/epoch/effects/提交与资源关闭政策全部原AST同。
+
+完整三源Code−58raw/−75uniform（Real696→659、Deferred711→690），AppHost700→772
+加72，系统+14raw/−3uniform。17行差为旧Deferred排版差，不冒机制删行或raw系统净减。
+两请求/撤回算法实际共用，接口成本相称；原已共享批准机制不重复计收益。
+
+旧/新同序90节点均89过/1原Windows条件skip，含32树外冻结行为观察，不重复相加。
+原Broker roundtrip/close、Hosted discovery/Resume/model与两架构门禁实际回归；probe用
+空__new__及受控dispatcher/responder，覆盖容量、JSON、碰撞、lookup/发送错、真实
+selfTask.cancel、重入dismiss、snapshot及两reply差异。取消不代表整个binding/native；
+abort probe仅路由，不冒真实abort证明。32JSON逐byte同，异常仅比较类型名/消息；
+freeze为assert-not-exists后write_bytes，非XB。两个record_property既有warning保留。
+
+两class原18/22方法有效签名/默认/注解/hints/doc、空实例布局及995导入模块名清单同。
+class pickle仅各phase当前roundtrip，不是旧method/instance pickle兼容证明。私MRO、
+两继承方法origin/own-classdict/栈帧自然演进；Core共享RuntimeEvent cast对Real为新增
+typing运算，不作逐instruction等价。API/probe自身未嵌source/compiled guard。
+
+首直接mypy扩大检查导入依赖报256项/10文件（含本稿3个Callable绑定错误）；改为
+type(self)读staticmethod class facts修正三项。并发另一mypy进程139退出无类型结论，
+不推断原因；顺序隔离cache后，按项目follow-imports=silent三shadow及三安装源均过，
+Ruff五文件过。没有通过新增cast/ignore/Any掩盖该错误。
+
+A02/V1只在exact Resume既有观察减集增exact新member，原49/84assert、RHS/scanner
+与其它路径逆AST同，测试净+6；单调放宽，无新gate/route/平台。observer118/API30行
+另列支持成本，其它树外构建/证明工具另计。有限三实源视角接受不代全部选定CI或平台。
+
+源码账本2063份仅3变/2060同；该继承口径包含31份GUI测试/support4524行，账本总
+661370；分开后实际生产2032源656846行，不能称扣除全部GUI（GUI全体19274行）。
+Coding434源108032、Harness367396、AppHost20629；C02为31源7925，15K差93032。
+历史661356同样是含GUI测试的账本口径，不改写旧证据。P1–P4仍partial，完整Goal active。
+后续核C03 new/resume/fork/reopen及replacement失败结清完整族，先复用现有Session/
+Transcript owners，不重启A200/A209高税旧形，不把整文件行数当删行预算。
+树外a217-hosted-approval-presentation保存三原件/候选/完整成本/旧新XML/冻结观察/API/
+三独立设计与实源报告；本地提交交付，未推送。
+
 ## A216 deferred control完整生命周期归原AppHost（2026-11-15）
 
 承接520ebcef5的clean树；本轮fresh fetch main仍4de7d9251且为祖先。方法为clean local

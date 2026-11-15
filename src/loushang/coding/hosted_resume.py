@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +18,7 @@ from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.apphost.integrations.session_control import (
     _DeferredSessionControl,
     _HostedAgentExecutionWork,
+    _HostedApprovalPresentation,
 )
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -105,8 +105,17 @@ class _DeferredHostedControlV1(_DeferredSessionControl):
         await self._binding.set_model(selection)
 
 
-class CodingDeferredHostedSessionV1:
+class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
     """One AppHost binding from detached history through first activation."""
+
+    _approval_action = "Resume approval"
+    _approval_limit = staticmethod(lambda: _MAX_INTERACTIONS)
+    _approval_text_limit = staticmethod(lambda: _TEXT_LIMIT)
+    _approval_id = staticmethod(lambda: token_hex(16))
+    _approval_publish_rollback = False
+
+    def _approval_dispatcher(self) -> Callable[[RuntimeEvent[object]], Awaitable[None]]:
+        return self._control.emit
 
     def __init__(
         self,
@@ -401,36 +410,6 @@ class CodingDeferredHostedSessionV1:
         if action_id is None or mapped is None:
             return False
         return await self._approval.handle_result(action_id, outcome=mapped)
-
-    async def _present_approval(self, request: dict[str, object]) -> None:
-        action_id = request.get("action_id")
-        if not isinstance(action_id, str) or len(self._interactions) >= _MAX_INTERACTIONS:
-            raise RuntimeError("hosted_approval_unavailable")
-        text = "\n".join((
-            str(request.get("action", "Resume approval")),
-            str(request.get("risk", "")),
-            json.dumps(request.get("arguments", {}), ensure_ascii=False, sort_keys=True),
-        ))
-        if len(text) > _TEXT_LIMIT:
-            raise RuntimeError("hosted_approval_too_large")
-        interaction_id = token_hex(16)
-        self._interactions[interaction_id] = action_id
-        await self._control.emit(cast(RuntimeEvent[object], {
-            "type": "tool_approval_requested",
-            "hosted_presentation": True,
-            "interaction_id": interaction_id,
-            "text": text,
-        }))
-
-    async def _dismiss_approval(self, action_id: str) -> None:
-        for interaction_id, pending in tuple(self._interactions.items()):
-            if pending == action_id:
-                self._interactions.pop(interaction_id, None)
-                await self._control.emit(cast(RuntimeEvent[object], {
-                    "type": "tool_approval_resolved",
-                    "hosted_presentation": True,
-                    "interaction_id": interaction_id,
-                }))
 
     async def activate(
         self,

@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Callable
+import json
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, cast
 
 from loushang.ai.model import model_selection_ref, normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
@@ -698,3 +699,74 @@ class _DeferredSessionControl:
         if self._delegate is None:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return self._delegate
+
+
+# Presentation aliases are independent of the existing approval broker authority.
+class _HostedApprovalPresentation:
+    _interactions: dict[str, str]
+    _approval_action: ClassVar[str]
+    _approval_limit: ClassVar[Callable[[], int]]
+    _approval_text_limit: ClassVar[Callable[[], int]]
+    _approval_id: ClassVar[Callable[[], str]]
+    _approval_publish_rollback: ClassVar[bool]
+
+    def _approval_dispatcher(self) -> Callable[[RuntimeEvent[object]], Awaitable[None]]:
+        raise NotImplementedError
+
+    async def _present_approval(self, request: dict[str, object]) -> None:
+        action_id = request.get("action_id")
+        if (
+            not isinstance(action_id, str)
+            or len(self._interactions) >= type(self)._approval_limit()
+        ):
+            raise RuntimeError("hosted_approval_unavailable")
+        text = "\n".join(
+            (
+                str(request.get("action", self._approval_action)),
+                str(request.get("risk", "")),
+                json.dumps(
+                    request.get("arguments", {}), ensure_ascii=False, sort_keys=True
+                ),
+            )
+        )
+        if len(text) > type(self)._approval_text_limit():
+            raise RuntimeError("hosted_approval_too_large")
+        interaction_id = type(self)._approval_id()
+        self._interactions[interaction_id] = action_id
+        if self._approval_publish_rollback:
+            try:
+                await self._publish_approval(interaction_id, text)
+            except BaseException:
+                self._interactions.pop(interaction_id, None)
+                raise
+        else:
+            await self._publish_approval(interaction_id, text)
+
+    async def _publish_approval(self, interaction_id: str, text: str) -> None:
+        # Resolve the real dispatcher only after inserting the original alias.
+        await self._approval_dispatcher()(
+            cast(
+                RuntimeEvent[object],
+                {
+                    "type": "tool_approval_requested",
+                    "hosted_presentation": True,
+                    "interaction_id": interaction_id,
+                    "text": text,
+                },
+            )
+        )
+
+    async def _dismiss_approval(self, action_id: str) -> None:
+        for interaction_id, pending in tuple(self._interactions.items()):
+            if pending == action_id:
+                self._interactions.pop(interaction_id, None)
+                await self._approval_dispatcher()(
+                    cast(
+                        RuntimeEvent[object],
+                        {
+                            "type": "tool_approval_resolved",
+                            "hosted_presentation": True,
+                            "interaction_id": interaction_id,
+                        },
+                    )
+                )
