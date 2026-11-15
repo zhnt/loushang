@@ -580,9 +580,14 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 A217计量口径：2063源账本661370含31份GUI测试/support4524行，生产2032源656846；
 Code108032/Harness367396/AppHost20629，系统本批raw+14，不作净减。
 
-A218当前：Code107998/Harness367448/AppHost20629；2063源账本661388含GUI测试/support4524，
+A218当时：Code107998/Harness367448/AppHost20629；2063源账本661388含GUI测试/support4524，
 生产2032源656864。Code−34/系统+18 raw=uniform，原97行Writer已共享获取机制不重计。
 
 A219四源2460行池实核及Windows完整358span两源试型−228/+451/sys223不采用；8roles/7T/
 wide profile税不值，非功能否决/永久领域下界。原POSIX/receipt已Core不重计。全部2063
-源SHA/行仍A218，当前Code107998/Harness367448/AppHost20629/生产656864，收益0。
+源SHA/行当时仍A218，Code107998/Harness367448/AppHost20629/生产656864，收益0。
+
+发布验证修正两条反向TYPE依赖，3私有结构role共10成员成本+32；完整legacy重捕获移出
+无发布能力kernel并复用原打包器，私文件与全部import成本+17，Code行数与操作体不变。
+合计+49计入Harness，不计迁移收益。当前Code107998/Harness367497/AppHost20629，
+2064源账本661437含GUI测试/support4524，生产2033源656913；验证、私注解及FQN变化见执行记录。

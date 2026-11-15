@@ -60,7 +60,7 @@ def reacquire_coding_legacy_local_plugin_wheel(
         or expected_dependency_lock.python_distributions
     ):
         raise ValueError("Legacy Plugin dependency closure is unsupported")
-    from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source import (
+    from loushang.harness.resources.packages.product_legacy_source_wheel import (
         _reacquire_legacy_local_plugin_wheel,
     )
 

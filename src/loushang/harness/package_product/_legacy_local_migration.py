@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, Literal, Protocol, TypeVar
+from typing import Generic, Literal, Protocol, TypeVar
 
 from loushang.harness.journal import (
     SORTED_UNICODE_JSONL_FORMAT,
@@ -33,10 +33,6 @@ from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
-
-if TYPE_CHECKING:
-    from loushang.harness.config.agent import SettingsManager
-
 
 RecordT = TypeVar("RecordT")
 
@@ -219,11 +215,34 @@ _SOURCE_KEYS = frozenset(
 )
 
 
+class _SourceConsumptionSettings(Protocol):
+    @property
+    def global_settings_path(self) -> Path | None: ...
+
+    @property
+    def project_settings_path(self) -> Path | None: ...
+
+    def transaction(self) -> AbstractContextManager[object]: ...
+
+    def get_session_settings(self) -> Mapping[str, object]: ...
+
+    def get_global_settings(self) -> Mapping[str, object]: ...
+
+    def get_project_settings(self) -> Mapping[str, object]: ...
+
+    def update_settings(
+        self,
+        *,
+        scope: Literal["global", "project"],
+        plugin_sources: tuple[str, ...],
+    ) -> None: ...
+
+
 @dataclass(frozen=True)
 class _SourceConsumptionProtocol:
     epoch_runtime: PackageProductPosixFencedRuntimeOwner
     acceptance: _AcceptedSource
-    settings: SettingsManager
+    settings: _SourceConsumptionSettings
     frozen: _FrozenSources
     reopen_acceptance: Callable[[str], _AcceptedSource | None]
     verify_loaded_settings: Callable[
@@ -361,7 +380,7 @@ class _SourceConsumptionProtocol:
 
     def _live_state(
         self,
-        settings: SettingsManager,
+        settings: _SourceConsumptionSettings,
         configured: _ConfiguredSource | None,
         frozen: _FrozenSources,
         settled_others: frozenset[str],
@@ -454,7 +473,7 @@ class _SourceConsumptionProtocol:
 
     @staticmethod
     def _settings_paths(
-        settings: SettingsManager, error_type: type[Exception]
+        settings: _SourceConsumptionSettings, error_type: type[Exception]
     ) -> tuple[Path, Path]:
         global_path = settings.global_settings_path
         project_path = settings.project_settings_path

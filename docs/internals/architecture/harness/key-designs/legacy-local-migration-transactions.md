@@ -51,8 +51,11 @@ raw=uniform。全部Code门面、typing、compat与绑定成本计入；1T、3�
 
 私有recipe增加调用帧；私有FrozenSources的FQN/readonly注解变化，内部Code配置值仍
 是原对象，没有第二份事实复制。recipe在入口绑定codec/error/预算，不承诺任意中途突变
-私有globals的观察等价。SettingsManager仅TYPE_CHECKING导入，避免接受模块冷启动
-无谓引入配置运行时。原公开record类完整AST、五公开签名和两领域helper原样。
+私有globals的观察等价。A199当时的SettingsManager为TYPE_CHECKING导入；发布整分支
+复核发现它仍造成反向静态依赖，改用消费owner七成员私结构端口，原对象和事务操作
+不变，全部typing成本另增19行（Core480→499）。既有ResourceRootSettingsManager不含
+事务/path/分层读取和更新契约，不能直接复用。私dataclass字段/构造及两私方法注解
+演进，不承诺全部resolved hints相同。原公开record类、五公开签名和两领域helper原样。
 
 ## 验证与剩余
 

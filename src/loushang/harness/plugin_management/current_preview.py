@@ -22,8 +22,8 @@ if TYPE_CHECKING:
     from loushang.harness.capabilities.contribution_admission import (
         OwnerContributionAdmissionRecord,
     )
-    from loushang.harness.resource_catalog.product_snapshot_source import (
-        ProductSelectedResourceInput,
+    from loushang.harness.plugin_management.package_product import (
+        PackageProductSelectedRootSnapshotV1,
     )
     from loushang.harness.resources._catalog_records import ResourceCatalogSnapshot
     from loushang.harness.resources.types import ResourceBundle
@@ -282,9 +282,22 @@ def project_plugin_current_preview(
     return {"correlationId": request.correlation_id, **document}
 
 
+class _CurrentSelectedManifest(Protocol):
+    @property
+    def snapshot(self) -> PackageProductSelectedRootSnapshotV1: ...
+
+
+class _CurrentProductResourceInput(Protocol):
+    @property
+    def admission(self) -> OwnerContributionAdmissionRecord: ...
+
+    @property
+    def selected_manifest(self) -> _CurrentSelectedManifest: ...
+
+
 def project_current_product_resource_selections(
     catalog: ResourceCatalogSnapshot,
-    product_inputs: tuple[ProductSelectedResourceInput, ...],
+    product_inputs: tuple[_CurrentProductResourceInput, ...],
 ) -> list[PluginCurrentResourceSelectionV1]:
     """Project exact Catalog Product selections without acquiring live authority."""
     from loushang.harness.resources._catalog_records import VerifiedPluginResourceOrigin

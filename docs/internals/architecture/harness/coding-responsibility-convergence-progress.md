@@ -1,5 +1,59 @@
 # COD-RESP-GOAL-002 执行记录
 
+## 发布验证补丁：修正类型依赖与能力边界（2026-11-15）
+
+整分支本地检查先取得GUI127、AI937及Agent167通过，Coding4240过/24原skip/76
+deselect。HarnessTUI首轮1077过/1失败：原无环断言发现A199的PackageProduct→Config
+和A182的PluginManagement→ResourceCatalog两条TYPE_CHECKING边。首次只修前者后，
+原架构文件164过/1失败，保留第二个环的实证；未改扫描器、断言、选择器或门禁。
+
+前者用消费owner私有7成员Settings端口替具体Manager注解，继续传原SettingsManager；
+后者用2私有只读role的3属性复用原admission与PluginManagement RootSnapshot记录，
+替上层Catalog输入注解。既有ResourceRootSettingsManager缺事务/path/分层读取和更新
+合同，不能直接替代。无新adapter实例、状态、运行准入或IO，全部原操作体保留。
+三独立实际源码视角有限接受；方法沿用clean local master
+`0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。逆AST与函数操作码核对不替代运行或全反射等价证明。
+Settings私字段/生成构造和两私方法注解、Core公开投影函数一个参数的类型表达变化
+如实保留；Code公开接口、原DTO与存量记录未改，不承诺任意resolved hints相同。
+
+两源480→499（+19）、397→410（+13），合计生产+32，无Coding删行或迁移收益。
+后续Harness6355过/110skip/4失败发现一处真实能力放置问题和三处陈旧事实清单。
+A168完整legacy重捕获会调用RevisionStore.publish，不能进入capability-free kernel；
+七函数、五预算与TypeVar整体迁到原Resources Packages的product_legacy_source_wheel，
+正常绝对导入原打包器，保它的晚lstat、handle关闭和两层finally，不称纯函数。
+materializer会拉入不相关网络冷依赖，source仅为locator，故采用同owner现有product_
+实现格局；不建新组件/引擎，不留kernel转发壳。Code92行只改原局部import；kernel
+590→375、新私实现232，净+17。私函数FQN/global归属、冷导入多一个模块，以及任意
+后改kernel私packer热替换的观察差异披露；Code公开DTO/准入/签名保持。
+
+发布修复合计生产+49，Coding0，无新增迁移收益。当前Code107998/Harness367497/
+AppHost20629；2064源账本661437含31 GUI测试/support4524，生产2033源656913，15K差92998。
+相对交付基线main，Coding−4141、Harness+5039、AppHost+1528、其余接收组件+262，
+生产净+2688；职责收敛不冒称系统净精简。
+
+五实际源码mypy/Ruff及包依赖文档新鲜度通过；Preview原合同/六冻结观察/真实Catalog
+消费者9过；完整失败HarnessTUI重跑1078过/87deselect，原无环断言通过。原74项legacy
+恢复验证全过（1490.54s），无fail/error/skip；来源与操作体证明单列，不冒称复用了旧SHA守卫。
+类型解环阻断关闭。后续Source/Wheel原载体、23冻结观察、CLI/reopen联合34过；四处
+Harness源契约失败所在载体重跑70过/1失败，剩余为main已有三个AppHost native IO
+importer未登记。三文件及Hosting Windows Service逐字等main4de；只精确允许已被观察
+的原生IO符号子集，不要求文件或符号存在。原禁发布依赖和default-dark断言不动。
+Hosting原515过/56skip/2失败为文件清单陈旧；可选Windows模块仅在存在时纳入检查，
+只对该完整路径放行原ACL模块。AppHost三个接收实现只从observed减去，原required
+集合不增。修正后的原dark节点与两份Hosting载体13过，未新增门禁/扫描覆盖。
+effect库存同扫描器事实重定为146行/163次，不冒称数学单调；四个新增提及是原factory
+及类型/import引用，不是四次新发布。A204 consumer与旧/新Source sink按精确可选位置
+协调，不新增required site/owner。三独立实际视角及实施owner有界接受。
+AppHost3176过/23skip/1源清单失败：原可选Resume判据未含A216/A217两项控制类型；
+仅该精确路径的允许集合加两精确成员，原required集合/断言不增，完整A0载体8过。
+原G8/G9/G10证据各19/16/15过，原JUnit/manifest核验及已安装POSIX canary通过。
+AppService98源静态检查过；与上述广组重叠路径复用，18个独有载体645过/4原skip。
+原CI/Foundation/所选单元范围和两E2E smoke通过；本地原计划检查以完整广组与失败
+载体重放闭合，不把首轮失败日志覆盖。重复路由保包含关系/严格收集与独有样例证据，
+未改远端workflow。平台/原生项依既有Actions与暂停策略，未宣称原生Windows全绿。
+复用此前Coding整组结果；unit_coding仅比同一命令多排除e2e，属已覆盖子集，不重复45分钟。
+用户要求本次commit/push/PR/merge/sync local全部完成后暂停；完整P1–P4仍未完成。
+
 ## A219完整Windows payload试算：当前类型形状不采用（2026-11-15）
 
 承接clean72af9c00f；三视角核POSIX payload789/receipt602/Windows payload498/recovery571

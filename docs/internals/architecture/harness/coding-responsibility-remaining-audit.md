@@ -355,3 +355,8 @@ A219四源完整池实核：Windows payload/registry全形试算Code−228/Core+
 8Protocol/7T/wide profile税不值，Root采两value拒建议、保另一有限验证支持意见，整不采。
 无候选运行/生产收益，全部源仍A218实物；不是将58行effectful恢复准入口称pure或永久
 Code下界。按用户交付后暂停要求不再开新批，完整目标仍未达到。
+
+发布验证修正两条反向类型依赖（+32）及完整legacy重捕获的kernel放置（+17），原运行
+操作体与Coding行数不变；全部+49计Harness，无新增迁移收益。当前Code107998/
+Harness367497/AppHost20629，2064源账本661437含GUI测试/support4524，生产2033源656913；
+15K差仍92998，原P1–P4处置缺口不因发布退出。
