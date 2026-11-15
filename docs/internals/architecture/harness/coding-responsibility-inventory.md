@@ -314,7 +314,7 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 | [package_private_data_restore_journal.py](../../../../src/loushang/coding/package_private_data_restore_journal.py) | C08 | 364 | M | C08 插件私有数据生命周期 | 9d6aea123669 | 192 | 75c1d9a0b286 |
 | [package_private_data_restore_records.py](../../../../src/loushang/coding/package_private_data_restore_records.py) | C08 | 93 | M | C08 插件私有数据生命周期 | 23f5fb8d03a7 | 81 | c4e3b3002ffd |
 | [package_private_data_windows_archive_snapshot.py](../../../../src/loushang/coding/package_private_data_windows_archive_snapshot.py) | C08 | 254 | M | C08 插件私有数据生命周期 | 4c1ca1208e7b | 123 | bec6862c333f |
-| [package_private_data_windows_backup.py](../../../../src/loushang/coding/package_private_data_windows_backup.py) | C08 | 906 | M | C08 插件私有数据生命周期 | 6e8471c49953 | 303 | a7262e1550e9 |
+| [package_private_data_windows_backup.py](../../../../src/loushang/coding/package_private_data_windows_backup.py) | C08 | 906 | M | A210完整GC/目录/历史证据读取归原PackageProduct；保DTO/构造/命名/hash薄绑定 | 6e8471c49953 | 231 | ff188c9b6840 |
 | [package_private_data_windows_backup_client.py](../../../../src/loushang/coding/package_private_data_windows_backup_client.py) | C08 | 344 | M | C08 插件私有数据生命周期 | 602a215d2e2d | 344 | 602a215d2e2d |
 | [package_private_data_windows_backup_expiry_journal.py](../../../../src/loushang/coding/package_private_data_windows_backup_expiry_journal.py) | C08 | 427 | M | C08 插件私有数据生命周期 | 2f103b9d42fa | 314 | c81ff731f872 |
 | [package_private_data_windows_backup_expiry_owner.py](../../../../src/loushang/coding/package_private_data_windows_backup_expiry_owner.py) | C08 | 446 | M | C08 插件私有数据生命周期 | da3e5ffd2289 | 81 | 1bfcfe7f6a80 |
@@ -530,12 +530,14 @@ A72的[全量剩余职责与保留账](coding-responsibility-remaining-audit.md)
 ## 当前分组计量与剩余处置
 
 2026-11-15以`4de7d9251`主线及A156–A158、A160、A162、A163、A165、A167、A168、A171、A173、A174、A176、A179、A180、A181、A182、A185及A187当前实现重核全部当前列；原新增4个主线文件的历史归属说明保留。
-当前Coding 108598行，完整≤15K目标差93598行；A208两Tool owner校验/绑定/capture完整共用，Code−72/Harness+88/系统+16（raw=uniform），原stage/dispose不重计；A207公开SDK default三整程序归原PM，Code−128/Harness+181/系统+53（raw=uniform），原119与另16局部对照通过；A206完整factory/release归原Product，Code−63/Harness+114/系统+51（raw=uniform），两lookup归一；原142及另15本地对照通过；A205完整受管命令寿命归原AppHost，Code−147/AppHost+439/系统+292（uniform+192），原managed owner不重计；A204完整Worker authority归原Package Product，Code−514/Harness+944/系统+430（uniform+432），原native/History不重计；A203完整连接配置流程归原AppHost并继续复用Config writer，Code−107/AppHost+123/系统+16（uniform+14），无新运行对象/协议/门禁；A202完整工作区集合协调归原AppHost，Code−85/AppHost+170/系统+85（uniform+52），原Registry与child Transcript IO直接复用，不重计；A201完整private Journal持锁/读写/等待scope归原Journal，Code−148/Harness+284/系统+136，原34及另5局部对照通过，当前C05为6源3417；A199接受/来源消费完整事务归原Package Product，Code−340/Harness+480/系统+140，原74节点实际过，当前C09为34源8925；A197四类完整中性字段契约复用原Core，Code−39/Harness+7/系统−32，原1138实际过，当前C07为112源21047；A196六流中性字段共用原Core空slots/schema基类，Code−46/Harness+12/系统−34，原212实际过，C07为112源21086；A195四完整工作区身份guard共用原Workspace.paths，退出三份重复，Code−29/Harness+21/系统−8，原34实际过，C06为26源4444/C08为31源6665；A190完整屏幕SDK预热寿命归原HarnessTUI，Code−83/HarnessTUI+124/系统+41（uniform39），130不同项129过/1既有G11失败未改，C18为5源791；A189两条完整Workspace观察归原Git家族，Code−71/Harness+102/系统+31，原118实际通过，C12为25源6858；A187完整Goal寿命归原HarnessWork Session Goal，Code−88/HarnessWork+138/系统+50（统一格式+42），Harness目录不增；A185完整27行POSIX删除checkpoint归原Journal，Code−13/Harness+41/系统+28（含Code doc+1），不重计已共享physical remove；A182完整Catalog证据投影归原current_preview，Code−76/Harness+115/系统+39，不含open/编译或既有IO；A181完整按key的Process client实例寿命归原Process，Code−116/Harness+268/系统+152，非净精简；A180完整前台客户端启动/交接/关闭及Runner恢复归AppHost，Code−116/AppHost+275/生产系统+159，非系统净精简；A179完整Hosted prefix及失败清理归AppHost，Code−128/AppHost+224/生产系统+96，非系统净精简；A176完整Session profile退休归原owner，Code−95/Core+164/生产系统+69；A174根关闭及Continuity绑定寿命归原owner，Code−153（含1行导入布局）/Core+301/生产系统+148，非净精简；A173完整兼容发布authority归Config，Code−158/Core+246/系统+88，属于职责迁移非净精简；A171完整进程JSON-RPC传输归Process，Code−274/Core+391/系统+117；A169完整authority原型+580拒绝，A170/A172只读调查收益0；A168完整原Source重捕获custody归Resources并共享两Wheel核，Code−181/Core+234/系统+53，非系统精简；A167读取族真实重复归一，Code−43/Core+22/系统−21；A166通用mixin原型拒绝、收益0；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
+当前Coding 108526行，完整≤15K目标差93526行；A210完整Windows保留读事务归原PackageProduct，Code−72/Harness+151/系统+79（raw=uniform），原Archive/Restore/Expiry不重计；A208两Tool owner校验/绑定/capture完整共用，Code−72/Harness+88/系统+16（raw=uniform），原stage/dispose不重计；A207公开SDK default三整程序归原PM，Code−128/Harness+181/系统+53（raw=uniform），原119与另16局部对照通过；A206完整factory/release归原Product，Code−63/Harness+114/系统+51（raw=uniform），两lookup归一；原142及另15本地对照通过；A205完整受管命令寿命归原AppHost，Code−147/AppHost+439/系统+292（uniform+192），原managed owner不重计；A204完整Worker authority归原Package Product，Code−514/Harness+944/系统+430（uniform+432），原native/History不重计；A203完整连接配置流程归原AppHost并继续复用Config writer，Code−107/AppHost+123/系统+16（uniform+14），无新运行对象/协议/门禁；A202完整工作区集合协调归原AppHost，Code−85/AppHost+170/系统+85（uniform+52），原Registry与child Transcript IO直接复用，不重计；A201完整private Journal持锁/读写/等待scope归原Journal，Code−148/Harness+284/系统+136，原34及另5局部对照通过，当前C05为6源3417；A199接受/来源消费完整事务归原Package Product，Code−340/Harness+480/系统+140，原74节点实际过，当前C09为34源8925；A197四类完整中性字段契约复用原Core，Code−39/Harness+7/系统−32，原1138实际过，当前C07为112源21047；A196六流中性字段共用原Core空slots/schema基类，Code−46/Harness+12/系统−34，原212实际过，C07为112源21086；A195四完整工作区身份guard共用原Workspace.paths，退出三份重复，Code−29/Harness+21/系统−8，原34实际过，C06为26源4444/C08为31源6665；A190完整屏幕SDK预热寿命归原HarnessTUI，Code−83/HarnessTUI+124/系统+41（uniform39），130不同项129过/1既有G11失败未改，C18为5源791；A189两条完整Workspace观察归原Git家族，Code−71/Harness+102/系统+31，原118实际通过，C12为25源6858；A187完整Goal寿命归原HarnessWork Session Goal，Code−88/HarnessWork+138/系统+50（统一格式+42），Harness目录不增；A185完整27行POSIX删除checkpoint归原Journal，Code−13/Harness+41/系统+28（含Code doc+1），不重计已共享physical remove；A182完整Catalog证据投影归原current_preview，Code−76/Harness+115/系统+39，不含open/编译或既有IO；A181完整按key的Process client实例寿命归原Process，Code−116/Harness+268/系统+152，非净精简；A180完整前台客户端启动/交接/关闭及Runner恢复归AppHost，Code−116/AppHost+275/生产系统+159，非系统净精简；A179完整Hosted prefix及失败清理归AppHost，Code−128/AppHost+224/生产系统+96，非系统净精简；A176完整Session profile退休归原owner，Code−95/Core+164/生产系统+69；A174根关闭及Continuity绑定寿命归原owner，Code−153（含1行导入布局）/Core+301/生产系统+148，非净精简；A173完整兼容发布authority归Config，Code−158/Core+246/系统+88，属于职责迁移非净精简；A171完整进程JSON-RPC传输归Process，Code−274/Core+391/系统+117；A169完整authority原型+580拒绝，A170/A172只读调查收益0；A168完整原Source重捕获custody归Resources并共享两Wheel核，Code−181/Core+234/系统+53，非系统精简；A167读取族真实重复归一，Code−43/Core+22/系统−21；A166通用mixin原型拒绝、收益0；A165整段kill-switch事务去重，Code/系统−15、Core0；A163恢复公开SDK边界，Code/系统+68、Core0，不计精简；A162完整暂存到lease交接Code−61/Core+90/系统+29，非去重；A160原记录遍历直接复用，Code/系统−18，Core0；A159缓存原型拒绝、收益0。当前列更新不代表候选处置已接受。A155完整修复执行与runtime释放归原ProductRuntime，
 Code−93/Core+119/系统+26；当前两源及验证边界见执行记录。
 C01/C02仍需区分已共享机制与产品装配，C07四类Windows退休流程须保各自证明和恢复顺序。
 后续以完整程序及全部适配成本决定接管，源码减少不作为领域职责已退出的替代证据。
 
 
+A210按434份实物重核全部当前列和分组；修正此前分组合计滞后多计1116行，
+该修正不计生产精简，生产实际减量仅72行。
 当前按原C01–C28分组共434文件；每组物理行不是可删除预算。
 上表K/R/M等为继承的逐文件建议，不把已减行、薄外观或整组名称当作最终领域化证明。
 P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删除须逐完整场景核验。
@@ -549,7 +551,7 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C05 | 6 | 3,417 |
 | C06 | 26 | 4,444 |
 | C07 | 112 | 20,533 |
-| C08 | 31 | 6,665 |
+| C08 | 31 | 6,593 |
 | C09 | 34 | 8,925 |
 | C10 | 12 | 5,185 |
 | C11 | 26 | 9,215 |
@@ -570,4 +572,4 @@ P1–P4均保持partial；已接管机制直接复用，其余保留/迁移/删�
 | C26 | 2 | 52 |
 | C27 | 2 | 50 |
 | C28 | 5 | 5 |
-| 合计 | 434 | 109,714 |
+| 合计 | 434 | 108,526 |

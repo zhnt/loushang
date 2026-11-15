@@ -1,7 +1,7 @@
 # Coding 全量剩余职责与保留成本复核
 
-本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187、A189、A190、A195、A196、A197、A199、A201、A202、A203、A204、A205、A206、A207、A208源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
-108598行，距15K仍93598行。下面28组不是可删除预算或最终保留成本。
+本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187、A189、A190、A195、A196、A197、A199、A201、A202、A203、A204、A205、A206、A207、A208、A210源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
+108526行，距15K仍93526行。下面28组不是可删除预算或最终保留成本。
 A156托管服务完整控制已归原AppHost；Coding保产品身份/政策与错误薄适配。
 A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
@@ -61,6 +61,9 @@ Code−63/Harness+114/系统+51（raw=uniform），保完整Selection领域政�
 A207保留公开SDK default的3整方法归原PM，Code−128/Harness+181/系统+53（raw=uniform）；
 Code保12字段/名义Lifecycle与8原policy事实，原119与另16局部对照通过。当前C01为22源12488，
 不称当前Base生产路线或208/198装配双程序已迁出，整C01仍开放。
+A210完整Windows备份保留读事务归原Package Product，Code−72/Harness+151/系统+79
+（raw=uniform），C08为31源6593。原历史/归档/GC机制复用，不称去重；A184历史拒绝不回写，
+此次按适度增长准则接受完整职责改善。原平台/数据/失败合同仍保，不关闭C08或P1–P4。
 A208两实际Arch/LSP owner完整准入/绑定/capture校验归原Session工具绑定，六实例共用三程序，
 Code−72/Harness+88/系统+16（raw=uniform），保名义字段/工具内容/原family；原stage/dispose
 不重计。当前C13为21源5228、C14为13源3571，整组与P2仍开放。
@@ -187,7 +190,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C05 Canary及作者验证入口 | 6/3,417 | P1/P3/P4 | 原Worker attempt及托管owner已有接入；A201完整private Journal锁/存储scope归Journal，Code保G10状态/代际/历史/准入和真实SDK/CLI验证场景 | 存在真实运行消费者，不能按canary/smoke命名删除；剩余协调须随实际场景替代 |
 | C06 其余根入口与策略 | 26/4,444 | P2/P4 | 混合产品配置、模型/工具选择及既有薄绑定；A195完整workspace身份协议共用原Paths | 逐具体声明/运行路径处置；不整体当领域保留或机械可删 |
 | C07 插件Worker | 112/20,533 | P1 | 五流/Rooted/history/platform/native custody、普通准备/停止/reopen主机制已共享；A165撤销事务及A167读取重复程序归一，Code保产品准入/原读取时序 | A204完整authority及相邻Win opt-in协调已归Core，原A178成本否决保历史；Code保DTO/codec、构造/领域policy和公开门面，余下platform/policy仍需按完整场景核验，不据此关闭整组 |
-| C08 插件私有数据 | 31/6,665 | P4 | 原备份/删除/恢复/过期及A71 lineage已共享，A185完整27行checkpoint统调归原Journal | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
+| C08 插件私有数据 | 31/6,593 | P4 | 原备份/删除/恢复/过期及A71 lineage已共享，A185完整27行checkpoint归原Journal，A210完整Windows保留读事务归PackageProduct | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
 | C09 兼容迁移与快照证据 | 34/8,925 | P4 | 原capture/epoch/receipt等机制已共享，A157首次删除重放三入口合一，A168原Source重捕获/handle/stage custody及双Wheel核归Resources，A199完整接受/来源消费/收据重放归Package Product；存量分类、准入与恢复政策仍在 | 逐受支持状态和恢复入口给退出证明；legacy命名与静态无调用都不足以删支持 |
 | C10 包分发及Product管理 | 12/5,185 | P2/P4 | Package Product等已复用；A182两段Catalog证据投影归原current_preview，A155修复执行/释放归原ProductRuntime，Code保该入口准入/DTO/parent关闭，A206完整factory/release归原Product；其它兼容/fenced装配仍混合 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |
 | C11 CLI | 26/9,215 | P4 | 大量命令调用原owner，A158四条review准备/重开合一，A180完整foreground控制/恢复归AppHost；语法、准入、确认、选择与呈现仍混合 | 同一业务接同一owner；A205完整lmux run/close/probe/native退出已接受，保输出/确认/CAS/期限屏障；语法与领域选择继续核 |
@@ -208,7 +211,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C26 配置/路径兼容导出 | 2/52 | P4 | 原Config owner已复用 | 保产品路径选择与支持中的导出，退出需合同证据 |
 | C27 版本检查 | 2/50 | P4 | 产品更新选择与原公共机制绑定 | 保必要产品选择，不为50行再建服务 |
 | C28 资源命名空间 | 5/5 | P4 | 支持中的Python布局标记 | 保真实加载/导出路径，空壳不是第二引擎 |
-| 合计 | **434/110,470** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
+| 合计 | **434/108,526** | 完整P1–P4 | 全部纳入 | **未完成Goal** |
 
 ## A72保留合同与语法筛查（历史成本，非当前下界）
 

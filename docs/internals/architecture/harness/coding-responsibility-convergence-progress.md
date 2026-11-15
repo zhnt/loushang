@@ -1,5 +1,53 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A210 完整Windows备份保留读事务归原Package Product（2026-11-15）
+
+承接5e3df1452的clean专用任务树；沿A209已fetch的origin/main 4de7d9251祖先，
+不声称本轮再次fetch。方法仍clean local master 0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。
+当前两源逐字等A184 originals。此次按用户明确允许必要适度增长重审完整110行snapshot，
+三设计视角支持完整试用；A184历史拒绝/首稿FD作用域错误保留，不重写成旧已采纳。
+见[完整私有数据设计](key-designs/private-data-lifecycle-convergence.md#a210完整windows保留读事务接入)。
+
+PackageProduct原backup family接初读权威→GC→Desired→ACL/借用FD→原Restore/Expiry
+scan及finally-close→路径身份复核→Archive收据→保守status/trust→GC内摘要→末权威/DTO。
+Code保原public method/两字段/三个懒导入、Installation、两个事务构造/一次原Core scan、
+名字/路径/摘要五窄绑定；不是回借原110行协调体。四readonly角色、两新T及原R、tree/key/
+prefix/label、全部imports/typed facade全计。既有Archive/Restore/Expiry/GC不重复计收益。
+
+两生产源最终Code303→231（−72）、Harness103→254（+151），系统+79，raw=uniform。
+同一原topology函数与Code其它三方法逐字不变；完整逆AST保所有With/Try/Finally嵌套。
+初权威/GC entry不落catch，restore ctor仍在inner scan try外；只OS/ValueError保守降级，
+摘要在catch后GC内，末权威在GC外，失败关闭替换原异常/不新增自动恢复或写入。
+五个薄绑定只保具体名义类型和领域policy，不加新状态、存储、锁或授权。
+
+原七载体旧91过/6.12s，实际同序91过/10.86s；原边界三载体旧71过/134.39s，实际71过/
+196.18s；均零fail/error/skip。另31固定整场景观察+原projection重叠1共32，旧3.08s/实际
+9.76s全过，31JSON逐byte同，总193不同节点而非194。涵盖状态/身份/暂存/重现、权威/
+GC/ACL/原生打开/构造/scan/close/摘要故障及双故障替换、异常链和真实Linux FD结清。
+原Key/Plan/Event/收据、canonical hash与结果DTO实际执行，Windows物理效果受控；
+不充原生Windows、真实archive核验或Task.cancel证明。没有扩大平台/门禁。
+
+首外部探针66455仅配置发现失败exit4（根目录选错，--skip-host-runtime未注册），无收集/
+XML/捕获；补-c pyproject及原projection载体后复用同probe和原选择器，32正常完成。
+原projection只精确迁ACL/路径身份/held身份三个实际挂点，逆还原后整module AST同，
+9条assert不改；测试+4行，三原fixture SHA不变。树外429行观察、API脚本另计，不入gate。
+
+实际mypy两源silent-followimports/disallow-any-generics、Ruff/fullformat三文件、生成依赖
+freshness均过。公开ctor/四method signature+hints/两fields/ownannotations/slots/布局/
+__all__整API JSON同，四旧method pickle identity同；冷加载506模块名字列表同。仅对
+__file__路径作断言，没有同进程compiled guard，不把它冒为live Product可pickle或IO审计。
+
+HEAD工作区plan-only选docs/architecture/coding/harness及host-runtime/Windows等宽路线；
+本批执行上述受影响193节点与静态检查，不声称整分支全PR/原生平台检查已跑齐。
+
+2063生产源仅2改、2061逐SHA/行同；Code434源108526、距15K93526，Harness366762，
+AppHost20449/HarnessTUI29466/HarnessWork8332；系统661050，排GUI独立4524后656526。
+434行逐文件当前列重核；清单汇总旧多计1116、剩余账汇总旧多计1872的滞后均纠正，
+不另算生产精简。C08为31源6593。
+本批是完整职责改善而非系统净减；C08其余以及完整P1–P4均开放。下一先核C01 managed
+Base208+Capability198整装配与A207现有PM seam，不能照搬厚阶段callback或预报406可删。
+树外a210-windows-backup-retention保原件、完整成本、31冻结旧观察、XML与三独立代码视角。
+
 ## A209 完整托管历史custody四源试算：当前形状不采用（2026-11-15）
 
 上一轮A208为真实生产进展，本轮承接9ea66d058的clean任务树；fetch成功，origin/main仍
