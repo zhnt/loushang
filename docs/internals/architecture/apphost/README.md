@@ -263,6 +263,12 @@ their separate existing protocols. Code retains request/platform policy and
 public reexports; this adds no core facade or runtime construction. See the
 [accepted connection-state design](../harness/key-designs/client-connection-state-convergence.md).
 
+A205 adds complete same-object managed command run/close/probe/native retirement
+within the optional integration family. Existing managed owners retain actual IO;
+Code keeps qualification, selection, presentation and UI/Runner bindings. No new
+core facade, command instance or Task engine is introduced. See the
+[managed lifetime design](../harness/key-designs/managed-command-lifecycle-convergence.md).
+
 ## Owns
 
 - AppHost Product/profile contract vocabulary;

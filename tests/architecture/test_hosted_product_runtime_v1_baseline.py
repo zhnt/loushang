@@ -508,6 +508,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "integrations/_canonical_transcript_catalog.py",
         "integrations/_continuity_preparation.py",
         "integrations/_foreground_client_control.py",
+        "integrations/_managed_mux_command.py",
     } == {
         "__init__.py",
         "_ownership.py",

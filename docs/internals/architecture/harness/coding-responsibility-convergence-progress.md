@@ -1,5 +1,51 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A205 完整受管命令生命周期归原AppHost（2026-11-15）
+
+承接8e759f34f的2062源起点；本轮fetch后origin/main仍4de7d9251且为任务祖先，
+archmethod仍clean local master 0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。
+原A193完整静态形状未采用历史保留；本轮按用户允许必要适度增量的准则重新接受完整职责。
+详见[受管命令生命周期设计](key-designs/managed-command-lifecycle-convergence.md)。
+
+八完整程序run、close、probe、pending/snapshot及native父资源退出归现有optional AppHost
+integration家族。35中性状态与4Code绑定仍初始化在同一实际Code对象，无第二command、Task、
+manager或状态索引。直接复用原namespace/service/journal/log/create/start/stop/batch/probe/
+connection owner，不重计其能力。Code保12完整领域方法、准入/确认/选择、实际可失败的输出与
+trace、两个延迟UI绑定和原31行Runner/exit政策；13端口、2结构role、2T全部计入成本。
+现foreground terminal结清/setup合同不同，CloseGroup也会改异常与资源债务顺序，不能直接替换。
+
+raw Code829→682（−147）、AppHost+439、系统+292；统一格式Code1310→1063（−247）、
+Core439、系统+192，100行差为旧紧凑布局而非机制退出。属于完整职责迁移，非系统净精简。
+原nested finally保留：shell/child退出异常会保active/native父资源债务，native_closed仍False；
+close输出在record之前失败仍未记账，同permit正常重入读结果、不再发第二close RPC。
+
+原276节点旧414.13s/实际403.24s全部通过。另两树外故障观察加原help重叠节点，旧3过9.75s、
+实际3过11.01s、最终3过4.54s；共278不同节点。两JSON旧/实际/最终逐字同：受控close输出
+失败后同permit重入，以及真实Task.cancel进入受控terminal await后shell/connection双退出失败。
+后者是实际run加受控依赖，不充真实native cleanup故障或所有子进程来源证明。
+
+如实保留导入格式过程：外部初稿Ruff认为接收模块未安装而要求加两空行；684行稿静态通过并
+运行完整276。安装后Ruff要求删该两空行；该次shell整体0但Ruff失败，不能称全绿。待主测试
+terminal后保存684稿，再删两空行到最终682稿。全module AST及项目Python3.11下42个code对象
+16递归执行字段完全相同，仅排除firstlineno/linetable/lnotab。最终接口、3项观察、Ruff两源/
+新Core format/mypy两源均通过。276并未在最终SHA重跑；用上述等价作明确受限推断，未隐藏失败。
+Code原12紧凑方法未全量format，不能声称整个Code文件format检查通过。
+
+6公开签名/resolved hints及39有序构造字段/绑定复制语义同；environment原本即dict复制，
+不能称同对象。组合冷import/惰性构造模块249→251，仅新integration包及Core；非逐入口/IO审计。
+私MRO、函数module/qualname、解析器frame与private hints演进，不保任意module别名热换或live pickle。
+父来源守卫旧3/实际及最终4模块、62/90声明callables；主各276节点552checks、本地各3/6，
+不覆盖所有globals、生成体、carrier或child来源。原8整操作及构造、12保留方法逆AST证明保留。
+
+两现有架构库存仅optional精确新helper路径，各+1测试源行；无新presence、断言、路由、平台
+或门禁条件。独立逆AST证明去这两项即旧module，原assert/test数不变。树外额外观察脚本140行、
+API观察42行另计，不进入默认PR。三独立设计和实际视角有界接受；兼容观察者初误用系统Python
+3.14的静态比较已保留并以项目3.11重核纠正，不当作Product失败。
+
+全2063源中2061原源未变；Coding434源108861、距15K93861，Harness366228、AppHost20449、
+HarnessTUI29466、HarnessWork8332；系统660851，排GUI独立4524后656327，C11为26源9215。
+证据树外a205-managed-mux-command，完整P1–P4与≤15K仍开放，本批不推定领域下界。
+
 ## A204 完整Worker收据authority归原Package Product（2026-11-15）
 
 承接010596449完整2061源起点，fetch后origin/main仍4de7d9251且为任务祖先，archmethod

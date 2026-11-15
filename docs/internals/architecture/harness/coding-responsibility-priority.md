@@ -17,6 +17,7 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 
 | 顺序 | 完整交付边界与源码审查池 | 现有接收组件与Code保留 | 先解决的问题与退出条件 |
 | --- | --- | --- | --- |
+| 已完成本批 A205 | C11受管命令完整run/close/probe及native退出，原829行 | 原AppHost managed组件；Code保准入/选择/输出/UI/既有Runner | 39同self字段、8完整程序接入；Code−147/AppHost+439/系统+292（uniform192），原引擎不重计；A193静态拒绝保历史 |
 | 已完成本批 A204 | C07完整双平台receipt authority及相邻Windows opt-in，13源 | 原Package Product/History/Windows Records/native readers；Code保DTO/codec/constructors/policy与八公开门面 | 按新准则接受完整职责价值，Code−514/Harness+944/系统+430（uniform+432）；五journal门面真实复用Core，原native机制不重计；A178历史静态拒绝保留 |
 | 已完成本批 A203 | C02共享连接配置完整read/mutate/write/list，原173行文件 | 原AppHost client navigation与原Harness Config writer；Code保平台/临时工作区/请求政策与五公开绑定 | Code−107/AppHost+123/系统+16（uniform+14），无新对象/Role/T或gate；原40及另7局部对照通过，A149原writer不重计；Rust入口仍独立，不称Python dead |
 | 已完成本批 A202 | C02完整多workspace集合协调，原183行文件 | 原AppHost canonical integration、WorkspaceRegistry与child Transcript；Code保构造/历史/平台/open政策和薄回复 | 同一实例完整接管集合/路由/retirement，Code−85/AppHost+170/系统+85（uniform+52），无新manager/Task/lock/gate；原native IO不重计，client_settings已有writer不再迁益 |
@@ -24,7 +25,7 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 | 已完成本批 A201 | C05 durable canary control Journal，567行完整文件为审查池 | 原Harness Journal持锁/严格读写；Code保G10启停/代际/历史/准入、路径与名义记录 | 已接完整neutral Journal scope，Code−148/Harness+284/系统+136，原34与另5本地对照过。Code状态/代际/历史仍原权威，scope保全部FNF/consumer异常差异和跨run锁；无新gate、无leaf IO重复收益 |
 | A200完整形状不采用 | C03 Plan→隔离Writer→V1/V2 attempt→首输入commit→runtime publication及失败custody；continuation486/SessionManager783/activation_plan400，共1669行主要审查池 | 原Transcript/Session/Resume effects；Code保composition选择、授权和版本化产品记录 | 四源整原型raw Code+4/Core+277/系统+281，统一格式Code−54/系统+223；十个必要域/creation口及typing/facade税过高，无第二机制/依赖退出，不采用/不runtime/不摘fence。原97非pure领域构造保Code且寿命已Core，不重计397 |
 | 后续条件设计 | C01/C15装配交接；先比较原Base/Capability两完整函数406行，不将bootstrap3626当预算 | 原Construction/Resources/Session | A183确认与A112同源，A51系统+202形状仍拒绝。只有新的完整事务接缝能显著减少适配才重开；无新接缝则继续下一未处置簇 |
-| 后续全成本复核 | ManagedMuxCommand完整驱动 | 原AppHost；Code保选择/输出与UI绑定 | A193原型系统+292（统一格式+192）、13适配口的代价仍需评估；按新准则核完整职责与必要适配，不只因无另一机制退出而永久拒绝。A204 Worker整接缝已完成，不按当前C07的112源20533行整搬 |
+| A205已接受 | ManagedMuxCommand完整驱动 | 原AppHost；Code保选择/输出/UI与既有Runner桥 | 13个值/效果/UI/Runner端口与2T/2roles全计，固定Core程序真实执行、无第二command/Task/state；A193历史不覆盖当前采用状态 |
 | 后置 | 字段声明、薄公开adapter、prompt/profile | 保当前领域内容和必要兼容入口 | A196/A197已接受收尾；C19四源440行按A198源核执行已Core，不继续以局部十几行精简替代大块主线 |
 
 A199已完成第1项的接受/消费固定事务，保原领域政策及catalog绑定；不是整C09完成。
@@ -39,7 +40,7 @@ A202完成新原集合协调接缝，原183不是迁出量；Code保98行实际�
 失败/取消/重试和资源交接必须一起替换。最近A171、A173、A174、A176合计Coding−680、
 生产系统+422，属于职责收敛，不能作为系统净精简的证据。A179另Code−128/AppHost+224/
 系统+96；A180完整前台控制另Code−116/AppHost+275/系统+159（统一格式+137）。
-A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；A196六流字段契约去重Code−46/Harness+12/系统−34；A197四类字段契约再Code−39/Harness+7/系统−32；A199完整接受/消费事务Code−340/Harness+480/系统+140；A201完整Journal scope再Code−148/Harness+284/系统+136；当前Coding109008行，距15K尚94008行，仍须按完整工作件推进。
+A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；A196六流字段契约去重Code−46/Harness+12/系统−34；A197四类字段契约再Code−39/Harness+7/系统−32；A199完整接受/消费事务Code−340/Harness+480/系统+140；A201完整Journal scope再Code−148/Harness+284/系统+136；当前Coding108861行，距15K尚93861行，仍须按完整工作件推进。
 
 | 顺序/状态 | 完整工作件 | 接收者及Coding保留边界 | 进入条件或实际处置 |
 | --- | --- | --- | --- |
@@ -60,7 +61,7 @@ A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+3
 | 已完成 A189 | C12 workspace observation | 原Workspace Git家族；Code保GoalError/预算/消息与薄公开入口 | 两完整64/20程序退出，Code−71/Harness+102/系统+31；原118实际过，保不同观测合同，无第二算法退出 |
 | 已完成 A190 | Screen SDK预热完整寿命 | 原HarnessTUI screen application host同self接timer/可见Task/切换/缓存/提示/关闭；Code保SDK政策及薄门面 | 六完整程序84span/8字段，Code−83/HarnessTUI+124/系统+41；130不同项129过/同1旧G11失败，无新gate，AI importTask不重计 |
 | A191完整原型不采用 | systemd JSON控制/状态及通知信号寿命 | 原AppHost optional deployment adapter；Code保CLI/unit/错误与路径命名政策 | 两完整37+33程序全税Code−56/Core141/系统+85（uniform67）；逆AST/静态过但无第二机制或整依赖退出，短外壳税不足值。不安装/不测，不拆helper，非whole171/backend |
-| A193完整形状不采用 | ManagedMuxCommand资源/失败完整驱动 | 同self接完整run/close/probe/原生父资源；Code保准入/选择/输出/UI | 全税Code−147/Core439/系统+292（uniform192）；完整逆AST/静态过但13适配口不足值，原执行机制/依赖仍在。不安装/不测，不摘小片，不判692领域下界 |
+| A193历史拒绝 / A205已接受 | ManagedMuxCommand资源/失败完整驱动 | 同self接完整run/close/probe/原生父资源；Code保准入/选择/输出/UI | 全税Code−147/AppHost+439/系统+292（uniform192）；A193旧静态拒绝保留。A205按完整职责与必要增量准则接入并验证；13端口/2roles/2T均计，不重复计原机制，不判领域下界 |
 | 已完成 A195 | 四消费者完整workspace身份协议 | 原Workspace.paths；Code保错误工厂/薄入口，原字段不变 | 原66span四kernel归一，Code−29/Harness+21/系统−8；原34实际过，不合CLI captureNone/Windows短路异合同，无新state/Role/T |
 | 已完成 A196 | 六Windows semantic record中性字段 | 原Core空slots/schema基类；Code保原physicalslots/FQN/profile/peer types | Code−46/Harness+12/系统−34，原212实际过；constructor/fields/ownslots/wire/12旧pickle原期待不变，ownannotations/ClassVar字段dict演进有界披露，不增加DSL或影子槽 |
 | 已完成 A197 | 四类中性record完整字段契约 | 原Core空slots/schema-only；Code保7名义类型覆写及原公开值类 | Code−39/Harness+7/系统−32，原1138实际过；37重复声明退出。另25类209字段有原ownannotations固定观察，不硬套 |
@@ -83,7 +84,7 @@ A178历史上完成Worker新接缝成本决策并拒绝接入；A204已按明确
 完整prefix替代；A180完成foreground整控制，A181完成C13实例寿命，A182完成两段证据投影。
 A183确认C01原成本阻断，A184完整快照形状不采用，A185完成POSIX checkpoint；
 A186明确领域命令，A187完成Goal具体资源寿命；A188据当前及历史生产API不重启
-A38同形原型，A189已完成两条Workspace实际IO观察完整合同及全成本，A190再完成Screen SDK整寿命，A191 systemd两条完整native程序全成本不采用，A193完整ManagedMuxCommand驱动全成本不采用，A195多消费者真实重复已消；A196六流标准字段契约已接受，A197四类已按真实注解/旧数据合同完成，后续改按大块混合职责重新排序，
+A38同形原型，A189已完成两条Workspace实际IO观察完整合同及全成本，A190再完成Screen SDK整寿命，A191 systemd两条完整native程序全成本不采用，A193完整ManagedMuxCommand驱动当时不采用、A205重核后已接受，A195多消费者真实重复已消；A196六流标准字段契约已接受，A197四类已按真实注解/旧数据合同完成，后续改按大块混合职责重新排序，
 不按目录总量承诺迁移收益。
 
 A178核对A169最终原件确认，其POSIX authority已经继承ReceiptHistory；直接继承本身

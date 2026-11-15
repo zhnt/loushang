@@ -150,6 +150,7 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             or consumer == APPHOST / "integrations/session_control.py"
             # A180: optional complete foreground control; no core facade edge.
             or consumer == APPHOST / "integrations/_foreground_client_control.py"
+            or consumer == APPHOST / "integrations/_managed_mux_command.py"
             or consumer == APPHOST / "managed/connection.py"
             or consumer == APPHOST / "managed/coordinator.py"
             or consumer == APPHOST / "managed/mux_creation.py"
