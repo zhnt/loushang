@@ -1055,3 +1055,22 @@ MemoryError等价承诺。源生成器偏移错、证明器和探针两次setup�
 
 2063生产源仅3改；Code108172/系统661330，距15K93172。完整C01与P1–P4仍开放。
 详细证据/失败与局限见[本批执行记录](../coding-responsibility-convergence-progress.md)。
+
+## 33. A215完整捕获资源族试型未采用
+
+完整源核确认Core已有贡献编译/Provider解析/批准与Session inputs和Catalog Source；
+Code仍混合名义资源记录、关系验证及早期capture，不能把618/1650文件池当可迁预算。
+完整169行族加external投影试型跨原Records/Snapshot/Session三个owner，Code保名义字段/
+根与信任政策/晚factory桥。原早期capture与晚Input严格验证、首匹配与末dict、external
+重复检查和预算异常先后保持独立，没有挪早强校验或借回整个Code阶段程序。
+
+最终全税Code−111/Core+276/系统+165 raw=uniform，4roles/1T和所有兼容桥已计；首全
+format稿178至165仅稿间布局/操作体形式差，不计生产收益。最终五shadow mypy及Ruff过；
+未安装/未运行/无新probe，不能充API/布局/旧pickle/cold/行为验收。有限逆AST和原定义
+证明通过，具体数量与初false修正见执行记录/树外原件。
+
+职责与兼容视角不建议整形，运行视角支持有限old-first；Root保留分歧并因实际接口分散
+及276接收税不采用当前整形，非禁止必要增长或要求重复引擎退出。Code字段保留是公共
+合同，非独立否决理由；单一具体evidence接缝尚未建立，不发明新planner/框架或拆小片。
+当前仍A214的Code108172/系统661330/15K差93172，2063源全SHA与行不变，Goal开放。
+后续按[大块优先队列](../coding-responsibility-priority.md)核完整deferred-control状态寿命。

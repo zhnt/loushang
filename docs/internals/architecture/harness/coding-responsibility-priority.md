@@ -17,7 +17,8 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 
 | 顺序 | 完整交付边界与源码审查池 | 现有接收组件与Code保留 | 先解决的问题与退出条件 |
 | --- | --- | --- | --- |
-| 下一完整成本试算 / A215源核 | C01 Product已捕获资源族：正文capture→编译关系校验→预算读取/输入转换，含external-only消费者 | 原ResourceCatalog/Product；Code保名义DTO/根选择/信任政策；既有Provider解析/审批/绑定已Core | 169行整族审查池加相邻投影，非删行预算；保两阶段验证/错误/重复检测差异，全部适配税待试算，不造阶段回调池 |
+| 下一完整设计 / A216 | C02 deferred control订阅→事件→activate/Session handoff→全部控制委托→close/retry及真实binding消费者 | 原AppHost Session control integration；Code保identity/settings/model政策与错误profile | 核四个实际状态/重入/异常及所有消费者，先比较既有服务adapter语义，禁止直接套不同close/监听合同；成本未知 |
+| A215完整形状不采用 | C01捕获资源族169行池及external-only投影，完整五源原型 | 原Records/Snapshot/Session均接完整程序；Code保公共字段/工厂/错误薄桥 | 全税Code−111/Core+276/系统+165 raw=uniform；4roles/1T/3接收面分散，2视角价值否决、1支持有限old-first；Root整拒，生产收益0/pytest0，不救小片 |
 | 已完成 A214 | C01三路线双root/preparation/legacy启动标记及outer失败消费 | 原Construction与cleanup family；四字段单一holder，Code保领域配置/工厂 | Code−86/Harness+139/系统+53，uniformCode−84/sys55；原202/14与九旧观察齐，实际202+24交集1，225不同节点过 |
 | 已完成 A213 | C01两Product preparation253行的完整中性custody/第二capture/lineage/recheck | 原PackageProduct selected-revision family；Code在with内保领域体与nominal factory | Code−33/Harness+94/系统+61 raw=uniform；1T/0Role/所有薄口全计，实际验证见执行记录，不称全部253行迁出 |
 | A209完整历史形状不采用 | C02三binding/source类+四catalog历史入口，并包含稳定snapshot读完整四源 | 原AppHost canonical family/Transcript源，Code保历史投影/名义构造/17公开方法属性入口 | 全税Code−20、接收+339、系统+319（uniformCode−38/sys301）；四源shadow静态过但成本不值，不安装/不跑矩阵，不摘close/fence |

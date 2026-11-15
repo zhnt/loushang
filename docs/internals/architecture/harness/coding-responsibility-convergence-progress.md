@@ -1,5 +1,46 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A215完整捕获资源族五源试算：当前形状不采用（2026-11-15）
+
+承接bc3006e27的clean树，fresh fetch main仍4de7d9251且为祖先；方法仍clean local master
+0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。三视角已核原完整编译/捕获/Provider绑定链：
+编译器、Provider resolver、批准/输入绑定、Catalog Source和A213/A214机制已有Core，
+不得重迁计益。169行捕获族审查池包括Body验证、Compilation关系验证、预算读取、输入
+转换及53行capture；相邻external-only输入和builtin/preview/Session实际消费者一起覆盖，
+没有只摘read或53行循环。Code的根选择、信任/owner政策、名义字段和公共构造须保。
+
+已实际生成完整五源树外原型：Records空slots body验证基类，Snapshot完整capture/read/
+两种projection，Session完整编译关系验证；Code薄桥保原五/十字段、构造/错误工厂及晚读。
+原早期弱capture与晚期严格ProductSelectedResourceInput时点分立；validator首匹配、
+projection末项dict、external-only重复检查和budget先拒bool/越界合同保留。两projection
+共用真正Input构造循环，没有全阶段IO/body回借、第二运行owner、Task或新数据副本。
+
+完整成本Code−111（base618→512、external235→230），接收+276（Records+17/
+Snapshot+147/Session+112），系统+165 raw=uniform。四个窄Protocol、一个bounded T、
+所有Code getter/constructor/error适配全计；原API字段必要兼容不是独立否决理由。
+首全format稿系统+178，恢复旧布局及保原操作体形式后为165；13行稿间差不计生产减量。
+两新增仅注解依赖已归TYPE_CHECKING，Snapshot真实TypeVar bound仍runtime；未作cold实验。
+最终五shadow项目normal mypy与Ruff过，未增加Any/cast/ignore、模块、gate或发现路线。
+
+职责/复用与兼容两个独立视角建议整形不采，理由是四个跨模块类型/工厂桥和三个接收面
+使有限关系契约更分散，276行接口/程序税未换得相称简化；不是要求第二引擎退出、不是
+单因正增长或因为必须保Code字段。运行视角支持有限old-first，认为分阶段归属改善可值
+必要增量；源码证明均无具体功能阻断。实施owner `/root`保留该分歧，按完整净值与依赖
+简化优先接受前两项价值判断，正式不采用当前形状。不偷换为永久领域下界/单一DTO必要
+条件，也不把更强Input提前调用或删兼容作为修复；新整族接缝有实证时可另核。
+
+未安装候选、未import/运行候选、pytest0、无新probe/fixture；API布局/pickle/cold/runtime
+均未实测，不称功能验证通过。独立证明为职责12/运行10/兼容18项有限源码检查，包含完整
+程序逆AST、原Core声明/Code字段/签名/exports；证明器漏局部T或保留docstring的初false
+已归档，修的是树外工具。静态证明与类型检查不能替代运行合同。
+
+2063实际生产源逐SHA/行全同，新增生产收益0；Code108172/Harness367396/系统661330，
+15K差93172，C01为22源12134，P1–P4仍partial。树外a215-product-compilation-binding
+保存原件、完整两稿、全部成本/三源码报告/独立proof；先前A214225节点不重跑不重计。
+下一完整调查转C02 deferred-control：订阅→emit→activate/handoff→委托控制→close/retry，
+与实际CodingDeferredHostedSession消费者一起核；先复用原AppHost Session control owner，
+Code保identity/settings/model政策，不用小字段/emit片替代完整状态寿命。
+
 ## A214 bootstrap全部共享root与preparation进度归原Construction（2026-11-15）
 
 承接b242c6153的clean树；本轮fresh fetch main仍4de7d9251且为任务祖先，未远程发布。

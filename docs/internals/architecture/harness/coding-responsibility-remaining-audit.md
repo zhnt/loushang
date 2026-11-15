@@ -61,6 +61,9 @@ Code−63/Harness+114/系统+51（raw=uniform），保完整Selection领域政�
 A207保留公开SDK default的3整方法归原PM，Code−128/Harness+181/系统+53（raw=uniform）；
 Code保12字段/名义Lifecycle与8原policy事实，原119与另16局部对照通过。当前C01为22源12488，
 不称当前Base生产路线或208/198装配双程序已迁出，整C01仍开放。
+A215完整捕获资源族五源候选Code−111/Core+276/系统+165，静态通过但接口分散税
+不值，Root按两个价值视角不采用并保运行视角分歧；未安装/未runtime/生产收益0。
+原169行池及Code字段不作可删量或最终下界，完整共享合同仍需有新接缝才能重开。
 A214全部共享双root/preparation/legacy启动进度及outer失败消费已接原Construction单状态，
 Code−86/Harness+139/系统+53（uniform−84/+55），C01为22源12134；225不同节点已过。
 其余Product领域状态（含builtin）及adapter list仍Code，原cleanup引擎不重计，整C01/P1–P4开放。
