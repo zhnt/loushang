@@ -1,5 +1,34 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A196 六流中性字段契约单一声明（2026-11-15）
+
+六Windows semantic base原有46有效字段同时写在Code值类与Core方法基类。现复用原
+Core typed contract：标准dataclass(frozen=True,init=False,repr=False,eq=False)，保持其
+原__slots__=()，不提供新的记录构造/重放引擎。Code仍为原frozen/slots dataclass，自己
+生成并持有全部原physical slots、构造/比较/hash/repr；名义FQN、profile、schema绑定、
+验证/codec方法不动。保3个Code peer类型覆写，删除43份中性字段重复声明，默认version1
+按原V1契约承接；没有生成DSL、反射注入、slots伪装、新Role/T或第二存储。
+
+全税raw=uniform：Code651→605（−46，含声明段空行），Harness1154→1166（+12），
+系统−34。Core直接slots=True的首形状会改变旧Code ownslots，已拒，不使用改期待救绿。
+Core成为dataclass/schema基类、增加frozen setter，Code ownannotations缩减、继承
+__dataclass_fields__增加15个ClassVar pseudo-fields是明确元数据演进；fields()/wire schema
+排除这些pseudo-fields，不称所有反射元信息等价。详见[字段契约设计](key-designs/windows-semantic-base-field-contract-convergence.md)。
+
+原11模块旧212过36.36s，实际冻结12源后同212过35.21s，0fail/error/skip；不累计为424覆盖。
+其中原六流19+preparation6+persisted2+join2、原wire/旧pickle12及既有受控reader171。
+原观察实际验证同typed ctor/有效fields/ownslots/frozen/noDict/wire及12份protocol4旧
+pickle载入，三fixture逐SHA未改；不是nativeWindows权限证明、全pickle协议或新dump
+字节相同证明。14模块来源守卫各212nodes/424前后checks、59声明callable，phase/PID
+分立，比较路径/SHA/19递归code字段；不冒生成dataclass函数也由该源码守卫验证。
+实际project mypy12源/Ruff通过，无新test/probe/oracle/fixture/gate，完整PR未运行。
+
+2059源仅12变，其余2047 SHA/行同；当前source659784，排GUI独立4524后655260。
+Code434源110241、距15K95241，Harness364513/HarnessTUI29466/HarnessWork8332/
+AppHost19717；C07为112源21086。三设计/实际视角有界接受，完整P1–P4/KD003/KD011
+仍开放。后续A197导航余29类253字段不是删除预算：其中25类209字段有原ownannotations
+固定观察，不能直接套本形状；余4类44字段仍须逐契约/成本验证，不预支收益或声明下界。
+
 ## A195 四条完整工作区身份校验共用原Workspace路径组件（2026-11-14）
 
 PM read/command SDK、Arch backup SDK三个18行guard与private read owner的12行guard

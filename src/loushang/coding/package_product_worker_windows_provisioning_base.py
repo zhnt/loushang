@@ -59,15 +59,9 @@ class CodingWindowsWorkerNativeProvisioningSemanticBaseV1(
 ):
     _retained_type = CodingWindowsWorkerNativeProvisioningRetainedAttemptV1
 
-    scope_id: str
-    store_id: str
-    source_snapshot_digest: str
     retained_attempts: tuple[
         CodingWindowsWorkerNativeProvisioningRetainedAttemptV1, ...
     ]
-    attempt_ids: tuple[str, ...]
-    record_digest: str
-    version: int = 1
 
     @classmethod
     def from_semantic_read(

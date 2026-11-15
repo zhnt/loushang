@@ -9,7 +9,7 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 失败/取消/重试和资源交接必须一起替换。最近A171、A173、A174、A176合计Coding−680、
 生产系统+422，属于职责收敛，不能作为系统净精简的证据。A179另Code−128/AppHost+224/
 系统+96；A180完整前台控制另Code−116/AppHost+275/系统+159（统一格式+137）。
-A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；当前Coding110287行，距15K尚95287行，仍须按完整工作件推进。
+A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；A196六流字段契约去重Code−46/Harness+12/系统−34；当前Coding110241行，距15K尚95241行，仍须按完整工作件推进。
 
 | 顺序/状态 | 完整工作件 | 接收者及Coding保留边界 | 进入条件或实际处置 |
 | --- | --- | --- | --- |
@@ -32,11 +32,12 @@ A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+3
 | A191完整原型不采用 | systemd JSON控制/状态及通知信号寿命 | 原AppHost optional deployment adapter；Code保CLI/unit/错误与路径命名政策 | 两完整37+33程序全税Code−56/Core141/系统+85（uniform67）；逆AST/静态过但无第二机制或整依赖退出，短外壳税不足值。不安装/不测，不拆helper，非whole171/backend |
 | A193完整形状不采用 | ManagedMuxCommand资源/失败完整驱动 | 同self接完整run/close/probe/原生父资源；Code保准入/选择/输出/UI | 全税Code−147/Core439/系统+292（uniform192）；完整逆AST/静态过但13适配口不足值，原执行机制/依赖仍在。不安装/不测，不摘小片，不判692领域下界 |
 | 已完成 A195 | 四消费者完整workspace身份协议 | 原Workspace.paths；Code保错误工厂/薄入口，原字段不变 | 原66span四kernel归一，Code−29/Harness+21/系统−8；原34实际过，不合CLI captureNone/Windows短路异合同，无新state/Role/T |
-| 下一单一字段契约 / A196外部完整成本待评 | 六Windows semantic record中性字段 | 原Core已有typed contract；Code保名义类型/领域profile/原数据接口 | 共46fields非预算；Core物理slots迁移与旧observer冲突不采用。另保Core空slots、Code生成原slots的标准schema-only dataclass形状外部试算，须原ctor/fields/slots/字节/旧pickle及全部类型税有据；不注入metadata或新DSL，不预支收益 |
+| 已完成 A196 | 六Windows semantic record中性字段 | 原Core空slots/schema基类；Code保原physicalslots/FQN/profile/peer types | Code−46/Harness+12/系统−34，原212实际过；constructor/fields/ownslots/wire/12旧pickle原期待不变，ownannotations/ClassVar字段dict演进有界披露，不增加DSL或影子槽 |
+| 下一字段契约源核 / A197 | 其它中性record重复声明 | 原Core已typed schema；Code保明确公开注解/默认/名义类型 | 余29类253fields仅导航；25类209有ownannotations固定观察，不直接套。剩4类44也非可删量，需逐字段/旧数据/全成本证明，不用反射注入或改旧期待拼预算 |
 | 后续开放 / A169、A178完整形状均拒绝 | Worker Product完整收据authority | 原Package Product/Resources；Code保政策、验证与兼容DTO | 892行类范围/803行方法定义已作A178完整13源原型。真实Records/MRO/3必要reader改善成立，但计入4事实契约、6TypeVar、8必要公开门面后Code−512/Core+944/系统+432（统一格式+434），仅静态通过，未采用。相比A169系统+580减少148，仍无另一authority/运行重复退出，不为已付原型成本启动大矩阵或摘叶救收益 |
 
 G17与C13本批实例寿命、C10两段中性证据投影已完成；后续核实顺序为：
-**Windows semantic record中性字段单一契约**（A196另形状仅外部试算，不预支收益）。A188子图原接口未变；A187完成Goal寿命，A186命令门面无新替代；
+**其它中性record契约的逐类边界**（A197仅源核，固定ownannotations不能直接套A196）。A188子图原接口未变；A187完成Goal寿命，A186命令门面无新替代；
 C08 checkpoint按A185完成，
 C01按A183暂缓，
 Windows完整快照按A184全成本拒绝，systemd两程序按A191完整原型拒绝；
@@ -51,7 +52,7 @@ A178已完成Worker新接缝的整物成本决策并拒绝接入；A179随后完
 完整prefix替代；A180完成foreground整控制，A181完成C13实例寿命，A182完成两段证据投影。
 A183确认C01原成本阻断，A184完整快照形状不采用，A185完成POSIX checkpoint；
 A186明确领域命令，A187完成Goal具体资源寿命；A188据当前及历史生产API不重启
-A38同形原型，A189已完成两条Workspace实际IO观察完整合同及全成本，A190再完成Screen SDK整寿命，A191 systemd两条完整native程序全成本不采用，A193完整ManagedMuxCommand驱动全成本不采用，A195多消费者真实重复已消；下一核record中性字段契约，
+A38同形原型，A189已完成两条Workspace实际IO观察完整合同及全成本，A190再完成Screen SDK整寿命，A191 systemd两条完整native程序全成本不采用，A193完整ManagedMuxCommand驱动全成本不采用，A195多消费者真实重复已消；A196六流标准字段契约已接受，下一按A197真实注解/旧数据合同分类，
 不按目录总量承诺迁移收益。
 
 A178核对A169最终原件确认，其POSIX authority已经继承ReceiptHistory；直接继承本身

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from hashlib import sha256
 from typing import ClassVar, Self, cast
 
@@ -22,6 +23,7 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
 )
 
 
+@dataclass(frozen=True, init=False, repr=False, eq=False)
 class _WindowsOptInBaseMethods(_SourceBoundBaseWireMethods):
     __slots__ = ()
     scope_id: str
@@ -31,7 +33,7 @@ class _WindowsOptInBaseMethods(_SourceBoundBaseWireMethods):
     latest_decisions: tuple[_OptInDecisionMethods, ...]
     retired_operation_ids: tuple[str, ...]
     record_digest: str
-    version: int
+    version: int = 1
     _decision_type: ClassVar[type[_OptInDecisionMethods]]
     _error_type: ClassVar[type[RuntimeError]]
     _replay_type: ClassVar[Callable[..., object]]

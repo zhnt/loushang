@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import ClassVar, Self, cast
@@ -166,6 +167,7 @@ class _WindowsProvisioningRetainedMethods:
         )
 
 
+@dataclass(frozen=True, init=False, repr=False, eq=False)
 class _WindowsProvisioningBaseMethods(_SourceBoundBaseWireMethods):
     __slots__ = ()
     scope_id: str
@@ -174,7 +176,7 @@ class _WindowsProvisioningBaseMethods(_SourceBoundBaseWireMethods):
     retained_attempts: tuple[_WindowsProvisioningRetainedMethods, ...]
     attempt_ids: tuple[str, ...]
     record_digest: str
-    version: int
+    version: int = 1
     _retained_type: ClassVar[Callable[..., _WindowsProvisioningRetainedMethods]]
 
     def __post_init__(self) -> None:

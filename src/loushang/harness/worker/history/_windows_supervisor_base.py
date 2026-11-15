@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from hashlib import sha256
 from typing import ClassVar, Self, cast
 
@@ -23,6 +24,7 @@ from loushang.harness.worker.journal import (
 )
 
 
+@dataclass(frozen=True, init=False, repr=False, eq=False)
 class _WindowsSupervisorBaseMethods(_SourceBoundBaseWireMethods):
     __slots__ = ()
     scope_id: str
@@ -32,7 +34,7 @@ class _WindowsSupervisorBaseMethods(_SourceBoundBaseWireMethods):
     latest_attempts: tuple[WorkerAttemptRecordV1, ...]
     retired_attempt_ids: tuple[str, ...]
     record_digest: str
-    version: int
+    version: int = 1
     _replay_type: ClassVar[Callable[..., object]]
 
     def __post_init__(self) -> None:
