@@ -1,5 +1,52 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A208 两完整reserved Tool owner适配归原Session（2026-11-15）
+
+承接c68b98bd2的2063源clean任务起点；本轮沿前次已fetch的4de7d9251祖先，不假称再次fetch。
+方法仍clean local master 0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。先对Code/Harness≥19行函数体
+作exact AST导航，0同体组不充全局无重复；擦string/Coding类型名形状仅导航出三组，选实际
+两Arch/LSP Tool owner完整3methods各64/62 span，非摘flag或字段。见[owner设计](key-designs/reserved-tool-owner-convergence.md)。
+
+三共享固定程序归已有Session tool_owner_binding，Code保各5字段/slots/名义class、typed
+bind/runtime薄入口、Domain Consumer与工具工厂。8个ClassVar事实仍Code；tool_pack为Core
+固定契约，1同self writable-bound角色、0T，无额外owner实例/状态/锁/profile对象。原完整
+stage/commit/rollback/dispose/receipt早已Core，本轮全文AST不动、不重计。两生产消费者真实
+准入/绑定前置/capture校验重复归一，不借假想第三方或搬纯内容称迁移。
+
+原bound guard→registration callable→flag=True→gate/binder顺序保，后续失败仍consumed。
+Code纯getter在原参数点取各根family，不换type(self)/共同base；type(self)只读static error
+factory，修首mypy的self-ClassVar callable绑定错误，不用cast/ignore。Core返原checkedcapture，
+Code原Consumer(capture.facets).runtime晚调用；原binder仍绑定身份早快照、投影后读admission/
+scope、逐tool读mode、receipt晚读contribution。同family跨scope可接，跨域family拒绝。
+
+全成本raw=uniform：Arch150→113（−37）、LSP153→118（−35）、Core176→264（+88），
+Code−72/系统+16。含8facts/typedfacades/纯getters与errorfactory/role/全部imports标注；共用
+校验有真实重复退出，但仍非系统净精简。各5个私模块alias退役，Code class单份事实保；
+_TOOL_NAMES实际factory/probe用继续保。私MRO/实现module/qualname/额外frames/继承ClassVar
+hint视图变化披露，不承诺外部private import或任意hotswap；原ownannotations/字段则实际同。
+
+原9载体96节点旧102.96s/实际同序96节点115.76s全过，0fail/error/skip。原固定binding/failure/
+liveinput三fixture逐SHA不改，覆盖原stage失败rollback/投影先完成、dispose失败原scope重试、
+活体field读取及family边界；真实Plugin/Session组合亦在原套件，不充nativeTool实际执行。
+另26局部case+1原reservation重叠节点共27，旧5.74s/实际6.61s全过；26JSON逐byte同，含wrong
+admission/foreignpack/gate、invalid/hashable与unhashable mode、scope、invalid port后仍可绑、
+getter失败flagFalse、gate晚读失败flagTrue及capture错误。用真admission/gate+受控输入/getter，
+非native故障/实际Task.cancel。主/local交集1，总122不同节点，不计123。
+
+API四ctor（2owner/2slot）、六owner方法签名/hints、12 fields/ownannotations/slots/size-offset/
+nodict/matchargs/__all__整record同；六旧methodpickle加载identity同，不充live owner可pickle。
+组合冷import/metadata/pickle的441模块名列表同，非逐入口/IO审计。API每phase同进程guard
+3modules/2checks，测试父guard旧/实际17/18声明程序，主各96nodes/192checks、局部各27/54，
+19递归code字段不覆盖生成体/class-assignedlambda/allglobals/所有carrier/child来源。实际3源
+Ruff/fullformat/mypy silent-followimports通过，不充全PR平台验证。六method回逆fact/纯callback/
+capture前缀/同self alias后AST同，Code工具工厂/fields/decorators与原Core binder均同。
+
+2063源仅3改/2060原同；Code434源108598、距15K93598，Harness366611/AppHost20449/
+HarnessTUI29466/HarnessWork8332；系统660971，排GUI独立4524后656447，C13[21,5228]/
+C14[13,3571]。Product test/fixture/gate无改；树外观察72行、API支持29行另计，复用guard不进PR。
+三设计/候选及实际有限视角接受，原主组已terminal；最终metadata/docs另核。证据树外
+ a208-complete-reuse-selection；完整P1–P4/KD003/KD011及≤15K仍开放，非整C13/C14完成。
+
 ## A207 完整公开default bootstrap归原PM（2026-11-15）
 
 承接1a113f02c的2063源clean任务起点；本轮fetch成功后origin/main仍4de7d9251且为任务祖先。

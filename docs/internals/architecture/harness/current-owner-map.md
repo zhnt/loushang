@@ -386,6 +386,13 @@ Desired/GC/committed facts, runtime factory and lifecycle cleanup. Coding retain
 approval/revocation, native platform interpretation, CAS and CLI projection;
 no additional admission, execution or persistence authority is introduced.
 
+The existing Session Tool owner binding now also shares the complete reserved-pack
+validation, single-bind admission and capture checks for actual Arch/LSP owners.
+Coding retains nominal fields, typed Domain Consumers/factories and exact pack
+facts; stage/commit/rollback/disposal keep using the unchanged original binder.
+See [reserved Tool owners](key-designs/reserved-tool-owner-convergence.md) for
+late mutable reads, consumed bind failures and nominal generation-family identity.
+
 The bounded [Plugin enablement compatibility capture](key-designs/plugin-session-lifecycle-convergence.md#11-d3-实现接缝完整兼容捕获路径候选)
 uses Plugin Management for the existing four-lock desired/migration capture,
 Resources for the original directory observations and fixed Windows pin, and
