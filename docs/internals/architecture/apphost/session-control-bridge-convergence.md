@@ -74,3 +74,32 @@
 8502实际无导入覆盖回归exit0：103 passed/1 skipped/2 warnings，132.67s；JUnit104项零failure/error，suite132.582s，skip仍为原Windows native材料限制。涵盖原四Session/执行文件、原hosted_application消费者、三实际来源/声明/冷导入检查及六个原架构文件。原48与候选51不再叠加为独立通过数；两条JUnit property警告保持，不改配置造绿。75239实际四源mypy通过（silent依赖，非全图），11976原生成新鲜度check通过，实际Ruff/diff通过。
 
 三份独立实码报告分别复核实际SHA、接口/算法/关闭边界、1883份全成本、两处精确清单和JUnit/进程终态；没有新增具体阻断，实施owner仅接受本片已验证替代。不外推新的Product、原生平台、所有取消交错或性能数值；A19所记17项祖先权限setup限制也未因本次选择的不同测试范围消失。全Goal仍较系统起点多2168行、Coding距15K尚差112759行；继续完整职责收敛，不能以本片验收整项。
+
+## 6. A216 deferred control完整状态寿命
+
+Current：既有session_control新增固定_DeferredSessionControl，Code原名义控制对象继承
+16个中性方法并持原四字段，Code保binding/identity/settings/model政策和构造。两个纯
+profile字段为closed文本及晚Code CatalogError工厂，没有第二控制器/Session/Task/锁。
+原 `_SessionServiceAdapter` 的事件投影/错误忽略及异步close合同不同，不套用其关闭或listener程序。
+
+完整subscribe→emit→activate→delegate→close/retry由原对象执行，身份读Code property。
+激活只在subscribe前准入，重入后无新增复核/回滚；发布delegate/unsubscribe仍在返回并
+检查callable后。emit保set快照、逐个call/await、Exception删除/BaseException外传及无
+closed guard。close保先closed→调用unsubscribe→成功清handle→清listeners，失败保留
+原handle/listeners供下次重试，delegate不关闭/清除。abort/getters仍不等于require-active。
+绑定自身的activation/planning/source/批准/close Task与模型政策均不迁出，本族不关闭C02。
+
+实际Code793→711（−82raw/−84uniform）、AppHost592→700（+108），系统+26/+24；
+两个格式行不作机制收益，0新Protocol/Generic。首空slots稿10项静态错误保留，改普通
+基类后两源Ruff/mypy过；普通实例单dict/weakref布局数值与原相同，两个profile新key与
+MRO/方法origin/descriptor所属演进披露，不承诺旧私实例pickle功能或完整反射等价。
+22方法接口/hints/doc、18旧class/method pickle解析和995导入名同；不作compiledguard。
+
+同组原38/实际38及8完整控制观察共46不同节点全过，八JSON只读期待逐byte同。首次
+外部probe8个async测试缺plugin而未执行，改项目惯用sync入口asyncio.run后通过，未改
+Product迎合载体、未增加插件或gate。真实Task.cancel只覆盖listener；原Model/Execution/
+Discovery消费者另验，不冒其它native/platform或整个binding取消合同。
+A02/V1仅exact路径/exact新member观察侧减集，原RHS/scanner/133assert不变，测试+14行，
+单调放宽无新必需条件；外部观察/API支持315/100行另计。三实际视角后，实施owner `/root`
+核终态作本片有界接受；当前Goal按后续用户准则允许必要适度增长，旧A20预算为历史，
+本批+26不是系统精简。当前Code108090/系统661356，15K差93090，完整Goal仍active。

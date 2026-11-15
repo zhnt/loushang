@@ -17,7 +17,8 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 
 | 顺序 | 完整交付边界与源码审查池 | 现有接收组件与Code保留 | 先解决的问题与退出条件 |
 | --- | --- | --- | --- |
-| 下一完整设计 / A216 | C02 deferred control订阅→事件→activate/Session handoff→全部控制委托→close/retry及真实binding消费者 | 原AppHost Session control integration；Code保identity/settings/model政策与错误profile | 核四个实际状态/重入/异常及所有消费者，先比较既有服务adapter语义，禁止直接套不同close/监听合同；成本未知 |
+| 下一完整源核 | C02/C03 detached Resume准备→首输入activation→binding-close状态与真实消费者 | 原AppHost/Transcript/Resume/Session owners；Code保恢复准入/模型/领域策略 | 核已共享机制与剩余完整状态/失败责任，不重计A216四字段或A200旧形，未承诺整binding迁移/删行 |
+| 已完成 A216 | C02 deferred control完整订阅/事件/激活委托/close-retry及同对象四状态 | 原AppHost Session control；Code保binding/identity/settings/model五政策成员和2纯profile | Code−82/AppHost+108/系统+26，uniform−84/+24；46不同节点/API/八旧观察通过，0新Protocol/T/Task、基类identity hook全计，非系统净减 |
 | A215完整形状不采用 | C01捕获资源族169行池及external-only投影，完整五源原型 | 原Records/Snapshot/Session均接完整程序；Code保公共字段/工厂/错误薄桥 | 全税Code−111/Core+276/系统+165 raw=uniform；4roles/1T/3接收面分散，2视角价值否决、1支持有限old-first；Root整拒，生产收益0/pytest0，不救小片 |
 | 已完成 A214 | C01三路线双root/preparation/legacy启动标记及outer失败消费 | 原Construction与cleanup family；四字段单一holder，Code保领域配置/工厂 | Code−86/Harness+139/系统+53，uniformCode−84/sys55；原202/14与九旧观察齐，实际202+24交集1，225不同节点过 |
 | 已完成 A213 | C01两Product preparation253行的完整中性custody/第二capture/lineage/recheck | 原PackageProduct selected-revision family；Code在with内保领域体与nominal factory | Code−33/Harness+94/系统+61 raw=uniform；1T/0Role/所有薄口全计，实际验证见执行记录，不称全部253行迁出 |
@@ -51,7 +52,7 @@ A209已实作完整历史custody/reader四源形状并按全税拒绝；不把�
 失败/取消/重试和资源交接必须一起替换。最近A171、A173、A174、A176合计Coding−680、
 生产系统+422，属于职责收敛，不能作为系统净精简的证据。A179另Code−128/AppHost+224/
 系统+96；A180完整前台控制另Code−116/AppHost+275/系统+159（统一格式+137）。
-A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；A196六流字段契约去重Code−46/Harness+12/系统−34；A197四类字段契约再Code−39/Harness+7/系统−32；A199完整接受/消费事务Code−340/Harness+480/系统+140；A201完整Journal scope再Code−148/Harness+284/系统+136；当前Coding108172行，距15K尚93172行，仍须按完整工作件推进。
+A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；A196六流字段契约去重Code−46/Harness+12/系统−34；A197四类字段契约再Code−39/Harness+7/系统−32；A199完整接受/消费事务Code−340/Harness+480/系统+140；A201完整Journal scope再Code−148/Harness+284/系统+136；当前Coding108090行，距15K尚93090行，仍须按完整工作件推进。
 
 | 顺序/状态 | 完整工作件 | 接收者及Coding保留边界 | 进入条件或实际处置 |
 | --- | --- | --- | --- |

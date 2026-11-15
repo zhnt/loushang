@@ -158,10 +158,17 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
             Path("src/loushang/coding/_hosted_execution_work.py"),
             Path("src/loushang/coding/hosted_resume.py"),
         }
-        and {
-            imported for imported in resolved_imports(path)
-            if imported == "loushang.apphost" or imported.startswith("loushang.apphost.")
-        } <= {execution_work, execution_work + "._HostedAgentExecutionWork"}
+        and (
+            {
+                imported for imported in resolved_imports(path)
+                if imported == "loushang.apphost" or imported.startswith("loushang.apphost.")
+            }
+            - (
+                {execution_work + "._DeferredSessionControl"}
+                if path == Path("src/loushang/coding/hosted_resume.py")
+                else set()
+            )
+        ) <= {execution_work, execution_work + "._HostedAgentExecutionWork"}
     }
     assert apphost_consumers - optional_execution_consumers == {
         Path("src/loushang/coding/client_settings.py"),

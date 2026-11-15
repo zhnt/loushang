@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import inspect
 import json
 import time
 from collections.abc import Callable, Mapping
@@ -17,7 +16,10 @@ from typing import cast
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
-from loushang.apphost.integrations.session_control import _HostedAgentExecutionWork
+from loushang.apphost.integrations.session_control import (
+    _DeferredSessionControl,
+    _HostedAgentExecutionWork,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -72,77 +74,20 @@ from .runtime.resume_planning import ResumePlanningSlot
 from .session.agent_session import AgentSession
 
 
-class _DeferredHostedControlV1:
+class _DeferredHostedControlV1(_DeferredSessionControl):
     """Stable control identity that later relays the activated Session."""
 
     def __init__(self, binding: CodingDeferredHostedSessionV1) -> None:
         self._binding = binding
-        self._delegate: SessionControlPort | None = None
-        self._listeners: set[Callable[[RuntimeEvent[object]], object]] = set()
-        self._unsubscribe: Callable[[], None] | None = None
-        self._closed = False
+        _DeferredSessionControl.__init__(
+            self,
+            closed_message="coding_hosted_session_closed",
+            invalid_activation=lambda: CodingHostedCatalogError(),
+        )
 
     @property
     def session_id(self) -> str:
         return self._binding.identity.session_id
-
-    @property
-    def session_name(self) -> str | None:
-        return None if self._delegate is None else self._delegate.session_name
-
-    async def set_session_name(self, name: str | None) -> None:
-        await self._require_active().set_session_name(name)
-
-    def subscribe_runtime_events(
-        self, listener: Callable[[RuntimeEvent[object]], object],
-    ) -> Callable[[], None]:
-        if self._closed or not callable(listener):
-            raise RuntimeError("coding_hosted_session_closed")
-        self._listeners.add(listener)
-        return lambda: self._listeners.discard(listener)
-
-    async def emit(self, event: RuntimeEvent[object]) -> None:
-        for listener in tuple(self._listeners):
-            try:
-                result = listener(event)
-                if inspect.isawaitable(result):
-                    await result
-            except Exception:
-                self._listeners.discard(listener)
-
-    def activate(self, control: SessionControlPort) -> None:
-        if self._closed or self._delegate is not None:
-            raise CodingHostedCatalogError()
-        if control.session_id != self.session_id:
-            raise CodingHostedCatalogError()
-
-        async def relay(event: RuntimeEvent[object]) -> None:
-            await self.emit(event)
-
-        unsubscribe = control.subscribe_runtime_events(relay)
-        if not callable(unsubscribe):
-            raise CodingHostedCatalogError()
-        self._delegate = control
-        self._unsubscribe = unsubscribe
-
-    async def prompt(self, user_input: str, images=None, **kwargs) -> None:
-        await self._require_active().prompt(user_input, images=images, **kwargs)
-
-    def steer(self, user_input: str, images=None) -> None:
-        self._require_active().steer(user_input, images=images)
-
-    def follow_up(self, user_input: str, images=None) -> None:
-        self._require_active().follow_up(user_input, images=images)
-
-    async def wait_for_idle(self) -> None:
-        await self._require_active().wait_for_idle()
-
-    def abort(self) -> bool:
-        return False if self._delegate is None else self._delegate.abort()
-
-    @property
-    def is_streaming(self) -> bool:
-        return bool(getattr(self._delegate, "is_streaming", False))
 
     @property
     def settings_manager(self) -> SettingsManager:
@@ -158,34 +103,6 @@ class _DeferredHostedControlV1:
 
     async def set_model(self, selection: ModelSelection) -> None:
         await self._binding.set_model(selection)
-
-    @property
-    def thinking_level(self) -> object:
-        return getattr(self._delegate, "thinking_level", None)
-
-    def get_available_thinking_levels(self) -> tuple[str, ...]:
-        getter = getattr(self._delegate, "get_available_thinking_levels", None)
-        return tuple(getter()) if callable(getter) else ()
-
-    async def set_thinking_level(self, level: str) -> None:
-        setter = getattr(self._require_active(), "set_thinking_level", None)
-        if not callable(setter):
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        await setter(level)
-
-    def close(self) -> None:
-        self._closed = True
-        if self._unsubscribe is not None:
-            self._unsubscribe()
-            self._unsubscribe = None
-        self._listeners.clear()
-
-    def _require_active(self) -> SessionControlPort:
-        if self._closed:
-            raise RuntimeError("coding_hosted_session_closed")
-        if self._delegate is None:
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        return self._delegate
 
 
 class CodingDeferredHostedSessionV1:
@@ -789,5 +706,6 @@ class _HostedResumeExecutionWorkV1(_HostedAgentExecutionWork):
             and self._agent_outcome.status is ExecutionStatusV1.SUCCEEDED
         ):
             self._binding.start_title_if_unnamed()
+
 
 __all__ = ["CodingDeferredHostedSessionV1"]

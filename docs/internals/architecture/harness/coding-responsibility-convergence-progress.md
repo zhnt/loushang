@@ -1,5 +1,56 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A216 deferred control完整生命周期归原AppHost（2026-11-15）
+
+承接520ebcef5的clean树；本轮fresh fetch main仍4de7d9251且为祖先。方法为clean local
+master0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。完整114行/22成员control原件及真实
+binding/factory/service/execution消费者先经三视角核定，原A215五源形状不重启。
+
+原apphost.integrations.session_control新增固定基类，原Code控制对象继承执行；delegate/
+listeners/unsubscribe/closed四字段仍只在这个对象中，16个中性完整方法退出Code。
+Code保构造binding、identity/settings/model五项政策成员；新增closed文本和晚CatalogError
+工厂两项真实profile字段，全计且不称零新字段/零分配。身份仍晚读Code property，不复制
+identity、包装第二controller、创建Task/锁/队列或移走整个Resume binding。
+
+原ServiceAdapter的投影/异步关闭及Work观察不是直接替代，未复制或重计这些机制。
+subscribe在delegate发布前，可重入activate/close，之后仍按原序写delegate/unsubscribe；
+relay晚调用self.emit。emit无closed guard，快照set后逐一call/await，Exception删listener，
+BaseException/真实Task.cancel外传不删。close先置closed、unsubscribe成功才清引用和set，
+失败保原回调/listeners供重试；不因closed早退，不dispose delegate。abort/name/status/
+thinking getter仍可在closed后查delegate，命令与setter才require-active。绑定上层原close
+Task/activation/planning/source/批准与模型政策整AST未变，未顺带补旧失败回滚债务。
+
+Code793→711（−82raw/−84uniform）、AppHost592→700（+108），系统+26raw/+24uniform；
+两行格式差不作机制收益。0新Protocol/Generic、全部基类hook/构造/两profile/导入已计。
+首空slots稿导致10项mypy属性写入错误，安装前归档并改普通基类，未加ignore/cast/Any；
+实际Ruff及两源项目normal mypy过。普通Code实例继承单一dict/weakref，非双字典对象。
+
+原38项107.56s、同序实际38项127.56s全过；八外部完整control观察原5s/实际16.56s逐byte
+同，合46不同节点，无fail/error/skip。首probe8个async函数因无pytest-asyncio未执行，
+原Model2过（重复不另计）；只改同步pytest入口→asyncio.run后8过、2原Model deselect，
+未安装插件或改场景/期待。首载体/XML及空slots静态失败保留；全部固定期待XB且SHA不变。
+
+22有效方法签名/default/注解/hints/doc、18旧class/method pickle解析、995导入名整表同；
+实际24/−48/16布局、instance56/dict296同，五原dict key序列前缀同且另加两profile。
+私MRO/16方法FQN/dict与weakref descriptor所属自然变；不伪装反射或承诺旧私control实例
+pickle功能（旧实例无两profile）；src/tests未见该私实例持久消费者，存量记录未变。仅
+实际__file__/diskSHA
+守卫，无compiled guard；真实Task.cancel限listener端口，不冒完整binding/native取消证明。
+
+A02/V1两既有门禁仅对exact hosted_resume观察集合减exact新member，合+14测试行；
+原RHS/scanner/49与84个assert及其它路径/route整AST逆同，数学单调放宽、不要求新member
+存在。没有新增PR gate、覆盖、平台或发现路线；外部315行observer与100行API脚本另计。
+
+HEAD计划选docs/architecture/coding/hosting/apphost/host-runtime，本批只验所列46项与静态，
+不充全部PR/原生平台通过。两份已安装源码经职责、运行、兼容三独立视角及API复核无阻断；实施owner `/root`
+核终态作本族有界接受。
+2063生产源仅2改/2061逐SHA/行同；Code434源108090、15K差93090，Harness367396不变，
+AppHost20557；系统661356，排GUI独立4524后656832；C02为31源7983，P1–P4仍partial。
+后续核C02/C03 detached Resume准备→首输入activation→binding-close完整状态与现有
+Transcript/Resume/Session owners，原已共享引擎/本族不重计，不把整793行当删行预算。
+树外a216-deferred-session-control保存原件/两稿/失败/46节点XML/API/八冻结观察/三视角；
+设计证据同名文件碰撞已分离compatibility/runtime proof并说明重建，不伪称找回旧字节。
+
 ## A215完整捕获资源族五源试算：当前形状不采用（2026-11-15）
 
 承接bc3006e27的clean树，fresh fetch main仍4de7d9251且为祖先；方法仍clean local master
