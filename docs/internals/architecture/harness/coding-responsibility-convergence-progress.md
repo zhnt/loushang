@@ -1,5 +1,59 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A204 完整Worker收据authority归原Package Product（2026-11-15）
+
+承接010596449完整2061源起点，fetch后origin/main仍4de7d9251且为任务祖先，archmethod
+仍clean local master 0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。按用户明确允许必要适度增量的新准则，复核原A178完整
+静态R3；原−512/+944/系统+432未采用历史保留，不变造为旧已接受。旧original缺Linux
+history快照，初False比较误判为漂移已撤回；从原Git补证12现行输入均原同，非后来schema冲突。
+
+完整common/POSIX/Windows receipt及相邻Win opt-in current/allow/revoke执行归原Package
+Product，实际Code对象/constructor/DTO/codec/领域policy/八公开名义门面保留。原ReceiptHistory、
+WindowsRecords、GC/root/native/discovery/verifier直接复用不重计；无第二manager/state/Task/
+阶段callback框架。五Code journal公开门面保签名/doc，实际接Core公共体，原validate/read/latest
+退出Code，其他原private调用由Core执行。详见[完整authority设计](key-designs/worker-receipt-authority-convergence.md)。
+
+全13源（12改/1新）raw Code−514/Harness+944/系统+430；uniform Code−514/Harness+946/
+系统+432。4inert facts/3actual reader能力/6T、8必要Code公开typed facades及全部qualified
+policy/DTO/History绑定均计。35/36整方法按明确绑定逆AST同；POSIX一处fresh-history转发的
+Code factory/原public reader展开路径另核，不把其文本假称相等；三个完整constructor、五
+DTO class除四base及Code exports/top-level程序保持。五journal facade展开后原程序同。
+这属于完整职责归位，非系统净精简；Code Windows receipt直接Hosting依赖确已退出。
+
+当前旧312节点185.94s全过；实际同312节点311过/1C50库存失败218.98s，0error/skip。
+原256历史载体+40原A136 Windows allow固定观察+16原C50/C54架构节点，不借旧256记录
+假称本轮运行。真实C0 Product/persistence场景实际构造五Code owner，旧/实际各自History
+__init__恰一次；保strongref防id重用，spy在teardown来源守卫前恢复，不证明所有临时reader数。
+
+失败为旧库存强制CodeWinReceipt仍直接依赖Hosting；仅将该exact path在hosting消费者两侧
+投影为optional，原literal/scanner/assert保，原节点另1过5.77s，不称完整312最后重跑全绿。
+另C50只optional精确新Coreconsumer、C54只将CodeWinReceipt两旧Worker边双侧optional；
+均无新presence/check/route/platform/断言，unknown其它边与剩余required仍拒绝。Probe仅旧
+p.PackagePhysicalStagingError挂点接同canonical类，cases/assert/oracles全保；三测试净+20行
+另计（3/7/10），非生产减量。实际测试失败与该修正完整保留。
+
+另27项树外边界观察+一个原checkpoint重叠：旧28过14.48s/实际28过37.51s；27JSON逐字
+同，含完整有限error args/notes/cause/context/suppress与trace。18项Win current/revoke成功/
+root/borrow/journal/compound退出及9项actual Code reader子类/material属性getter故障范围；
+受控端口/注入CancelledError等不充native Windows/真正Task.cancel证明。初旧9项native夹具
+未同时更新selected与allowed profile导致入场前失败（19过9败），只改树外夹具后重跑；
+初XML保留，不改Product/旧期待。总339不同节点身份，重叠与focused不重复计。
+
+父来源守卫旧14/实际15模块、192/225声明callables；主各312nodes/624checks，本地各
+28/56，focused1/2另列；路径/SHA+19递归code字段只证父声明源，非全globals/生成/子进程
+来源。40public signatures/resolved hints同，四旧值实际Code class/slots/字段/size/offsets/
+defaultpickle同，不充所有codec证明；原fixtures字节与原完整观察另验。组合五入口及ledger
+模块的import/metadata/pickle为632→633仅新Core，不称每入口cold或import IO审计。
+私MRO、implementation/global/class profile绑定与frame演进披露，不保任意热换module别名。
+实际13源mypy（follow-imports=silent）/Ruff/format全过，非全strict/native或全PR证明。
+
+本地额外edge脚本115行、复用A136观察support192行/40case carrier12行、History spy31行、
+API/pickle观察62行另计，不进入默认测试或PR gate。三独立设计与实际视角有界接受。
+全2062源中2049原源SHA/行未变；Coding434源109008、距15K94008，Harness366228/
+HarnessTUI29466/HarnessWork8332/AppHost20010；系统660559，排GUI独立4524后656035，
+当前C07为112源20533。证据树外a204-worker-receipt-authority；完整P1–P4/KD003/KD011/
+≤15K仍开放，不将本批剩余Code profile或整C07判最终领域下界。
+
 ## A203 完整共享连接配置归原AppHost（2026-11-15）
 
 基于c0c012277核2061源起点，fetch后origin/main仍4de7d9251且为任务祖先。

@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
+from loushang.harness.package_product._windows_worker_backend_release import (
+    _WindowsBackendInstalledMethods,
+)
+from loushang.harness.package_product._worker_product_authority import (
+    _WindowsWorkerProductReceiptAuthority,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
     WindowsLocalWheelProductSessionOwner,
@@ -15,35 +19,15 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeActivationError,
     PackageProductRuntimeBindingV1,
 )
-from loushang.harness.package_product.product_worker_candidate import (
-    _read_product_selected_worker_payload_facts,
-    verify_product_selected_worker_candidate,
-)
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
-from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
-from loushang.harness.worker._native_profile_bridge import (
-    _plan_windows_lpac_product_worker_profile,
-    _WindowsLpacProductWorkerProfilePlan,
-)
-from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
-from loushang.harness.worker.history._receipts import latest_receipt_record
-from loushang.harness.worker.product_activation import (
-    ProductWorkerActivationPolicyV1,
-    ProductWorkerActivationReceiptV1,
-)
-from loushang.hosting.windows_backend_material import (
-    WINDOWS_LPAC_PLATFORM_IMPORTS,
-    WindowsBackendMaterialExpectationV1,
-)
+from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
 
 from .package_product_worker_discovery import CodingWorkerTranscriptDiscoveryReader
 from .package_product_worker_policy import (
-    CodingWorkerOptInV1,
     CodingWorkerPolicySelectionError,
-    derive_coding_selected_worker_policy,
 )
 from .package_product_worker_receipt import (
     CodingWorkerReceiptError,
@@ -66,8 +50,13 @@ from .package_product_worker_windows_receipt_journal import (
 from .session_manager import SessionManager
 
 
-class CodingWindowsWorkerProductReceiptOwner(_CodingWorkerReceiptAuthority):
-    """Join current Product selection, opt-in, and installed native closure."""
+class CodingWindowsWorkerProductReceiptOwner(
+    _WindowsWorkerProductReceiptAuthority[
+        CodingWorkerReceiptRecordV1, CodingWorkerSelectedPayloadV1
+    ],
+    _CodingWorkerReceiptAuthority,
+):
+    """Keep original admission/data construction; all fixed custody is Core."""
 
     _stale_derivation_errors = (
         CodingWorkerPolicySelectionError,
@@ -121,64 +110,15 @@ class CodingWindowsWorkerProductReceiptOwner(_CodingWorkerReceiptAuthority):
         self._product: WindowsLocalWheelProductSessionOwner = product
         self._runtime = runtime
         self._selected = selected
-        self._opt_in: CodingWindowsWorkerProductOptInOwner = CodingWindowsWorkerProductOptInOwner(product)
+        self._opt_in: CodingWindowsWorkerProductOptInOwner = (
+            CodingWindowsWorkerProductOptInOwner(product)
+        )
         self._native = CodingWindowsWorkerInstalledBackendReader(product)
         self._session_discovery_reader = session_discovery_reader
         self._journal = CodingWindowsWorkerReceiptJournal(
             product.state_root / "worker-activation-receipts.jsonl",
             scope_id=product.policy.project_scope_id,
         )
-
-    @property
-    def product_owner(self) -> WindowsLocalWheelProductSessionOwner:
-        return self._product
-
-    @property
-    def product_runtime(self) -> PackageProductRuntimeBindingV1:
-        return self._runtime
-
-    def issue(self) -> ProductWorkerActivationReceiptV1 | None:
-        """Return Current on absent opt-in, otherwise persist exact authority."""
-
-        with self._product.gc_gate.guard(require_write=True):
-            self._product.assert_session_runtime_current(self._runtime)
-            self._runtime.assert_selected_plugin_manifest_current(self._selected)
-            decision = self._opt_in.current(
-                self._selected.snapshot.installation_key.plugin_id
-            )
-            if decision is None or decision.action != "allow":
-                return None
-            policy = self._derive(decision.opt_in)
-            if policy is None:
-                return None
-            with (
-                self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
-            ):
-                receipt = self._journal.issue(
-                    directory_fd=root,
-                    policy=policy,
-                    opt_in_decision_digest=decision.decision_digest,
-                )
-            self._product.assert_session_runtime_current(self._runtime)
-            return receipt
-
-    @contextmanager
-    def serialized_admission(self) -> Iterator[None]:
-        """Hold Product selection and GC through the first Worker effect."""
-
-        with self._product.gc_gate.guard(require_write=True):
-            self._product.assert_session_runtime_current(self._runtime)
-            yield
-
-    def _read_current_receipt_record(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> CodingWorkerReceiptRecordV1 | None:
-        self._product.assert_session_runtime_current(self._runtime)
-        with (
-            self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
-        ):
-            records = self._journal.records(directory_fd=root)
-        return self._latest(records, receipt.policy)
 
     def latch_kill_switch(self, *, expected_generation: int) -> int:
         """Persist a Windows opt-in revocation before C5 retires its domain."""
@@ -192,75 +132,17 @@ class CodingWindowsWorkerProductReceiptOwner(_CodingWorkerReceiptAuthority):
             ),
         )
 
-    def current_backend_capture_expectation(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> WindowsBackendMaterialExpectationV1:
-        """Derive Hosting's expectation only from a current Product receipt."""
-
-        with self._product.gc_gate.guard():
-            if (
-                not isinstance(receipt, ProductWorkerActivationReceiptV1)
-                or self.current_witness(receipt) != receipt.authority_witness
-            ):
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            material = read_coding_windows_worker_installed_backend_release(
-                self._product
-            )
-            closure = material.native_closure()
-            if (
-                closure.native_profile_catalog_revision
-                != receipt.policy.native_profile_catalog_revision
-                or self.current_witness(receipt) != receipt.authority_witness
-            ):
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            return material.expectation
-
-    def current_selected_manifest(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> PackageProductSelectedPluginManifestV1:
-        """Reread exactly the selected Store revision under Product custody."""
-
-        with self._product.gc_gate.guard():
-            if (
-                not isinstance(receipt, ProductWorkerActivationReceiptV1)
-                or self.current_witness(receipt) != receipt.authority_witness
-            ):
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            return self._capture_selected_manifest_under_gc_guard(receipt)
-
-    @staticmethod
-    def _payload_from_selected(
-        receipt: ProductWorkerActivationReceiptV1,
-        selected: PackageProductSelectedPluginManifestV1,
-    ) -> CodingWorkerSelectedPayloadV1:
-        candidate, configuration, body = _read_product_selected_worker_payload_facts(
-            selected,
-            contribution_id=receipt.policy.contribution_id,
-            native_platform="windows-amd64",
-        )
-        if (
-            body is None
-            or _CodingWorkerReceiptAuthority._selected_worker_payload_is_stale(
-                receipt, selected, candidate, body
-            )
-        ):
-            raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
-        return CodingWorkerSelectedPayloadV1(
-            configuration=configuration, body=body, digest=candidate.executable_digest
-        )
+    def _read_backend(
+        self, product: WindowsLocalWheelProductSessionOwner
+    ) -> _WindowsBackendInstalledMethods:
+        return read_coding_windows_worker_installed_backend_release(product)
 
     def current_selected_payload(
         self, receipt: ProductWorkerActivationReceiptV1
     ) -> CodingWorkerSelectedPayloadV1:
         """Read verified Windows PE bytes from the current Product selection."""
 
-        with self._product.gc_gate.guard():
-            self.current_backend_capture_expectation(receipt)
-            selected = self.current_selected_manifest(receipt)
-            payload = self._payload_from_selected(receipt, selected)
-            if self.current_witness(receipt) != receipt.authority_witness:
-                raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
-            return payload
+        return super().current_selected_payload(receipt)
 
     def current_payload_and_worker_owner_id(
         self, receipt: ProductWorkerActivationReceiptV1
@@ -272,112 +154,7 @@ class CodingWindowsWorkerProductReceiptOwner(_CodingWorkerReceiptAuthority):
         opt-in authority before either value is returned.
         """
 
-        with self._product.gc_gate.guard():
-            if (
-                not isinstance(receipt, ProductWorkerActivationReceiptV1)
-                or self.current_witness(receipt) != receipt.authority_witness
-            ):
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            selected = self._capture_selected_manifest_under_gc_guard(receipt)
-            payload = self._payload_from_selected(receipt, selected)
-            decision = self._opt_in.current(receipt.policy.plugin_id)
-            if (
-                decision is None
-                or decision.action != "allow"
-                or not isinstance(decision.opt_in, CodingWorkerOptInV1)
-                or self.current_witness(receipt) != receipt.authority_witness
-            ):
-                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            return payload, decision.opt_in.owner_id
-
-    def plan_current_native_attempt(
-        self,
-        receipt: ProductWorkerActivationReceiptV1,
-        worker_request: ManagedWorkerLaunchRequestV1,
-    ) -> _WindowsLpacProductWorkerProfilePlan:
-        """Build one LPAC plan from Product facts, including Hosting recheck."""
-
-        if not isinstance(worker_request, ManagedWorkerLaunchRequestV1):
-            raise TypeError("Windows Worker native request is invalid")
-        with self._product.gc_gate.guard():
-            expectation = self.current_backend_capture_expectation(receipt)
-            candidate = verify_product_selected_worker_candidate(
-                self._selected,
-                contribution_id=receipt.policy.contribution_id,
-                native_platform="windows-amd64",
-            )
-            identity = worker_request.identity
-            if (
-                identity.product_id != "coding"
-                or identity.scope_id != receipt.policy.product_scope_id
-                or identity.plugin_id != receipt.policy.plugin_id
-                or identity.plugin_revision_digest
-                != receipt.policy.plugin_revision_digest
-                or identity.contribution_id != receipt.policy.contribution_id
-                or identity.owner_generation
-                != receipt.policy.owner_selection_generation
-                or worker_request.runtime.executable_digest
-                != candidate.executable_digest
-            ):
-                raise CodingWorkerReceiptError("coding_worker_native_request_stale")
-            material = read_coding_windows_worker_installed_backend_release(
-                self._product
-            )
-            if worker_request.runtime.package_root.parent != self._product.state_root:
-                raise CodingWorkerReceiptError(
-                    "coding_worker_native_payload_root_changed"
-                )
-            plan = _plan_windows_lpac_product_worker_profile(
-                worker_request=worker_request,
-                native_profile_catalog_revision=(
-                    receipt.policy.native_profile_catalog_revision
-                ),
-                containment_launcher_sha256=(material.review.approval.launcher_sha256),
-                platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
-                backend_material_expectation=expectation,
-                release_profile_sha256=material.review.approval.profile_sha256,
-                owner_private_ancestors=True,
-            )
-            if (
-                plan.expected_native_policy_closure_fingerprint
-                != receipt.policy.expected_native_policy_closure_fingerprint
-                or self.current_witness(receipt) != receipt.authority_witness
-            ):
-                raise CodingWorkerReceiptError("coding_worker_native_plan_stale")
-            return plan
-
-    def _derive(self, opt_in: object) -> ProductWorkerActivationPolicyV1 | None:
-        if not isinstance(opt_in, CodingWorkerOptInV1):
-            return None
-        session_id = self._runtime.session_id
-        runtime_id = self._runtime.product_runtime_id
-        assert session_id is not None and runtime_id is not None
-        session_discovery = (
-            None
-            if self._session_discovery_reader is None
-            else self._session_discovery_reader.current_discovery()
-        )
-        if self._session_discovery_reader is not None and not isinstance(
-            session_discovery, SessionDiscoveryMetadata
-        ):
-            raise CodingWorkerReceiptError("coding_worker_session_discovery_invalid")
-        return derive_coding_selected_worker_policy(
-            runtime=self._runtime,
-            product_policy=self._product.policy,
-            selected=self._selected,
-            session_id=session_id,
-            product_runtime_id=runtime_id,
-            opt_in=opt_in,
-            native_closure=self._native.current_closure(),
-            session_discovery=session_discovery,
-        )
-
-    @staticmethod
-    def _latest(
-        records: tuple[CodingWorkerReceiptRecordV1, ...],
-        policy: ProductWorkerActivationPolicyV1,
-    ) -> CodingWorkerReceiptRecordV1 | None:
-        return latest_receipt_record(records, policy)
+        return super().current_payload_and_worker_owner_id(receipt)
 
 
 def open_coding_windows_product_selected_worker_receipt_owner(

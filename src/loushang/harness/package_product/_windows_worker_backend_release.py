@@ -39,6 +39,8 @@ from loushang.hosting.windows_backend_material import (
     verify_windows_backend_material_expectation,
 )
 
+from .product_worker_candidate import ProductWorkerNativeClosureFacts
+
 
 class _ApprovalOwner(Protocol):
     def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None: ...
@@ -213,6 +215,9 @@ class _WindowsBackendInstalledMethods:
     _wheel_limit: ClassVar[int]
     _failure: ClassVar[type[RuntimeError]]
     _read_errors: ClassVar[tuple[type[BaseException], ...]]
+
+    def native_closure(self) -> ProductWorkerNativeClosureFacts:
+        raise NotImplementedError
 
     @classmethod
     def _install(

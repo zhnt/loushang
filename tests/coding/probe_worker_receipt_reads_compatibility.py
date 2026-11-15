@@ -19,6 +19,9 @@ import pytest
 import loushang.coding.package_product_worker_receipt as p
 import loushang.coding.package_product_worker_windows_receipt as w
 import loushang.harness.package_product.product_worker_candidate as c
+from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
+    PackagePhysicalStagingError,
+)
 from tests.harness.worker.test_product_activation import _policy, _receipt
 
 EXPECTED = Path(__file__).parent / "fixtures" / "worker_receipt_reads_v1.json.gz"
@@ -213,7 +216,7 @@ def test_flow(monkeypatch, flow, scenario):
     def capture(plugin_id, **kwargs):
         trace.append(["capture", depth, plugin_id, kwargs])
         faults = {
-            "capture-physical": lambda: p.PackagePhysicalStagingError(
+            "capture-physical": lambda: PackagePhysicalStagingError(
                 "physical failure", code="package_artifact_identity_changed"
             ),
             "capture-activation": lambda: p.PackageProductRuntimeActivationError(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import Callable
+from pathlib import Path
 from typing import Literal, Protocol
 
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
@@ -52,6 +53,32 @@ from .product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from .product_runtime import PackageProductRuntimeRequestV1
+
+
+class ProductWorkerOptInFacts:
+    __slots__ = ()
+    owner_id: str
+
+
+class ProductWorkerNativeClosureFacts:
+    __slots__ = ()
+    native_platform: str
+    native_profile_catalog_revision: str
+    containment_launcher_digest: str
+    containment_profile_digest: str
+
+
+class ProductWorkerNativeLaunchMaterialFacts:
+    __slots__ = ()
+    launcher_path: Path
+    closure: ProductWorkerNativeClosureFacts
+
+
+class ProductWorkerSelectedPayloadFacts:
+    __slots__ = ()
+    configuration: PluginLocalWorkerConfiguration
+    body: bytes
+    digest: str
 
 
 def verify_product_selected_worker_candidate(

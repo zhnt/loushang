@@ -49,7 +49,7 @@ class CodingWindowsWorkerReceiptJournal(
 
     def records(self, *, directory_fd: int) -> tuple[CodingWorkerReceiptRecordV1, ...]:
         "Read without creating any journal or lock state."
-        return self._read_records(directory_fd=directory_fd)
+        return super().records(directory_fd=directory_fd)
 
     def issue(
         self,
@@ -59,7 +59,7 @@ class CodingWindowsWorkerReceiptJournal(
         opt_in_decision_digest: str,
     ) -> ProductWorkerActivationReceiptV1:
         "Append or return an exact current policy receipt under one lock."
-        return self._issue(
+        return super().issue(
             directory_fd=directory_fd,
             policy=policy,
             opt_in_decision_digest=opt_in_decision_digest,

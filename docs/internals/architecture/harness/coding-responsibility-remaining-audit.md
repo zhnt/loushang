@@ -1,7 +1,7 @@
 # Coding 全量剩余职责与保留成本复核
 
-本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187、A189、A190、A195、A196、A197、A199、A201、A202、A203源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
-109522行，距15K仍94522行。下面28组不是可删除预算或最终保留成本。
+本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187、A189、A190、A195、A196、A197、A199、A201、A202、A203、A204源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
+109008行，距15K仍94008行。下面28组不是可删除预算或最终保留成本。
 A156托管服务完整控制已归原AppHost；Coding保产品身份/政策与错误薄适配。
 A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
@@ -49,7 +49,10 @@ Code−107/AppHost+123/系统+16（uniform+14），A149原writer直接复用不�
 Code保原dispatcher/profile及五公开reexports，C02为31源8065，非整组最终领域下界。
 用户已明确允许为清晰职责及必要通用化付适度系统增量，不将“必须有第二机制退出”设硬门槛；
 仍按真实复用、完整旧体退出和全部适配税选择，不把小幅增量自动作拒绝理由。
-完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07整policy/receipt仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
+A204按用户明确新准则重新接受完整authority，并接五journal公开门面到实际Core程序；
+Code−514/Harness+944/系统+430（uniform+432），不是把A178历史否决改写为旧已交付。
+当前C07为112源20533，保领域/codec/实际class及八必要公开门面；整C07仍非最终领域下界。
+完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07其余policy/platform绑定仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 A162完整暂存到prepared activation lease交接归原Continuity，Code−61/Core+90/系统+29，
 单消费者职责迁移，不计去重；KD003 bytes与C04整体仍未完成。
 A163恢复SDK公开28参数边界，Hosted内部模型政策走原私有程序；Code/系统+68、Core0，
@@ -171,7 +174,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 | C04 Continuity | 2/2,809 | P3 | 原Continuity provider/runtime、A68 payload custody、A162暂存到lease及A174完整绑定shutdown/reservation/Task寿命已接入；Code保来源/限额/cwd和canonical restore端口 | KD003 bytes import未实施；非owned真实Path/FileCopy/引用合同仍在，不提前采用KD011 |
 | C05 Canary及作者验证入口 | 6/3,417 | P1/P3/P4 | 原Worker attempt及托管owner已有接入；A201完整private Journal锁/存储scope归Journal，Code保G10状态/代际/历史/准入和真实SDK/CLI验证场景 | 存在真实运行消费者，不能按canary/smoke命名删除；剩余协调须随实际场景替代 |
 | C06 其余根入口与策略 | 26/4,444 | P2/P4 | 混合产品配置、模型/工具选择及既有薄绑定；A195完整workspace身份协议共用原Paths | 逐具体声明/运行路径处置；不整体当领域保留或机械可删 |
-| C07 插件Worker | 112/21,047 | P1 | 五流/Rooted/history/platform/native custody、普通准备/停止/reopen主机制已共享；A165撤销事务及A167读取重复程序归一，Code保产品准入/原读取时序 | Core已有candidate事实现供3处复用；A178真实Records/薄构造整物原型保公开接口后仍系统+432、成本拒绝未接入；完整authority/平台政策归属仍开放，非领域不可迁证明 |
+| C07 插件Worker | 112/20,533 | P1 | 五流/Rooted/history/platform/native custody、普通准备/停止/reopen主机制已共享；A165撤销事务及A167读取重复程序归一，Code保产品准入/原读取时序 | A204完整authority及相邻Win opt-in协调已归Core，原A178成本否决保历史；Code保DTO/codec、构造/领域policy和公开门面，余下platform/policy仍需按完整场景核验，不据此关闭整组 |
 | C08 插件私有数据 | 31/6,665 | P4 | 原备份/删除/恢复/过期及A71 lineage已共享，A185完整27行checkpoint统调归原Journal | 保key/路径/确认与真实记录；继续核残留协调，前序成本不重复记收益 |
 | C09 兼容迁移与快照证据 | 34/8,925 | P4 | 原capture/epoch/receipt等机制已共享，A157首次删除重放三入口合一，A168原Source重捕获/handle/stage custody及双Wheel核归Resources，A199完整接受/来源消费/收据重放归Package Product；存量分类、准入与恢复政策仍在 | 逐受支持状态和恢复入口给退出证明；legacy命名与静态无调用都不足以删支持 |
 | C10 包分发及Product管理 | 12/5,248 | P2/P4 | Package Product等已复用；A182两段Catalog证据投影归原current_preview，A155修复执行/释放归原ProductRuntime，Code保该入口准入/DTO/parent关闭，其它兼容/fenced装配仍混合 | 保产品内容与信任/支持范围；核完整选择、恢复、factory release而非另建manager |

@@ -18,6 +18,8 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
 from loushang.harness.package_product.product_worker_candidate import (
+    ProductWorkerNativeClosureFacts,
+    ProductWorkerOptInFacts,
     verify_product_selected_worker_candidate,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
@@ -59,7 +61,7 @@ class CodingWorkerNativeClosureReadError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWorkerOptInV1:
+class CodingWorkerOptInV1(ProductWorkerOptInFacts):
     """An exact per-install decision input; this record grants no authority."""
 
     plugin_id: str
@@ -118,7 +120,7 @@ _OPT_IN_ENCODE_SCHEMA = RecordSchema(
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWorkerNativeClosureV1:
+class CodingWorkerNativeClosureV1(ProductWorkerNativeClosureFacts):
     """Authority-free native facts supplied by a separate Product owner."""
 
     native_platform: str
