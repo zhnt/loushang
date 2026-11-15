@@ -7,26 +7,30 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 
 ## 当前执行顺序：先完整大块，再局部精简
 
-用户2026-11-15要求大块可迁移优先。下表是尚未完成的大块设计/成本审查队列，
+用户2026-11-15要求大块可迁移优先。下表列本批交付和剩余大块设计/成本审查队列，
 不是已接受实施、预计删行或把目录换owner；验证无新完整接缝时跳到下一项，不回填字段小项。
 
 | 顺序 | 完整交付边界与源码审查池 | 现有接收组件与Code保留 | 先解决的问题与退出条件 |
 | --- | --- | --- | --- |
-| 1 | C09旧安装review→acceptance→binding catalog→source消费及崩溃恢复；local_acceptance542/source_consumption397/binding_catalog391，共1330行主要审查池 | 原Package Product/Resources、Journal/Config；Code保历史格式/产品支持范围、操作员选择与精确领域复核 | 接受的双锁/parent身份/原子发布与消费的prepared/settled收据、Settings事务、live source CAS须连同失败/恢复完整承接。先比较现有owner最小整入口和全部适配成本；binding catalog已有_LegacyLocalSourceCatalog直接复用，A168已共享的Wheel重捕获不重做计益 |
-| 2 | C03 Plan→隔离Writer→V1/V2 attempt→首输入commit→runtime publication及失败custody；continuation486/SessionManager783/activation_plan400，共1669行主要审查池 | 原Transcript/Session/Resume effects；Code保composition选择、授权和版本化产品记录 | 已有底层机制直接复用；保只读Plan与live Writer区分、admission/epoch结算、commit不确定时原input查证及清理失败owner保留。不新增自动重试或用厚回调搬走领域判断 |
-| 3，条件设计 | C01/C15装配交接；先比较原Base/Capability两完整函数406行，不将bootstrap3626当预算 | 原Construction/Resources/Session | A183确认与A112同源，A51系统+202形状仍拒绝。只有新的完整事务接缝能显著减少适配才重开；无新接缝则继续下一未处置簇 |
+| 已完成本批 A199 | C09旧安装review→acceptance→binding catalog→source消费及崩溃恢复；原local_acceptance542/source_consumption397/binding_catalog391，共1330行原审查池 | 原Package Product/Resources、Journal/Config；Code保历史格式/产品支持范围、操作员选择与精确领域复核 | A199已完整接管accept/reopen/consume/consumed原双锁/parent身份/发布、prepared/settled重放、Settings事务及live source CAS；Code−340/Harness+480/系统+140，原74项实际过。1330并非迁出量，原分类/准入保Code；binding catalog已有_LegacyLocalSourceCatalog直接复用，A168已共享的Wheel重捕获不重做计益 |
+| 下一 / 1 | C03 Plan→隔离Writer→V1/V2 attempt→首输入commit→runtime publication及失败custody；continuation486/SessionManager783/activation_plan400，共1669行主要审查池 | 原Transcript/Session/Resume effects；Code保composition选择、授权和版本化产品记录 | 已有底层机制直接复用；保只读Plan与live Writer区分、admission/epoch结算、commit不确定时原input查证及清理失败owner保留。不新增自动重试或用厚回调搬走领域判断 |
+| 后续条件设计 | C01/C15装配交接；先比较原Base/Capability两完整函数406行，不将bootstrap3626当预算 | 原Construction/Resources/Session | A183确认与A112同源，A51系统+202形状仍拒绝。只有新的完整事务接缝能显著减少适配才重开；无新接缝则继续下一未处置簇 |
 | 暂缓重试 | C07 Worker authority、ManagedMuxCommand完整驱动 | 原Package Product、AppHost | 已有完整原型分别系统+432、+292（统一格式+434/+192），无另一机制退出。须有不同API/复用收益证据才重开，不按112文件/21047行整搬 |
 | 后置 | 字段声明、薄公开adapter、prompt/profile | 保当前领域内容和必要兼容入口 | A196/A197已接受收尾；C19四源440行按A198源核执行已Core，不继续以局部十几行精简替代大块主线 |
 
-先形成第1项的整链源码/消费者与失败恢复图、接收API和全税成本，再决定接入；
-当前尚未完成该整链方案，不预支1330行减量。第2项有更大领域合同/接口税风险，
-故可迁移性排序优先于名义行数。完整剩余责任账中其余簇仍开放，不被本队列排除。
+A199已完成第1项的接受/消费固定事务，保原领域政策及catalog绑定；不是整C09完成。
+下一C03须先证明upper handoff完整接缝与全部接口成本，1669行仍非删除预算。
+A200源码核查确认原Transcript factory已拥有Writer的lease/restore/失败回收，Session已
+拥有实际graph/intent/first-input/commit/publication机制，不能重计397行整体IO。可比较的是
+完整outer handoff，须保原own Writer classmethod及历史header/new-epoch差异，全部8–10
+必要领域/constructor绑定成本先核；目前无低税drop-in，尚未原型、运行或接受新收益。
+可迁移性排序优先于名义行数；完整剩余责任账中其余簇仍开放，不被本队列排除。
 
 排序先比较能够整体退出的旧操作体和真实复用，再比较全部适配后Coding及系统的净值；
 失败/取消/重试和资源交接必须一起替换。最近A171、A173、A174、A176合计Coding−680、
 生产系统+422，属于职责收敛，不能作为系统净精简的证据。A179另Code−128/AppHost+224/
 系统+96；A180完整前台控制另Code−116/AppHost+275/系统+159（统一格式+137）。
-A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；A196六流字段契约去重Code−46/Harness+12/系统−34；A197四类字段契约再Code−39/Harness+7/系统−32；当前Coding110202行，距15K尚95202行，仍须按完整工作件推进。
+A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+39；A185再Code−13/Harness+41/系统+28；A187再Code−88/HarnessWork+138/系统+50；A189再Code−71/Harness+102/系统+31；A190再Code−83/HarnessTUI+124/系统+41；A195四consumer整guard去重Code−29/Harness+21/系统−8；A196六流字段契约去重Code−46/Harness+12/系统−34；A197四类字段契约再Code−39/Harness+7/系统−32；A199完整接受/消费事务Code−340/Harness+480/系统+140；当前Coding109862行，距15K尚94862行，仍须按完整工作件推进。
 
 | 顺序/状态 | 完整工作件 | 接收者及Coding保留边界 | 进入条件或实际处置 |
 | --- | --- | --- | --- |
@@ -55,7 +59,7 @@ A181再Code−116/Harness+268/系统+152；A182再Code−76/Harness+115/系统+3
 | 后续开放 / A169、A178完整形状均拒绝 | Worker Product完整收据authority | 原Package Product/Resources；Code保政策、验证与兼容DTO | 892行类范围/803行方法定义已作A178完整13源原型。真实Records/MRO/3必要reader改善成立，但计入4事实契约、6TypeVar、8必要公开门面后Code−512/Core+944/系统+432（统一格式+434），仅静态通过，未采用。相比A169系统+580减少148，仍无另一authority/运行重复退出，不为已付原型成本启动大矩阵或摘叶救收益 |
 
 G17与C13本批实例寿命、C10两段中性证据投影已完成；后续核实顺序为：
-**先C09接受/消费/恢复整链，再C03 Resume整链**；A197已完成四类契约，停止连续挑字段和薄适配器作主线。C19按A198降优先级；固定ownannotations不能直接套A196。A188子图原接口未变；A187完成Goal寿命，A186命令门面无新替代；
+**C09接受/消费固定事务按A199完成，下一C03 Resume整链**；A197已完成四类契约，停止连续挑字段和薄适配器作主线。C19按A198降优先级；固定ownannotations不能直接套A196。A188子图原接口未变；A187完成Goal寿命，A186命令门面无新替代；
 C08 checkpoint按A185完成，
 C01按A183暂缓，
 Windows完整快照按A184全成本拒绝，systemd两程序按A191完整原型拒绝；

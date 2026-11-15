@@ -1,5 +1,32 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A199 旧本地安装接受及来源消费完整事务归原Package Product（2026-11-15）
+
+两固定私有协议直接使用原epoch、RootedFileIO、Desired decoder/codec与实际SettingsManager，
+接管完整accept/reopen及consume/consumed、settled-sibling重验、live配置CAS、prepared/
+settled重放、原子发布与FD关闭。Code保原公开记录/Error/签名、first-B分类、旧格式与
+晚kind/review准入、真实accepted-record reopening；这些领域口会读证据，不冒称纯函数。
+不回借锁/发布/消费体，不造manager、Task、自动重试或第二持久状态。已有catalog391行、
+A168 Wheel重捕获不重计。详见[完整协议设计](key-designs/legacy-local-migration-transactions.md)。
+
+全税raw=uniform：Code939→599（−340），Harness新增480，生产系统+140。这是完整
+职责归位，不是系统净精简或第二引擎去重。1T/3只读role8属性、两短命recipe6+9引用字段、
+原4字段事实对象及全部门面/兼容/typing均计。私有FrozenSources的FQN/readonly注解与
+新帧演进披露；recipe入口捕获codec/error/预算，不承诺中途突变私有globals等价。
+
+四个原测试载体（inventory、policy-reopen、PLC9 baseline及12个完整CLI函数含所有参数）
+旧74过696.505s，实际同74过692.969s，0fail/error/skip；不累计覆盖，不改旧fixture/期待。
+原os.link与两formatter中断口保持，支持skill/prompt/theme版本1/2/3、多来源消费、
+commit后缺settled重开、源消失后接受记录重开与错误/CAS拒绝。父进程来源守卫旧5模块/
+实际6模块，每节点前后核路径/SHA与19递归code字段；不称生成函数、所有native错误注入、
+原生Windows或完整PR矩阵证明。三源实际mypy/Ruff及冷导入结果另记，无新test/gate。
+
+2060源仅原两Code源改及新Core一源，其余2057 SHA/行同；当前source659892，排GUI独立
+4524后655368。Code434源109862、距15K94862，Harness365000/HarnessTUI29466/
+HarnessWork8332/AppHost19717；C09当前34源8925。三设计/实际视角按本批范围接受，
+完整P1–P4/KD003/KD011仍开放，C09非整组完成。下一按大块队列进入C03 Resume整链，
+不退回字段/薄adapter主线。
+
 ## A197 四类剩余记录的中性字段契约去重（2026-11-15）
 
 Checkpoint、Windows history join、activation base V2及provisioning retained attempt四类
