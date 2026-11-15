@@ -582,3 +582,7 @@ Code108032/Harness367396/AppHost20629，系统本批raw+14，不作净减。
 
 A218当前：Code107998/Harness367448/AppHost20629；2063源账本661388含GUI测试/support4524，
 生产2032源656864。Code−34/系统+18 raw=uniform，原97行Writer已共享获取机制不重计。
+
+A219四源2460行池实核及Windows完整358span两源试型−228/+451/sys223不采用；8roles/7T/
+wide profile税不值，非功能否决/永久领域下界。原POSIX/receipt已Core不重计。全部2063
+源SHA/行仍A218，当前Code107998/Harness367448/AppHost20629/生产656864，收益0。

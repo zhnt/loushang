@@ -1,5 +1,39 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A219完整Windows payload试算：当前类型形状不采用（2026-11-15）
+
+承接clean72af9c00f；三视角核POSIX payload789/receipt602/Windows payload498/recovery571
+四源2460行池与真实上下游。POSIX物化/plan/bind、repair/storage与receipt authority已Core，
+不重复迁益；Windows PE/ACL/stage IO、live-stage verifier、inventory join也已Core。
+
+完整树外两源试型承接Windows plan58/materialize110/bind148、mint来源校验23及marker19
+共358span，并纳唯一WeakKeyDictionary/Lock。Code保原DTO、精确名义/platform准入、
+错误/namespace与late profile；Core直接持complete/verify/validate闭包，不将这些程序
+回借Code。现58行retirement filter含四路线完成证明与实际IO，明确作为既有Product
+恢复准入政策保Code，不称pure或计为已退出；它不是新materialize/bind阶段callback。
+
+最终完整成本Code498→270（−228）、原_worker_windows_attempt1126→1577（+451），
+系统+223 raw=uniform；8新Protocol、7T、17class facts/suppliers加1错误字段投影和全部
+facade/registry aliases/导入已计。不是把358span当删行，亦不以无第二producer或正增长
+本身否决。现有Core authority再描一层view、四参数generic profile与约18声明形成宽
+适配面，未换得相称接口简化；本轮Root采纳运行/兼容两个视角整形不采建议。职责视角
+支持有限old-first，真实custody/单registry收益有据；分歧保留，不写三方一致功能否决。
+此判断不是永久Code领域下界，未来须从原owner更窄承接形状重新论证，不摘小叶救收益。
+
+首不完整生成稿有缺名/重复import，已归档；首可typed稿Ruff/mypy绿仍有私marker双验证，
+三源审查发现并修成唯一实际委托。两Code错误前缀改读同profile；identity helper从Core
+顶层移到plan/bind局部，避免既有attempt用户新增POSIX payload闭包。局部import文本
+替换曾误删缩进，构建阶段修正并保留失败件。最终两shadow项目mypy/完整Ruff通过，
+有限源码检查（职责14项结构检查、运行18项逆绑定及兼容检查）通过；不冒运行或compiled行为证明。
+最终候选SHA Code49949cb6/Corecf72eb04，较前sys218增加5行为局部import等完整成本。
+
+未安装/import/运行候选，pytest0、无新probe/oracle/期待、无API/cold/原生Windows实验；
+生产精简收益0，未拆marker/finally另采。2063源账本逐SHA/行保持A218，Code107998/
+Harness367448/AppHost20629；账本661388含31GUI测试/support4524，生产2032源656864，
+15K差92998，完整P1–P4仍partial。完整原件/两稿/失败/成本/三视角报告在树外
+a219-worker-payload-receipt。按用户要求，本批记录收尾后交付已经接受的任务分支：
+commit/push/PR/merge/sync local，全部完成后才暂停goal；不启动下一批，当前不提前宣称暂停。
+
 ## A218完整应用Transcript绑定归原Product owner（2026-11-15）
 
 承接clean 08e792055，fresh fetch main仍4de7d9251且为祖先；方法仍clean local master

@@ -350,3 +350,8 @@ A218完整应用四操作绑定归原ProductTranscriptSession，Code−34/Harnes
 Code原97行Writer/双factory产品配置保留，原native owners直接复用不重计。111旧新同序全过，
 16观察已含其中，验证限制见执行记录；C03当前15源4098。Code107998/Harness367448/
 AppHost20629；账本661388含GUI测试4524，生产2032源656864，15K差92998，全Goal未完成。
+
+A219四源完整池实核：Windows payload/registry全形试算Code−228/Core+451/sys223 raw=uniform，
+8Protocol/7T/wide profile税不值，Root采两value拒建议、保另一有限验证支持意见，整不采。
+无候选运行/生产收益，全部源仍A218实物；不是将58行effectful恢复准入口称pure或永久
+Code下界。按用户交付后暂停要求不再开新批，完整目标仍未达到。

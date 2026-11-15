@@ -1048,3 +1048,28 @@ Code−36/原Worker codec+2/系统−34；1959其它源码和13资源SHA原同�
 夹具、门禁或生产模块。A129退休闭包未安装，未重计原Decoder/IO。AI本批未选，旧门禁
 失败保持。独立评审、实际源码帧与命令在树外a130-public-codec-entry-reuse。
 完整Goal仍partial，不能用此批替代P1–P4/15K验收。
+
+## A219 Complete Windows Payload Trial Not Adopted
+
+The four-source pool confirms POSIX payload/storage/recovery and receipt authority
+already use Core. The external complete Windows plan/materialize/bind/late-validator/
+mint-registry/marker trial moves actual programs and keeps one registry, not only
+physical stage helpers. The existing58-line retirement proof filter remains an
+effectful Product recovery-admission policy; no pure-callback or closed recovery
+authority claim is made. Stage IO and live-stage verification remain existing owners.
+
+Final whole cost is Code−228/Core+451/system+223 raw=uniform. Eight Protocols, seven
+type variables and a four-parameter profile with17 suppliers/facts plus one error
+projection introduce a broad adapter surface around fixed Windows operations.
+Two independent value views recommend rejecting that shape; responsibility supports
+finite old-first because actual custody/provenance moved. Implementer `/root` rejects
+the whole current typed shape on interface cost, not solely positive growth or lack
+of a second producer. This is not a permanent domain floor or functional veto.
+
+Double private marker verification, hardcoded Code prefixes and broad eager identity
+imports were corrected in external candidates; generator/name/import failures are
+retained. Final two-source shadow mypy and Ruff pass; no candidate installation,
+import, runtime/API/cold/native experiment or pytest occurred. Production gain is0.
+All2063 source-ledger hashes/lines stay atA218; no small marker/finally fragment is
+adopted. Final candidate/source pins and scope limits are in the Coding A219 record
+and external `a219-worker-payload-receipt` evidence. Full Goal remains incomplete.

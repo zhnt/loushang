@@ -17,7 +17,8 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 
 | 顺序 | 完整交付边界与源码审查池 | 现有接收组件与Code保留 | 先解决的问题与退出条件 |
 | --- | --- | --- | --- |
-| 下一完整源核 | C07 POSIX/Windows Worker payload、receipt与recovery输入完整族 | 原RecordSchema/PackageProduct owner；Code保DTO/namespace/产品政策 | 先核完整读/校验/交付程序及真实消费者，不整搬产品字段、不重计已共享codec/IO或预记删行 |
+| 本次 A219整形不采用 | C07四源2460行池；Windows payload完整358span族及唯一mint registry试型 | 原PackageProduct attempt/authority；Code保名义/产品恢复政策 | 全税Code−228/Core+451/sys223 raw=uniform，8roles/7T/wide profile不值；1视角支持有限old-first、2建议整拒，Root整不采，无生产收益/pytest0 |
+| 当前交付边界 | 用户要求完成本批后commit/push/PR/merge/sync local再暂停goal | 已接受A218及此前任务提交；A219仅拒绝记录 | 不开启下一批；必须验证发布/合并/本地同步后再标暂停，不提前称Goal完成或已暂停 |
 | 已完成 A218 | C03整个应用级Transcript四操作绑定 | 原ProductTranscriptSession；Code保两个实际factory引用和配置/Resume政策 | Code−34/Harness+52/系统+18 raw=uniform，原/新同序111全过；16观察含在111内，0新T/Role/Task/gate，整C03未完成 |
 | 已完成 A217 | 普通/Deferred Hosted完整审批展示与撤回两程序归一 | 原AppHost；Broker/Resolver权威复用，Code保原map接入与reply/close政策 | Code−58/AppHost+72/系统+14raw（uniform−75/−3），旧新89过/1原skip；32观察含在89内，非raw系统净减 |
 | 已完成 A216 | C02 deferred control完整订阅/事件/激活委托/close-retry及同对象四状态 | 原AppHost Session control；Code保binding/identity/settings/model五政策成员和2纯profile | Code−82/AppHost+108/系统+26，uniform−84/+24；46不同节点/API/八旧观察通过，0新Protocol/T/Task、基类identity hook全计，非系统净减 |
