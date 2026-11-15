@@ -36,6 +36,8 @@ A197四类字段契约再Code−39/Harness+7/系统−32，原1138实际通过�
 A198仅源核C19四源440行，四完整操作已Core，保产品profile/内容/公开绑定；不计新增减量或永久下界。
 A199完整接受/来源消费/只读结清事务归原Package Product，Code−340/Harness+480/系统+140，
 原74节点实际过；当前C09为34源8925，Code保领域分类/准入及公开记录，非整组完成。
+A200完整Resume外层四源原型raw Code+4/Core+277/系统+281（uniform Code−54/系统+223），
+四源overlay静态通过但全部接口税不值，未采用/未runtime/生产收益0；原Code构造与Core寿命不重复计益。
 完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07整policy/receipt仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 A162完整暂存到prepared activation lease交接归原Continuity，Code−61/Core+90/系统+29，
 单消费者职责迁移，不计去重；KD003 bytes与C04整体仍未完成。
@@ -154,7 +156,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 |---|---:|---|---|---|
 | C01 启动、Plugin/资源装配 | 22/12,616 | P2 | 原Construction/Session、Catalog/Graph已实际接入；A163公开SDK薄转发与私有原模型政策分离；A173完整兼容cache/issuer/逐请求发布归Config；Code剩领域capture/guard、跨阶段选择、审批、刷新与交接 | A168三seed聚合原型完整成本+60拒绝；继续拆领域选择与共用程序，不把bootstrap/回调池当删除预算 |
 | C02 托管与受管接入 | 31/8,257 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用；A179完整prefix/失败清理及两attempt生命周期归AppHost，Code保请求、资格与领域构造profile；Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝；不据A179关闭整组 |
-| C03 Resume与SessionManager | 15/4,132 | P2/P3 | 原Transcript/Session lifecycle、live恢复已复用；Code保版本化输入/装配与授权政策 | 按new/resume/fork/reopen完整合同再拆；不重建提交器或自动重试 |
+| C03 Resume与SessionManager | 15/4,132 | P2/P3 | 原Transcript/Session lifecycle、live恢复已复用；Code保版本化输入/装配与授权政策 | A200完整outer/fence形状全税不采用，未改原源码；继续按new/resume/fork/reopen判领域与共享接缝，不重建提交器/重试器或摘guard |
 | C04 Continuity | 2/2,809 | P3 | 原Continuity provider/runtime、A68 payload custody、A162暂存到lease及A174完整绑定shutdown/reservation/Task寿命已接入；Code保来源/限额/cwd和canonical restore端口 | KD003 bytes import未实施；非owned真实Path/FileCopy/引用合同仍在，不提前采用KD011 |
 | C05 Canary及作者验证入口 | 6/3,565 | P1/P3/P4 | 原Worker attempt及托管owner已有接入；Code保真实SDK/CLI验证入口和产品场景 | 存在真实运行消费者，不能按canary/smoke命名删除；剩余协调须随实际场景替代 |
 | C06 其余根入口与策略 | 26/4,444 | P2/P4 | 混合产品配置、模型/工具选择及既有薄绑定；A195完整workspace身份协议共用原Paths | 逐具体声明/运行路径处置；不整体当领域保留或机械可删 |

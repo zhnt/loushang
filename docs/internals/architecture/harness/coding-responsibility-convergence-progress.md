@@ -1,5 +1,35 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A200 完整Resume外层交接原型按全成本不采用（2026-11-15）
+
+已完成四源完整原型，不是397行导航估算：原Session continuation family固定操作接完整
+phase、两settled屏障、原Core intent/parent/graph/input/commit/publication、once身份通知、
+未知提交恢复query、原owner关闭/fence/债务raise-from；原Transcript增加11行fixed fence
+方法；原三个失败site共享此Core程序：bootstrap/Root经Code薄retain，outer直接调用Core
+方法及名义债务factory。无阶段表、额外Task、
+manager或影子Writer；原97行owned Writer入口完整保Code，实际寿命已由原factory接管，
+它是非pure领域构造口，不计迁益。原历史Header与新epoch区分及own classmethod保留。
+
+全税raw：Code continuation486→468（−18），cleanup54→76（+22），合计Code+4；
+Core Session485→751（+266）、Transcript890→901（+11），Core+277、系统+281。
+统一Ruff格式后Code−54/Core+277/系统+223；差值来自原Code紧凑布局，不是另一机制退出。
+九个具名适配+intent lambda共十个领域/creation绑定及原三callback、2个新Query/Result T、
+实际5T Transcript/1T Session和必要名义窄cast均计；243行Core操作含74行/21kwarg签名。
+
+完整current-src树外overlay的四源mypy（follow-imports=silent）及Ruff通过，16项来源/
+完整outer逆AST/旧Core定义/public资格与fence程序对照通过，三视角核最终四SHA一致。
+这是源码/静态证据，未安装或运行候选，不称实际取消/native/冷加载或整PR通过。
+
+决定不采用整个形状：原Writer/graph/commit/parent机制早已Core，没有第二协调器或整依赖
+退出，必要Code门面/版本codec/构造/错误绑定几乎抵消迁出，原始Coding反而增长。
+不摘11行fence或小guard挽救，也不把300/97或C03判为不可迁的永久下界。
+四Product源逐SHA未改，当前Code109862/Harness365000/source659892，新增源码收益0；
+完整P1–P4/KD003/KD011/15K仍开放。
+
+下一A201仅核C05控制Journal567行中的完整中性持锁/存储协议；[G10边界](../apphost/installed-explicit-canary-g10.md)
+要求启停、selection-generation、历史政策和Product路径仍由Code拥有。sync/async缺失文件、
+consumer异常与跨run保锁合同不同，不能用普通CM统一改义；未原型、未预支减量。
+
 ## A199 旧本地安装接受及来源消费完整事务归原Package Product（2026-11-15）
 
 两固定私有协议直接使用原epoch、RootedFileIO、Desired decoder/codec与实际SettingsManager，
