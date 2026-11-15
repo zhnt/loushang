@@ -1,5 +1,53 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A207 完整公开default bootstrap归原PM（2026-11-15）
+
+承接1a113f02c的2063源clean任务起点；本轮fetch成功后origin/main仍4de7d9251且为任务祖先。
+archmethod仍clean local master 0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。先复读完整Base208/
+Capability198与A51/A183证据，现仍多有效果的source/贡献/finalizer/custody接点，无新整owner
+接口，不机械重造400池。另发现公开SDK首次default安装/启用3完整方法137span可归现PM，
+不是缩成phase helper。见[default设计](key-designs/first-party-default-bootstrap-convergence.md)。
+
+bootstrap、latest-own-install判定与command提交全在既有PM assembly执行，直接同一个实际
+Code lifecycle对象的desired/management；不新增manager/锁/flags/writer/状态。Code保原12个
+dataclass字段、构造/物理slots及8事实冻结profile；1readonly scope role、0T，原_lifecycle_error
+纯构造Error，不是IO回借。self._submit_default与self._is_own…晚派发，原两inventory race
+patch同名Code class入口仍实际运行。当前源码没有其它直接生产caller，Base已走migration；
+本片是保留公开SDK及真实持久测试入口归位，不冒208/198装配整迁或C01完成。
+
+保32次总budget、successful install也continue；第32次安装已持久仍busy。seen enabled早返
+不比请求revision，removed墓碑不复活；own只读最后matching mutation的disabled/rev/actor/
+policy/approval，不增加prefix/first/committedstate证明。缺result/falsey error原fallback，
+其它BaseException原点传播；同步无新cancel/rollback/cleanup。PM Migration64次+专有journal/
+锁与Product native bootstrap activation/handoff协议均非drop-in，底层引擎直接复用不重计。
+
+全税raw=uniform：Code1163→1035（−128）/原Core273→454（+181）/系统+53。含8fact profile、
+scope角色、导入、标注及3次policy读取，不称系统净精简。三整方法逆8facts/error call/常量
+string替换后AST同；原Code其它members/模块声明、fields/decorators与Core旧code均同，
+Core moduleDoc按新增固定程序职责更新。私MRO/实现globals/module/qualname/frame演进；
+profile在import捕获private常量，不承诺任意private热换，实际原虚调用hooks则保留。
+
+原8载体主119节点旧269.79s全过，实际同序119节点270.47s全过，两主组0fail/error/skip。树外16受控case+原revision拒绝节点
+共17，旧9.97s/实际6.71s全过；16JSON逐byte同，原节点与主重叠一次。含全conflict、最后一次
+install后busy部分commit、缺result/emptyerror/foreignerror、KeyboardInterrupt原identity、
+already-enabled不同revision、removed、各lastmutation policy/actor/approval/revision、
+无prefix旧own、own后operator与result getter失败。Ledger/command为受控模型，不充native
+持久故障/真实Task.cancel；实际磁盘/crash/race由原套件的有限真实消费者提供。
+
+API1constructor/3methods签名与resolved hints、12字段/slots/物理size-offset/nodict/match_args/
+__all__同；3旧unboundmethod pickle加载identity同，不充live lifecycle可pickle。组合冷观察
+341模块名列表同，非逐入口/IO审计。API每phase同进程guard2modules/2checks，测试guard旧/实际
+各2modules50/51声明callables，主各119nodes/238checks、本地各17/34；主/local实际交集1节点，
+共135不同节点。测试guard也
+核路径/SHA/19递归code字段，仅声明程序，非生成体/allglobals/所有carrier/child来源。
+实际两源Ruff/fullformat/mypy silent-followimports通过；不充全PR/native平台证明。
+
+当前2063源仅2改/2061原同；Code434源108670，距15K93670；Harness366523/AppHost20449/
+HarnessTUI29466/HarnessWork8332；系统660955，排GUI独立4524后656431，C01为22源12488。
+原Product test/fixture/gate无改。树外额外case脚本116行、API支持31行另计，复用guard不进PR。
+三设计/候选与实际有限视角接受，实际主组已terminal；证据a207-first-party-default-bootstrap。
+完整P1–P4/KD003/KD011与≤15K仍开放，不将剩余SDK/装配政策判最终不可再缩下界。
+
 ## A206 完整Session Product factory/release归原Product（2026-11-15）
 
 基于23d6f460c核2063源起点与clean任务树；控制主线仍4de7d9251，前A205 fetch已确认其为任务

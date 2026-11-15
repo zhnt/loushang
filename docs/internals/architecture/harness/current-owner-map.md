@@ -400,7 +400,11 @@ retains directory preparation. Coding retains its deployed values, paths,
 identity/error policy and thin adapters. Family acquisition, exact-owner retirement coordination and the outer close
 barrier now run through stateless Session mechanisms on the same original
 facade fields. PM assembly owns GC sealing and the explicit settled direct-host
-handoff/completion. Coding retains domain policy, values and projection;
+handoff/completion. Its fixed same-object [default bootstrap](key-designs/first-party-default-bootstrap-convergence.md)
+also owns the retained public SDK's complete install/enable CAS retry and latest
+own-install history proof. Coding retains the eight Product facts, nominal
+lifecycle/fields and virtual hooks; current managed Base still uses migration.
+Coding retains domain policy, values and projection;
 KD-007's lifecycle cluster is implemented, while broader startup/bootstrap
 convergence remains within the active Goal.
 The first [startup assembly slice](key-designs/startup-session-assembly-convergence.md)

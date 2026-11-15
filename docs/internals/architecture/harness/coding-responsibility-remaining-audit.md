@@ -1,7 +1,7 @@
 # Coding 全量剩余职责与保留成本复核
 
-本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187、A189、A190、A195、A196、A197、A199、A201、A202、A203、A204、A205、A206源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
-108798行，距15K仍93798行。下面28组不是可删除预算或最终保留成本。
+本页保留A72合同/候选与后续接受的历史来源；当前静态计量对齐基于`4de7d9251`的A156–A158、A160、A162、A163、A165、A167、A168、A171、A173及A174及A176、A179、A180、A181、A182、A185及A187、A189、A190、A195、A196、A197、A199、A201、A202、A203、A204、A205、A206、A207源码及[逐文件清单](coding-responsibility-inventory.md)：434份Python源码、
+108670行，距15K仍93670行。下面28组不是可删除预算或最终保留成本。
 A156托管服务完整控制已归原AppHost；Coding保产品身份/政策与错误薄适配。
 A155完整11类修复执行与runtime释放已归原ProductRuntime，A154退出waiter已归公开
 Process，A150验证命令执行已归Session Bash；不得把这些已共享闭包重新列为待开发。
@@ -58,6 +58,9 @@ Code−147/AppHost+439/系统+292（uniform+192），保准入/选择/输出/UI�
 A206完整factory/release创建交付/失败/重试归原Package Product，两Worker lookup归一；
 Code−63/Harness+114/系统+51（raw=uniform），保完整Selection领域政策、三名义dataclass及构造桥；
 当前C10为12源5185，原142及另15局部节点对照通过；整C10仍开放。
+A207保留公开SDK default的3整方法归原PM，Code−128/Harness+181/系统+53（raw=uniform）；
+Code保12字段/名义Lifecycle与8原policy事实，原119与另16局部对照通过。当前C01为22源12488，
+不称当前Base生产路线或208/198装配双程序已迁出，整C01仍开放。
 完整P1–P4仍partial；A160直接复用原RecordSchema净减18，C07其余policy/platform绑定仍open；A159缓存泛化原型系统+85而无足够复用，未采用、不计收益。
 A162完整暂存到prepared activation lease交接归原Continuity，Code−61/Core+90/系统+29，
 单消费者职责迁移，不计去重；KD003 bytes与C04整体仍未完成。
@@ -174,7 +177,7 @@ P1 Worker、P2启动/Plugin/Session、P3托管/Continuity/执行适配、P4入�
 
 | 组 | 文件/行 | 场景 | 已复用与Code实际保留面 | 剩余处置/退出义务 |
 |---|---:|---|---|---|
-| C01 启动、Plugin/资源装配 | 22/12,616 | P2 | 原Construction/Session、Catalog/Graph已实际接入；A163公开SDK薄转发与私有原模型政策分离；A173完整兼容cache/issuer/逐请求发布归Config；Code剩领域capture/guard、跨阶段选择、审批、刷新与交接 | A168三seed聚合原型完整成本+60拒绝；继续拆领域选择与共用程序，不把bootstrap/回调池当删除预算 |
+| C01 启动、Plugin/资源装配 | 22/12,488 | P2 | 原Construction/Session、Catalog/Graph已实际接入；A163公开SDK薄转发与私有原模型政策分离；A173完整兼容cache/issuer/逐请求发布归Config，A207公开default完整CAS事务归原PM；Code剩领域capture/guard、跨阶段选择、审批、刷新与交接 | A168三seed聚合原型完整成本+60拒绝；继续拆领域选择与共用程序，不把bootstrap/回调池当删除预算 |
 | C02 托管与受管接入 | 31/8,065 | P3/P4 | 原AppHost/AppService桥接及managed owners已复用；A179完整prefix/失败清理及两attempt生命周期归AppHost，Code保请求、资格与领域构造profile；A202完整workspace集合协调亦归原AppHost，Code保具体工厂/open与薄回复；A203共享连接配置亦归AppHost，Code保client请求政策；其余Catalog/身份与部分CLI协调仍混合 | 严格Catalog读取不能用摘要API代替；KD011保待审，整lmux迁移拒绝；不据A179关闭整组 |
 | C03 Resume与SessionManager | 15/4,132 | P2/P3 | 原Transcript/Session lifecycle、live恢复已复用；Code保版本化输入/装配与授权政策 | A200完整outer/fence形状全税不采用，未改原源码；继续按new/resume/fork/reopen判领域与共享接缝，不重建提交器/重试器或摘guard |
 | C04 Continuity | 2/2,809 | P3 | 原Continuity provider/runtime、A68 payload custody、A162暂存到lease及A174完整绑定shutdown/reservation/Task寿命已接入；Code保来源/限额/cwd和canonical restore端口 | KD003 bytes import未实施；非owned真实Path/FileCopy/引用合同仍在，不提前采用KD011 |

@@ -1,10 +1,12 @@
-"""Internal ledger construction; callers retain admission and recovery order."""
+"""Ledger binding and policy-bound defaults; callers retain Product admission."""
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import ClassVar, Literal, Protocol
 
 from loushang.harness.journal import JournalLoadPolicy, journal_file_lock
 from loushang.harness.plugin_management.enablement_migration import (
@@ -19,6 +21,7 @@ from loushang.harness.plugin_management.instance_runtime import (
     PluginInstanceRuntimeLedger,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+from loushang.harness.plugin_management.operations import PluginManagementCommandV1
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
@@ -26,6 +29,11 @@ from loushang.harness.plugin_management.package_lifecycle import (
     PluginPackageLifecycleLedger,
 )
 from loushang.harness.plugin_management.package_records import PluginCleanupAttemptV1
+from loushang.harness.plugin_management.records import (
+    PluginDesiredStateMutationV1,
+    PluginInstallationKeyV1,
+    PluginPackageRevisionRefV1,
+)
 from loushang.harness.plugin_management.retirement import (
     PluginRetirementIntentLedger,
     PluginRetirementIntentV1,
@@ -271,3 +279,176 @@ def _complete_settled_host_retirement(
             completion_reference=f"{policy.completion_reference_namespace}:{scope_id}",
         )
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _FirstPartyDefaultPolicy:
+    product_id: str
+    product_label: str
+    actor_id: str
+    policy_revision: str
+    approval_reference: str
+    operation_id_prefix: str
+    error_code_prefix: str
+    make_error: Callable[[str, str], Exception]
+
+
+class _FirstPartyBootstrapScope(Protocol):
+    @property
+    def scope_id(self) -> str: ...
+
+
+class _FirstPartyDefaultBootstrap:
+    """Resume only this Product's own default install through existing commands."""
+
+    __slots__ = ()
+    layout: _FirstPartyBootstrapScope
+    desired: PluginDesiredStateLedger
+    management: PluginManagementService
+    _first_party_default_policy: ClassVar[_FirstPartyDefaultPolicy]
+
+    def bootstrap_first_party_default(
+        self,
+        key: PluginInstallationKeyV1,
+        package_revision: PluginPackageRevisionRefV1,
+    ) -> None:
+        """Install+enable only a truly unseen first-party Installation.
+
+        An absent record retained after remove is deliberately *seen* and is
+        therefore never resurrected by Product composition.
+        """
+
+        policy = self._first_party_default_policy
+        if (
+            not isinstance(key, PluginInstallationKeyV1)
+            or key.product_id != policy.product_id
+            or key.installation_scope != "workspace"
+            or key.scope_id != self.layout.scope_id
+        ):
+            raise policy.make_error(
+                f"First-party default Installation is outside this {policy.product_label} scope",
+                f"{policy.error_code_prefix}_default_bootstrap_scope_mismatch",
+            )
+        if (
+            not isinstance(package_revision, PluginPackageRevisionRefV1)
+            or package_revision.plugin_id != key.plugin_id
+        ):
+            raise policy.make_error(
+                "First-party default Package Revision changed Plugin identity",
+                f"{policy.error_code_prefix}_default_bootstrap_revision_mismatch",
+            )
+        # The two management commands are individually durable.  This loop is
+        # the Product transaction coordinator: it resumes only its own exact
+        # default install, stops at any operator-authored state, and retries a
+        # CAS race with a fresh operation identity.
+        for _attempt in range(32):
+            snapshot = self.desired.snapshot()
+            state = snapshot.installation(key)
+            seen = any(item.installation_key == key for item in snapshot.installations)
+            if not seen:
+                error = self._submit_default(
+                    key,
+                    action="install",
+                    desired_state="installed_disabled",
+                    package_revision=package_revision,
+                    expected_inventory_revision=snapshot.inventory_revision,
+                )
+                if error == "plugin_inventory_revision_conflict":
+                    continue
+                if error is not None:
+                    raise policy.make_error(
+                        "First-party Plugin bootstrap install failed",
+                        error,
+                    )
+                continue
+            if state.selection.desired_state == "installed_enabled":
+                return
+            if not self._is_own_default_install(
+                key,
+                package_revision=package_revision,
+            ):
+                return
+            error = self._submit_default(
+                key,
+                action="enable",
+                desired_state="installed_enabled",
+                package_revision=None,
+                expected_inventory_revision=snapshot.inventory_revision,
+            )
+            if error == "plugin_inventory_revision_conflict":
+                continue
+            if error is not None:
+                raise policy.make_error(
+                    "First-party Plugin bootstrap enable failed",
+                    error,
+                )
+            return
+        raise policy.make_error(
+            "First-party Plugin bootstrap could not linearize",
+            f"{policy.error_code_prefix}_default_bootstrap_busy",
+        )
+
+    def _is_own_default_install(
+        self,
+        key: PluginInstallationKeyV1,
+        *,
+        package_revision: PluginPackageRevisionRefV1,
+    ) -> bool:
+        policy = self._first_party_default_policy
+        matching = tuple(
+            transition
+            for transition in self.desired.transitions()
+            if transition.mutation.installation_key == key
+        )
+        if not matching:
+            return False
+        mutation = matching[-1].mutation
+        return (
+            isinstance(mutation, PluginDesiredStateMutationV1)
+            and mutation.desired_state == "installed_disabled"
+            and mutation.package_revision == package_revision
+            and mutation.actor_id == policy.actor_id
+            and mutation.policy_revision == policy.policy_revision
+            and mutation.approval_reference == policy.approval_reference
+        )
+
+    def _submit_default(
+        self,
+        key: PluginInstallationKeyV1,
+        *,
+        action: Literal["install", "enable"],
+        desired_state: Literal["installed_disabled", "installed_enabled"],
+        package_revision: PluginPackageRevisionRefV1 | None,
+        expected_inventory_revision: int,
+    ) -> str | None:
+        policy = self._first_party_default_policy
+        identity = hashlib.sha256(
+            repr((key, action, package_revision, expected_inventory_revision)).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+        event = self.management.submit(
+            PluginManagementCommandV1(
+                action=action,
+                mutation=PluginDesiredStateMutationV1(
+                    operation_id=f"{policy.operation_id_prefix}{identity}",
+                    idempotency_key=f"{policy.operation_id_prefix}{identity}",
+                    expected_inventory_revision=expected_inventory_revision,
+                    installation_key=key,
+                    desired_state=desired_state,
+                    package_revision=package_revision,
+                    actor_id=policy.actor_id,
+                    policy_revision=policy.policy_revision,
+                    approval_reference=policy.approval_reference,
+                ),
+            )
+        )
+        result = getattr(event, "result", None)
+        if result is None:
+            return f"{policy.error_code_prefix}_default_management_failed"
+        if result.disposition != "succeeded":
+            return (
+                result.error_code
+                or f"{policy.error_code_prefix}_default_management_failed"
+            )
+        return None
