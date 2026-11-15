@@ -256,6 +256,13 @@ The accepted target adds, by separately reviewed slices:
 4. orthogonal embedded delivery-profile composition; and
 5. optional hosted and serialized-launch adapters.
 
+A203 places complete shared client connection configuration in the existing
+optional `client_preferences` owner, reusing the original Harness Config atomic
+writer. The preference SQLite table and connection JSON/serialization lock keep
+their separate existing protocols. Code retains request/platform policy and
+public reexports; this adds no core facade or runtime construction. See the
+[accepted connection-state design](../harness/key-designs/client-connection-state-convergence.md).
+
 ## Owns
 
 - AppHost Product/profile contract vocabulary;

@@ -1,5 +1,47 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A203 完整共享连接配置归原AppHost（2026-11-15）
+
+基于c0c012277核2061源起点，fetch后origin/main仍4de7d9251且为任务祖先。
+五完整函数read/remember/mutate/write/list归现optional AppHost client_preferences，
+直接复用原A149 Config atomic writer与SQLite锁，不新建manager/Role/T/DTO或callback配方。
+原ClientPreferences类及独立偏好SQLite协议不改，连接JSON与其serialization锁仍各原格式。
+Code保settings_request请求路由、Linux支持、@temporary/输入政策及五显式公开reexports。
+完整owner、失败和计量见[连接状态设计](key-designs/client-connection-state-convergence.md)。
+
+全税raw Code173→66（−107）、AppHost57→180（+123）、系统+16；uniform Code175→66
+（−109）/AppHost+123/系统+14。没有第二算法退出，不重计原atomic writer或preference引擎；
+这是对既有owner的完整职责归位。原五函数/dispatcher/偏好类AST相同，别名导出成本全计。
+不将Python API称dead或Rust同流程；Rust前端仍独立，不在本批改动或收益中。
+
+原六载体40节点旧29.60s/实际同40节点32.91s全过，0fail/error/skip；含原GUI4、Config2、
+三个AppHost架构module及原A149树外writer五项byte/error对照。五仓库载体逐SHA不改；
+A149树外oracle按既有文件复用，不充运行时carrier/oracle来源守卫。
+另七项本地观察及一个原GUI重叠节点：旧8过1.04s/实际8过2.03s；总47不同节点，不计48。
+七JSON相同，覆盖callback异常、atomic helper进入前拒绝、实际SQLite commit退出后注入
+异常、事务内坏JSON、13种list/schema/raw-error投影、callback换home A→B及真实SQLite/
+atomicwriter的12次并发修改。保原已发布后SQL错误/晚home与回调失败恢复顺序；未新增
+事务回滚、native commit原子保证或取消框架。本流同步，无新增async/cancel程序。
+
+SQL-exit是成功commit后受控注入，不是native SQLite commit故障证明；并发比语义结果，
+不声称调度/插入顺序等价。异常对照含type/message/cause/context/suppress，不比identity/
+notes/栈；list dict观察JSON排序不证key顺序，原AST及A149有限字节观察另列。
+三源父来源守卫（Code/AppHost/原Config）各22声明callables，主各40nodes/80checks；
+本地各8/16另列。路径/SHA+19递归code字段不充生成/子进程/所有nativeIO来源证明。
+树外观察脚本153行及API/cold检查29行另计；产品test/fixture/gate零改动。
+
+六公开signature/resolved hints相同；五旧默认协议生成的函数pickle（此机PROTO4）实际
+loads is新Code同名alias，实际对象为Core函数。__module__/新pickle目标与内部global挂点
+移AppHost，qualname保；不伪FQN或承诺任意私反射。fresh import+metadata/pickle观察13个
+Loushang模块集合相同且ConfigStore未加载，不冒称动态执行所有只读查询的冷加载结果。
+实际两源mypy（follow-imports=silent）/Ruff/format过；动态dict/callback不是fullstrict证明。
+三独立设计/实际视角接受本批有限范围，native Windows与全PR/所有复合故障不在本地声明内。
+
+2061源仅两原源变化，其余2059 SHA/行同；Coding434源109522、距15K94522，
+Harness365284/HarnessTUI29466/HarnessWork8332/AppHost20010；系统660129，排GUI独立
+4524后655605；当前C02为31源8065。证据保存树外a203-client-connections。完整P1–P4、
+KD003/KD011及≤15K继续开放，不将66行当最终不可削减领域下界。
+
 ## A202 完整工作区集合协调归原AppHost（2026-11-15）
 
 基于28e7696b2核对2061源起点；fetch后origin/main仍4de7d9251且已为任务祖先。
