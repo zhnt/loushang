@@ -971,3 +971,25 @@ PLC9只两assert同减四个精确位置的可选一次计数，无新required�
 实际三源mypy、四文件Ruff/fullformat、两函数API+两旧pickle身份、634冷模块名字列表与
 生成依赖check过；没有per-case compiled guard，不冒全平台/全分支PR验收。
 Code108291、完整15K差93291；C01及全部P1–P4仍开放，最终技术接受限上述完整事务。
+
+
+## 30. A212完整Product Catalog投影的前置接缝
+
+2026-11-15核94704d4f9当前382行完整Product callback与实际外层消费者。Construction已
+拥有runtime激活/外围失败结清；Catalog已拥有receipt以后输入/发现/合并/投影及后续发布。
+没有现API可直接替这段上游Product准备，不重复实现或重计上述共享机制。
+
+九个nonlocal加adapter list在失败途中向外可见；disabled早发布base selection/runtime，
+enabled在最终投影成功后才发布。两branch的receipt/clock/source-policy时点及cleanup
+合同不同，root分配/配置失败还在inner try之外。成功结果tuple、新副本或统一cleanup
+不能替原实际状态。27闭包变量和382行只作审查范围，不作永久成本下界。
+
+两个Code Product preparation自己打开/捕获/审批/编译/关闭；其完整IO体回借给Core
+不能称纯领域profile。当前没有已证完整薄接缝，所以不作目录迁移原型，不测试或预支
+删行；新成本未知，Code与系统生产增删0，原A51/A183/A211各自历史与接受范围不变。
+
+进入下一候选前必须核清两preparation真实native resolution/approval/close边界，并用
+单一实际custody覆盖双root、配置/prepare、cleanup成功转移及outer失败消费，包含legacy
+共享字段。须保裸顺序mask/skip与notes-continue的不同合同，不摘临时类或少量except。
+三独立源码报告及整字段读写坐标在树外a212-product-catalog-projection。本节是Current/
+Gap审查，无新实现/API/Target接受；Code108291，完整C01及P1–P4保持开放。

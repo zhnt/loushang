@@ -1,5 +1,33 @@
 # COD-RESP-GOAL-002 执行记录
 
+## A212 完整Product Catalog投影接缝核实（2026-11-15）
+
+承接94704d4f9的clean树，沿A211已fetch的main4de7d9251祖先，不冒本轮再次fetch。
+方法仍clean local master0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e。完整核bootstrap的
+_prepare_package_product_catalog_projection1469–1850共382行及两个真实Product preparation，
+不是按长文件或局部except选迁移。见[接缝核实](key-designs/startup-session-assembly-convergence.md#30-a212完整product-catalog投影的前置接缝)。
+
+现Construction已拥有runtime激活/外围结清，Catalog已拥有receipt输入后的发现、合并、
+投影及后续联合发布，均不重计。剩余382把Product选择/配置/编译与临时root/preparation
+寿命混合；九nonlocal及adapter list有失败前写入、外层读取/结清，不能只成功return tuple。
+27freevars是耦合事实，不是领域保留成本或可删预算。逐字段作用域/读写坐标保留树外。
+
+disabled先写selection/runtime，再external/capability准备后取receipt/新clock；enabled先
+basecompile→receipt→capability准备，最终复用evaluated_at、成功投影后才发布base状态。
+两个root及配置创建在inner try外；disabled裸顺序cleanup可替换primary并跳第二，enabled
+run_cleanup_steps保primary/notes并继续。临时root/prep还被legacy与outer failure使用。
+Code的prepare_coding_builtin_product_composition171–313与capability316–425真实执行
+root/open/capture/Approval Journal/compile/close，不是纯领域投影；作为Core整阶段回调
+仍回借旧effects，当前未找到满足薄领域口的完整接缝。三独立源码视角同意此处分。
+
+本轮不造该形状原型，不摘临时目录类/guard/except代替整物，不挪A51历史成本；新完整
+适配成本未知，生产与测试变更0、pytest0，源码全部2063逐SHA/行同A211。Code108291/
+Harness367163/系统661216，排GUI独立4524后656692，15K差93291；P1–P4继续开放。
+下一先完整核两Product preparation的原生解析/审批/close职责，以及双root→配置/prepare→
+成功cleanup移交→outer消费/失败结清的一处实际custody，覆盖legacy共享字段；消除厚效果
+阶段与状态副本后再做完整成本试算。不是永久判382不可迁或更改Goal完成条件。
+树外a212-product-catalog-projection保整原体、27freevar/10字段读写账、现有owner及三报告。
+
 ## A211 完整managed Base／Capability装配归原PM（2026-11-15）
 
 承接183448896的clean专用树，本轮fetch origin成功，main仍4de7d9251且为任务祖先；

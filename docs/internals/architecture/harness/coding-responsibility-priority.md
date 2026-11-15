@@ -17,6 +17,7 @@ owner能否完整承接、旧实现退出和全部适配成本；目录行数只
 
 | 顺序 | 完整交付边界与源码审查池 | 现有接收组件与Code保留 | 先解决的问题与退出条件 |
 | --- | --- | --- | --- |
+| 下一完整前置设计 / A212已核 | C01两Product preparation及双root→配置/prepare→cleanup移交→outer失败消费 | 原Construction/PM/Resources/Approval已有owner；Code保Product选择/计划与政策 | 当前Catalog382无drop-in，回借两Code IO阶段不满足薄口；先解决单一失败进度/真实native与approval/close接缝，再付完整成本，不摘临时目录类或except |
 | A209完整历史形状不采用 | C02三binding/source类+四catalog历史入口，并包含稳定snapshot读完整四源 | 原AppHost canonical family/Transcript源，Code保历史投影/名义构造/17公开方法属性入口 | 全税Code−20、接收+339、系统+319（uniformCode−38/sys301）；四源shadow静态过但成本不值，不安装/不跑矩阵，不摘close/fence |
 | 已完成 A210 | C08 Windows retention snapshot原110行完整程序 | 原PackageProduct完整读/GC/目录/历史证据custody；Code保DTO/codec/构造薄绑定 | Code−72/Harness+151/系统+79（raw=uniform），原91/边界71及另31旧观察同；A184历史拒绝保留，不称去重 |
 | 已完成 A211 | C01 managed Base208与Capability198完整装配池 | 原PM assembly直接执行两固定程序；Code保准入/领域选择与profile | Code−235/Harness+401/系统+166（uniform172），3roles/4T/错误数据与所有薄绑定全计；最终测试范围见执行记录，不计406为删行 |
