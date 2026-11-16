@@ -49,4 +49,24 @@ class ExecutionClientV1(ExecutionObservationPortV1, Protocol):
     ) -> ExecutionInterruptResultV1: ...
 
 
+@runtime_checkable
+class ExecutionGoalControlPortV1(Protocol):
+    """Control the Goal already bound by the host to the addressed Session."""
+
+    async def goal_start(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+        submission_id: str,
+    ) -> ExecutionRecordV1: ...
+
+    async def goal_find(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+        submission_id: str,
+    ) -> ExecutionRecordV1 | None: ...
+
+    async def goal_interrupt(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+        execution_id: str,
+    ) -> ExecutionInterruptResultV1: ...
+
+
 ExecutionPortV1 = ExecutionClientV1

@@ -55,7 +55,9 @@ CONTROL = SessionSnapshotRequestV1("attachment", 1, "member")
 def test_closed_execution_call_round_trip(operation):
     call = ExecutionCallV1(
         "1", operation, CONTROL, "instance",
-        submission_id="submission" if operation in {ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND} else None,
+        submission_id="submission" if operation in {
+            ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND, ExecutionOperationV1.GOAL_START,
+        } else None,
         execution_id="execution" if operation in {ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GOAL_PROGRESS} else None,
         text="没有输出的命令" if operation is ExecutionOperationV1.SUBMIT else None,
         resume_query=ResumeInputLookupQueryV1("input-1", "a" * 64)
@@ -79,6 +81,7 @@ def test_record_snapshot_and_event_round_trip():
     )
     for result in (
         ExecutionRecordV1("instance", IDENTITY, "submission", state), snapshot,
+        replace(snapshot, supports_goal_start=True),
         ExecutionEventsV1((
             ExecutionUpdateV1(3, state),
             ExecutionContentEventV1(SessionEventV1(IDENTITY.session_id, 1, SessionEventKindV1.STATUS, "text"), "execution"),

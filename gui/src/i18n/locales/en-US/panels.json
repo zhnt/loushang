@@ -1,4 +1,11 @@
 {
+  "goalStart": {
+    "label": "Start Goal",
+    "pending": "Starting Goal…",
+    "accepted": "Goal accepted. Waiting for execution status.",
+    "unknown": "Goal start outcome is unknown. Reconnecting can restore the original execution status.",
+    "rejected": "Goal start rejected."
+  },
   "goalProgress": {
     "title": "Goal progress",
     "goal": "Goal ID",

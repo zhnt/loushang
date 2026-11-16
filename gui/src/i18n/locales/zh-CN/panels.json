@@ -1,4 +1,11 @@
 {
+  "goalStart": {
+    "label": "启动 Goal",
+    "pending": "正在启动 Goal…",
+    "accepted": "Goal 已受理，正在等待执行状态。",
+    "unknown": "Goal 启动结果未知。重新连接后可查看原执行状态。",
+    "rejected": "Goal 启动被拒绝。"
+  },
   "goalProgress": {
     "title": "Goal 进度",
     "goal": "Goal ID",

@@ -871,17 +871,34 @@ impl ControlAuthority {
         text: &str,
         request_id: &str,
     ) -> Result<ControlResult, ()> {
-        if !identifier(submission_id, 128)
-            || text.trim().is_empty()
-            || text.chars().count() > 262_144
-        {
+        if text.trim().is_empty() || text.chars().count() > 262_144 {
+            return Err(());
+        }
+        let mut payload = self.submission_payload(session_id, submission_id)?;
+        payload["text"] = Value::String(text.to_owned());
+        let result = execution_request(channel, "execution/submit", request_id, payload)?;
+        self.record_result(result, session_id, Some(submission_id))
+    }
+
+    pub(crate) fn start_goal<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        submission_id: &str,
+        request_id: &str,
+    ) -> Result<ControlResult, ()> {
+        let payload = self.submission_payload(session_id, submission_id)?;
+        let result = execution_request(channel, "execution/goal_start", request_id, payload)?;
+        self.record_result(result, session_id, Some(submission_id))
+    }
+
+    fn submission_payload(&self, session_id: &str, submission_id: &str) -> Result<Value, ()> {
+        if !identifier(submission_id, 128) {
             return Err(());
         }
         let mut payload = self.payload(session_id)?;
         payload["submissionId"] = Value::String(submission_id.to_owned());
-        payload["text"] = Value::String(text.to_owned());
-        let result = execution_request(channel, "execution/submit", request_id, payload)?;
-        self.record_result(result, session_id, Some(submission_id))
+        Ok(payload)
     }
 
     pub(crate) fn find_submission<R: Read, W: Write>(
@@ -891,11 +908,7 @@ impl ControlAuthority {
         submission_id: &str,
         request_id: &str,
     ) -> Result<ControlResult, ()> {
-        if !identifier(submission_id, 128) {
-            return Err(());
-        }
-        let mut payload = self.payload(session_id)?;
-        payload["submissionId"] = Value::String(submission_id.to_owned());
+        let payload = self.submission_payload(session_id, submission_id)?;
         let result = execution_request(channel, "execution/find_submission", request_id, payload)?;
         if result["resultType"] == "not_found" {
             projection::control_bridge("not_found", &result.to_string())?;
@@ -1344,6 +1357,50 @@ impl EventReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn goal_start_uses_the_current_member_and_validates_the_submission_record() {
+        let authority = ControlAuthority {
+            attachment_id: "attachment".into(),
+            controller_generation: "1".into(),
+            instance: "instance".into(),
+            mux_name: "goal".into(),
+            members: BTreeMap::from([("session".into(), "member".into())]),
+            session_templates: BTreeMap::new(),
+            default_template: None,
+        };
+        assert_eq!(
+            authority
+                .submission_payload("session", "submission")
+                .unwrap(),
+            json!({
+                "control": {"attachmentId": "attachment", "controllerGeneration": 1, "memberId": "member"},
+                "expectedInstanceId": "instance",
+                "submissionId": "submission",
+            }),
+        );
+        assert!(authority.submission_payload("other", "submission").is_err());
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../../tests/appserver/fixtures/execution_v1.json"
+        ))
+        .unwrap();
+        let record = &fixture["accepted"];
+        assert!(matches!(
+            authority.record_result(record.clone(), "session", Some("submission")),
+            Ok(ControlResult::Submitted(id)) if id == "execution"
+        ));
+        assert!(authority
+            .record_result(record.clone(), "session", Some("other"))
+            .is_err());
+        assert!(authority
+            .record_result(record.clone(), "other", Some("submission"))
+            .is_err());
+        let mut stale = record.clone();
+        stale["result"]["serviceInstanceId"] = json!("old-instance");
+        assert!(authority
+            .record_result(stale, "session", Some("submission"))
+            .is_err());
+    }
+
     #[test]
     fn goal_progress_reply_is_bound_to_the_requested_execution() {
         let reply = json!({

@@ -8,6 +8,7 @@ import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { MessageComposer } from "./MessageComposer";
 import { GoalProgress } from "./GoalProgress";
+import { GoalStart, useGoalStart } from "./GoalStart";
 import { ToolApproval } from "./ToolApproval";
 import { UserChoiceCard, type ChoiceAnswer } from "./UserChoiceCard";
 import { ModelPicker } from "./ModelPicker";
@@ -409,6 +410,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     (state.remote.source.kind === "fixture" && state.remote.connection === "fixture-offline")
     || (state.remote.source.kind === "live" && state.remote.connection === "connected")
   );
+  const goalStart = useGoalStart(client, selected, connected && state.remote.source.kind === "live"
+    ? state.remote.source : null, controlsAllowed);
   const mutationsAllowed = controlsAllowed && !awaitingPublication && !modelPending;
   const submitAllowed = mutationsAllowed && (
     state.remote.source.kind === "fixture"
@@ -728,6 +731,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                   answer={rejectedBeforeInput && choiceAnswer ? { ...choiceAnswer, status: "rejected" } : choiceAnswer}
                   enabled={Boolean(submitAllowed && selected.status !== "running")}
                   onChange={updateAnswer} onConfirm={(text, answer) => void submit(text, answer)} /> : null}
+                <GoalStart {...goalStart} />
                 {selected.execution ? <ExecutionDetail execution={selected.execution} stale={!fixture && !connected} /> : null}
                 {connected && selected.execution && selected.supportsGoalProgress && client.goalProgress && state.remote.source.kind === "live" ? (
                   <GoalProgress

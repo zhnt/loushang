@@ -920,3 +920,60 @@ describe("Hosted Goal observation", () => {
     expect(goalProgress).toHaveBeenCalledTimes(total);
   });
 });
+
+describe("Hosted Goal start", () => {
+  it("keeps an uncertain start locked for the original Host until its execution is observed", async () => {
+    const seed = await createMockAppClient().snapshot();
+    const session = { ...seed.sessions[0], status: "idle" as const, execution: null };
+    const source = { kind: "live" as const, serviceInstanceId: "goal-host", muxSpaceId: "goal-mux", connectionEpoch: "1" };
+    const initial: ClientSnapshot = { ...seed, source, connection: "connected", sessions: [session], selectedSessionId: session.id };
+    const ready: ClientSnapshot = { ...initial, sessions: [{ ...session, supportsGoalStart: true }] };
+    type Start = NonNullable<HarnessClientUiPort["startGoal"]>;
+    let publish: (snapshot: ClientSnapshot) => void = () => {};
+    let disconnect: (state: "disconnected") => void = () => {};
+    let finish!: () => void;
+    const startGoal = vi.fn<Start>(({ submissionId }) => new Promise((resolve) => {
+      finish = () => resolve({ submissionId, accepted: false, reason: "submission_outcome_unknown" });
+    }));
+    const client: HarnessClientUiPort = {
+      snapshot: async () => initial,
+      subscribe: () => () => {},
+      subscribeSnapshots(listener) { publish = listener; return () => {}; },
+      subscribeConnection(listener) { disconnect = listener; return () => {}; },
+      startGoal,
+      submitText: async ({ submissionId }) => ({ submissionId, accepted: false }),
+      interrupt: async () => ({ accepted: false }),
+    };
+    render(<HarnessGui client={client} />);
+    await screen.findByRole("textbox", { name: /message/i });
+    expect(screen.queryByRole("button", { name: "Start Goal" })).not.toBeInTheDocument();
+    act(() => publish(ready));
+    const button = await screen.findByRole("button", { name: "Start Goal" });
+    act(() => { fireEvent.click(button); fireEvent.click(button); });
+    expect(button).toBeDisabled();
+    expect(startGoal).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: session.id, submissionId: expect.stringMatching(/^gui-/) }, "goal-host",
+    );
+    await act(async () => finish());
+    const unknown = /Goal start outcome is unknown/;
+    expect(screen.getByText(unknown)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Start Goal" })).not.toBeInTheDocument();
+
+    act(() => disconnect("disconnected"));
+    const reconnected = { ...ready, source: { ...source, connectionEpoch: "2" } };
+    act(() => publish(reconnected));
+    expect(await screen.findByText(unknown)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Start Goal" })).not.toBeInTheDocument();
+    act(() => publish({ ...reconnected, sessions: [{ ...session, status: "running", execution: {
+      id: "goal-execution", status: "running", revision: 2,
+      interruptRequested: false, sourceStatus: "running", finalCursor: null, truncated: false,
+    } }] }));
+    expect(screen.queryByText(unknown)).not.toBeInTheDocument();
+    expect(screen.getByText("Execution Running")).toBeVisible();
+    expect(startGoal).toHaveBeenCalledTimes(1);
+
+    act(() => publish({ ...ready, source: { ...source, serviceInstanceId: "new-host", connectionEpoch: "3" } }));
+    expect(await screen.findByRole("button", { name: "Start Goal" })).toBeEnabled();
+    expect(startGoal).toHaveBeenCalledTimes(1);
+  });
+});

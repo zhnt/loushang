@@ -80,6 +80,9 @@ class ScopedGoalClientV1:
         if capability.supports_progress and not isinstance(port, HostedGoalProgressPortV1):
             raise TypeError("Goal progress capability requires its Product extension")
         original._check(control, session)
+        # A fixed Goal is spent on admission, even if interrupted before Product entry.
+        if capability.accepting and (binding.view.active is not None or binding.view.latest_terminal is not None):
+            capability = replace(capability, accepting=False)
         return session, binding, port, capability
 
     async def capability(self, control: SessionSnapshotRequestV1, instance: str) -> GoalCapabilityV1:
@@ -170,7 +173,7 @@ class ScopedGoalClientV1:
 
 
 class ScopedGoalExecutionObserverV1:
-    """Execution delivery plus Goal progress, borrowed from the existing scope."""
+    """Execution delivery and narrow Goal controls borrowed from the existing scope."""
 
     def __init__(self, goal: ScopedGoalClientV1) -> None:
         self._goal = goal
@@ -187,21 +190,50 @@ class ScopedGoalExecutionObserverV1:
             capability = await self._goal.capability(control, instance)
         except GoalServiceError:
             return snapshot
-        return replace(snapshot, supports_goal_progress=capability.supports_progress)
+        return replace(
+            snapshot, supports_goal_progress=capability.supports_progress,
+            supports_goal_start=capability.accepting,
+        )
 
     async def read_execution_events(
         self, control: SessionSnapshotRequestV1, instance: str,
     ) -> tuple[ExecutionContentEventV1 | ExecutionUpdateV1, ...]:
         return await self._goal._execution.read_execution_events(control, instance)
 
+    async def goal_start(
+        self, control: SessionSnapshotRequestV1, instance: str, submission_id: str,
+    ) -> ExecutionRecordV1:
+        try:
+            return (await self._goal.start(control, instance, submission_id)).execution
+        except GoalServiceError:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+
+    async def goal_find(
+        self, control: SessionSnapshotRequestV1, instance: str, submission_id: str,
+    ) -> ExecutionRecordV1 | None:
+        try:
+            found = await self._goal.find(control, instance, submission_id)
+        except GoalServiceError:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+        return None if found is None else found.execution
+
+    async def goal_interrupt(
+        self, control: SessionSnapshotRequestV1, instance: str, execution_id: str,
+    ) -> ExecutionInterruptResultV1:
+        try:
+            return await self._goal.interrupt(control, await self._handle(control, instance, execution_id))
+        except GoalServiceError:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+
+    async def _handle(self, control: SessionSnapshotRequestV1, instance: str, execution_id: str) -> GoalHandleV1:
+        capability = await self._goal.capability(control, instance)
+        return GoalHandleV1(instance, capability.goal_binding, execution_id)
+
     async def goal_progress(
         self, control: SessionSnapshotRequestV1, instance: str, execution_id: str,
     ) -> ExecutionGoalProgressV1:
         try:
-            capability = await self._goal.capability(control, instance)
-            observed = await self._goal.progress(
-                control, GoalHandleV1(instance, capability.goal_binding, execution_id),
-            )
+            observed = await self._goal.progress(control, await self._handle(control, instance, execution_id))
         except GoalServiceError:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
         view = observed.observation

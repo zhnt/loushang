@@ -60,6 +60,11 @@ pub enum ControlCommand {
         text: String,
         reply: SyncSender<Result<ControlResult, ()>>,
     },
+    StartGoal {
+        session_id: String,
+        submission_id: String,
+        reply: SyncSender<Result<ControlResult, ()>>,
+    },
     FindSubmission {
         session_id: String,
         submission_id: String,
@@ -559,6 +564,17 @@ fn process_controls<R: Read, W: Write>(
             } => {
                 let result =
                     authority.submit(channel, &session_id, &submission_id, &text, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::StartGoal {
+                session_id,
+                submission_id,
+                reply,
+            } => {
+                let result =
+                    authority.start_goal(channel, &session_id, &submission_id, &request_id);
                 let failed = result.is_err();
                 let _ = reply.send(result);
                 failed

@@ -608,7 +608,7 @@ fn create_chat(target: AppTarget<'_>, request: &Value) -> Result<Value> {
 fn session_control(view: &View, action: &str, input: &Value) -> Result<Value> {
     let session_id = field(input, "sessionId")?.to_owned();
     match action {
-        "submit" | "find-submission" => submission(view, action, session_id, input),
+        "submit" | "find-submission" | "goal-start" => submission(view, action, session_id, input),
         "interrupt" => {
             let execution_id = field(input, "executionId")?.to_owned();
             let result = view.control(None, |reply| ControlCommand::Interrupt {
@@ -678,6 +678,17 @@ fn submission(view: &View, action: &str, session_id: String, input: &Value) -> R
                 reply,
             }
         })
+    } else if action == "goal-start" {
+        if !input.as_object().is_some_and(|fields| fields.len() == 3) {
+            return Err("invalid_request".into());
+        }
+        view.control(Some(field(input, "serviceInstanceId")?), |reply| {
+            ControlCommand::StartGoal {
+                session_id,
+                submission_id: id.to_owned(),
+                reply,
+            }
+        })
     } else {
         let text = field(input, "text")?.to_owned();
         view.control(instance, |reply| ControlCommand::Submit {
@@ -687,7 +698,7 @@ fn submission(view: &View, action: &str, session_id: String, input: &Value) -> R
             reply,
         })
     };
-    if action == "submit" && result.is_err() {
+    if matches!(action, "submit" | "goal-start") && result.is_err() {
         return Err("connection_failed".into());
     }
     Ok(submission_receipt(id, result))

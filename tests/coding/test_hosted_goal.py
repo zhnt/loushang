@@ -144,6 +144,60 @@ async def application(launch, config, adapter):
         raise
 
 
+def test_execution_goal_start_is_one_shot_even_if_interrupted_before_product_entry(tmp_path):
+    async def scenario():
+        launch, config = task(tmp_path)
+        adapter = CalculatorAdapter(config.workspace, block=True)
+        app, scope, control, selector = await application(launch, config, adapter)
+        try:
+            reader = scope.goal_execution_observer
+            instance = reader.service_instance_id
+            assert (await reader.snapshot_execution_session(control, instance)).supports_goal_start
+
+            async def start(submission_id, *, address=control, host=instance):
+                return await dispatch_execution(reader, ExecutionCallV1(
+                    "1", ExecutionOperationV1.GOAL_START, address, host, submission_id=submission_id,
+                ))
+
+            with pytest.raises(ExecutionServiceErrorV1, match="service_instance_changed"):
+                await start("stale", host="other-instance")
+            with pytest.raises(AppServiceError):
+                await start("other-member", address=replace(control, member_id="other-member"))
+
+            record = await start("original")
+            execution_id = record.state.execution_id
+            assert (await start("original")).state.execution_id == execution_id
+            assert not (await reader.snapshot_execution_session(control, instance)).supports_goal_start
+            with pytest.raises(ExecutionServiceErrorV1, match="execution_not_retained"):
+                await reader.goal_interrupt(control, instance, "other-execution")
+            interrupted = await dispatch_execution(reader, ExecutionCallV1(
+                "2", ExecutionOperationV1.INTERRUPT, control, instance, execution_id=execution_id,
+            ))
+            assert interrupted.record.state.interrupt_requested
+            await scope.close()
+
+            scope2 = app.open_client_scope()
+            attached = await scope2.attach_mux(MuxAttachV1(selector))
+            reader = scope2.goal_execution_observer
+            control2 = replace(control, attachment_id=attached.attachment_id, controller_generation=attached.controller_generation)
+            found = await dispatch_execution(reader, ExecutionCallV1(
+                "3", ExecutionOperationV1.FIND, control2, instance, submission_id="original",
+            ))
+            assert found.state.execution_id == execution_id
+            settled = await scope2.goal_client.wait(control2, (await scope2.goal_client.find(control2, instance, "original")).handle)
+            assert settled.execution.state.status is ExecutionStatusV1.INTERRUPTED
+            assert adapter.calls == 0
+            assert not (await reader.snapshot_execution_session(control2, instance)).supports_goal_start
+            assert (await start("original", address=control2)).state.execution_id == execution_id
+            with pytest.raises(AppServiceError) as unavailable:
+                await start("new-submission", address=control2)
+            assert unavailable.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+        finally:
+            adapter.release.set()
+            await app.close()
+    asyncio.run(scenario())
+
+
 def test_hosted_goal_real_planning_method_verification_and_scoped_queries(tmp_path):
     async def scenario():
         launch, config = task(tmp_path)

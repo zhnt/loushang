@@ -2,6 +2,7 @@ import { validateGoalProgress } from "../../contracts/goalProgress";
 import type { ClientSnapshot, ControlReceipt, HarnessClientUiPort, SubmitReceipt } from "./model";
 import { projectNativeInitialSnapshot, validateSessionModels } from "./nativeLiveClient";
 import { ApprovalResponses } from "./approvalResponses";
+import { goalStartReceipt, unknownGoalStart } from "./goalStartReceipt";
 import { webRequest } from "./hostApi";
 
 /** Same projection/contracts as desktop; authoritative snapshots arrive from AppHost. */
@@ -116,6 +117,23 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
       if (!serviceInstanceId) return null;
       const result = await call<unknown>("goal-progress", { sessionId, executionId, serviceInstanceId });
       return result === null ? null : validateGoalProgress(result, executionId);
+    },
+    async startGoal(input, expectedInstanceId) {
+      const serviceInstanceId = current?.source.kind === "live" ? current.source.serviceInstanceId : undefined;
+      const unknown = unknownGoalStart(input.submissionId);
+      if (!serviceInstanceId || (expectedInstanceId && expectedInstanceId !== serviceInstanceId)) return unknown;
+      const address = { ...input, serviceInstanceId };
+      try {
+        return goalStartReceipt(await call("goal-start", address), input.submissionId);
+      } catch {
+        try {
+          const recovered = goalStartReceipt(await call("find-submission", address), input.submissionId);
+          if (recovered.accepted) return recovered;
+        } catch {
+          // The original Host may not be reachable.
+        }
+        return unknown;
+      }
     },
     async submitText(input) {
       const serviceInstanceId = current?.source.kind === "live" ? current.source.serviceInstanceId : undefined;

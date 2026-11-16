@@ -42,10 +42,14 @@ def emit_projection_vectors() -> None:
         cases.append((name, kind, json.dumps(value, ensure_ascii=False), valid))
 
     add("idle", "snapshot", base)
-    for flag in (True, False, None):
-        value = copy.deepcopy(base)
-        value["result"]["supportsGoalProgress"] = flag
-        add(f"goal-capability-{flag}", "snapshot", value, flag is True)
+    for field in ("supportsGoalProgress", "supportsGoalStart"):
+        for flag in (True, False, None):
+            value = copy.deepcopy(base)
+            value["result"][field] = flag
+            add(f"{field}-{flag}", "snapshot", value, flag is True)
+    goal_ready = replace(snapshot, supports_goal_start=True, supports_goal_progress=True)
+    goal_ready_wire = json.loads(encode_response(em.ExecutionResponseV1("goal-ready", goal_ready)))
+    add("goal-ready", "snapshot", goal_ready_wire)
     goal = em.ExecutionGoalProgressV1(
         "execution-1", "present", "goal-1", "paused", "advance_budget_exhausted",
         "not_checked", True, 3, 6, 2,
