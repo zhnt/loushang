@@ -12,7 +12,10 @@ from uuid import uuid4
 from loushang.ai.model import normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
 from loushang.apphost import SessionBindingKeyV1
-from loushang.appserver.execution.model import InteractiveGoalViewV1
+from loushang.appserver.execution.model import (
+    InteractiveGoalCommandV1,
+    InteractiveGoalViewV1,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppFailureV1,
@@ -209,6 +212,19 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
             return view
         return await binding.interactive_goal_view()
 
+    def control_interactive_goal(
+        self, command: InteractiveGoalCommandV1, *, check_current: Callable[[], None],
+    ) -> InteractiveGoalViewV1:
+        from loushang.harness.session.execution_admission import (
+            SessionExecutionUnavailable,
+        )
+        from loushang.harnesswork.goal import GoalError
+
+        try:
+            return self._interactive_goal_binding().control_interactive_goal(command, check_current=check_current)
+        except (GoalError, SessionExecutionUnavailable):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+
     def _idle_for_interactive_goal(self) -> bool:
         if type(self) is not CodingHostedExecutionSessionV1 or self._closing or self._model_lock.locked():
             return False
@@ -239,7 +255,10 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
     async def _select_model(
         self, model_id: str, thinking_level: str | None = None,
     ) -> SessionModelsV1:
-        await self._product_binding.wait_for_title()
+        binding = self._product_binding
+        if isinstance(binding, CodingRealHostedSessionV1) and binding.goal_command_running:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        await binding.wait_for_title()
         return await super()._select_model(model_id, thinking_level)
 
     def subscribe_execution_observation(

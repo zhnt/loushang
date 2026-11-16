@@ -503,3 +503,5 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
   font: inherit;
 }
 .interactive-goal > button + button { margin-inline-start: 8px; }
+
+.interactive-goal-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block-end: 8px; }

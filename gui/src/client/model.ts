@@ -1,4 +1,4 @@
-import type { ExecutionGoalProgressV1, InteractiveGoalViewV1, UserChoicePromptV1 } from "../../contracts/generated/bridge";
+import type { ExecutionGoalProgressV1, InteractiveGoalCommandV1, InteractiveGoalViewV1, UserChoicePromptV1 } from "../../contracts/generated/bridge";
 
 export type ConnectionState =
   | "fixture-offline"
@@ -158,6 +158,7 @@ export interface SessionSnapshot {
   readonly supportsGoalProgress?: true;
   readonly supportsGoalStart?: true;
   readonly supportsInteractiveGoal?: true;
+  readonly supportsInteractiveGoalCommands?: true;
   readonly pendingApprovals?: readonly PendingApproval[];
   readonly userChoice?: UserChoicePromptV1;
   readonly documents: readonly ReadonlyDocument[];
@@ -328,6 +329,7 @@ export interface HarnessClientUiPort {
   createSession?(input: CreateSessionInput): Promise<CreateSessionReceipt>;
   startGoal?(input: Omit<SubmitTextInput, "text">, expectedInstanceId?: string): Promise<SubmitReceipt>;
   createInteractiveGoal?(input: InteractiveGoalScope & { readonly goalTarget: string }): Promise<InteractiveGoalViewV1 | null>;
+  controlInteractiveGoal?(input: InteractiveGoalScope & InteractiveGoalCommandV1): Promise<InteractiveGoalViewV1 | null>;
   interactiveGoalStatus?(input: InteractiveGoalScope): Promise<InteractiveGoalViewV1 | null>;
   goalProgress?(sessionId: string, executionId: string): Promise<ExecutionGoalProgressV1 | null>;
   sessionModels?(sessionId: string): Promise<SessionModels>;

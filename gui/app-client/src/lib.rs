@@ -6,7 +6,7 @@ pub mod read_stop;
 
 pub use app_client::{
     definitive_create_rejection, AppClient, AppTarget, ConnectionOptions, ControlAuthority,
-    ControlCommand, ControlResult, CreateSessionResult, InteractionOutcome, LiveEventRound,
-    LiveInitialSnapshot, MemberEvents, ModelControlResult, WorkspaceInfo, WorkspaceRequest,
-    WorkspaceResult, WorkspaceScope,
+    ControlCommand, ControlResult, CreateSessionResult, InteractionOutcome, InteractiveGoalAction,
+    InteractiveGoalCommand, LiveEventRound, LiveInitialSnapshot, MemberEvents, ModelControlResult,
+    WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope,
 };

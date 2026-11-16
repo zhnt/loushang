@@ -1,5 +1,5 @@
 //! Sequential read-only attachment and membership-barrier implementation.
-use super::transport_auth::Channel;
+use super::{transport_auth::Channel, InteractiveGoalCommand};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::RawValue, Value};
 use sha2::{Digest, Sha256};
@@ -970,11 +970,30 @@ impl ControlAuthority {
             "session/interactive_goal_status"
         };
         let result = execution_request(channel, operation, request_id, payload)?;
-        if rejected_result(&result)?.is_some() {
+        decode_interactive_goal(result, None)
+    }
+
+    pub(crate) fn control_interactive_goal<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        command: InteractiveGoalCommand,
+        request_id: &str,
+    ) -> Result<Option<Value>, ()> {
+        if !identifier(&command.goal_id, 128) || !identifier(&command.command_id, 128) {
             return Ok(None);
         }
-        let mut checked = projection::control_bridge("interactive_goal", &result.to_string())?;
-        Ok(Some(checked["result"].take()))
+        let mut payload = self.payload(session_id)?;
+        payload["goalId"] = json!(command.goal_id);
+        payload["commandId"] = json!(command.command_id);
+        payload["action"] = json!(command.action);
+        let result = execution_request(
+            channel,
+            "session/interactive_goal_command",
+            request_id,
+            payload,
+        )?;
+        decode_interactive_goal(result, Some(&command))
     }
 
     pub(crate) fn goal_progress<R: Read, W: Write>(
@@ -1180,6 +1199,26 @@ fn rejected_result(value: &Value) -> Result<Option<String>, ()> {
     Ok(Some(
         checked["result"]["code"].as_str().ok_or(())?.to_owned(),
     ))
+}
+
+fn decode_interactive_goal(
+    result: Value,
+    expected: Option<&InteractiveGoalCommand>,
+) -> Result<Option<Value>, ()> {
+    if rejected_result(&result)?.is_some() {
+        return Ok(None);
+    }
+    let mut checked = projection::control_bridge("interactive_goal", &result.to_string())?;
+    let view = checked["result"].take();
+    if let Some(command) = expected {
+        if view["goalId"] != command.goal_id
+            || view["command"]["commandId"] != command.command_id
+            || view["command"]["action"] != json!(command.action)
+        {
+            return Err(());
+        }
+    }
+    Ok(Some(view))
 }
 
 fn decode_goal_progress(result: Value, execution_id: &str) -> Result<Option<Value>, ()> {
@@ -1425,6 +1464,37 @@ mod tests {
         assert!(authority
             .record_result(stale, "session", Some("submission"))
             .is_err());
+    }
+
+    #[test]
+    fn interactive_goal_reply_binds_goal_command_and_action() {
+        let request = InteractiveGoalCommand {
+            goal_id: "goal-1".into(),
+            command_id: "command-1".into(),
+            action: super::super::InteractiveGoalAction::Step,
+        };
+        let reply = json!({
+            "protocolVersion": "loushang.execution/v1", "requestId": "1",
+            "resultType": "interactive_goal",
+            "result": {
+                "availability": "present", "goalId": "goal-1", "status": "active",
+                "revision": 1, "epoch": 1, "executionUnresolved": false,
+                "command": { "commandId": "command-1", "action": "step", "status": "running" },
+            },
+        });
+        assert_eq!(
+            decode_interactive_goal(reply.clone(), Some(&request)),
+            Ok(Some(reply["result"].clone()))
+        );
+        for field in [
+            "/result/goalId",
+            "/result/command/commandId",
+            "/result/command/action",
+        ] {
+            let mut mismatched = reply.clone();
+            *mismatched.pointer_mut(field).unwrap() = json!("run");
+            assert!(decode_interactive_goal(mismatched, Some(&request)).is_err());
+        }
     }
 
     #[test]

@@ -156,6 +156,21 @@ export default interface Resources {
     "interactiveGoal": {
       "check": "Check goal status",
       "cleanup_pending": "Goal resources are still being cleaned up.",
+      "commands": {
+        "cancel": "Cancel execution",
+        "cancelling": "Cancellation requested. Waiting for current Work to settle.",
+        "failed": "Goal command failed",
+        "finished": "Goal command finished",
+        "pause": "Pause",
+        "pausing": "Paused. Waiting for current Work to settle.",
+        "resume": "Resume",
+        "run": "Run",
+        "running": "Goal command running",
+        "sending": "Sending Goal command…",
+        "step": "Step",
+        "unconfirmed": "Goal command {{id}} is not yet confirmed.",
+        "unknown": "Goal command outcome is unknown"
+      },
       "create": "Create goal",
       "created": "Goal created. Execution has not started.",
       "creating": "Creating goal…",

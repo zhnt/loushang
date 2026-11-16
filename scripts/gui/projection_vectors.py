@@ -66,6 +66,38 @@ def emit_projection_vectors() -> None:
     missing = copy.deepcopy(interactive_wire)
     del missing["result"]["status"]
     add("interactive-missing-status", "interactive_goal", missing, False)
+    capable = replace(snapshot, supports_interactive_goal=True, supports_interactive_goal_commands=True)
+    capable_wire = json.loads(encode_response(em.ExecutionResponseV1("command-capability", capable)))
+    add("interactive-commands-capability", "snapshot", capable_wire)
+    for value in (False, None):
+        invalid = copy.deepcopy(capable_wire)
+        invalid["result"]["supportsInteractiveGoalCommands"] = value
+        add(f"interactive-commands-capability-{value}", "snapshot", invalid, False)
+    invalid = copy.deepcopy(capable_wire)
+    del invalid["result"]["supportsInteractiveGoal"]
+    add("interactive-commands-without-goal", "snapshot", invalid, False)
+    for action, status in (
+        ("run", "running"), ("step", "finished"), ("pause", "settling"),
+        ("cancel", "unknown"), ("resume", "failed"),
+    ):
+        command = em.InteractiveGoalCommandViewV1("gui-1", action, status)
+        view = replace(interactive, command=command)
+        response = em.ExecutionResponseV1("interactive-command", view)
+        add(f"interactive-{action}-{status}", "interactive_goal", json.loads(encode_response(response)))
+    for name, command in (
+        ("null", None), ("unknown", {"commandId": "gui-1", "action": "abandon", "status": "finished"}),
+        ("identity", {"commandId": "/private", "action": "run", "status": "finished"}),
+        ("cancel-running", {"commandId": "gui-1", "action": "cancel", "status": "running"}),
+        ("run-settling", {"commandId": "gui-1", "action": "run", "status": "settling"}),
+        ("extra", {"commandId": "gui-1", "action": "pause", "status": "settling", "error": "private"}),
+        ("missing", {"commandId": "gui-1", "action": "run"}),
+    ):
+        invalid = copy.deepcopy(interactive_wire)
+        invalid["result"]["command"] = command
+        add(f"interactive-command-invalid-{name}", "interactive_goal", invalid, False)
+    invalid = json.loads(encode_response(em.ExecutionResponseV1("ready", em.InteractiveGoalViewV1("ready"))))
+    invalid["result"]["command"] = {"commandId": "gui-1", "action": "run", "status": "running"}
+    add("interactive-command-nonpresent", "interactive_goal", invalid, False)
     goal = em.ExecutionGoalProgressV1(
         "execution-1", "present", "goal-1", "paused", "advance_budget_exhausted",
         "not_checked", True, 3, 6, 2,

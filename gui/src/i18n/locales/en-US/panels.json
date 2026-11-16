@@ -1,5 +1,20 @@
 {
   "interactiveGoal": {
+    "commands": {
+      "run": "Run",
+      "step": "Step",
+      "pause": "Pause",
+      "resume": "Resume",
+      "cancel": "Cancel execution",
+      "running": "Goal command running",
+      "pausing": "Paused. Waiting for current Work to settle.",
+      "cancelling": "Cancellation requested. Waiting for current Work to settle.",
+      "finished": "Goal command finished",
+      "failed": "Goal command failed",
+      "unknown": "Goal command outcome is unknown",
+      "sending": "Sending Goal command…",
+      "unconfirmed": "Goal command {{id}} is not yet confirmed."
+    },
     "title": "Development goal",
     "open": "Create development goal",
     "target": "Goal target",

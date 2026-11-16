@@ -419,3 +419,219 @@ def test_scoped_goal_create_rechecks_controller_at_journal_publication(tmp_path,
             assert (await status(second.execution_client, address2)).availability == "historical"
 
     asyncio.run(asyncio.wait_for(scenario(), 45))
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Managed-owned transcript fixture")
+def test_hosted_goal_commands_keep_the_original_run_after_client_disconnect(tmp_path, monkeypatch):
+    from loushang.appserver.execution.dispatch import dispatch_execution
+    from loushang.appserver.execution.model import (
+        ExecutionCallV1,
+        ExecutionOperationV1,
+        ExecutionServiceErrorV1,
+        InteractiveGoalCommandV1,
+    )
+
+    async def scenario():
+        async with _managed(tmp_path) as (app, client, selector, address, hosted, adapter, _):
+            await _activate(client, address, hosted, adapter)
+            port = client.execution_client
+            instance = port.service_instance_id
+            created = await port.create_interactive_goal(address, instance, "Write a greeting in note.txt")
+            goal_id = created.goal_id
+            owner = hosted._product_binding._interactive_goal_owner
+
+            async def control(action, command_id=None):
+                return await dispatch_execution(port, ExecutionCallV1(
+                    "1", ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND, address, instance,
+                    goal_command=InteractiveGoalCommandV1(goal_id, command_id or action, action),
+                ))
+
+            step = InteractiveGoalCommandV1(goal_id, "step", "step")
+            with pytest.raises(AppServiceError):
+                await port.control_interactive_goal(address, instance, replace(step, goal_id="other-goal"))
+            with pytest.raises(AppServiceError):
+                await port.control_interactive_goal(replace(address, member_id="other-session"), instance, step)
+            with pytest.raises(ExecutionServiceErrorV1):
+                await port.control_interactive_goal(address, "other-host", step)
+            assert not owner.controller.history.batches
+
+            async def settled(command_id):
+                async with asyncio.timeout(15):
+                    while True:
+                        view = await port.interactive_goal_status(address, instance)
+                        assert view.command.command_id == command_id
+                        if view.command.status not in {"running", "settling"}:
+                            return view
+                        await asyncio.sleep(0.01)
+
+            assert (await port.snapshot_execution_session(address, instance)).supports_interactive_goal_commands
+            accepted = await control("step")
+            assert accepted.command.status == "running"
+            assert (await settled("step")).command.status == "finished"
+            assert len(owner.controller.history.batches) == 1
+            assert (await control("step")).command.status == "finished"
+            assert len(owner.controller.history.batches) == 1
+
+            adapter.entered.clear()
+            adapter.blocked = True
+            assert (await control("run")).command.status == "running"
+            await asyncio.wait_for(adapter.entered.wait(), 10)
+            with pytest.raises(AppServiceError):
+                await control("step", "while-running")
+            with pytest.raises(AppServiceError):
+                await control("run", "step")
+            with pytest.raises(AppServiceError) as conflict:
+                await port.submit_execution(address, instance, "busy-chat", "Keep this input")
+            assert conflict.value.code is AppErrorCodeV1.SESSION_UNAVAILABLE
+
+            previous_port, previous_address = port, address
+            await client.close()
+            second = app.open_client_scope()
+            attached = await second.attach_mux(MuxAttachV1(selector))
+            with pytest.raises(AppServiceError):
+                await previous_port.control_interactive_goal(
+                    previous_address, instance, InteractiveGoalCommandV1(goal_id, "stale-pause", "pause"),
+                )
+            address = replace(address, attachment_id=attached.attachment_id, controller_generation=attached.controller_generation)
+            port = second.execution_client
+            observed = await port.interactive_goal_status(address, instance)
+            assert observed.goal_id == goal_id and observed.command.command_id == "run"
+            assert observed.command.status == "running"
+            paused = await control("pause")
+            assert (paused.status, paused.command.status) == ("paused", "settling")
+            assert owner.controller.facts().busy
+            with pytest.raises(AppServiceError):
+                await control("resume", "early-resume")
+
+            adapter.release.set()
+            assert (await settled("pause")).status == "paused"
+            assert len(owner.controller.history.batches) == 2
+            assert not owner.controller.facts().busy
+
+            adapter.release.clear()
+            adapter.entered.clear()
+            resumed = await control("resume")
+            assert (resumed.goal_id, resumed.status) == (goal_id, "active")
+            await asyncio.wait_for(adapter.entered.wait(), 10)
+            cancelled = await control("cancel")
+            assert cancelled.command.status == "settling"
+            final = await settled("cancel")
+            assert final.status == "paused" and final.command.status == "finished"
+            assert not final.execution_unresolved and not owner.controller.facts().busy
+            count = len(owner.controller.history.batches)
+            assert count >= 2
+            assert (await control("step")).command.status == "finished"
+            assert len(owner.controller.history.batches) == count
+            assert (await port.interactive_goal_status(address, instance)).command.command_id == "cancel"
+            assert await port.find_execution_by_submission(address, instance, "busy-chat") is None
+            adapter.goal_mode = False
+            await _chat(second, address, "after-controlled-goal")
+
+            # A cancel received on the admission turn can settle without starting Work.
+            binding = hosted._product_binding
+            accepted = binding.control_interactive_goal(
+                InteractiveGoalCommandV1(goal_id, "queued-resume", "resume"), check_current=lambda: None,
+            )
+            assert accepted.command.status == "running"
+            binding.control_interactive_goal(
+                InteractiveGoalCommandV1(goal_id, "queued-cancel", "cancel"), check_current=lambda: None,
+            )
+            assert (await settled("queued-cancel")).status == "paused"
+            assert len(owner.controller.history.batches) == count
+
+            schedule = asyncio.create_task
+
+            def fail_publication(coroutine, *, name=None):
+                if name == "coding-hosted-goal-command":
+                    raise RuntimeError("injected task publication failure")
+                return schedule(coroutine, name=name)
+
+            with monkeypatch.context() as patch:
+                patch.setattr(asyncio, "create_task", fail_publication)
+                failed = await control("resume", "failed-resume")
+            assert failed.status == "active" and failed.command.status == "failed"
+            assert (await control("resume", "failed-resume")).command == failed.command
+            assert len(owner.controller.history.batches) == count
+            owner.controller.fence()
+            with pytest.raises(AppServiceError):
+                await control("step", "fenced-step")
+
+    asyncio.run(asyncio.wait_for(scenario(), 55))
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Managed-owned transcript fixture")
+def test_hosted_goal_admission_covers_command_gaps_and_close_retry(tmp_path, monkeypatch):
+    from loushang.appserver.execution.model import InteractiveGoalCommandV1
+
+    async def scenario():
+        async with _managed(tmp_path) as (_, client, _, address, hosted, adapter, _):
+            await _activate(client, address, hosted, adapter)
+            port = client.execution_client
+            instance = port.service_instance_id
+            created = await port.create_interactive_goal(address, instance, "Write a greeting in note.txt")
+            binding = hosted._product_binding
+            owner = binding._interactive_goal_owner
+            start = InteractiveGoalCommandV1(created.goal_id, "run", "run")
+
+            # The registry accepted a chat, but the Product execution has not started.
+            adapter.goal_mode = False
+            ready, release_chat = asyncio.Event(), asyncio.Event()
+            execute = port._registry._drive
+
+            async def delay_chat(*args):
+                ready.set()
+                await release_chat.wait()
+                return await execute(*args)
+
+            with monkeypatch.context() as patch:
+                patch.setattr(port._registry, "_drive", delay_chat)
+                record = await port.submit_execution(address, instance, "accepted-chat", "Finish old work")
+                try:
+                    await ready.wait()
+                    assert hosted._guard.state.status.terminal
+                    with pytest.raises(AppServiceError) as conflict:
+                        await port.control_interactive_goal(address, instance, start)
+                    assert conflict.value.code is AppErrorCodeV1.SESSION_UNAVAILABLE
+                finally:
+                    release_chat.set()
+                while not (await port.get_execution(address, instance, record.state.execution_id)).state.status.terminal:
+                    await asyncio.sleep(.01)
+
+            adapter.goal_mode = True
+            between = asyncio.Event()
+            advance = owner.advance
+
+            async def wait_between(*args, **kwargs):
+                result = await advance(*args, **kwargs)
+                between.set()
+                await asyncio.Future()
+                return result
+
+            monkeypatch.setattr(owner, "advance", wait_between)
+            assert (await port.control_interactive_goal(address, instance, start)).command.status == "running"
+            await between.wait()
+            assert not binding.control.runtime.execution_admission.execution_reserved
+            assert not owner.controller.facts().busy and len(owner.controller.history.batches) == 1
+            with pytest.raises(AppServiceError):
+                await port.control_interactive_goal(address, instance, replace(start, command_id="gap-run"))
+            with pytest.raises(AppServiceError) as model_change:
+                await hosted.select_model("another-model")
+            assert model_change.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+            with pytest.raises(AppServiceError) as busy:
+                await port.submit_execution(address, instance, "gap-chat", "Keep this draft")
+            assert busy.value.code is AppErrorCodeV1.SESSION_UNAVAILABLE
+            assert await port.find_execution_by_submission(address, instance, "gap-chat") is None
+
+            async def fail_close():
+                raise OSError("Goal close failed")
+
+            with monkeypatch.context() as patch:
+                patch.setattr(owner, "close", fail_close)
+                with pytest.raises(CleanupIncompleteError):
+                    await hosted.close()
+                assert binding._interactive_goal_owner is owner
+                assert not binding._goal_commands.running and not owner.controller.facts().busy
+            await hosted.close()
+            assert owner._closed and binding._interactive_goal_owner is None
+
+    asyncio.run(asyncio.wait_for(scenario(), 40))

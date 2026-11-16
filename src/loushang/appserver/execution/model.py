@@ -257,6 +257,7 @@ class ExecutionSessionSnapshotV1:
     supports_goal_progress: bool = False
     supports_goal_start: bool = False
     supports_interactive_goal: bool = False
+    supports_interactive_goal_commands: bool = False
 
     def __post_init__(self) -> None:
         _identifier(self.service_instance_id)
@@ -266,8 +267,11 @@ class ExecutionSessionSnapshotV1:
             raise ValueError("invalid execution composite snapshot")
         if any(type(flag) is not bool for flag in (
             self.supports_goal_progress, self.supports_goal_start, self.supports_interactive_goal,
+            self.supports_interactive_goal_commands,
         )):
             raise TypeError("invalid Goal capability")
+        if self.supports_interactive_goal_commands and not self.supports_interactive_goal:
+            raise ValueError("Goal commands require interactive Goal support")
 
 
 ExecutionGoalStatusV1 = Literal["active", "paused", "completed", "abandoned", "failed", "superseded"]
@@ -356,6 +360,41 @@ class ExecutionGoalProgressV1:
             raise ValueError("unexpected Goal identity or status")
 
 
+InteractiveGoalActionV1 = Literal["run", "step", "pause", "resume", "cancel"]
+InteractiveGoalCommandStatusV1 = Literal["running", "settling", "finished", "failed", "unknown"]
+
+
+@dataclass(frozen=True, slots=True)
+class InteractiveGoalCommandV1:
+    goal_id: str
+    command_id: str
+    action: InteractiveGoalActionV1
+
+    def __post_init__(self) -> None:
+        _identifier(self.goal_id)
+        _identifier(self.command_id)
+        if self.action not in get_args(InteractiveGoalActionV1):
+            raise ValueError("invalid interactive Goal action")
+
+
+@dataclass(frozen=True, slots=True)
+class InteractiveGoalCommandViewV1:
+    command_id: str
+    action: InteractiveGoalActionV1
+    status: InteractiveGoalCommandStatusV1
+
+    def __post_init__(self) -> None:
+        _identifier(self.command_id)
+        if self.action not in get_args(InteractiveGoalActionV1) or self.status not in get_args(
+            InteractiveGoalCommandStatusV1
+        ):
+            raise ValueError("invalid interactive Goal command observation")
+        if self.status == "running" and self.action in {"pause", "cancel"}:
+            raise ValueError("invalid interactive Goal running action")
+        if self.status == "settling" and self.action not in {"pause", "cancel"}:
+            raise ValueError("invalid interactive Goal settling action")
+
+
 @dataclass(frozen=True, slots=True)
 class InteractiveGoalViewV1:
     availability: Literal["ready", "not_ready", "creating", "present", "historical", "cleanup_pending"]
@@ -364,13 +403,14 @@ class InteractiveGoalViewV1:
     revision: int | None = None
     epoch: int | None = None
     execution_unresolved: bool | None = None
+    command: InteractiveGoalCommandViewV1 | None = None
 
     def __post_init__(self) -> None:
         if self.availability not in {"ready", "not_ready", "creating", "present", "historical", "cleanup_pending"}:
             raise ValueError("invalid interactive Goal availability")
         if self.availability != "present":
             if any(value is not None for value in (
-                self.goal_id, self.status, self.revision, self.epoch, self.execution_unresolved,
+                self.goal_id, self.status, self.revision, self.epoch, self.execution_unresolved, self.command,
             )):
                 raise ValueError("unexpected interactive Goal facts")
             return
@@ -383,6 +423,8 @@ class InteractiveGoalViewV1:
                 raise ValueError("invalid interactive Goal revision or epoch")
         if type(self.execution_unresolved) is not bool:
             raise TypeError("invalid interactive Goal settlement")
+        if self.command is not None and type(self.command) is not InteractiveGoalCommandViewV1:
+            raise TypeError("invalid interactive Goal command")
 
 
 class ExecutionOperationV1(str, Enum):
@@ -392,6 +434,7 @@ class ExecutionOperationV1(str, Enum):
     GOAL_START = "execution/goal_start"
     INTERACTIVE_GOAL_CREATE = "session/interactive_goal_create"
     INTERACTIVE_GOAL_STATUS = "session/interactive_goal_status"
+    INTERACTIVE_GOAL_COMMAND = "session/interactive_goal_command"
     FIND = "execution/find_submission"
     INTERRUPT = "execution/interrupt"
     SNAPSHOT = "execution/snapshot"
@@ -431,6 +474,7 @@ class ExecutionCallV1:
     resume_query: ResumeInputLookupQueryV1 | None = None
     include_goal_batches: bool = False
     goal_target: str | None = None
+    goal_command: InteractiveGoalCommandV1 | None = None
 
     def __post_init__(self) -> None:
         _identifier(self.request_id)
@@ -465,6 +509,11 @@ class ExecutionCallV1:
         if self.text is not None:
             ExecutionRequestV1("validation", self.text)
         self._validate_goal_target()
+        command = self.operation is ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND
+        if (self.goal_command is not None) != command or (
+            command and type(self.goal_command) is not InteractiveGoalCommandV1
+        ):
+            raise ValueError("unexpected interactive Goal command")
 
     def _validate_goal_target(self) -> None:
         create = self.operation is ExecutionOperationV1.INTERACTIVE_GOAL_CREATE

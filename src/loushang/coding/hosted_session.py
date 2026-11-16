@@ -20,6 +20,7 @@ from loushang.apphost import SessionBindingKeyV1
 from loushang.apphost.integrations.session_control import _HostedApprovalPresentation
 from loushang.appserver.execution.model import (
     ExecutionGoalStatusV1,
+    InteractiveGoalCommandV1,
     InteractiveGoalViewV1,
 )
 from loushang.appserver.protocol import (
@@ -79,6 +80,7 @@ from .hosted_catalog import (
     CodingHostedCatalogError,
     CodingHostedHistoryCandidateBindingV1,
 )
+from .hosted_goal_commands import HostedGoalCommands
 from .hosted_user_choice import (
     ASK_USER,
     HostedUserChoice,
@@ -234,6 +236,7 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         self._interactive_goal_owner: CodingGoal | None = None
         self._interactive_goal_id: str | None = None
         self._interactive_goal_lock = asyncio.Lock()
+        self._goal_commands = HostedGoalCommands()
         self._user_choice = HostedUserChoice()
         session.set_approval_presenter(
             self._present_approval, dismisser=self._dismiss_approval
@@ -336,8 +339,28 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         view = self._interactive_goal_status(owner, goal_id)
         return InteractiveGoalViewV1(
             "present", view.goal_id, cast(ExecutionGoalStatusV1, view.status),
-            view.revision, view.epoch, view.execution_unresolved,
+            view.revision, view.epoch, view.execution_unresolved, self._goal_commands.latest,
         )
+
+    def control_interactive_goal(
+        self, command: InteractiveGoalCommandV1, *, check_current: Callable[[], None],
+    ) -> InteractiveGoalViewV1:
+        owner = self._interactive_goal_owner
+        if (self._close_task is not None or self._interactive_goal_lock.locked()
+                or owner is None or owner._closing or command.goal_id != self._interactive_goal_id):
+            raise GoalError("current hosted Goal unavailable")
+
+        def require_idle() -> None:
+            self._require_interactive_goal_admission()
+            admission = self._session.runtime.execution_admission
+            admission.require_current()
+            if admission.execution_reserved:
+                raise GoalError("Session already reserved")
+
+        outcome = self._goal_commands.submit(owner, command, check_current=check_current, require_idle=require_idle)
+        view = self._attached_interactive_goal_view()
+        assert view is not None
+        return replace(view, command=outcome)
 
     async def interactive_goal_view(self) -> InteractiveGoalViewV1:
         from .adapters.interactive_goal import InteractiveGoal, read_task_history
@@ -395,6 +418,7 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
     async def _close_interactive_goal_locked(self) -> None:
         owner = self._interactive_goal_owner
         if owner is not None:
+            await self._goal_commands.stop()
             await owner.close()
             self._interactive_goal_owner = None
             self._interactive_goal_id = None
@@ -541,8 +565,12 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         self._interactions.clear()
 
     @property
+    def goal_command_running(self) -> bool:
+        return self._goal_commands.running
+
+    @property
     def execution_available(self) -> bool:
-        return self._session.execution_available and (
+        return not self.goal_command_running and self._session.execution_available and (
             self._interactive_goal_owner is None or not self._session.runtime.execution_admission.execution_reserved
         )
 

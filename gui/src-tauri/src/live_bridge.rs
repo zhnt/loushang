@@ -2,8 +2,8 @@
 use crate::connection_lifecycle::{ConnectionLifecycle, ExitAction};
 use loushang_app_client::{
     definitive_create_rejection, AppClient, ConnectionOptions, ControlCommand, ControlResult,
-    CreateSessionResult, InteractionOutcome, LiveEventRound, LiveInitialSnapshot,
-    ModelControlResult,
+    CreateSessionResult, InteractionOutcome, InteractiveGoalAction, InteractiveGoalCommand,
+    LiveEventRound, LiveInitialSnapshot, ModelControlResult,
 };
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -101,6 +101,17 @@ pub(crate) struct LiveCreateInteractiveGoalInput {
     service_instance_id: String,
     connection_epoch: String,
     goal_target: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveControlInteractiveGoalInput {
+    session_id: String,
+    service_instance_id: String,
+    connection_epoch: String,
+    goal_id: String,
+    command_id: String,
+    action: InteractiveGoalAction,
 }
 
 #[derive(Deserialize)]
@@ -566,10 +577,49 @@ pub(crate) async fn live_interactive_goal_status(
     interactive_goal(&state, input, None).await
 }
 
+#[tauri::command]
+pub(crate) async fn live_interactive_goal_command(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveControlInteractiveGoalInput,
+) -> Result<Option<serde_json::Value>, String> {
+    let command = InteractiveGoalCommand {
+        goal_id: input.goal_id,
+        command_id: input.command_id,
+        action: input.action,
+    };
+    send_interactive_goal(
+        &state,
+        LiveInteractiveGoalInput {
+            session_id: input.session_id,
+            service_instance_id: input.service_instance_id,
+            connection_epoch: input.connection_epoch,
+        },
+        |session_id, reply| ControlCommand::ControlInteractiveGoal {
+            session_id,
+            command,
+            reply,
+        },
+    )
+    .await
+}
+
 async fn interactive_goal(
     state: &LiveLaunchState,
     input: LiveInteractiveGoalInput,
     target: Option<String>,
+) -> Result<Option<serde_json::Value>, String> {
+    send_interactive_goal(state, input, |session_id, reply| {
+        ControlCommand::interactive_goal(session_id, target, reply)
+    })
+    .await
+}
+
+type GoalReply = mpsc::SyncSender<Result<Option<serde_json::Value>, ()>>;
+
+async fn send_interactive_goal(
+    state: &LiveLaunchState,
+    input: LiveInteractiveGoalInput,
+    command: impl FnOnce(String, GoalReply) -> ControlCommand + Send + 'static,
 ) -> Result<Option<serde_json::Value>, String> {
     let control = current_control(state)?;
     if control.service_instance_id != input.service_instance_id
@@ -581,11 +631,7 @@ async fn interactive_goal(
         let (reply, receive) = mpsc::sync_channel(1);
         control
             .sender
-            .send(ControlCommand::interactive_goal(
-                input.session_id,
-                target,
-                reply,
-            ))
+            .send(command(input.session_id, reply))
             .map_err(|_| "live control connection changed".to_owned())?;
         receive
             .recv_timeout(Duration::from_secs(6))

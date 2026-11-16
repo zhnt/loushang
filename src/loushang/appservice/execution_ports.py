@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
-from loushang.appserver.execution.model import InteractiveGoalViewV1
+from loushang.appserver.execution.model import (
+    InteractiveGoalCommandV1,
+    InteractiveGoalViewV1,
+)
 from loushang.appserver.protocol import SessionIdentityV1
 
 from .execution_contract import (
@@ -81,3 +84,10 @@ class HostedInteractiveGoalPortV1(Protocol):
     ) -> InteractiveGoalViewV1: ...
 
     async def interactive_goal_status(self) -> InteractiveGoalViewV1: ...
+
+
+@runtime_checkable
+class HostedInteractiveGoalCommandPortV1(Protocol):
+    def control_interactive_goal(
+        self, command: InteractiveGoalCommandV1, *, check_current: Callable[[], None],
+    ) -> InteractiveGoalViewV1: ...

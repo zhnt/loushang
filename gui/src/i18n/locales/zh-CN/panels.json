@@ -1,5 +1,20 @@
 {
   "interactiveGoal": {
+    "commands": {
+      "run": "运行",
+      "step": "单步执行",
+      "pause": "暂停",
+      "resume": "继续运行",
+      "cancel": "取消执行",
+      "running": "目标命令执行中",
+      "pausing": "已暂停，等待当前 Work 收敛。",
+      "cancelling": "已请求取消，等待当前 Work 收敛。",
+      "finished": "目标命令已结束",
+      "failed": "目标命令失败",
+      "unknown": "目标命令结果未知",
+      "sending": "正在发送目标命令…",
+      "unconfirmed": "目标命令 {{id}} 尚未确认。"
+    },
     "title": "开发目标",
     "open": "创建开发目标",
     "target": "目标内容",

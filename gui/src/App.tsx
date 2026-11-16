@@ -156,6 +156,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const [modelResult, setModelResult] = useState<{ scope: string; query: string; models: SessionModels | null } | null>(null);
   const modelRequest = useRef(0);
   const [modelPending, setModelPending] = useState(false);
+  const [goalBusyScope, setGoalBusyScope] = useState<string | null>(null);
   const controlPendingRef = useRef(false);
   const [publications, setPublications] = useState<Readonly<Record<string, {
     readonly source: ClientSnapshot["source"];
@@ -355,7 +356,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     ? JSON.stringify([selectionKey, state.remote.source.serviceInstanceId, state.remote.source.connectionEpoch, selectedId])
     : null;
   const modelQuery = JSON.stringify([modelScope, selected?.execution?.id, selected?.execution?.status]);
-  const modelRunning = selected?.status === "running";
+  const goalBusy = Boolean(modelScope && goalBusyScope === modelScope);
+  const modelRunning = selected?.status === "running" || goalBusy;
   const confirmedModels = modelResult?.scope === modelScope && (modelRunning || modelResult.query === modelQuery)
     ? modelResult
     : null;
@@ -414,7 +416,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const goalStart = useGoalStart(client, selected, connected && state.remote.source.kind === "live"
     ? state.remote.source : null, controlsAllowed);
   const mutationsAllowed = controlsAllowed && !awaitingPublication && !modelPending;
-  const submitAllowed = mutationsAllowed && (
+  const submitAllowed = mutationsAllowed && !goalBusy && (
     state.remote.source.kind === "fixture"
     || sessionModels?.models.some((model) => model.id === sessionModels.currentId)
   );
@@ -739,7 +741,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                       state.remote.source.muxSpaceId, selected.id])}
                     client={client} session={selected} instanceId={state.remote.source.serviceInstanceId}
                     epoch={connected && selectionReady && !syncing ? state.remote.source.connectionEpoch : null}
-                    enabled={mutationsAllowed} />
+                    enabled={mutationsAllowed} scopeKey={modelScope} setBusyScope={setGoalBusyScope} />
                 ) : null}
                 {selected.execution ? <ExecutionDetail execution={selected.execution} stale={!fixture && !connected} /> : null}
                 {connected && selected.execution && selected.supportsGoalProgress && client.goalProgress && state.remote.source.kind === "live" ? (
