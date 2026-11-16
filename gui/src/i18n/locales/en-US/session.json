@@ -1,4 +1,12 @@
 {
+  "approval": {
+    "title": "Tool approval",
+    "approve": "Allow once",
+    "deny": "Deny",
+    "cancel": "Cancel operation",
+    "submitting": "Sending decision…",
+    "unavailable": "This request is unavailable."
+  },
   "notice": {
     "loading": "Loading snapshot…",
     "fixtureReady": "Fixture snapshot installed. No backend is running.",

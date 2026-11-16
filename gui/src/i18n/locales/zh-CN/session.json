@@ -1,4 +1,12 @@
 {
+  "approval": {
+    "title": "工具执行审批",
+    "approve": "允许一次",
+    "deny": "拒绝",
+    "cancel": "取消操作",
+    "submitting": "正在提交审批结果…",
+    "unavailable": "此审批已不可操作。"
+  },
   "notice": {
     "loading": "正在加载快照…",
     "fixtureReady": "测试快照已加载，未运行后端。",

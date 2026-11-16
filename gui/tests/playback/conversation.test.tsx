@@ -744,3 +744,43 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(within(dock).getByLabelText("Task details")).toBeVisible();
   });
 });
+
+it("keeps approvals in their own session and removes them on dismissal or disconnect", async () => {
+  const fixture = await createMockAppClient().snapshot();
+  const [a, b] = fixture.sessions;
+  const session = {
+    ...a,
+    status: "idle" as const,
+    pendingApprovals: [{ sessionId: a.id, interactionId: "test-approval", text: "Preview operation", status: "pending" as const }],
+  };
+  const snapshot: ClientSnapshot = {
+    ...fixture, connection: "connected", selectedSessionId: a.id,
+    source: { kind: "live", serviceInstanceId: "approval-host", muxSpaceId: "approval-mux", connectionEpoch: "1" },
+    sessions: [session, { ...b, status: "idle" }],
+  };
+  let feed!: (snapshot: ClientSnapshot) => void;
+  let disconnect!: (state: "disconnected") => void;
+  const respondInteraction = vi.fn().mockResolvedValue({ accepted: true });
+  const client: HarnessClientUiPort = {
+    snapshot: async () => snapshot,
+    subscribe: () => () => {},
+    subscribeSnapshots: (listener) => { feed = listener; return () => {}; },
+    subscribeConnection: (listener) => { disconnect = listener; return () => {}; },
+    submitText: async ({ submissionId }) => ({ submissionId, accepted: false }),
+    interrupt: async () => ({ accepted: false }),
+    respondInteraction,
+  };
+  render(<HarnessGui client={client} />);
+  await screen.findByRole("region", { name: "Tool approval" });
+  fireEvent.click(screen.getByRole("button", { name: `${b.title} · Idle` }));
+  expect(screen.queryByRole("region", { name: "Tool approval" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: `${a.title} · Idle` }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel operation" }));
+  expect(respondInteraction).toHaveBeenCalledExactlyOnceWith(a.id, "test-approval", "cancel");
+  act(() => feed({ ...snapshot, sessions: [{ ...session, pendingApprovals: [] }, snapshot.sessions[1]] }));
+  expect(screen.queryByRole("region", { name: "Tool approval" })).not.toBeInTheDocument();
+  act(() => feed(snapshot));
+  await screen.findByRole("region", { name: "Tool approval" });
+  act(() => disconnect("disconnected"));
+  expect(screen.queryByRole("region", { name: "Tool approval" })).not.toBeInTheDocument();
+});

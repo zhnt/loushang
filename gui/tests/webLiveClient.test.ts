@@ -17,6 +17,7 @@ it("projects real protocol snapshots and sends only explicit operations", async 
   expect(await client.submitText({ sessionId: "session-1", submissionId: "submission-1", text: "Hello" }))
     .toMatchObject({ accepted: true, executionId: "execution-1" });
   expect(JSON.parse(String(fetcher.mock.calls[1][1].body))).toEqual({ operation: "live", workspace: "/workspace", action: "submit",
+    viewId: JSON.parse(String(fetcher.mock.calls[0][1].body)).viewId,
     input: { sessionId: "session-1", submissionId: "submission-1", text: "Hello", serviceInstanceId: "service-1" } });
 });
 
@@ -49,7 +50,7 @@ it("binds operations to the original connection even after selection changes", a
   expect(snapshot.source).toMatchObject({ connectionId: "original-host" });
   const request = JSON.parse(String((fetcher.mock.calls as unknown as [string, RequestInit][])[0][1].body));
   expect(request).toEqual({ operation: "host/request", connectionId: "original-host",
-    request: { operation: "live", workspace: "/original-workspace", action: "snapshot", input: {} } });
+    request: { operation: "live", workspace: "/original-workspace", viewId: expect.any(String), action: "snapshot", input: {} } });
 });
 
 it("recovers a lost submission receipt from the same AppHost without resubmitting", async () => {
@@ -66,9 +67,42 @@ it("recovers a lost submission receipt from the same AppHost without resubmittin
   await client.snapshot();
   expect(await client.submitText(submission)).toEqual(receipt);
   expect(requests.slice(1)).toEqual([
-    { operation: "live", workspace: "/workspace", action: "submit",
+    { operation: "live", workspace: "/workspace", action: "submit", viewId: requests[0].viewId,
       input: { ...submission, serviceInstanceId: "service-1" } },
-    { operation: "live", workspace: "/workspace", action: "find-submission",
+    { operation: "live", workspace: "/workspace", action: "find-submission", viewId: requests[0].viewId,
       input: { sessionId: "session-1", submissionId: "submission-1", serviceInstanceId: "service-1" } },
   ]);
+});
+
+it("submits a decision through the polling attachment and removes it after dismissal", async () => {
+  vi.useFakeTimers();
+  const requests: Array<Record<string, any>> = [];
+  let dismissed = false;
+  vi.stubGlobal("fetch", vi.fn(async (_url: string, options: RequestInit) => {
+    const request = JSON.parse(String(options.body));
+    requests.push(request);
+    if (request.action !== "snapshot") return { ok: true, json: async () => ({ result: { accepted: true } }) };
+    const snapshot = liveSnapshot();
+    snapshot.sessions[0].pendingApprovals = dismissed ? [] : [{ interactionId: "approval-1", text: "Preview" }];
+    return { ok: true, json: async () => ({ result: snapshot }) };
+  }));
+  const client = createWebLiveClient("/workspace");
+  const changes = vi.fn();
+  const unsubscribe = client.subscribeSnapshots!(changes);
+  expect((await client.snapshot()).sessions[0].pendingApprovals?.[0].status).toBe("pending");
+  const decision = client.respondInteraction!("session-1", "approval-1", "deny");
+  expect(changes.mock.lastCall?.[0].sessions[0].pendingApprovals[0].status).toBe("submitting");
+  expect(await client.respondInteraction!("session-1", "approval-1", "cancel")).toMatchObject({ accepted: false });
+  expect(await decision).toEqual({ accepted: true });
+  expect(requests.filter(({ action }) => action === "respond-interaction")).toEqual([
+    { ...requests[0], action: "respond-interaction", input: {
+      sessionId: "session-1", interactionId: "approval-1", outcome: "deny", connectionEpoch: "1",
+    } },
+  ]);
+  dismissed = true;
+  await vi.advanceTimersByTimeAsync(500);
+  expect(changes.mock.lastCall?.[0].sessions[0].pendingApprovals).toEqual([]);
+  unsubscribe();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(requests[requests.length - 1]).toEqual({ ...requests[0], action: "close" });
 });

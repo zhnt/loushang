@@ -2,7 +2,7 @@
 use crate::connection_lifecycle::{ConnectionLifecycle, ExitAction};
 use loushang_app_client::{
     AppClient, ConnectionOptions, ControlCommand, ControlResult, CreateSessionResult,
-    LiveEventRound, LiveInitialSnapshot, ModelControlResult,
+    InteractionOutcome, LiveEventRound, LiveInitialSnapshot, ModelControlResult,
 };
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -316,6 +316,48 @@ pub(crate) async fn live_interrupt(
     })
     .await
     .map_err(|_| "live interrupt worker failed".to_owned())?
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveInteractionInput {
+    connection_epoch: String,
+    session_id: String,
+    interaction_id: String,
+    outcome: InteractionOutcome,
+}
+
+#[tauri::command]
+pub(crate) async fn live_respond_interaction(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveInteractionInput,
+) -> Result<LiveControlReceipt, String> {
+    let control = current_control(&state)?;
+    if input.connection_epoch != control.connection_epoch.to_string() {
+        return Ok(LiveControlReceipt {
+            accepted: false,
+            reason: Some("stale_attachment".into()),
+            execution_id: None,
+        });
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        control
+            .sender
+            .send(ControlCommand::RespondInteraction {
+                session_id: input.session_id,
+                interaction_id: input.interaction_id,
+                outcome: input.outcome,
+                reply,
+            })
+            .map_err(|_| "live control connection changed".to_owned())?;
+        let result = receive
+            .recv_timeout(Duration::from_secs(6))
+            .map_err(|_| "live approval response timed out".to_owned())?;
+        control_receipt(result, false)
+    })
+    .await
+    .map_err(|_| "live approval worker failed".to_owned())?
 }
 
 #[tauri::command]

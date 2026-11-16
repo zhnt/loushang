@@ -10,7 +10,8 @@ mod request_deadline;
 mod transport_auth;
 mod workspace;
 pub use attachment::{
-    ControlAuthority, ControlResult, CreateSessionResult, MemberEvents, ModelControlResult,
+    ControlAuthority, ControlResult, CreateSessionResult, InteractionOutcome, MemberEvents,
+    ModelControlResult,
 };
 pub use workspace::{WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope};
 
@@ -67,6 +68,12 @@ pub enum ControlCommand {
     Interrupt {
         session_id: String,
         execution_id: String,
+        reply: SyncSender<Result<ControlResult, ()>>,
+    },
+    RespondInteraction {
+        session_id: String,
+        interaction_id: String,
+        outcome: InteractionOutcome,
         reply: SyncSender<Result<ControlResult, ()>>,
     },
     ListModels {
@@ -568,6 +575,27 @@ fn process_controls<R: Read, W: Write>(
                 reply,
             } => {
                 let result = authority.interrupt(channel, &session_id, &execution_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::RespondInteraction {
+                session_id,
+                interaction_id,
+                outcome,
+                reply,
+            } => {
+                let result = if session.has_approval(&session_id, &interaction_id) {
+                    authority.respond_interaction(
+                        channel,
+                        &session_id,
+                        &interaction_id,
+                        outcome,
+                        &request_id,
+                    )
+                } else {
+                    Ok(ControlResult::Rejected("operation_unavailable".to_owned()))
+                };
                 let failed = result.is_err();
                 let _ = reply.send(result);
                 failed

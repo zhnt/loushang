@@ -1,45 +1,115 @@
-import type { ClientSnapshot, HarnessClientUiPort, SubmitReceipt } from "./model";
+import type { ClientSnapshot, ControlReceipt, HarnessClientUiPort, SubmitReceipt } from "./model";
 import { projectNativeInitialSnapshot, validateSessionModels } from "./nativeLiveClient";
+import { ApprovalResponses } from "./approvalResponses";
 import { webRequest } from "./hostApi";
 
 /** Same projection/contracts as desktop; authoritative snapshots arrive from AppHost. */
-export function createWebLiveClient(workspace: string, connectionId?: string): HarnessClientUiPort {
+export interface WebLiveClient extends HarnessClientUiPort {
+  suspend(): Promise<() => void>;
+}
+
+export function createWebLiveClient(workspace: string, connectionId?: string): WebLiveClient {
   const listeners = new Set<(snapshot: ClientSnapshot) => void>();
   const connections = new Set<(state: "disconnected" | "resync-required") => void>();
   let current: ClientSnapshot | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let generation = 0;
   let running: Promise<ClientSnapshot> | null = null;
-  const call = <T,>(action: string, input = {}): Promise<T> => webRequest<T>({ operation: "live", workspace, action, input }, connectionId);
+  let viewId: string | undefined;
+  let suspended = false;
+  let closing: Promise<unknown> | undefined;
+  const call = <T,>(action: string, input = {}): Promise<T> =>
+    viewId ? webRequest<T>({ operation: "live", workspace, viewId, action, input }, connectionId)
+      : Promise.reject(new Error("connection_failed"));
+  const publish = (snapshot: ClientSnapshot) => {
+    for (const listener of listeners) listener(snapshot);
+  };
+  const approvals = new ApprovalResponses(publish);
+
+  function disconnected() {
+    current = null;
+    approvals.disconnected();
+    for (const listener of connections) listener("disconnected");
+  }
+  function close() {
+    const released = viewId;
+    viewId = undefined;
+    disconnected();
+    if (!released) return closing;
+    // Close after an in-flight snapshot so it cannot open an orphaned view.
+    closing = Promise.allSettled([closing, running]).then(() =>
+      webRequest({ operation: "live", workspace, viewId: released, action: "close", input: {} }, connectionId),
+    ).catch(() => {});
+    return closing;
+  }
   const refresh = (): Promise<ClientSnapshot> => {
-    running ??= call<unknown>("snapshot").then((value) => {
+    if (suspended) return Promise.reject(new Error("connection_suspended"));
+    const serial = generation;
+    const id = viewId ??= crypto.randomUUID();
+    running ??= Promise.resolve(closing).then(() => {
+      if (viewId !== id) throw new Error("connection_changed");
+      return call<unknown>("snapshot");
+    }).then((value) => {
       const projected = projectNativeInitialSnapshot(value);
+      if (serial !== generation || viewId !== id || suspended) throw new Error("connection_changed");
       current = projected.source.kind === "live"
         ? { ...projected, source: { ...projected.source, connectionId } } : projected;
-      return current;
+      return approvals.project(current);
     }).finally(() => { running = null; });
     return running;
   };
   const poll = async (serial: number) => {
     try {
-      const snapshot = await refresh();
-      if (serial === generation) for (const listener of listeners) listener(snapshot);
+      if (!suspended) {
+        const snapshot = await refresh();
+        if (serial === generation) publish(snapshot);
+      }
     } catch {
-      if (serial === generation) for (const listener of connections) listener("disconnected");
+      if (serial === generation && !suspended) {
+        // A lost HTTP link invalidates this view even if the worker still
+        // has time remaining on its lease.
+        void close();
+      }
     } finally {
       if (listeners.size && serial === generation) timer = setTimeout(() => void poll(serial), 500);
     }
   };
+  const pageHidden = () => { void close(); };
   return {
     snapshot: refresh,
     subscribe: () => () => {},
     subscribeSnapshots(listener) {
       listeners.add(listener);
-      if (listeners.size === 1) { const serial = ++generation; timer = setTimeout(() => void poll(serial), 500); }
-      return () => { listeners.delete(listener); if (!listeners.size) { generation++; clearTimeout(timer); } };
+      if (listeners.size === 1) {
+        const serial = ++generation;
+        timer = setTimeout(() => void poll(serial), 500);
+        window.addEventListener("pagehide", pageHidden);
+      }
+      return () => {
+        listeners.delete(listener);
+        if (!listeners.size) {
+          generation++;
+          clearTimeout(timer);
+          window.removeEventListener("pagehide", pageHidden);
+          void close();
+        }
+      };
     },
     subscribeConnection(listener) { connections.add(listener); return () => { connections.delete(listener); }; },
-    async requestResync() { const snapshot = await refresh(); for (const listener of listeners) listener(snapshot); },
+    async suspend() {
+      suspended = true;
+      await close();
+      return () => { suspended = false; };
+    },
+    async requestResync() {
+      await close();
+      publish(await refresh());
+    },
+    respondInteraction(sessionId, interactionId, outcome) {
+      return approvals.respond(sessionId, interactionId, (connectionEpoch) =>
+        call<ControlReceipt>("respond-interaction", { sessionId, interactionId, outcome, connectionEpoch }),
+      );
+    },
     async submitText(input) {
       const serviceInstanceId = current?.source.kind === "live" ? current.source.serviceInstanceId : undefined;
       try {

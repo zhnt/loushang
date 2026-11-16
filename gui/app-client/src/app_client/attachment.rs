@@ -151,6 +151,24 @@ struct Detach<'a> {
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ReadAttachmentEvents<'a> {
+    attachment_id: &'a str,
+    controller_generation: &'a RawValue,
+    limit: u8,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RespondInteraction<'a> {
+    attachment_id: &'a str,
+    controller_generation: &'a RawValue,
+    member_id: &'a str,
+    interaction_id: &'a str,
+    outcome: InteractionOutcome,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Control<'a> {
     attachment_id: &'a str,
     controller_generation: &'a RawValue,
@@ -239,6 +257,14 @@ struct SessionTemplate {
     product_id: String,
     scope: String,
     scope_fingerprint: String,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InteractionOutcome {
+    Approve,
+    Deny,
+    Cancel,
 }
 
 pub enum ControlResult {
@@ -377,22 +403,29 @@ impl ReadSession {
         let result = (|| {
             attempt.apply(|| Ok(()))?;
             let pending = self.read_snapshots(channel, attempt)?;
+            let mut readers = pending
+                .iter()
+                .map(EventReader::new)
+                .collect::<Result<Vec<_>, _>>()?;
+            let attached_cursors = self
+                .attachment
+                .sessions
+                .iter()
+                .map(|session| {
+                    let source = projection::source_value(session.snapshot.get())?;
+                    source["cursor"].as_str().map(str::to_owned).ok_or(())
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            self.fill_approval_gaps(channel, &mut readers, &attached_cursors)?;
             membership_barrier(
                 channel,
                 &self.attachment.mux_space,
                 &mut self.next_id,
                 attempt,
             )?;
-            let readers = pending
-                .iter()
-                .map(EventReader::new)
-                .collect::<Result<Vec<_>, _>>()?;
             let initial = InitialSnapshot {
                 mux_space: self.attachment.mux_space.bridge_value()?,
-                sessions: pending
-                    .iter()
-                    .map(|value| value["result"].clone())
-                    .collect(),
+                sessions: approval_snapshots(pending, &readers),
             };
             attempt.apply(|| {
                 self.readers = Some(readers);
@@ -513,13 +546,15 @@ impl ReadSession {
                 if snapshots.len() != next.len() {
                     return Err(());
                 }
+                let cursors = next
+                    .iter()
+                    .map(|reader| reader.cursor.clone())
+                    .collect::<Vec<_>>();
                 for (reader, snapshot) in next.iter_mut().zip(&snapshots) {
                     reader.rebase(snapshot)?;
                 }
-                snapshots
-                    .iter()
-                    .map(|value| value["result"].clone())
-                    .collect()
+                self.fill_approval_gaps(channel, &mut next, &cursors)?;
+                approval_snapshots(snapshots, &next)
             } else {
                 Vec::new()
             };
@@ -538,6 +573,75 @@ impl ReadSession {
             self.fail(attempt);
         }
         result
+    }
+
+    // A new execution snapshot rebases the event stream. Read its covered
+    // interactions from the existing attachment before the next execution poll.
+    fn fill_approval_gaps<R: Read, W: Write>(
+        &mut self,
+        channel: &mut Channel<R, W>,
+        readers: &mut [EventReader],
+        previous: &[String],
+    ) -> Result<(), ()> {
+        if readers
+            .iter()
+            .zip(previous)
+            .all(|(reader, cursor)| reader.cursor == *cursor)
+        {
+            return Ok(());
+        }
+        for _ in 0..=256 {
+            let Some(entry) = self.read_attachment_event(channel)? else {
+                return Ok(());
+            };
+            let index = self
+                .attachment
+                .sessions
+                .iter()
+                .position(|item| item.member.member_id == entry.member_id)
+                .ok_or(())?;
+            readers[index].apply_covered_interaction(entry.event, &previous[index])?;
+        }
+        Err(())
+    }
+
+    fn read_attachment_event<R: Read, W: Write>(
+        &mut self,
+        channel: &mut Channel<R, W>,
+    ) -> Result<Option<AttachmentEvent>, ()> {
+        let id = take_request_id(&mut self.next_id)?;
+        let reply = request(
+            channel,
+            "attachment/read_events",
+            &id,
+            ReadAttachmentEvents {
+                attachment_id: &self.attachment.attachment_id,
+                controller_generation: &self.attachment.controller_generation,
+                limit: 1,
+            },
+        )?;
+        if reply.result_type != "events" {
+            return Err(());
+        }
+        let batch: AttachmentEvents = serde_json::from_str(reply.result.get()).map_err(|_| ())?;
+        match batch.events.as_slice() {
+            [] => Ok(None),
+            [entry]
+                if entry.attachment_id == self.attachment.attachment_id
+                    && entry.protocol_version == "loushang.app/v1" =>
+            {
+                Ok(batch.events.into_iter().next())
+            }
+            _ => Err(()),
+        }
+    }
+
+    pub(crate) fn has_approval(&self, session_id: &str, interaction_id: &str) -> bool {
+        self.readers.as_ref().is_some_and(|readers| {
+            readers.iter().any(|reader| {
+                reader.session_id == session_id && reader.approvals.contains_key(interaction_id)
+            })
+        })
     }
 
     fn read_snapshots<R: Read, W: Write>(
@@ -800,6 +904,41 @@ impl ControlAuthority {
         self.record_result(result, session_id, Some(submission_id))
     }
 
+    pub(crate) fn respond_interaction<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        interaction_id: &str,
+        outcome: InteractionOutcome,
+        request_id: &str,
+    ) -> Result<ControlResult, ()> {
+        let response = request(
+            channel,
+            "interaction/respond",
+            request_id,
+            RespondInteraction {
+                attachment_id: &self.attachment_id,
+                controller_generation: serde_json::from_str(&self.controller_generation)
+                    .map_err(|_| ())?,
+                member_id: self.members.get(session_id).ok_or(())?,
+                interaction_id,
+                outcome,
+            },
+        )?;
+        if let Some(code) = decode_app_error(&response.result_type, &response.result)? {
+            return Ok(ControlResult::Rejected(code));
+        }
+        if response.result_type != "ack" {
+            return Err(());
+        }
+        let ack: serde_json::Map<String, Value> =
+            serde_json::from_str(response.result.get()).map_err(|_| ())?;
+        if !ack.is_empty() {
+            return Err(());
+        }
+        Ok(ControlResult::Accepted)
+    }
+
     pub(crate) fn interrupt<R: Read, W: Write>(
         &self,
         channel: &mut Channel<R, W>,
@@ -989,6 +1128,52 @@ fn successor(decimal: &str) -> String {
     String::from_utf8(bytes).expect("decimal input")
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AttachmentEvents {
+    events: Vec<AttachmentEvent>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AttachmentEvent {
+    attachment_id: String,
+    member_id: String,
+    protocol_version: String,
+    event: SourceEvent,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SourceEvent {
+    cursor: Box<RawValue>,
+    session_id: String,
+    kind: String,
+    interaction_id: Option<String>,
+    text: Option<String>,
+}
+
+fn cursor_order(left: &str, right: &str) -> std::cmp::Ordering {
+    left.len().cmp(&right.len()).then_with(|| left.cmp(right))
+}
+
+fn approval_snapshots(snapshots: Vec<Value>, readers: &[EventReader]) -> Vec<Value> {
+    snapshots
+        .into_iter()
+        .zip(readers)
+        .map(|(mut value, reader)| {
+            let approvals = reader
+                .approvals
+                .iter()
+                .map(|(id, text)| json!({"interactionId": id, "text": text}))
+                .collect();
+            let mut snapshot = value["result"].take();
+            snapshot["pendingApprovals"] = Value::Array(approvals);
+            snapshot
+        })
+        .collect()
+}
+
 // Inputs have passed the independent wire validators. Keep content and metadata
 // watermarks separate, and never coerce arbitrary-size source cursors to floats.
 #[derive(Clone)]
@@ -996,6 +1181,7 @@ struct EventReader {
     session_id: Value,
     cursor: String,
     revision: u64,
+    approvals: BTreeMap<String, String>,
     valid: bool,
 }
 impl EventReader {
@@ -1007,6 +1193,7 @@ impl EventReader {
             revision: snapshot["result"]["executions"]["revision"]
                 .as_u64()
                 .ok_or(())?,
+            approvals: BTreeMap::new(),
             valid: true,
         })
     }
@@ -1044,14 +1231,8 @@ impl EventReader {
     }
     fn advance(&mut self, events: &Value) -> Result<(), ()> {
         for event in events["result"]["events"].as_array().ok_or(())? {
-            if event.get("source").is_some() {
-                let content = &event["source"];
-                if content["sessionId"] != self.session_id
-                    || content["cursor"].as_str() != Some(successor(&self.cursor).as_str())
-                {
-                    return Err(());
-                }
-                self.cursor = content["cursor"].as_str().ok_or(())?.to_owned();
+            if let Some(content) = event.get("source") {
+                self.advance_content(content)?;
             } else {
                 let next = event["revision"].as_u64().ok_or(())?;
                 if self.revision.checked_add(1) != Some(next) {
@@ -1059,6 +1240,63 @@ impl EventReader {
                 }
                 self.revision = next;
             }
+        }
+        Ok(())
+    }
+
+    fn advance_content(&mut self, content: &Value) -> Result<(), ()> {
+        let cursor = content["cursor"].as_str().ok_or(())?;
+        if content["sessionId"] != self.session_id || cursor != successor(&self.cursor) {
+            return Err(());
+        }
+        self.apply_interaction(
+            content["kind"].as_str().ok_or(())?,
+            content["interactionId"].as_str(),
+            content["text"].as_str(),
+        )?;
+        self.cursor = cursor.to_owned();
+        Ok(())
+    }
+
+    fn apply_covered_interaction(&mut self, event: SourceEvent, previous: &str) -> Result<(), ()> {
+        if self.session_id != event.session_id || !positive(&event.cursor) {
+            return Err(());
+        }
+        let cursor = event.cursor.get();
+        if cursor_order(cursor, previous).is_gt() && !cursor_order(cursor, &self.cursor).is_gt() {
+            self.apply_interaction(
+                &event.kind,
+                event.interaction_id.as_deref(),
+                event.text.as_deref(),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn apply_interaction(
+        &mut self,
+        kind: &str,
+        interaction_id: Option<&str>,
+        text: Option<&str>,
+    ) -> Result<(), ()> {
+        match kind {
+            "interaction_requested" => {
+                let id = interaction_id.filter(|id| identifier(id, 512)).ok_or(())?;
+                let text = text
+                    .filter(|text| !text.trim().is_empty() && text.chars().count() <= 262_144)
+                    .ok_or(())?;
+                self.approvals
+                    .entry(id.to_owned())
+                    .or_insert_with(|| text.to_owned());
+                if self.approvals.len() > 16 {
+                    return Err(());
+                }
+            }
+            "interaction_dismissed" => {
+                let id = interaction_id.filter(|id| identifier(id, 512)).ok_or(())?;
+                self.approvals.remove(id);
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -1127,7 +1365,7 @@ mod tests {
     #[test]
     fn batches_are_atomic_and_failures_fence_the_reader() {
         let snapshot = json!({"result":{"source":{"source":{"cursor":"9", "identity":{"sessionId":"s"}}},"executions":{"revision":7}}});
-        let batch = |cursors: &[&str]| json!({"result":{"events":cursors.iter().map(|c| json!({"source":{"sessionId":"s","cursor":c}})).collect::<Vec<_>>()}});
+        let batch = |cursors: &[&str]| json!({"result":{"events":cursors.iter().map(|c| json!({"source":{"sessionId":"s","kind":"status","cursor":c}})).collect::<Vec<_>>()}});
         let mut reader = EventReader::new(&snapshot).unwrap();
         reader.apply(&batch(&["10"])).unwrap();
         reader.apply(&batch(&["11"])).unwrap();
@@ -1151,11 +1389,41 @@ mod tests {
         assert_eq!(reader.revision, 5);
         assert!(reader
             .apply(&json!({"result":{"events":[
-                {"source":{"sessionId":"s","cursor":"6"}}, {"revision":6}
+                {"source":{"sessionId":"s","kind":"status","cursor":"6"}}, {"revision":6}
             ]}}))
             .is_ok());
         assert!(reader.rebase(&initial).is_err());
     }
+    #[test]
+    fn approval_request_is_deduplicated_and_only_a_matching_dismissal_removes_it() {
+        let mut reader = EventReader::new(&json!({"result": {
+            "source":{"source":{"identity":{"sessionId":"s"},"cursor":"0"}},
+            "executions":{"revision":0}
+        }}))
+        .unwrap();
+        let event = |cursor: &str, kind: &str, id: &str, text: Option<&str>| {
+            json!({
+                "source":{"sessionId":"s","cursor":cursor,"kind":kind,"interactionId":id,"text":text}
+            })
+        };
+        reader
+            .apply(&json!({"result":{"events":[
+                event("1", "interaction_requested", "one", Some("Preview")),
+                event("2", "interaction_requested", "one", Some("Preview")),
+                event("3", "interaction_requested", "two", Some("Second")),
+                event("4", "interaction_dismissed", "two", None),
+            ]}}))
+            .unwrap();
+        assert_eq!(
+            reader.approvals,
+            BTreeMap::from([("one".into(), "Preview".into())])
+        );
+        reader
+            .apply(&json!({"result":{"events":[event("5", "interaction_dismissed", "one", None)]}}))
+            .unwrap();
+        assert!(reader.approvals.is_empty());
+    }
+
     #[test]
     fn decimal_successor_is_lossless() {
         assert_eq!(successor("0"), "1");
@@ -1167,7 +1435,8 @@ mod tests {
     #[test]
     fn content_and_metadata_have_separate_contiguous_watermarks() {
         let snapshot = json!({"result":{"source":{"source":{"cursor":"999999999999999999999", "identity":{"sessionId":"s"}}},"executions":{"revision":7}}});
-        let content = json!({"source":{"sessionId":"s","cursor":"1000000000000000000000"}});
+        let content =
+            json!({"source":{"sessionId":"s","kind":"status","cursor":"1000000000000000000000"}});
         let batch = |items: Vec<Value>| json!({"result":{"events":items}});
         assert!(validate_events(
             &snapshot,
@@ -1179,7 +1448,7 @@ mod tests {
         assert!(validate_events(
             &snapshot,
             &batch(vec![
-                json!({"source":{"sessionId":"other","cursor":"1000000000000000000000"}})
+                json!({"source":{"sessionId":"other","kind":"status","cursor":"1000000000000000000000"}})
             ])
         )
         .is_err());
